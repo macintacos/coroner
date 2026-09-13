@@ -45,21 +45,23 @@ var _ = Describe("wrapRunErrors", func() {
 	})
 })
 
-var _ = It("gives every command an example", func(ctx SpecContext) {
-	var missing []string
-	var visit func(*cobra.Command)
-	visit = func(cmd *cobra.Command) {
-		if !cmd.Hidden && cmd.Example == "" {
-			missing = append(missing, cmd.CommandPath())
+var _ = Describe("NewRoot", func() {
+	It("gives every command an example", func(ctx SpecContext) {
+		var missing []string
+		var visit func(*cobra.Command)
+		visit = func(cmd *cobra.Command) {
+			if !cmd.Hidden && cmd.Example == "" {
+				missing = append(missing, cmd.CommandPath())
+			}
+			for _, child := range cmd.Commands() {
+				visit(child)
+			}
 		}
-		for _, child := range cmd.Commands() {
-			visit(child)
-		}
-	}
 
-	visit(NewRoot(ctx, App{}))
+		visit(NewRoot(ctx, App{}))
 
-	Expect(missing).To(BeEmpty())
+		Expect(missing).To(BeEmpty())
+	})
 })
 
 var _ = Describe("asInternal", func() {

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -20,22 +19,18 @@ func newTimelineUseCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline use --clear",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			clearing, _ := cmd.Flags().GetBool("clear")
-			if clearing == (len(args) == 1) {
+			switch {
+			case clearing == (len(args) == 1):
 				return &Error{
 					Kind:    KindUsage,
 					Message: "pass either a timeline name or id, or --clear",
 					Hint:    "Run 'coroner timeline use --help' for usage.",
 				}
+			case clearing:
+				return clearTimeline(ctx, cmd, app)
 			}
 
-			return withStore(ctx, cmd, app, func(s *store.Store) error {
-				message, err := useTimeline(ctx, s, args)
-				if err != nil {
-					return err
-				}
-
-				return notify(cmd, app, message)
-			})
+			return useTimeline(ctx, cmd, app, args[0])
 		},
 	}
 
@@ -44,17 +39,38 @@ func newTimelineUseCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// useTimeline makes the timeline args[0] names current, or clears the current timeline when
-// args is empty, and returns the message saying which.
-func useTimeline(ctx context.Context, s *store.Store, args []string) (string, error) {
-	if len(args) == 0 {
-		return "No timeline is current.\n", s.ClearCurrentTimeline(ctx)
-	}
-
-	t, err := findTimeline(ctx, s, args[0])
+func useTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID string) error {
+	o, err := newOutput(cmd, app)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return fmt.Sprintf("Now using timeline `%s`.\n", t.Name), s.SetCurrentTimeline(ctx, t.ID)
+	return withStore(ctx, cmd, app, func(s *store.Store) error {
+		t, err := findTimeline(ctx, s, nameOrID)
+		if err != nil {
+			return err
+		}
+		err = s.SetCurrentTimeline(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Now using timeline `%s`.", t.Name)
+	})
+}
+
+func clearTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
+	o, err := newOutput(cmd, app)
+	if err != nil {
+		return err
+	}
+
+	return withStore(ctx, cmd, app, func(s *store.Store) error {
+		err := s.ClearCurrentTimeline(ctx)
+		if err != nil {
+			return err
+		}
+
+		return o.notify("No timeline is current.")
+	})
 }

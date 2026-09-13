@@ -20,6 +20,11 @@ exits 2 coroner timeline create 'Mongo Outage' --json
 ! stdout .
 stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*mongo-outage[^\n]*"\}\}\n\z'
 
+# An unknown verb exits 2, kind usage, even under --json.
+exits 2 coroner timeline craete --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"unknown command \\"craete\\"[^\n]+\}\}\n\z'
+
 # list prints every timeline with current, true only for the one in use.
 exits 0 coroner timeline create second --json
 exits 0 coroner timeline list --json
@@ -50,6 +55,9 @@ stderr '^\{"error":\{"kind":"timeline_exists",[^\n]+\}\}\n\z'
 # A timeline that does not exist exits 3, kind timeline_not_found.
 exits 3 coroner timeline view mongo-outage-2026-09-11 --json
 stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+exits 3 coroner timeline edit mongo-outage-2026-09-11 --title x --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+exits 3 coroner timeline use mongo-outage-2026-09-11
 
 # delete exits 2 without --yes, deleting nothing, and 3 for a missing timeline.
 exits 2 coroner timeline delete mongo-failover

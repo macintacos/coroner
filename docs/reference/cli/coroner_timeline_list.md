@@ -8,8 +8,9 @@ List timelines, marking the current one
 
 ### Synopsis
 
-List every timeline, oldest first. A '*' marks the current timeline, the one
-'coroner timeline use' selected. Each row is the marker and name, a tab, then the title.
+List every timeline, oldest first. Each row is a marker, the name and the title; a '*'
+marks the current timeline, the one 'coroner timeline use' selected. Piped, the fields
+are tab-separated.
 
 ```
 coroner timeline list [flags]

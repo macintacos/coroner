@@ -7,6 +7,9 @@ exits 2 coroner timeline delete mongo-outage
 stderr '--yes'
 exits 2 coroner timeline edit mongo-outage
 exits 2 coroner timeline use
+exits 2 coroner timeline edit mongo-outage --name 'Bad Name'
+stderr 'Did you mean `bad-name`\?'
+exits 2 coroner timeline edit mongo-outage --add-ref ''
 ! exists $WORK/.local/share/coroner
 
 # Create a timeline, use it, and see it marked in the list.
@@ -15,14 +18,14 @@ exec coroner timeline create mongo-outage-2026-09-11 --title 'Primary election s
 stderr '^Next: coroner timeline use mongo-outage-2026-09-11$'
 exec coroner timeline use mongo-outage-2026-09-11
 exec coroner timeline list
-stdout '^\* mongo-outage-2026-09-11\tPrimary election storm$'
+stdout '^\*\tmongo-outage-2026-09-11\tPrimary election storm$'
 exec coroner timeline view
 stdout '^mongo-outage-2026-09-11$'
 stdout '^Refs: +INC-4821$'
 
 # --dry-run deletes nothing; deleting the current timeline leaves none current.
 exec coroner timeline delete mongo-outage-2026-09-11 --dry-run
-stdout '0 events, 0 annotations'
+stdout '^Would delete timeline `mongo-outage-2026-09-11`: events: 0, annotations: 0$'
 exec coroner timeline delete mongo-outage-2026-09-11 --yes
 exec coroner timeline list
 ! stdout .

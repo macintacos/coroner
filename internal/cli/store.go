@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"io/fs"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -12,7 +13,8 @@ import (
 )
 
 // withStore opens the database that --db, --config and the environment select, runs fn
-// against it and closes it.
+// against it and closes it. Config errors return as usage; errors from opening the store or
+// from fn pass through storeError.
 func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.Store) error) error {
 	flags := cmd.Flags()
 	resolved, err := config.Resolve(
@@ -26,10 +28,10 @@ func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.
 
 	s, err := app.OpenStore(ctx, resolved.DBPath)
 	if err != nil {
-		return storeError(err)
+		return storeError(err, resolved.DBPath)
 	}
 
-	err = storeError(fn(s))
+	err = storeError(fn(s), resolved.DBPath)
 	closeErr := s.Close()
 	if closeErr != nil {
 		return errors.Join(err, closeErr)
@@ -48,18 +50,31 @@ func changedString(flags *pflag.FlagSet, name string) *string {
 	return &value
 }
 
-// storeError gives the store's database-level failures their kinds and returns any other
-// error as it is.
-func storeError(err error) error {
+// storeError gives the database failures a user can fix their kinds and messages, and
+// returns any other error as it is. path is the database withStore opened.
+func storeError(err error, path string) error {
 	switch {
 	case errors.Is(err, store.ErrBusy):
 		return &Error{
-			Kind: KindDBBusy, Message: err.Error(), Hint: "Another coroner is writing to the database; retry shortly.", Err: err,
+			Kind: KindDBBusy, Message: "the database is busy", Hint: "Another coroner is writing to it; retry shortly.", Err: err,
 		}
 	case errors.Is(err, store.ErrDatabaseTooNew):
-		return &Error{Kind: KindDBTooNew, Message: err.Error(), Hint: "Upgrade coroner to use this database.", Err: err}
-	case errors.Is(err, store.ErrForeignDatabase), errors.Is(err, store.ErrBackupExists):
-		return &Error{Kind: KindDBUnreadable, Message: err.Error(), Hint: "Pass --db with the path to a coroner database.", Err: err}
+		return &Error{
+			Kind: KindDBTooNew, Message: "the database was written by a newer coroner", Hint: "Upgrade coroner to use it.", Err: err,
+		}
+	case errors.Is(err, store.ErrForeignDatabase):
+		return &Error{
+			Kind: KindDBUnreadable, Message: path + " is not a coroner database",
+			Hint: "Pass --db with the path to a coroner database.", Err: err,
+		}
+	case errors.Is(err, store.ErrBackupExists):
+		// The store's text names the backup and how to clear it.
+		return &Error{Kind: KindDBUnreadable, Message: err.Error(), Err: err}
+	case errors.Is(err, fs.ErrPermission):
+		return &Error{
+			Kind: KindDBUnreadable, Message: "permission denied opening the database at " + path,
+			Hint: "Check --db and CORONER_DB, or the permissions of that path.", Err: err,
+		}
 	}
 
 	return err

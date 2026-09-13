@@ -22,32 +22,7 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run\n" +
 			"  $ coroner timeline delete mongo-outage-2026-09-11 --yes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			yes, _ := cmd.Flags().GetBool("yes")
-			dryRun, _ := cmd.Flags().GetBool("dry-run")
-			if !yes && !dryRun {
-				return &Error{
-					Kind:    KindUsage,
-					Message: fmt.Sprintf("deleting timeline %q needs --yes", args[0]),
-					Hint:    "Pass --yes to delete it and everything in it, or --dry-run to see what that deletes.",
-				}
-			}
-
-			return withStore(ctx, cmd, app, func(s *store.Store) error {
-				t, err := findTimeline(ctx, s, args[0])
-				if err != nil {
-					return err
-				}
-				if dryRun {
-					return reportDeletion(ctx, s, app.Out, t)
-				}
-
-				err = s.DeleteTimeline(ctx, t.ID)
-				if err != nil {
-					return err
-				}
-
-				return notify(cmd, app, fmt.Sprintf("Deleted timeline `%s`.\n", t.Name))
-			})
+			return deleteTimeline(ctx, cmd, app, args[0])
 		},
 	}
 
@@ -55,6 +30,39 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd.Flags().Bool("dry-run", false, "Show what would be deleted, and delete nothing")
 
 	return cmd
+}
+
+func deleteTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID string) error {
+	yes, _ := cmd.Flags().GetBool("yes")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	if !yes && !dryRun {
+		return &Error{
+			Kind:    KindUsage,
+			Message: fmt.Sprintf("deleting timeline %q needs --yes", nameOrID),
+			Hint:    "Pass --yes to delete it and everything in it, or --dry-run to see what that deletes.",
+		}
+	}
+	o, err := newOutput(cmd, app)
+	if err != nil {
+		return err
+	}
+
+	return withStore(ctx, cmd, app, func(s *store.Store) error {
+		t, err := findTimeline(ctx, s, nameOrID)
+		if err != nil {
+			return err
+		}
+		if dryRun {
+			return reportDeletion(ctx, s, o.out, t)
+		}
+
+		err = s.DeleteTimeline(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Deleted timeline `%s`.", t.Name)
+	})
 }
 
 // reportDeletion writes to w what deleting t would remove.
@@ -68,6 +76,6 @@ func reportDeletion(ctx context.Context, s *store.Store, w io.Writer, t timeline
 		return err
 	}
 
-	_, err = fmt.Fprintf(w, "Would delete timeline `%s`: %d events, %d annotations.\n", t.Name, len(events), len(annotations))
+	_, err = fmt.Fprintf(w, "Would delete timeline `%s`: events: %d, annotations: %d\n", t.Name, len(events), len(annotations))
 	return err
 }
