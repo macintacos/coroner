@@ -33,6 +33,7 @@ func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
 	cmd.AddCommand(
 		newTimelineCreateCommand(ctx, app),
 		newTimelineListCommand(ctx, app),
+		newTimelineViewCommand(ctx, app),
 		newTimelineUseCommand(ctx, app),
 	)
 
