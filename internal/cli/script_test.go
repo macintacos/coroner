@@ -5,9 +5,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -15,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -46,7 +49,7 @@ func TestScripts(t *testing.T) {
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
-			"exits": exits, "bumpschema": bumpSchema,
+			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid,
 		},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
@@ -92,6 +95,37 @@ func exits(ts *testscript.TestScript, neg bool, args []string) {
 
 	if got != want {
 		ts.Fatalf("%s exited %d, want %d", args[1], got, want)
+	}
+}
+
+// jsonValid is `jsonvalid <file>`: it passes when file, such as stdout, is empty or holds only
+// JSON values, so a line of text beside json or jsonl output fails it.
+func jsonValid(ts *testscript.TestScript, neg bool, args []string) {
+	if len(args) != 1 {
+		ts.Fatalf("usage: jsonvalid <file>")
+	}
+
+	err := onlyJSON(ts.ReadFile(args[0]))
+	switch {
+	case err != nil && !neg:
+		ts.Fatalf("%s is not only JSON: %v", args[0], err)
+	case err == nil && neg:
+		ts.Fatalf("%s is only JSON", args[0])
+	}
+}
+
+// onlyJSON returns an error unless data is a sequence of zero or more JSON values.
+func onlyJSON(data string) error {
+	decoder := json.NewDecoder(strings.NewReader(data))
+	for {
+		var value json.RawMessage
+		err := decoder.Decode(&value)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 }
 
