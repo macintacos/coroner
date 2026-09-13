@@ -1,5 +1,5 @@
-// Command coroner is the coroner CLI. It is the only code that touches the process: args,
-// stdio, environment, clock, signals and the exit code.
+// Command coroner is the coroner CLI. It hands the process's args, stdio, environment,
+// clock and signals to cli.Run and exits with its code.
 package main
 
 import (
