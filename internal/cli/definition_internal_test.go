@@ -417,14 +417,7 @@ func formError(def definition, name, value string) error {
 		if formField.GetKey() != name {
 			continue
 		}
-		switch f := formField.(type) {
-		case *huh.Input:
-			f.Value(&value)
-		case *huh.Text:
-			f.Value(&value)
-		default:
-			Fail(fmt.Sprintf("form field %s takes no text", name))
-		}
+		typeInto(formField, value)
 		formField.Blur()
 
 		return formField.Error()

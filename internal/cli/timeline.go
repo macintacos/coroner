@@ -283,11 +283,21 @@ func checkName(name string) error {
 	}
 
 	hint := "Use lowercase letters, digits, '.', '_' and '-'; put free text in --title."
-	if suggestion := suggestSlug(name, namePunct, timeline.ValidateTimelineName); suggestion != "" {
+	if suggestion := suggestName(name); suggestion != "" {
 		hint = fmt.Sprintf("Did you mean `%s`? Put free text in --title.", suggestion)
 	}
 
 	return &Error{Kind: KindInvalidName, Message: err.Error(), Hint: hint, Err: err}
+}
+
+// suggestName returns the valid timeline name checkName suggests for name, or "" when name is valid
+// or nothing valid remains of it.
+func suggestName(name string) string {
+	if timeline.ValidateTimelineName(name) == nil {
+		return ""
+	}
+
+	return suggestSlug(name, namePunct, timeline.ValidateTimelineName)
 }
 
 func timelineExistsError(name, hint string, err error) *Error {

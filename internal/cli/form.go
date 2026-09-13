@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 )
 
@@ -122,6 +124,8 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	case f.typ == boolField:
 		b, _ := strconv.ParseBool(*bound)
 		return huh.NewConfirm().Key(f.name).Title(title).Description(help).Value(&b)
+	case f.typ == stringsField && f.list:
+		return newListField(huh.NewInput().Key(f.name).Title(title), help, valueLines(*bound), check)
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)
@@ -136,9 +140,48 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).
 		Suggestions(form.choices.suggestions[f.name]).Validate(check)
-	return input.DescriptionFunc(func() string {
+	input.DescriptionFunc(func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
 	}, bindings)
+	if f.suggest == nil {
+		return input
+	}
+
+	return suggestingInput{Input: input, bound: bound, suggest: f.suggest}
+}
+
+// suggestingInput is an Input that ctrl+e sets to the valid value suggest offers for what it holds.
+type suggestingInput struct {
+	*huh.Input
+	// bound is the value the Input's description re-renders on.
+	bound   *string
+	suggest func(value string) string
+}
+
+func useSuggestionKey() key.Binding {
+	return key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "use suggestion"))
+}
+
+func (s suggestingInput) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	press, ok := msg.(tea.KeyPressMsg)
+	suggestion := s.suggest(fmt.Sprint(s.GetValue()))
+	if !ok || suggestion == "" || !key.Matches(press, useSuggestionKey()) {
+		_, cmd := s.Input.Update(msg)
+		return s, cmd
+	}
+
+	*s.bound = suggestion
+	s.Value(s.bound)
+
+	return s, nil
+}
+
+func (s suggestingInput) KeyBinds() []key.Binding {
+	if s.suggest(fmt.Sprint(s.GetValue())) == "" {
+		return s.Input.KeyBinds()
+	}
+
+	return append([]key.Binding{useSuggestionKey()}, s.Input.KeyBinds()...)
 }
 
 // withGiven returns options led by given when no option holds it, since a Select overwrites a value

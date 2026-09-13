@@ -38,6 +38,10 @@ type field struct {
 	required bool
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
 	preview func(value string, env checkEnv) string
+	// list makes a repeatable field's form field take its values one at a time instead of one per line.
+	list bool
+	// suggest returns the valid value a form field offers in place of a rejected one, or "" for none.
+	suggest func(value string) string
 }
 
 // checkEnv is what a check reads time input against.
