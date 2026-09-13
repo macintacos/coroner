@@ -49,10 +49,19 @@ type formSession struct {
 
 const interactiveUsage = "Open a form to fill in, prefilled from the other flags (needs a terminal)"
 
-// attach registers f's flags and --interactive on cmd, and a RunE that asks through forms when
-// formMode opens the form, and otherwise runs writeRunE.
-func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
-	flagsOnly := writeRunE(ctx, app, f.def, f.run)
+// formCommand is a write command with a form: its definition, when its command line runs without
+// the form, what runs it then, and the form's session.
+type formCommand struct {
+	def definition
+	// ready reports whether the command line's values run without a form.
+	ready     func(in fieldValues) bool
+	flagsOnly func(*cobra.Command, []string) error
+	session   func(cmd *cobra.Command, s formSession, in fieldValues) error
+}
+
+// attach registers c's flags and --interactive on cmd, and a RunE that asks through forms when
+// formMode opens the form, and otherwise runs flagsOnly.
+func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		interactive, _ := cmd.Flags().GetBool("interactive")
 		terminal := interactiveTerminal(app)
@@ -62,9 +71,9 @@ func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, for
 				Hint: "Run '" + cmd.CommandPath() + " --help' for the flags it takes.",
 			}
 		}
-		in := f.def.read(cmd.Flags(), args)
-		if !formMode(interactive, requiredGiven(f.def, in), terminal) {
-			return flagsOnly(cmd, args)
+		in := c.def.read(cmd.Flags(), args)
+		if !formMode(interactive, c.ready(in), terminal) {
+			return c.flagsOnly(cmd, args)
 		}
 
 		s, err := newFormSession(cmd, app, forms)
@@ -72,13 +81,26 @@ func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, for
 			return err
 		}
 
-		return f.session(ctx, s, in)
+		return c.session(cmd, s, in)
 	}
 
-	f.def.addFlags(cmd.Flags())
+	c.def.addFlags(cmd.Flags())
 	cmd.Flags().Bool("interactive", false, interactiveUsage)
 
 	return cmd
+}
+
+// attach registers f's flags and --interactive on cmd, and a RunE that asks through forms when a
+// field the command requires is missing or --interactive asks, and otherwise runs writeRunE.
+func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
+	return formCommand{
+		def:       f.def,
+		ready:     func(in fieldValues) bool { return requiredGiven(f.def, in) },
+		flagsOnly: writeRunE(ctx, app, f.def, f.run),
+		session: func(_ *cobra.Command, s formSession, in fieldValues) error {
+			return f.session(ctx, s, in)
+		},
+	}.attach(cmd, app, forms)
 }
 
 // newFormSession returns the session cmd's form runs in, asking through forms.
@@ -114,10 +136,10 @@ func interactiveTerminal(app App) bool {
 	return app.InIsTTY && app.OutIsTTY && term != "dumb"
 }
 
-// formMode reports whether an add command opens its form: on a terminal, when --interactive asks
-// for it or a field the command requires is missing.
-func formMode(interactive, requiredGiven, terminal bool) bool {
-	return terminal && (interactive || !requiredGiven)
+// formMode reports whether a write command opens its form: on a terminal, when --interactive asks
+// for it or the command line is not ready to run without it.
+func formMode(interactive, ready, terminal bool) bool {
+	return terminal && (interactive || !ready)
 }
 
 // requiredGiven reports whether in gives every field d requires.
@@ -127,7 +149,7 @@ func requiredGiven(d definition, in fieldValues) bool {
 
 // session asks for entries, prefilled from in, adding each one submitted, until no other is wanted.
 func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) error {
-	in, chosen, err := f.chooseTimeline(ctx, s, in)
+	in, chosen, err := chooseTimeline(ctx, s, f.def, in)
 	if err != nil || !chosen {
 		return err
 	}
@@ -155,9 +177,9 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	}
 }
 
-// chooseTimeline returns in with the timeline the session adds to, asking for one when no layer
-// selects it, and whether there is one: Esc on that ask leaves none.
-func (f addForm[R]) chooseTimeline(ctx context.Context, s formSession, in fieldValues) (fieldValues, bool, error) {
+// chooseTimeline returns in with the timeline the session writes to, asking for one through def's
+// timeline field when no layer selects it, and whether there is one: Esc on that ask leaves none.
+func chooseTimeline(ctx context.Context, s formSession, def definition, in fieldValues) (fieldValues, bool, error) {
 	var by selectedBy
 	var timelines []timeline.Timeline
 	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
@@ -180,20 +202,20 @@ func (f addForm[R]) chooseTimeline(ctx context.Context, s formSession, in fieldV
 		return in, true, nil
 	}
 
-	return f.askTimeline(ctx, s, in, timelines)
+	return askTimeline(ctx, s, def, in, timelines)
 }
 
-// askTimeline asks which of timelines in goes to, through the definition's own timeline field, and
-// returns in with it, and whether one was picked.
-func (f addForm[R]) askTimeline(
-	ctx context.Context, s formSession, in fieldValues, timelines []timeline.Timeline,
+// askTimeline asks which of timelines in goes to, through def's timeline field, and returns in with
+// it, and whether one was picked.
+func askTimeline(
+	ctx context.Context, s formSession, def definition, in fieldValues, timelines []timeline.Timeline,
 ) (fieldValues, bool, error) {
 	options := make([]huh.Option[string], 0, len(timelines))
 	for _, t := range timelines {
 		options = append(options, huh.NewOption(strings.TrimSpace(t.Name+"  "+pickerLabel(t.Title)), t.Name))
 	}
-	def := onlyField(f.def, "timeline")
-	fields := def.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
+	pick := onlyField(def, "timeline")
+	fields := pick.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
 	submitted, err := s.ask(ctx, fields...)
 	switch {
@@ -204,7 +226,7 @@ func (f addForm[R]) askTimeline(
 	}
 
 	picked := maps.Clone(in)
-	picked["timeline"] = def.formValues(fields).values("timeline")
+	picked["timeline"] = pick.formValues(fields).values("timeline")
 
 	return picked, true, nil
 }
@@ -284,7 +306,13 @@ func (f addForm[R]) add(ctx context.Context, s formSession, values fieldValues) 
 		return err
 	}
 
-	args := commandArgs(f.path, f.def, values)
+	return s.echo(f.path, f.def, values)
+}
+
+// echo prints the flags-only command that gives values to the command at path, with def's
+// fields, against the same database.
+func (s formSession) echo(path string, def definition, values fieldValues) error {
+	args := commandArgs(path, def, values)
 	return s.o.notify("Equivalent command: %s", shellLine(slices.Concat(args[:1], s.global, args[1:])))
 }
 
