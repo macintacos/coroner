@@ -7,18 +7,16 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/store"
-	"github.com/macintacos/coroner/internal/store/sqlcgen"
 )
 
 var _ = Describe("Open", func() {
-	It("migrates and round-trips an author", func(ctx SpecContext) {
+	It("migrates a new database file and stamps coroner's application id", func(ctx SpecContext) {
 		conn, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(conn.Close)
 
-		queries := sqlcgen.New(conn)
-		created, err := queries.CreateAuthor(ctx, sqlcgen.CreateAuthorParams{Name: "Brian Kernighan"})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(queries.GetAuthor(ctx, created.ID)).To(Equal(created))
+		var applicationID int64
+		Expect(conn.QueryRowContext(ctx, "PRAGMA application_id").Scan(&applicationID)).To(Succeed())
+		Expect(applicationID).To(Equal(int64(1668248174)))
 	})
 })
