@@ -77,8 +77,10 @@ cmp stdout empty.json
 # With no timeline current, add and list exit 2, kind timeline_required.
 exits 0 coroner timeline use --clear
 exits 2 coroner annotation add 'Election timeout' --kind comment --json
+! stdout .
 stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
 exits 2 coroner annotation list --json
+! stdout .
 stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
 
 -- stepdown.log --

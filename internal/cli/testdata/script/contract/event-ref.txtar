@@ -26,6 +26,7 @@ exits 3 coroner event view 2 --json
 ! stdout .
 stderr '^\{"error":\{"kind":"event_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
 exits 3 coroner event delete 1 2 --json
+! stdout .
 stderr '^\{"error":\{"kind":"event_not_found",[^\n]+\}\}\n\z'
 exits 0 coroner event view 1 --json
 cmp stdout event.json
@@ -33,12 +34,15 @@ cmp stdout event.json
 # An id start two events share exits 2, kind ambiguous_id.
 exits 0 coroner event add 'New primary elected' --at 2026-09-11T03:16:00Z
 exits 2 coroner event view 0 --json
+! stdout .
 stderr '^\{"error":\{"kind":"ambiguous_id","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
 
 # Something that is not an event reference, or an edit of nothing, exits 2, kind usage.
 exits 2 coroner event view '#1' --json
+! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 exits 2 coroner event edit 1 --json
+! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 
 -- event.json --

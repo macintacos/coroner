@@ -30,13 +30,16 @@ exits 2 coroner event list --order newest --json
 ! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 exits 2 coroner event list --source 'DB 2' --json
+! stdout .
 stderr '^\{"error":\{"kind":"invalid_name",[^\n]+\}\}\n\z'
 exits 2 coroner event list --since 'the day before' --json
+! stdout .
 stderr '^\{"error":\{"kind":"invalid_time",[^\n]+\}\}\n\z'
 
 # With no timeline selected, list exits 2, kind timeline_required.
 exits 0 coroner timeline use --clear
 exits 2 coroner event list --json
+! stdout .
 stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
 
 -- list.json --

@@ -4,132 +4,132 @@
 # human text, pinned outside the contract in help-topics.txtar.
 
 # --help prints usage to stdout and exits 0.
-exec coroner --help
+exits 0 coroner --help
 cmp stdout coroner.txt
 ! stderr .
 
 # Every other command, in tree order.
-exec coroner annotation --help
+exits 0 coroner annotation --help
 cmp stdout coroner_annotation.txt
 ! stderr .
 
-exec coroner annotation add --help
+exits 0 coroner annotation add --help
 cmp stdout coroner_annotation_add.txt
 ! stderr .
 
-exec coroner annotation delete --help
+exits 0 coroner annotation delete --help
 cmp stdout coroner_annotation_delete.txt
 ! stderr .
 
-exec coroner annotation edit --help
+exits 0 coroner annotation edit --help
 cmp stdout coroner_annotation_edit.txt
 ! stderr .
 
-exec coroner annotation list --help
+exits 0 coroner annotation list --help
 cmp stdout coroner_annotation_list.txt
 ! stderr .
 
-exec coroner completion --help
+exits 0 coroner completion --help
 cmp stdout coroner_completion.txt
 ! stderr .
 
-exec coroner completion bash --help
+exits 0 coroner completion bash --help
 cmp stdout coroner_completion_bash.txt
 ! stderr .
 
-exec coroner completion fish --help
+exits 0 coroner completion fish --help
 cmp stdout coroner_completion_fish.txt
 ! stderr .
 
-exec coroner completion powershell --help
+exits 0 coroner completion powershell --help
 cmp stdout coroner_completion_powershell.txt
 ! stderr .
 
-exec coroner completion zsh --help
+exits 0 coroner completion zsh --help
 cmp stdout coroner_completion_zsh.txt
 ! stderr .
 
-exec coroner event --help
+exits 0 coroner event --help
 cmp stdout coroner_event.txt
 ! stderr .
 
-exec coroner event add --help
+exits 0 coroner event add --help
 cmp stdout coroner_event_add.txt
 ! stderr .
 
-exec coroner event delete --help
+exits 0 coroner event delete --help
 cmp stdout coroner_event_delete.txt
 ! stderr .
 
-exec coroner event edit --help
+exits 0 coroner event edit --help
 cmp stdout coroner_event_edit.txt
 ! stderr .
 
-exec coroner event list --help
+exits 0 coroner event list --help
 cmp stdout coroner_event_list.txt
 ! stderr .
 
-exec coroner event view --help
+exits 0 coroner event view --help
 cmp stdout coroner_event_view.txt
 ! stderr .
 
-exec coroner help --help
+exits 0 coroner help --help
 cmp stdout coroner_help.txt
 ! stderr .
 
-exec coroner source --help
+exits 0 coroner source --help
 cmp stdout coroner_source.txt
 ! stderr .
 
-exec coroner source edit --help
+exits 0 coroner source edit --help
 cmp stdout coroner_source_edit.txt
 ! stderr .
 
-exec coroner source list --help
+exits 0 coroner source list --help
 cmp stdout coroner_source_list.txt
 ! stderr .
 
-exec coroner status --help
+exits 0 coroner status --help
 cmp stdout coroner_status.txt
 ! stderr .
 
-exec coroner tag --help
+exits 0 coroner tag --help
 cmp stdout coroner_tag.txt
 ! stderr .
 
-exec coroner tag list --help
+exits 0 coroner tag list --help
 cmp stdout coroner_tag_list.txt
 ! stderr .
 
-exec coroner timeline --help
+exits 0 coroner timeline --help
 cmp stdout coroner_timeline.txt
 ! stderr .
 
-exec coroner timeline create --help
+exits 0 coroner timeline create --help
 cmp stdout coroner_timeline_create.txt
 ! stderr .
 
-exec coroner timeline delete --help
+exits 0 coroner timeline delete --help
 cmp stdout coroner_timeline_delete.txt
 ! stderr .
 
-exec coroner timeline edit --help
+exits 0 coroner timeline edit --help
 cmp stdout coroner_timeline_edit.txt
 ! stderr .
 
-exec coroner timeline list --help
+exits 0 coroner timeline list --help
 cmp stdout coroner_timeline_list.txt
 ! stderr .
 
-exec coroner timeline use --help
+exits 0 coroner timeline use --help
 cmp stdout coroner_timeline_use.txt
 ! stderr .
 
-exec coroner timeline view --help
+exits 0 coroner timeline view --help
 cmp stdout coroner_timeline_view.txt
 ! stderr .
 
-exec coroner version --help
+exits 0 coroner version --help
 cmp stdout coroner_version.txt
 ! stderr .
 

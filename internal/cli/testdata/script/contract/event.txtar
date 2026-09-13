@@ -25,10 +25,12 @@ stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
 
 # An unknown zone exits 2, kind usage.
 exits 2 coroner event add 'Pager fires' --tz Mars/Olympus --json
+! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 
 # An invalid source exits 2, kind invalid_name, with a suggestion in the hint.
 exits 2 coroner event add 'Pager fires' --source 'DB 2' --json
+! stdout .
 stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*db-2[^\n]*"\}\}\n\z'
 
 # --ended before --at exits 2, kind invalid_time.
@@ -39,6 +41,7 @@ stderr '^\{"error":\{"kind":"invalid_time","message":"[^\n]+","hint":"[^\n]+"\}\
 # With no timeline current, add exits 2, kind timeline_required.
 exits 0 coroner timeline use --clear
 exits 2 coroner event add 'Pager fires' --json
+! stdout .
 stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
 
 -- dry-run.json --

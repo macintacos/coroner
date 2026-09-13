@@ -1,7 +1,7 @@
 # Each exit code a command line can reach, with its kind in the stderr JSON error
 # envelope. Nothing reaches 1 (internal) or 130 (interrupted) from a script yet;
-# cli.Run's specs pin those. No command raises id_conflict yet. Kind strings are
-# experimental until 1.0, as are version's fields, whose value is the build's.
+# cli.Run's specs pin those. No command raises id_conflict yet. version's field is
+# experimental until 1.0 and holds the build's version, so a pattern matches it.
 
 # 0: success. stdout is valid JSON and stderr is empty.
 exits 0 coroner version --format json

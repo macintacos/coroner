@@ -3,12 +3,14 @@
 *Audience: anyone, human or agent, adding or changing a testscript under this directory.*
 
 Scripts here pin coroner's machine-facing contract: `--format json` and `jsonl` shapes,
-exit codes, and `--help` output, every command's in `help.txtar`. Changing one is a
+exit codes, and every command's `--help` output, in `help.txtar`. Changing one is a
 contract change: follow [AGENTS.md Rule 3](../../../../../AGENTS.md#rules), and
-`STABILITY.md` (not in the repo yet — EXC-1303) once it lands. `CODEOWNERS` requests the
-maintainer's review of any change here. A script whose header marks fields or kinds
-experimental pins their shape so a change to them is deliberate, but before 1.0 changing
-them needs neither the maintainer's approval nor a major bump.
+`STABILITY.md` (not in the repo yet — EXC-1303) once it lands. Two diffs here are not:
+rewording `--help`, though removing or renaming a command or flag is one, and renumbering
+IDs. `CODEOWNERS` requests the maintainer's review of a change others propose here. Error
+`kind` strings in every script here are experimental until 1.0. They, and fields a
+script's header marks experimental, are pinned so a change to them is deliberate, but
+before 1.0 changing them needs neither the maintainer's approval nor a major bump.
 
 Assert an exact exit code with `exits <code> coroner [args...]`, which runs like `exec`
 and keeps stdout and stderr for the assertions that follow; `! exec` only proves the
@@ -16,14 +18,19 @@ command failed.
 
 The clock is pinned by `CORONER_TEST_NOW`, and record IDs are numbered in order from a
 counter file named by `CORONER_TEST_IDS`, so a script's output is the same on every run.
-The counter is unlocked: never run coroner in the background.
+The counter is unlocked: never run coroner in the background. An ID's number is not part
+of the contract, only an `id` or `*_id` key's presence, type and format: every ID a
+command allocates, even in a failed or `--dry-run` call, advances the counter, so
+`-update` rewrites renumbered IDs and a diff that only renumbers them is not a contract
+change.
 
-When a success's whole stdout is a document, compare it with `cmp stdout <name>.json`
-against a file in the script's own archive. Check a single field with a `stdout` pattern,
-preceded by `jsonvalid stdout`, which fails unless stdout is empty or holds only JSON
-values. Output that differs by machine, such as a path under `$WORK`, stays a pattern.
-Match an error envelope as the last line of stderr by pattern: its `kind` is the contract,
-its `message` and `hint` are not.
+Pin each JSON document shape with `cmp stdout <name>.json` against a file in the script's
+own archive. When a later command only shows a behaviour through one field, such as
+`current`, `truncated` or which timeline was selected, check that field with a `stdout`
+pattern preceded by `jsonvalid stdout`, which fails unless stdout is empty or holds only
+JSON values. Output that differs by machine or build, such as a path under `$WORK`, the
+version or the schema version, stays a pattern. Match an error envelope as the last line
+of stderr by pattern: its `kind` is the contract, its `message` and `hint` are not.
 
 `go test ./internal/cli -run 'TestScripts/script$' -update` refreshes only the scripts
 outside `contract/`. `go test ./internal/cli -run 'TestScripts/contract$' -update`

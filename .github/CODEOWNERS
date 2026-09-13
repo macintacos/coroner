@@ -1,2 +1,2 @@
-# A diff here is a contract change.
+# A diff under contract/ is a contract change; see its README.
 /internal/cli/testdata/script/contract/ @macintacos

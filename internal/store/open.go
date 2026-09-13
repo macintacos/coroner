@@ -117,6 +117,7 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
+
 	info, err := os.Stat(path)
 	if err == nil && info.IsDir() {
 		return nil, directoryError(path)

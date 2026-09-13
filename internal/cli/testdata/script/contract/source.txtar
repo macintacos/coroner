@@ -51,10 +51,12 @@ stderr '^\{"error":\{"kind":"source_not_found","message":"[^\n]+","hint":"[^\n]+
 
 # An invalid name exits 2, kind invalid_name, with a suggested name in the hint.
 exits 2 coroner source edit mongodb --name 'Mongo DB' --json
+! stdout .
 stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*mongo-db[^\n]*"\}\}\n\z'
 
 # edit without --name exits 2, kind usage.
 exits 2 coroner source edit mongodb --json
+! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 
 -- no-sources.json --
