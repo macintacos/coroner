@@ -57,9 +57,13 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return timelineCreated{}, err
 	}
+	name := in.value("name")
+	if name == nil {
+		return timelineCreated{}, missingValue("timeline create", "the timeline's name")
+	}
 	now := app.Now()
 	t := timeline.Timeline{
-		ID: id.String(), Name: in.values("name")[0], Refs: appendUnique(nil, in.values("ref")...),
+		ID: id.String(), Name: *name, Refs: appendUnique(nil, in.values("ref")...),
 		CreatedAt: now, UpdatedAt: now,
 	}
 	if title := in.value("title"); title != nil {

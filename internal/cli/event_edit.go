@@ -52,7 +52,7 @@ func eventEditDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
 		{name: "event", arg: true, usage: "Event to edit, as a `ref`: seq, timeline#seq or id", check: withoutEnv(checkEventRef)},
-		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(checkTextValue)},
+		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
 		{name: "at", usage: "When it happened, as a `time`", check: checkAt},
 		{
 			name: "ended", usage: "When it ended, as a `time`, or none",
@@ -124,7 +124,11 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	if err != nil {
 		return eventEdited{}, err
 	}
-	ref, err := parseEventRef(in.values("event")[0])
+	event := in.value("event")
+	if event == nil {
+		return eventEdited{}, missingValue("event edit", "the event's ref")
+	}
+	ref, err := parseEventRef(*event)
 	if err != nil {
 		return eventEdited{}, err
 	}

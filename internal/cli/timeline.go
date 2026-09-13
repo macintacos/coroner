@@ -136,12 +136,14 @@ func (by selectedBy) setting() string {
 // addTimelineFlag declares -t/--timeline, so every command registers the same name,
 // shorthand and usage.
 func addTimelineFlag(flags *pflag.FlagSet) {
-	flags.StringP("timeline", "t", "", timelineField().usage)
+	flags.StringP("timeline", "t", "", timelineUsage)
 }
+
+const timelineUsage = "Timeline `name|id` to act on"
 
 // timelineField is -t as a write command's field.
 func timelineField() field {
-	return field{name: "timeline", shorthand: "t", usage: "Timeline `name|id` to act on", check: withoutEnv(checkTimelineFlag)}
+	return field{name: "timeline", shorthand: "t", usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
 }
 
 // timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).

@@ -20,8 +20,9 @@ func (d definition) formFields(env checkEnv) []huh.Field {
 func (f field) formField(env checkEnv) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
+	// An empty value is a field not given, which the flag side never checks either.
 	check := func(value string) error {
-		if f.check == nil {
+		if f.check == nil || value == "" {
 			return nil
 		}
 

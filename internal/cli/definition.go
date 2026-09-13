@@ -23,10 +23,11 @@ const (
 // field is one input a write command takes: a flag, or the command's positional argument.
 type field struct {
 	name, shorthand string
-	// usage is the flag's usage, with its `placeholder`.
+	// usage is the flag's usage, or a positional field's form description, with its `placeholder`.
 	usage string
 	typ   fieldType
-	// arg marks the positional argument, which cobra's Args counts and no flag registers.
+	// arg marks the positional argument, which cobra's Args counts and no flag registers: at most
+	// one per definition; it receives every argument.
 	arg bool
 	// inherited marks a flag a parent command or root registers, such as -t on event or --tz.
 	inherited bool
@@ -41,7 +42,7 @@ type checkEnv struct {
 }
 
 // definition is a write command's inputs, from which both its flags and its form fields are
-// built.
+// built. A run function calls check before it uses any value; reading flags does not.
 type definition struct {
 	fields []field
 }
@@ -95,6 +96,11 @@ func (d definition) check(values fieldValues, env checkEnv) error {
 	}
 
 	return nil
+}
+
+// missingValue returns usage for a run function given no value for a field its command requires.
+func missingValue(command, what string) *Error {
+	return &Error{Kind: KindUsage, Message: command + " needs " + what, Hint: "Run 'coroner " + command + " --help' for what it takes."}
 }
 
 // inherited returns f registered by a parent command rather than the command itself.

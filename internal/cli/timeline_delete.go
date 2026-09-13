@@ -39,8 +39,8 @@ func timelineDeleteDefinition() definition {
 	}}
 }
 
-// timelineDeleted is the timeline delete removed or, with --dry-run, would remove, with how many
-// events and annotations it holds.
+// timelineDeleted is the timeline delete removed or, with --dry-run, would remove; only --dry-run
+// counts its events and annotations.
 type timelineDeleted struct {
 	timeline            timeline.Timeline
 	dryRun              bool
@@ -52,20 +52,23 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return timelineDeleted{}, err
 	}
-	nameOrID := in.values("timeline")[0]
+	nameOrID := in.value("timeline")
+	if nameOrID == nil {
+		return timelineDeleted{}, missingValue("timeline delete", "the timeline's name or id")
+	}
 	yes, _ := in.boolean("yes")
 	dryRun, _ := in.boolean("dry-run")
 	if !yes && !dryRun {
 		return timelineDeleted{}, &Error{
 			Kind:    KindUsage,
-			Message: fmt.Sprintf("deleting timeline %q needs --yes", nameOrID),
+			Message: fmt.Sprintf("deleting timeline %q needs --yes", *nameOrID),
 			Hint:    "Pass --yes to delete it and everything in it, or --dry-run to see what that deletes.",
 		}
 	}
 
 	deleted := timelineDeleted{dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := findTimeline(ctx, s, nameOrID)
+		t, err := findTimeline(ctx, s, *nameOrID)
 		if err != nil {
 			return err
 		}

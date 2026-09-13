@@ -21,10 +21,12 @@ type zone struct {
 	label string
 }
 
+const tzUsage = "Time `zone` for this invocation (default: config default_timezone, then TZ)"
+
 // tzField is --tz, which root registers, as the field of a command that reads time input.
 func tzField() field {
 	return field{
-		name: "tz", usage: "Time `zone` for this invocation (default: config default_timezone, then TZ)", inherited: true,
+		name: "tz", usage: tzUsage, inherited: true,
 		check: func(tz string, env checkEnv) error {
 			_, err := timeZone(&tz, "", env.now.Location())
 			return err

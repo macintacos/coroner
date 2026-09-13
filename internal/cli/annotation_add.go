@@ -42,12 +42,12 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 func annotationAddDefinition() definition {
 	return definition{fields: []field{
 		timelineField(),
-		{name: "body", arg: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyValue)},
+		{name: "body", arg: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
 		{
 			name: "event", shorthand: "e", check: withoutEnv(checkEventRef),
 			usage: "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)",
 		},
-		{name: "kind", usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkKind)},
+		{name: "kind", usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
@@ -69,30 +69,25 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if err != nil {
 		return annotationAdded{}, err
 	}
-	var ref *eventRef
-	if value := in.value("event"); value != nil {
-		parsed, err := parseEventRef(*value)
-		if err != nil {
-			return annotationAdded{}, err
-		}
-		ref = &parsed
+	ref, err := optionalEventRef(in.value("event"))
+	if err != nil {
+		return annotationAdded{}, err
 	}
 	draft, err := draftAnnotation(in, app, cfg)
 	if err != nil {
 		return annotationAdded{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
-	selection := timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv}
 
 	added := annotationAdded{dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := selectTimeline(ctx, s, selection.flag, selection.lookupEnv)
+		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
 		if err != nil {
 			return err
 		}
 		a := draft.annotation
 		a.TimelineID = t.ID
-		e, err := annotatedEvent(ctx, s, t, ref, selection)
+		e, err := annotatedEvent(ctx, s, t, ref, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}

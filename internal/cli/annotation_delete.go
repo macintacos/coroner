@@ -55,6 +55,9 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 	if err != nil {
 		return annotationsDeleted{}, err
 	}
+	if len(in.values("ids")) == 0 {
+		return annotationsDeleted{}, missingValue("annotation delete", "at least one annotation id")
+	}
 	prefixes := make([]string, 0, len(in.values("ids")))
 	for _, ref := range in.values("ids") {
 		prefix, err := parseAnnotationRef(ref)

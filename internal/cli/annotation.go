@@ -125,7 +125,7 @@ func checkAnnotationKind(kind string) (timeline.AnnotationKind, error) {
 	return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: annotationKindHint}
 }
 
-func checkKind(kind string) error {
+func checkAnnotationKindName(kind string) error {
 	_, err := checkAnnotationKind(kind)
 	return err
 }
@@ -152,8 +152,8 @@ func annotationBody(value string, in io.Reader, inIsTTY bool) (string, error) {
 	return body, checkBody(body)
 }
 
-// checkBodyValue checks a body as typed, where - stands for a body read from stdin later.
-func checkBodyValue(body string) error {
+// checkBodyOrStdin checks a body as typed, where - stands for a body read from stdin later.
+func checkBodyOrStdin(body string) error {
 	if body == "-" {
 		return nil
 	}
@@ -177,8 +177,13 @@ func checkBody(body string) error {
 
 // eventFlag returns the event reference -e gives, or nil when -e is not given.
 func eventFlag(flags *pflag.FlagSet) (*eventRef, error) {
+	return optionalEventRef(changedString(flags, "event"))
+}
+
+// optionalEventRef returns the event reference value gives, or nil when value is nil.
+func optionalEventRef(value *string) (*eventRef, error) {
 	var ref *eventRef
-	if value := changedString(flags, "event"); value != nil {
+	if value != nil {
 		parsed, err := parseEventRef(*value)
 		if err != nil {
 			return nil, err

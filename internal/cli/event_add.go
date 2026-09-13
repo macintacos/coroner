@@ -51,7 +51,7 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 func eventAddDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
-		{name: "text", arg: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextValue)},
+		{name: "text", arg: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
 		{name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt},
 		{
 			name: "ended", usage: "When it ended, as a `time`, for an event that lasted",
@@ -234,8 +234,8 @@ func eventText(args []string, in io.Reader, inIsTTY bool) (string, error) {
 	return checkText(strings.TrimSuffix(string(data), "\n"))
 }
 
-// checkTextValue checks event text as typed, where - stands for text read from stdin later.
-func checkTextValue(text string) error {
+// checkTextOrStdin checks event text as typed, where - stands for text read from stdin later.
+func checkTextOrStdin(text string) error {
 	if text == "-" {
 		return nil
 	}

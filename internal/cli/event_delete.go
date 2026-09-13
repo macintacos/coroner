@@ -28,6 +28,8 @@ func newEventDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event delete 12 14 --dry-run\n" +
 			"  $ coroner event delete mongo-outage-2026-09-11#12 --json",
+		// Not writeRunE: render needs the --tz zone, which the definition leaves out because
+		// --tz changes nothing delete stores.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			o, err := newOutput(cmd, app)
 			if err != nil {
@@ -69,6 +71,9 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	err := eventDeleteDefinition().check(in, checkEnv{})
 	if err != nil {
 		return eventsDeleted{}, err
+	}
+	if len(in.values("events")) == 0 {
+		return eventsDeleted{}, missingValue("event delete", "at least one event ref")
 	}
 	refs := make([]eventRef, 0, len(in.values("events")))
 	for _, ref := range in.values("events") {

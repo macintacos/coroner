@@ -28,6 +28,7 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822\n" +
 			"  $ coroner timeline edit mongo-failover --title \"\" --dry-run --json",
+		// Not writeRunE: render needs the --tz zone, which def omits as --tz changes nothing edit stores.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			o, err := newOutput(cmd, app)
 			if err != nil {
@@ -69,6 +70,14 @@ type timelineEdited struct {
 }
 
 func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineEdited, error) {
+	err := timelineEditDefinition().check(in, checkEnv{})
+	if err != nil {
+		return timelineEdited{}, err
+	}
+	nameOrID := in.value("timeline")
+	if nameOrID == nil {
+		return timelineEdited{}, missingValue("timeline edit", "the timeline's name or id")
+	}
 	edit, err := readTimelineEdit(in)
 	if err != nil {
 		return timelineEdited{}, err
@@ -79,7 +88,7 @@ func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValue
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// timeline is overwritten; apply the edit inside one store write if that matters.
-		t, err := findTimeline(ctx, s, in.values("timeline")[0])
+		t, err := findTimeline(ctx, s, *nameOrID)
 		if err != nil {
 			return err
 		}
@@ -129,13 +138,8 @@ type timelineEdit struct {
 	addRefs, removeRefs []string
 }
 
-// readTimelineEdit returns the edit in asks for. It runs before the store opens, so it rejects a
-// name or ref no timeline could take.
+// readTimelineEdit returns the edit in asks for.
 func readTimelineEdit(in fieldValues) (timelineEdit, error) {
-	err := timelineEditDefinition().check(in, checkEnv{})
-	if err != nil {
-		return timelineEdit{}, err
-	}
 	if !slices.ContainsFunc([]string{"name", "title", "add-ref", "remove-ref"}, in.given) {
 		return timelineEdit{}, &Error{
 			Kind:    KindUsage,

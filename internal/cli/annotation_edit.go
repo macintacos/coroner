@@ -36,8 +36,8 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 func annotationEditDefinition() definition {
 	return definition{fields: []field{
 		{name: "id", arg: true, usage: "Annotation to edit, as an `id` or unique id prefix", check: withoutEnv(checkAnnotationRef)},
-		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyValue)},
-		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkKind)},
+		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
+		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "url", usage: "New permalink, as a `url`", check: notBlank("--url")},
 		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
@@ -57,7 +57,11 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return annotationEdited{}, err
 	}
-	prefix, err := parseAnnotationRef(in.values("id")[0])
+	id := in.value("id")
+	if id == nil {
+		return annotationEdited{}, missingValue("annotation edit", "the annotation's id")
+	}
+	prefix, err := parseAnnotationRef(*id)
 	if err != nil {
 		return annotationEdited{}, err
 	}
