@@ -34,6 +34,7 @@ func main() {
 		In:                os.Stdin,
 		Out:               os.Stdout,
 		Err:               os.Stderr,
+		InIsTTY:           isatty.IsTerminal(os.Stdin.Fd()),
 		OutIsTTY:          isatty.IsTerminal(os.Stdout.Fd()),
 		ErrIsTTY:          isatty.IsTerminal(os.Stderr.Fd()),
 		Version:           version,

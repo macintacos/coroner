@@ -132,7 +132,7 @@ func (e timelineEdit) apply(t timeline.Timeline, now time.Time) timeline.Timelin
 	kept := slices.DeleteFunc(slices.Clone(t.Refs), func(ref string) bool {
 		return slices.Contains(e.removeRefs, ref)
 	})
-	t.Refs = appendRefs(kept, e.addRefs...)
+	t.Refs = appendUnique(kept, e.addRefs...)
 	t.UpdatedAt = now
 
 	return t

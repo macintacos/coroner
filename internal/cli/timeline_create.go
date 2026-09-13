@@ -49,7 +49,7 @@ func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name strin
 	}
 	now := app.Now()
 	t := timeline.Timeline{
-		ID: id.String(), Name: name, Title: title, Refs: appendRefs(nil, stringArray(flags, "ref")...),
+		ID: id.String(), Name: name, Title: title, Refs: appendUnique(nil, stringArray(flags, "ref")...),
 		CreatedAt: now, UpdatedAt: now,
 	}
 	err = checkTimeline(t)

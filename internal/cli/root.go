@@ -61,7 +61,9 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		&cobra.Group{ID: additionalCommands, Title: "ADDITIONAL COMMANDS"},
 	)
 	root.SetCompletionCommandGroupID(additionalCommands)
-	root.AddCommand(newVersionCommand(app), newTimelineCommand(ctx, app), newStatusCommand(ctx, app))
+	root.AddCommand(
+		newVersionCommand(app), newTimelineCommand(ctx, app), newStatusCommand(ctx, app), newEventCommand(ctx, app),
+	)
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
 	// and addTimelineCompletion and wrapRunErrors reach only the commands already added, so
