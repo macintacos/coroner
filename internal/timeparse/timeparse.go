@@ -28,6 +28,8 @@ type Resolved struct {
 // Kinds of rejected input, matched with [errors.Is].
 var (
 	ErrUnrecognized = errors.New("not a time coroner recognizes")
+	ErrDSTGap       = errors.New("that wall-clock time does not exist in the time zone")
+	ErrDSTFold      = errors.New("that wall-clock time happens twice in the time zone")
 )
 
 // ParseError is a rejected input. Err is one of the Err kinds; Hint says how to fix the input.
@@ -51,7 +53,7 @@ type layer func(text string, now time.Time, loc *time.Location) (Resolved, error
 func Parse(input string, now time.Time, loc *time.Location) (Resolved, error) {
 	text, approximate := cutApproximate(strings.TrimSpace(input))
 
-	for _, parse := range []layer{parseEpoch, parseLayout} {
+	for _, parse := range []layer{parseEpoch, parseLayout, parseNaive, parseSyslog} {
 		got, err := parse(text, now, loc)
 		rejected, ok := errors.AsType[*ParseError](err)
 		if ok {
@@ -129,6 +131,46 @@ func parseLayout(text string, _ time.Time, _ *time.Location) (Resolved, error) {
 	}
 
 	return Resolved{}, ErrUnrecognized
+}
+
+// parseNaive reads a date and time with no offset as a wall clock in loc.
+func parseNaive(text string, _ time.Time, loc *time.Location) (Resolved, error) {
+	wall, err := time.ParseInLocation(time.DateTime, text, time.UTC)
+	if err != nil {
+		return Resolved{}, ErrUnrecognized
+	}
+
+	return resolveLocal(wall, loc, precisionOf(fractionDigits(text)))
+}
+
+// parseSyslog reads a yearless syslog stamp as a wall clock in loc, in the latest year that
+// puts it on a real date no later than now.
+func parseSyslog(text string, now time.Time, loc *time.Location) (Resolved, error) {
+	stamp, err := time.ParseInLocation(time.Stamp, text, time.UTC)
+	if err != nil {
+		return Resolved{}, ErrUnrecognized
+	}
+
+	nowWall := wallClock(now.In(loc))
+	for year := nowWall.Year(); ; year-- {
+		wall := time.Date(year, stamp.Month(), stamp.Day(),
+			stamp.Hour(), stamp.Minute(), stamp.Second(), stamp.Nanosecond(), time.UTC)
+		// time.Date moves February 29 to March 1 outside a leap year.
+		if wall.Day() == stamp.Day() && !wall.After(nowWall) {
+			return resolveLocal(wall, loc, precisionOf(fractionDigits(text)))
+		}
+	}
+}
+
+func resolveLocal(wall time.Time, loc *time.Location, precision timeline.Precision) (Resolved, error) {
+	t, err := resolveWall(wall, loc)
+	if err != nil {
+		return Resolved{}, err
+	}
+
+	_, offset := t.Zone()
+
+	return resolve(t, &offset, precision), nil
 }
 
 func fractionDigits(text string) int {

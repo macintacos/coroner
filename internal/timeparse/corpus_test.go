@@ -1,6 +1,7 @@
 package timeparse_test
 
 import (
+	"errors"
 	"time"
 	_ "time/tzdata"
 
@@ -42,6 +43,7 @@ func parseIn(zone, input string) (resolved, error) {
 var _ = Describe("Parse golden corpus", func() {
 	const (
 		edt = -4 * 60 * 60
+		est = -5 * 60 * 60
 		ist = 5*60*60 + 30*60
 	)
 
@@ -51,6 +53,7 @@ var _ = Describe("Parse golden corpus", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(want))
 		},
+		func(input string, _ resolved) string { return input },
 		Entry(nil, "2026-09-12T14:05:03Z",
 			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond)),
 		Entry("RFC 3339 milliseconds, which olebedev/when read as 05:03 local", "2026-09-12T14:05:03.123Z",
@@ -79,6 +82,30 @@ var _ = Describe("Parse golden corpus", func() {
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond).approximately()),
 		Entry(nil, "AROUND 1789236000",
 			at("2026-09-12T18:00:00.000000000Z", nil, timeline.PrecisionSecond).approximately()),
+		Entry(nil, "2026-09-12 14:05:03",
+			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry(nil, "2026-09-12 14:05:03.5",
+			at("2026-09-12T18:05:03.500000000Z", new(edt), timeline.PrecisionMillisecond)),
+		Entry(nil, "2026-09-12 14:05:03.1234",
+			at("2026-09-12T18:05:03.123400000Z", new(edt), timeline.PrecisionMicrosecond)),
+		Entry("log4j and Python comma milliseconds", "2026-09-12 14:05:03,123",
+			at("2026-09-12T18:05:03.123000000Z", new(edt), timeline.PrecisionMillisecond)),
+		Entry("a naive time outside daylight saving", "2026-12-03 10:15:00",
+			at("2026-12-03T15:15:00.000000000Z", new(est), timeline.PrecisionSecond)),
+		Entry(nil, "around 2026-09-12 14:05:03",
+			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond).approximately()),
+		Entry("the hour after clocks spring forward", "2026-03-08 03:30:00",
+			at("2026-03-08T07:30:00.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry("the repeated hour, disambiguated by an offset", "2026-11-01T01:30:00-04:00",
+			at("2026-11-01T05:30:00.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry("syslog, this year", "Sep 12 14:05:03",
+			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry("syslog later in the year than now, so last year", "Sep 13 14:05:03",
+			at("2025-09-13T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry("syslog with a space-padded day", "Jan  2 03:04:05",
+			at("2026-01-02T08:04:05.000000000Z", new(est), timeline.PrecisionSecond)),
+		Entry("syslog on a leap day, the latest one before now", "Feb 29 12:00:00",
+			at("2024-02-29T17:00:00.000000000Z", new(est), timeline.PrecisionSecond)),
 	)
 
 	DescribeTable("rejects",
@@ -88,5 +115,29 @@ var _ = Describe("Parse golden corpus", func() {
 		},
 		Entry("an empty input", "", timeparse.ErrUnrecognized),
 		Entry("a bare approximate marker", "~", timeparse.ErrUnrecognized),
+		Entry("a wall time clocks spring forward over", "2026-03-08 02:30:00", timeparse.ErrDSTGap),
+		Entry("a wall time clocks fall back through twice", "2026-11-01 01:30:00", timeparse.ErrDSTFold),
 	)
+
+	DescribeTable("reads an input's own offset under any time zone",
+		func(zone, input string, want resolved) {
+			got, err := parseIn(zone, input)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(want))
+		},
+		Entry(nil, "Asia/Kolkata", "2026-09-12T14:05:03-04:00",
+			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry("a naive time in UTC states a zero offset", "UTC", "2026-09-12 14:05:03",
+			at("2026-09-12T14:05:03.000000000Z", new(0), timeline.PrecisionSecond)),
+	)
+
+	It("hints at both offsets a repeated wall time could mean", func() {
+		_, err := parseIn("America/New_York", "2026-11-01 01:30:00")
+
+		rejected, ok := errors.AsType[*timeparse.ParseError](err)
+		Expect(ok).To(BeTrue())
+		Expect(rejected.Hint).To(And(
+			ContainSubstring("2026-11-01T01:30:00-04:00"), ContainSubstring("2026-11-01T01:30:00-05:00"),
+		))
+	})
 })
