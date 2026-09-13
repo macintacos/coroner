@@ -29,12 +29,18 @@ var _ = Describe("FormatInstant", func() {
 })
 
 var _ = Describe("ParseInstant", func() {
-	It("reads the canonical form back as the same UTC instant", func() {
-		t, err := timeline.ParseInstant("2026-09-12T14:05:03.123456789Z")
+	DescribeTable("reads the canonical form back as the same UTC instant, which formats back to it",
+		func(s string, want time.Time) {
+			t, err := timeline.ParseInstant(s)
 
-		Expect(err).NotTo(HaveOccurred())
-		Expect(t).To(Equal(time.Date(2026, 9, 12, 14, 5, 3, 123_456_789, time.UTC)))
-	})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(t).To(Equal(want))
+			Expect(timeline.FormatInstant(t)).To(Equal(s))
+		},
+		Entry("a nanosecond fraction", "2026-09-12T14:05:03.123456789Z", time.Date(2026, 9, 12, 14, 5, 3, 123_456_789, time.UTC)),
+		Entry("the first instant of year 0000", "0000-01-01T00:00:00.000000000Z", time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC)),
+		Entry("the last instant of year 9999", "9999-12-31T23:59:59.999999999Z", time.Date(9999, 12, 31, 23, 59, 59, 999_999_999, time.UTC)),
+	)
 
 	DescribeTable("rejects every non-canonical spelling",
 		func(s string) {
@@ -45,23 +51,7 @@ var _ = Describe("ParseInstant", func() {
 		Entry("trimmed fraction", "2026-09-12T14:05:03.1Z"),
 		Entry("numeric offset", "2026-09-12T14:05:03.000000000+00:00"),
 		Entry("one-digit hour", "2026-09-12T4:05:03.000000000Z"),
+		Entry("comma before the fraction", "2026-09-12T14:05:03,000000000Z"),
 		Entry("space separator", "2026-09-12 14:05:03.000000000Z"),
-	)
-})
-
-var _ = Describe("Precision.Truncate", func() {
-	observed := time.Date(2026, 9, 12, 10, 47, 33, 123_456_789, time.FixedZone("IST", 19800))
-
-	DescribeTable("returns the start of the precision window in the observed zone",
-		func(p timeline.Precision, want string) {
-			Expect(timeline.FormatInstant(p.Truncate(observed))).To(Equal(want))
-		},
-		Entry("day", timeline.PrecisionDay, "2026-09-11T18:30:00.000000000Z"),
-		Entry("hour, which a UTC truncation would put at 05:00", timeline.PrecisionHour, "2026-09-12T04:30:00.000000000Z"),
-		Entry("minute", timeline.PrecisionMinute, "2026-09-12T05:17:00.000000000Z"),
-		Entry("second", timeline.PrecisionSecond, "2026-09-12T05:17:33.000000000Z"),
-		Entry("millisecond", timeline.PrecisionMillisecond, "2026-09-12T05:17:33.123000000Z"),
-		Entry("microsecond", timeline.PrecisionMicrosecond, "2026-09-12T05:17:33.123456000Z"),
-		Entry("nanosecond", timeline.PrecisionNanosecond, "2026-09-12T05:17:33.123456789Z"),
 	)
 })

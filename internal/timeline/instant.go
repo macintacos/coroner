@@ -17,40 +17,10 @@ func FormatInstant(t time.Time) string {
 // ParseInstant reads an instant produced by FormatInstant and rejects any other spelling.
 func ParseInstant(s string) (time.Time, error) {
 	t, err := time.Parse(instantLayout, s)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse instant %q: %w", s, err)
-	}
-
-	// time.Parse accepts one-digit hours, minutes and seconds.
-	if FormatInstant(t) != s {
-		return time.Time{}, fmt.Errorf("parse instant %q: not in the form %s", s, instantLayout)
+	// time.Parse also accepts a one-digit hour and a comma before the fraction.
+	if err != nil || FormatInstant(t) != s {
+		return time.Time{}, fmt.Errorf("parse instant %q: want the form YYYY-MM-DDThh:mm:ss.nnnnnnnnnZ", s)
 	}
 
 	return t, nil
-}
-
-// Truncate returns the start of t's precision window, measured in t's own location.
-func (p Precision) Truncate(t time.Time) time.Time {
-	year, month, day := t.Date()
-	hour, minute, _ := t.Clock()
-
-	switch p {
-	case PrecisionDay:
-		return time.Date(year, month, day, 0, 0, 0, 0, t.Location())
-	case PrecisionHour:
-		return time.Date(year, month, day, hour, 0, 0, 0, t.Location())
-	case PrecisionMinute:
-		return time.Date(year, month, day, hour, minute, 0, 0, t.Location())
-	// Offsets are whole seconds, so absolute truncation matches the wall clock here.
-	case PrecisionSecond:
-		return t.Truncate(time.Second)
-	case PrecisionMillisecond:
-		return t.Truncate(time.Millisecond)
-	case PrecisionMicrosecond:
-		return t.Truncate(time.Microsecond)
-	case PrecisionNanosecond:
-		return t
-	}
-
-	return t
 }
