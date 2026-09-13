@@ -1,7 +1,7 @@
 # Migration policy
 
-_Audience: maintainers and contributors, human or agent, who change coroner's database
-schema or cut a release._
+*Audience: maintainers and contributors, human or agent, who change coroner's database
+schema or cut a release.*
 
 coroner keeps a user's timelines in one local SQLite file, which may have been written
 years earlier by an older coroner. The file never leaves that machine, so nobody else
@@ -39,7 +39,8 @@ failing test.
 ## Fixture databases
 
 `go run ./internal/tools/compatfixture -o <path>` writes a new database through the store
-API, never raw SQL, so it holds what that release really writes:
+API, never raw SQL, so it holds what that release really writes. It refuses a path that
+already exists, so it can never touch a committed fixture or a real database. It writes:
 
 - two timelines, one with several refs, and one of them current;
 - events at every precision, including an approximate one and an interval, with offsets
@@ -49,30 +50,32 @@ API, never raw SQL, so it holds what that release really writes:
 
 The compatibility spec in
 [`internal/store/compat_test.go`](../../internal/store/compat_test.go), which
-`mise run test` runs, copies each `testdata/compat/*.db` into a temporary directory and
-opens the copy with `store.Open`, which migrates an older fixture after backing it up. It
-then reads every timeline, event and annotation back through the store API and checks
-their counts and known values. The committed file is never opened in place. While
-`testdata/compat/` is empty, the spec checks a database the current build writes instead.
+`mise run test` runs, checks a database the current build writes, because that is what the
+next release commits, and every committed `testdata/compat/v*.db`. It copies each one into
+a temporary directory and opens the copy with `store.Open`, which migrates an older
+fixture after backing it up. It then compares every timeline, source, event and annotation
+it reads back with the records compatfixture writes, field for field, and adds an event to
+check that the sequence counter survived. The committed file is never opened in place.
 
 A fixture records what a release wrote, so it is never edited, regenerated or deleted.
-When a new migration breaks a committed fixture, fix the migration. The spec's
-expectations describe compatfixture's records, so changing those records makes the spec
-fail on every committed fixture too.
+When a new migration breaks a committed fixture, fix the migration. compatfixture's
+records are frozen too: every committed fixture holds them, and the spec compares against
+them. A release that adds records must also teach the spec which fixtures hold them,
+because older ones do not.
 
 ### Adding a release's fixture
 
-The release checklist (not in the repo yet — EXC-1304) carries these steps, run once the
-release is tagged:
+The release checklist that EXC-1304 adds will carry these steps, run once the release is
+tagged:
 
 1. From a checkout of the new tag, such as one made by
    `git worktree add /tmp/coroner-v<X.Y.Z> v<X.Y.Z>`, run
    `go run ./internal/tools/compatfixture -o /tmp/v<X.Y.Z>.db`.
 2. In a checkout of `main`, move the file to `internal/store/testdata/compat/v<X.Y.Z>.db`.
    `.gitattributes` already marks `*.db` as binary.
-3. With the first fixture, `v0.1.0.db`, also delete the fallback spec that builds a
-   database while `testdata/compat/` is empty, so an empty directory fails the suite from
-   then on. Later releases skip this step.
+3. With the first fixture, `v0.1.0.db`, also add a spec to `internal/store/compat_test.go`
+   that expects `testdata/compat/` to hold at least one fixture, so an empty directory
+   fails the suite from then on. Later releases skip this step.
 4. Still on `main`, run `mise run test`, then commit.
 
 ## Deferred gaps

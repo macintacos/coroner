@@ -1,6 +1,6 @@
-// Command compatfixture writes a new coroner database holding every kind of record the
-// store keeps. A release commits its output to internal/store/testdata/compat, where the
-// store's compatibility spec opens it with every later build.
+// Command compatfixture writes a new coroner database holding timelines, events,
+// annotations and sources. A release commits its output to internal/store/testdata/compat,
+// where the store's compatibility spec opens it with every later build.
 package main
 
 import (

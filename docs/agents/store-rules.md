@@ -5,7 +5,7 @@
 1. **A released migration is never edited:** once a release tag contains a migration,
    change the schema by adding the next numbered file under `internal/store/migrations/`.
    coroner never migrates down, so migrations have no `-- +goose Down`. Every release's
-   fixture database must still open after it
+   fixture database must still open once the new migration applies
    ([the migration policy](../contributing/migrations.md)).
 2. **A statement with a `;` before its end, such as a trigger, sits between
    `-- +goose StatementBegin` and `-- +goose StatementEnd`:** goose splits a migration on
