@@ -21,3 +21,7 @@ mise run preflight  # lint, test, and build: run before pushing
 ## Status
 
 Pre-0.1 and unstable: commands, flags, and the database schema can change without notice.
+
+## License
+
+coroner is licensed under the `MIT` license; see [LICENSE](LICENSE).
