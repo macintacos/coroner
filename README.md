@@ -18,8 +18,8 @@ mise run setup      # install pinned tools and Go modules, register git hooks
 mise run preflight  # lint, test, and build: run before pushing
 ```
 
-CI runs lint and tests, and fails on unformatted or stale generated files, on every pull
-request and push to `main`.
+On every pull request and push to `main`, CI runs lint and tests and fails on unformatted
+or stale generated files.
 
 ## Status
 
