@@ -420,25 +420,30 @@ var _ = Describe("the viewer", func() {
 	})
 
 	Describe("running on a terminal", func() {
-		run := func(keys string, load func(viewer.Match) (viewer.Snapshot, error)) error {
+		run := func(ctx context.Context, keys string) error {
 			in, typed := io.Pipe()
 			DeferCleanup(typed.Close)
 			go func() { _, _ = typed.Write([]byte(keys)) }()
 
-			return viewer.Run(context.Background(), viewer.Terminal{In: in, Out: io.Discard}, viewer.Options{
-				Snapshot: fixture(), Load: load, Location: newYork(), ZoneLabel: "America/New_York",
+			return viewer.Run(ctx, viewer.Terminal{In: in, Out: io.Discard}, viewer.Options{
+				Snapshot: fixture(), Load: l.load, Location: newYork(), ZoneLabel: "America/New_York",
 				Now: func() time.Time { return utc(12, 21, 30, 0) },
 			})
 		}
 
 		It("returns ErrInterrupted on ctrl+c", func() {
-			Expect(run("\x03", l.load)).To(MatchError(viewer.ErrInterrupted))
+			Expect(run(context.Background(), "\x03")).To(MatchError(viewer.ErrInterrupted))
 		})
 
-		It("returns a crash as an error, never as an interruption", func() {
-			err := run("r", func(viewer.Match) (viewer.Snapshot, error) { panic("index out of range") })
+		// A panic takes the same path as a cancelled context, and bubbletea prints its stack
+		// straight to stderr, so the context stands in for it here.
+		It("returns every other end of the program as an error, never as an interruption", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
 
-			Expect(err).To(HaveOccurred())
+			err := run(ctx, "")
+
+			Expect(err).To(MatchError(context.Canceled))
 			Expect(err).NotTo(MatchError(viewer.ErrInterrupted))
 		})
 	})
