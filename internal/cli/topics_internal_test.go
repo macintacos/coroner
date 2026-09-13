@@ -14,6 +14,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 )
 
 var _ = DescribeTable("closest returns the candidate the fewest edits away, the first on a tie",
@@ -27,9 +28,30 @@ var _ = DescribeTable("closest returns the candidate the fewest edits away, the 
 	Entry("a tie", "ab", []string{"ax", "xb"}, "ax"),
 )
 
+var _ = Describe("help template", func() {
+	It("aligns root help's commands and topics in one column, however long a topic's name", func() {
+		root := &cobra.Command{Use: "coroner"}
+		root.AddCommand(&cobra.Command{Use: "version", Short: "Show the version", Run: func(*cobra.Command, []string) {}})
+		var out strings.Builder
+
+		Expect(newHelpTemplate([]HelpTopic{{Name: "a-long-topic-name", Short: "About it"}}).Execute(&out, root)).To(Succeed())
+
+		Expect(out.String()).To(ContainSubstring("\n  version            Show the version\n"))
+		Expect(out.String()).To(ContainSubstring("\n  a-long-topic-name  About it\n"))
+	})
+})
+
 var _ = Describe("help topics", func() {
 	It("list every error kind in exit-codes under the exit code it exits with", func() {
-		Expect(documentedExitCodes(topicBody("exit-codes"))).To(Equal(exitCodes()))
+		table := documentedExitCodes(topicBody("exit-codes"))
+
+		codes := map[int]bool{0: true}
+		for _, code := range exitCodes() {
+			codes[code] = true
+		}
+		Expect(table.codes).To(Equal(codes))
+		Expect(table.kinds).To(Equal(exitCodes()))
+		Expect(table.duplicates).To(BeEmpty(), "kinds listed under two codes")
 	})
 
 	It("name in environment every environment variable the code reads", func() {
@@ -44,22 +66,30 @@ var _ = Describe("help topics", func() {
 })
 
 func topicBody(name string) string {
-	topics := HelpTopics()
-	i := slices.IndexFunc(topics, func(topic HelpTopic) bool { return topic.Name == name })
-	ExpectWithOffset(1, i).NotTo(BeNumerically("<", 0), name)
+	GinkgoHelper()
+	topic, ok := topicNamed(HelpTopics(), name)
+	Expect(ok).To(BeTrue(), name)
 
-	return topics[i].Body
+	return topic.Body
 }
 
-// documentedExitCodes reads the kinds in the backticked last column of each "| code | … |"
-// table row.
-func documentedExitCodes(body string) map[Kind]int {
+type exitCodeTable struct {
+	codes      map[int]bool
+	kinds      map[Kind]int
+	duplicates []Kind
+}
+
+// documentedExitCodes reads each "| code | meaning | kinds |" table row: its code, and the
+// backticked kinds in its last column.
+func documentedExitCodes(body string) exitCodeTable {
+	// The outer pipes leave an empty cell at each end of a three-column row.
+	const rowCells = 5
 	kindPattern := regexp.MustCompile("`([a-z_]+)`")
-	codes := map[Kind]int{}
+	table := exitCodeTable{codes: map[int]bool{}, kinds: map[Kind]int{}}
 
 	for line := range strings.Lines(body) {
 		cells := strings.Split(strings.TrimSpace(line), "|")
-		if len(cells) != 5 {
+		if len(cells) != rowCells {
 			continue
 		}
 
@@ -68,14 +98,17 @@ func documentedExitCodes(body string) map[Kind]int {
 			continue
 		}
 
+		table.codes[code] = true
 		for _, match := range kindPattern.FindAllStringSubmatch(cells[3], -1) {
 			kind := Kind(match[1])
-			ExpectWithOffset(1, codes).NotTo(HaveKey(kind), "a kind listed under two codes")
-			codes[kind] = code
+			if _, ok := table.kinds[kind]; ok {
+				table.duplicates = append(table.duplicates, kind)
+			}
+			table.kinds[kind] = code
 		}
 	}
 
-	return codes
+	return table
 }
 
 // envKeysRead returns the environment variable names that non-test Go files under root pass
@@ -84,13 +117,20 @@ func documentedExitCodes(body string) map[Kind]int {
 // ponytail: a name read through a constant escapes the scan; resolve identifiers to their
 // constants if one ever is.
 func envKeysRead(root string) []string {
+	GinkgoHelper()
 	keyPattern := regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+	envWord := regexp.MustCompile(`(^env|Env)([A-Z]|$)`)
 	keys := map[string]bool{}
 	fset := token.NewFileSet()
 
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+		switch {
+		case err != nil:
 			return err
+		case entry.IsDir() && path != root && unscanned(root, path):
+			return fs.SkipDir
+		case entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go"):
+			return nil
 		}
 
 		file, err := parser.ParseFile(fset, path, nil, 0)
@@ -100,7 +140,7 @@ func envKeysRead(root string) []string {
 
 		ast.Inspect(file, func(node ast.Node) bool {
 			call, ok := node.(*ast.CallExpr)
-			if !ok || !namedLikeEnv(append([]ast.Expr{call.Fun}, call.Args...)) {
+			if !ok || !namedLikeEnv(envWord, append([]ast.Expr{call.Fun}, call.Args...)) {
 				return true
 			}
 
@@ -122,12 +162,21 @@ func envKeysRead(root string) []string {
 
 		return nil
 	})
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred())
 
 	return slices.Sorted(maps.Keys(keys))
 }
 
-func namedLikeEnv(exprs []ast.Expr) bool {
+// unscanned reports whether envKeysRead skips the directory at path: test fixtures, which
+// may not parse, hidden and scratch directories, and dev tools, whose reads are not
+// user-facing.
+func unscanned(root, path string) bool {
+	name := filepath.Base(path)
+	return name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") ||
+		path == filepath.Join(root, "internal", "tools")
+}
+
+func namedLikeEnv(envWord *regexp.Regexp, exprs []ast.Expr) bool {
 	return slices.ContainsFunc(exprs, func(expr ast.Expr) bool {
 		var name string
 		switch expr := expr.(type) {
@@ -137,6 +186,6 @@ func namedLikeEnv(exprs []ast.Expr) bool {
 			name = expr.Sel.Name
 		}
 
-		return strings.Contains(strings.ToLower(name), "env")
+		return envWord.MatchString(name)
 	})
 }

@@ -117,10 +117,14 @@ func generate(ref reference, dir string) error {
 		return err
 	}
 
-	for _, topic := range ref.topics {
-		name := ref.root.Name() + "_help_" + topic.Name + ".md"
+	return writeTopicPages(dir, ref.root.Name(), ref.topics)
+}
 
-		err = os.WriteFile(filepath.Join(dir, name), []byte(frontMatter(name)+topic.Body), 0o600)
+func writeTopicPages(dir, rootName string, topics []cli.HelpTopic) error {
+	for _, topic := range topics {
+		name := rootName + "_help_" + topic.Name + ".md"
+
+		err := os.WriteFile(filepath.Join(dir, name), []byte(frontMatter(name)+topic.Body), 0o600)
 		if err != nil {
 			return err
 		}

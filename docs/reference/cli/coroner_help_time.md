@@ -11,8 +11,7 @@ same way.
 
 ## Time zone
 
-A time that states an offset or zone is read in it. Otherwise coroner takes the zone from
-the first of:
+coroner reads a time in the first zone of:
 
 1. The offset or zone in the input, such as `Z`, `+02:00` or `UTC`.
 2. `--tz`.

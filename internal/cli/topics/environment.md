@@ -3,14 +3,15 @@
 *Audience: anyone configuring coroner, by hand or from a script.*
 
 A flag wins over its environment variable, and an environment variable wins over the
-config file. An empty `CORONER_*` or `XDG_*` variable counts as unset.
+config file. An empty `CORONER_*` variable counts as unset, and so does an `XDG_*`
+variable that is empty or not an absolute path.
 
 | Variable | Effect |
 | --- | --- |
 | `CORONER_DB` | The database file, as `--db` sets it |
 | `CORONER_CONFIG` | The config file, as `--config` sets it; the file must exist |
 | `CORONER_TIMELINE` | The current timeline when `-t` names none |
-| `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is `0` or `false` |
+| `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is a false value such as `0` or `false` |
 | `NO_COLOR`, `CORONER_NO_COLOR` | Any non-empty value disables color, as `--no-color` does |
 | `TERM` | `dumb` disables color |
 | `TZ` | The local time zone, used when neither `--tz` nor `default_timezone` names one |
@@ -18,7 +19,7 @@ config file. An empty `CORONER_*` or `XDG_*` variable counts as unset.
 | `XDG_DATA_HOME` | The directory holding `coroner/coroner.db` |
 | `HOME` | The base of the default directories when an `XDG_*` variable is unset |
 
-## Default paths
+## Where the config file and database live
 
 coroner uses the XDG directories on macOS too, never `~/Library/Application Support`:
 

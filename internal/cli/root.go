@@ -64,10 +64,11 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 	root.AddCommand(newVersionCommand(app), newTimelineCommand(ctx, app))
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
-	// and wrapRunErrors wraps only the commands already added.
-	addHelpCommand(root, app, topics)
+	// and wrapRunErrors wraps only the commands already added, so help, like --help, ignores
+	// --format and --json.
 	addCompletionCommand(root, app)
 	wrapRunErrors(root)
+	addHelpCommand(root, app, topics)
 
 	return root
 }

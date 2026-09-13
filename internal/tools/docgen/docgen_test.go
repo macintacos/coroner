@@ -12,8 +12,8 @@ import (
 	"github.com/macintacos/coroner/internal/cli"
 )
 
-// newTree builds a fresh tree per call: generating pages mutates it, adding a help command.
-func newTree(topics ...cli.HelpTopic) reference {
+// newReference builds a fresh reference per call: generating pages mutates its root, adding a help command.
+func newReference(topics ...cli.HelpTopic) reference {
 	root := &cobra.Command{Use: "tool", Short: "A tool"}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(&cobra.Command{Use: "sub", Short: "A subcommand", Run: func(*cobra.Command, []string) {}})
@@ -26,7 +26,7 @@ var _ = Describe("docgen", func() {
 
 	BeforeEach(func() {
 		dir = filepath.Join(GinkgoT().TempDir(), "cli")
-		Expect(write(newTree(), dir)).To(Succeed())
+		Expect(write(newReference(), dir)).To(Succeed())
 	})
 
 	It("writes one page per command, each opening on its title and carrying no generation date", func() {
@@ -44,7 +44,7 @@ var _ = Describe("docgen", func() {
 	It("accepts a tree that matches the commands, printing nothing", func() {
 		var out bytes.Buffer
 
-		Expect(check(newTree(), dir, &out)).To(Succeed())
+		Expect(check(newReference(), dir, &out)).To(Succeed())
 		Expect(out.String()).To(BeEmpty())
 	})
 
@@ -52,7 +52,7 @@ var _ = Describe("docgen", func() {
 		Expect(os.WriteFile(filepath.Join(dir, ".DS_Store"), nil, 0o600)).To(Succeed())
 		var out bytes.Buffer
 
-		Expect(check(newTree(), dir, &out)).To(Succeed())
+		Expect(check(newReference(), dir, &out)).To(Succeed())
 		Expect(out.String()).To(BeEmpty())
 	})
 
@@ -60,7 +60,7 @@ var _ = Describe("docgen", func() {
 		Expect(os.RemoveAll(dir)).To(Succeed())
 		var out bytes.Buffer
 
-		Expect(check(newTree(), dir, &out)).NotTo(Succeed())
+		Expect(check(newReference(), dir, &out)).NotTo(Succeed())
 		Expect(out.String()).To(ContainSubstring("added: " + filepath.Join(dir, "tool.md") + "\n"))
 	})
 
@@ -70,7 +70,7 @@ var _ = Describe("docgen", func() {
 		Expect(os.WriteFile(filepath.Join(dir, "tool_gone.md"), []byte("stale\n"), 0o600)).To(Succeed())
 		var out bytes.Buffer
 
-		Expect(check(newTree(), dir, &out)).To(MatchError(ContainSubstring("go run ./internal/tools/docgen")))
+		Expect(check(newReference(), dir, &out)).To(MatchError(ContainSubstring("go run ./internal/tools/docgen")))
 		Expect(out.String()).To(Equal(
 			"changed: " + filepath.Join(dir, "tool.md") + "\n" +
 				"removed: " + filepath.Join(dir, "tool_gone.md") + "\n" +
@@ -80,16 +80,16 @@ var _ = Describe("docgen", func() {
 	It("rewrites a drifted tree into one check accepts, dropping pages of removed commands", func() {
 		Expect(os.WriteFile(filepath.Join(dir, "tool_gone.md"), []byte("stale\n"), 0o600)).To(Succeed())
 
-		Expect(write(newTree(), dir)).To(Succeed())
+		Expect(write(newReference(), dir)).To(Succeed())
 
-		Expect(check(newTree(), dir, &bytes.Buffer{})).To(Succeed())
+		Expect(check(newReference(), dir, &bytes.Buffer{})).To(Succeed())
 	})
 
 	Describe("help topics", func() {
 		topic := cli.HelpTopic{Name: "time", Short: "Reading times", Body: "# Reading times\n\nUse RFC 3339.\n"}
 
 		It("writes a page per topic, titled as its help command, holding the topic's source", func() {
-			Expect(write(newTree(topic), dir)).To(Succeed())
+			Expect(write(newReference(topic), dir)).To(Succeed())
 
 			pages, err := readPages(os.DirFS(dir))
 			Expect(err).NotTo(HaveOccurred())
@@ -97,12 +97,12 @@ var _ = Describe("docgen", func() {
 		})
 
 		It("lists a topic page whose source changed", func() {
-			Expect(write(newTree(topic), dir)).To(Succeed())
+			Expect(write(newReference(topic), dir)).To(Succeed())
 			edited := topic
 			edited.Body += "Or an epoch.\n"
 			var out bytes.Buffer
 
-			Expect(check(newTree(edited), dir, &out)).NotTo(Succeed())
+			Expect(check(newReference(edited), dir, &out)).NotTo(Succeed())
 			Expect(out.String()).To(Equal("changed: " + filepath.Join(dir, "tool_help_time.md") + "\n"))
 		})
 	})

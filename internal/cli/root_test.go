@@ -137,7 +137,7 @@ var _ = Describe("Run", func() {
 			Expect(errOut.String()).To(BeEmpty())
 			Expect(out.String()).To(MatchRegexp(
 				`(?s)^.+\nUSAGE\n.*\nADDITIONAL COMMANDS\n.*version.*` +
-					`\nHELP TOPICS\n  environment  [^\n]+\n  exit-codes   [^\n]+\n  formatting   [^\n]+\n  time         [^\n]+\n` +
+					`\nHELP TOPICS\n(?:  \S+ +[^\n]+\n)+` +
 					`\nEXAMPLES\n.*\nFLAGS\n.*--version.*` +
 					`\nGLOBAL FLAGS\n.*--db.*\nLEARN MORE\n.*https://github.com/macintacos/coroner/issues`))
 		})
@@ -149,6 +149,13 @@ var _ = Describe("Run", func() {
 				Expect(cli.Run(ctx, newApp("help", topic.Name))).To(Equal(0), topic.Name)
 				Expect(out.String()).To(Equal(topic.Body), topic.Name)
 				Expect(errOut.String()).To(BeEmpty(), topic.Name)
+				Expect(topic.Body).To(HavePrefix("# "+topic.Short+"\n"), topic.Name)
+			}
+		})
+
+		It("names no help topic like a command, which help would then hide", func() {
+			for _, cmd := range cli.NewRoot(cli.App{}).Commands() {
+				Expect(cli.HelpTopics()).NotTo(ContainElement(HaveField("Name", cmd.Name())), cmd.Name())
 			}
 		})
 
