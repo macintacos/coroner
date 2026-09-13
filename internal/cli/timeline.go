@@ -42,6 +42,7 @@ func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
 		newTimelineCreateCommand(ctx, app),
 		newTimelineListCommand(ctx, app),
 		newTimelineViewCommand(ctx, app),
+		newTimelineExportCommand(ctx, app),
 		newTimelineUseCommand(ctx, app),
 		newTimelineEditCommand(ctx, app),
 		newTimelineDeleteCommand(ctx, app),

@@ -235,8 +235,17 @@ func newEventListJSON(page store.EventPage) eventListJSON {
 // when it is empty, then says on stderr when its limit left events out.
 func printEventPage(o output, z zone, page store.EventPage, noEvents string) error {
 	err := writeEventPage(o, z, page, noEvents)
-	if err != nil || !page.Truncated {
+	if err != nil {
 		return err
+	}
+
+	return notifyTruncated(o, page)
+}
+
+// notifyTruncated says on stderr when page's limit left events out.
+func notifyTruncated(o output, page store.EventPage) error {
+	if !page.Truncated {
+		return nil
 	}
 
 	return o.notify("Showing %d of %d events; raise --limit, or leave it out, to see them all.", len(page.Events), page.Total)
