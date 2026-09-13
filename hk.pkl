@@ -49,6 +49,14 @@ local formatters = new Mapping<String, Step> {
     fix = "sqlc generate"
     stage = List("internal/store/sqlcgen/*.go")
   }
+
+  // docgen writes the CLI reference outside the glob, so stage it explicitly.
+  ["Docs(Generate)    [[docgen]]"] = new Step {
+    glob = List("internal/cli/**/*.go", "internal/tools/docgen/**/*.go")
+    check = "go run ./internal/tools/docgen --check"
+    fix = "go run ./internal/tools/docgen"
+    stage = List("docs/reference/cli/*.md")
+  }
 }
 
 // Linters — check rules without rewriting.
