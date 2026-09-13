@@ -24,6 +24,7 @@ func main() {
 		Out:       os.Stdout,
 		Err:       os.Stderr,
 		LookupEnv: os.LookupEnv,
+		ReadFile:  os.ReadFile,
 		Now:       time.Now,
 		OpenStore: store.Open,
 	})
