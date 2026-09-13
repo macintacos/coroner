@@ -10,8 +10,8 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
-	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
 )
@@ -42,23 +42,32 @@ func (p prompt) label() string {
 	return ""
 }
 
-// loadedMsg is a finished Load under filter, and the event the cursor was on when it began.
+// loadedMsg is the result of the load numbered seq, read under match.
 type loadedMsg struct {
 	snapshot Snapshot
-	filter   store.EventFilter
+	match    Match
 	err      error
-	cursorID string
+	seq      int
 }
 
 // Model is the viewer's state; build it with New.
 type Model struct {
 	opts     Options
 	snapshot Snapshot
-	filter   store.EventFilter
+	// match is what snapshot was read under. pending is what the newest load reads under, and
+	// what the next filter builds on.
+	match, pending Match
+	// seq numbers the newest load; a result from an older one is dropped.
+	seq int
 	// annotations holds the snapshot's annotations by event id.
 	annotations map[string][]timeline.Annotation
 	// expanded holds the ids of the events whose annotations show.
 	expanded map[string]bool
+	// lines are the event list's lines and blocks[i] where event i's sit in them, rebuilt only
+	// when the snapshot, width or expanded events change.
+	lines    []string
+	blocks   []block
+	widths   widths
 	cursor   int
 	prompt   prompt
 	input    textinput.Model
@@ -87,7 +96,7 @@ func New(opts Options) Model {
 		styles:   newStyles(),
 	}
 
-	return m.show(opts.Snapshot, opts.Filter, "")
+	return m.show(opts.Snapshot, opts.Match)
 }
 
 // Init starts nothing: the first snapshot arrives through Options.
@@ -100,11 +109,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		return m.layout(), nil
+		return m.render(), nil
 	case loadedMsg:
 		return m.loaded(msg), nil
 	case tea.KeyPressMsg:
 		return m.keyPressed(msg)
+	}
+
+	if m.prompt != noPrompt {
+		return m.edit(msg)
 	}
 
 	return m, nil
@@ -127,7 +140,7 @@ func (m Model) helpKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case key.Matches(msg, m.keys.quit):
 		return m, tea.Quit
-	case key.Matches(msg, m.keys.help, m.keys.closeHelp):
+	case key.Matches(msg, m.keys.help, m.keys.cancel):
 		m.showHelp = false
 	}
 
@@ -139,13 +152,13 @@ func (m Model) listKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.quit):
 		return m, tea.Quit
 	case key.Matches(msg, m.keys.refresh):
-		return m, m.load(m.filter)
+		return m.load(m.pending)
 	case key.Matches(msg, m.keys.source):
-		return m.openPrompt(sourcePrompt, strings.Join(m.filter.Sources, ", "))
+		return m.openPrompt(sourcePrompt, strings.Join(m.pending.Sources, ", "))
 	case key.Matches(msg, m.keys.tag):
-		return m.openPrompt(tagPrompt, strings.Join(m.filter.Tags, ", "))
+		return m.openPrompt(tagPrompt, strings.Join(m.pending.Tags, ", "))
 	case key.Matches(msg, m.keys.contains):
-		return m.openPrompt(containsPrompt, m.filter.Contains)
+		return m.openPrompt(containsPrompt, m.pending.Contains)
 	case key.Matches(msg, m.keys.jump):
 		return m.openPrompt(jumpPrompt, "")
 	case key.Matches(msg, m.keys.help):
@@ -156,10 +169,10 @@ func (m Model) listKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			id := m.snapshot.Events[m.cursor].ID
 			m.expanded[id] = !m.expanded[id]
 		}
+		return m.render(), nil
 	}
 
-	m.cursor += m.movement(msg)
-	return m.layout(), nil
+	return m.moveTo(m.cursor + m.movement(msg)), nil
 }
 
 // movement returns how many events msg moves the cursor by.
@@ -194,18 +207,23 @@ func (m Model) openPrompt(p prompt, value string) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) promptKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, m.keys.cancel):
 		m.prompt = noPrompt
 		m.input.Blur()
 		return m, nil
-	case "enter":
-		p, value := m.prompt, strings.TrimSpace(m.input.Value())
+	case key.Matches(msg, m.keys.submit):
+		p := m.prompt
 		m.prompt = noPrompt
 		m.input.Blur()
-		return m.submit(p, value)
+		return m.submit(p, m.input.Value())
 	}
 
+	return m.edit(msg)
+}
+
+// edit hands msg, such as a key, a paste or a cursor blink, to the open prompt.
+func (m Model) edit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
@@ -213,44 +231,36 @@ func (m Model) promptKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 // submit applies value, entered at prompt p.
 func (m Model) submit(p prompt, value string) (tea.Model, tea.Cmd) {
-	f := m.filter
-	var err error
+	match := m.pending
 	switch p {
 	case sourcePrompt:
-		f.Sources, err = splitNames(value, timeline.ValidateSourceName)
+		match.Sources = splitNames(value)
 	case tagPrompt:
-		f.Tags, err = splitNames(value, timeline.ValidateTag)
+		match.Tags = splitNames(value)
 	case containsPrompt:
-		f.Contains = value
+		match.Contains = value
+		if strings.TrimSpace(value) == "" {
+			match.Contains = ""
+		}
 	case jumpPrompt:
-		return m.jump(value), nil
+		return m.jump(strings.TrimSpace(value)), nil
 	case noPrompt:
 	}
 
-	if err != nil {
-		m.problem = failure(err)
-		return m, nil
-	}
-
-	return m, m.load(f)
+	return m.load(match)
 }
 
-// splitNames returns the comma-separated names in value, each of which must pass validate.
-func splitNames(value string, validate func(string) error) ([]string, error) {
+// splitNames returns the comma-separated names in value, trimmed and each once, leaving out
+// empty ones.
+func splitNames(value string) []string {
 	var names []string
 	for name := range strings.SplitSeq(value, ",") {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
+		if name = strings.TrimSpace(name); name != "" && !slices.Contains(names, name) {
+			names = append(names, name)
 		}
-		err := validate(name)
-		if err != nil {
-			return nil, err
-		}
-		names = append(names, name)
 	}
 
-	return names, nil
+	return names
 }
 
 // jump moves the cursor to the first event at or after the time value names, or the last event
@@ -266,12 +276,12 @@ func (m Model) jump(value string) Model {
 		return m
 	}
 
-	m.cursor = slices.IndexFunc(m.snapshot.Events, func(e timeline.Event) bool { return !e.OccurredAt.Before(r.Instant) })
-	if m.cursor < 0 {
-		m.cursor = len(m.snapshot.Events) - 1
+	i := slices.IndexFunc(m.snapshot.Events, func(e timeline.Event) bool { return !e.OccurredAt.Before(r.Instant) })
+	if i < 0 {
+		i = len(m.snapshot.Events) - 1
 	}
 
-	return m.layout()
+	return m.moveTo(i)
 }
 
 func failure(err error) string {
@@ -284,33 +294,41 @@ func failure(err error) string {
 	return text
 }
 
-// load returns the command that reads the timeline again under f.
-func (m Model) load(f store.EventFilter) tea.Cmd {
-	load, cursorID := m.opts.Load, ""
-	if len(m.snapshot.Events) > 0 {
-		cursorID = m.snapshot.Events[m.cursor].ID
-	}
+// load starts reading the timeline again under match. A load still running is superseded.
+func (m Model) load(match Match) (Model, tea.Cmd) {
+	m.pending = match
+	m.seq++
+	load, seq := m.opts.Load, m.seq
 
-	return func() tea.Msg {
-		snapshot, err := load(f)
-		return loadedMsg{snapshot: snapshot, filter: f, err: err, cursorID: cursorID}
+	return m, func() tea.Msg {
+		snapshot, err := load(match)
+		return loadedMsg{snapshot: snapshot, match: match, err: err, seq: seq}
 	}
 }
 
 func (m Model) loaded(msg loadedMsg) Model {
-	if msg.err != nil {
+	switch {
+	case msg.seq != m.seq:
+		return m
+	case msg.err != nil:
 		m.problem = failure(msg.err)
+		m.pending = m.match
 		return m
 	}
 
 	m.problem = ""
-	return m.show(msg.snapshot, msg.filter, msg.cursorID)
+	return m.show(msg.snapshot, msg.match)
 }
 
-// show replaces what the viewer shows, keeping the cursor on the event with cursorID when the
-// snapshot still has it.
-func (m Model) show(snapshot Snapshot, filter store.EventFilter, cursorID string) Model {
-	m.snapshot, m.filter = snapshot, filter
+// show replaces what the viewer shows, keeping the cursor on its event when the snapshot still
+// has it.
+func (m Model) show(snapshot Snapshot, match Match) Model {
+	cursorID := ""
+	if len(m.snapshot.Events) > 0 {
+		cursorID = m.snapshot.Events[m.cursor].ID
+	}
+
+	m.snapshot, m.match, m.pending = snapshot, match, match
 	m.annotations = map[string][]timeline.Annotation{}
 	for _, a := range snapshot.Annotations {
 		if a.EventID != nil {
@@ -322,23 +340,51 @@ func (m Model) show(snapshot Snapshot, filter store.EventFilter, cursorID string
 		m.cursor = i
 	}
 
-	return m.layout()
+	return m.render()
 }
 
-// layout keeps the cursor on an event, sizes the event list to the window and scrolls it so the
-// cursor event, the rules above it and its annotations show.
-func (m Model) layout() Model {
+// render keeps the cursor on an event and rebuilds the event list's lines.
+func (m Model) render() Model {
 	m.cursor = max(min(m.cursor, len(m.snapshot.Events)-1), 0)
-	lines, top, bottom := m.bodyLines()
+	m.widths = measure(m.snapshot.Events, m.opts.Location)
+	m.lines, m.blocks = m.bodyLines()
 
-	m.body.SetWidth(m.width)
-	m.body.SetHeight(max(m.height-chromeHeight, 1))
-	m.body.SetContentLines(lines)
-	offset := m.body.YOffset()
-	if bottom >= offset+m.body.Height() {
-		offset = bottom - m.body.Height() + 1
+	return m.scroll()
+}
+
+// moveTo puts the cursor on event i, or the nearest event there is, redrawing only the two rows
+// that change.
+func (m Model) moveTo(i int) Model {
+	i = max(min(i, len(m.snapshot.Events)-1), 0)
+	if i == m.cursor {
+		return m
 	}
-	m.body.SetYOffset(min(offset, top))
+
+	// Cloned, because an earlier Model and the viewport still hold the old lines.
+	m.lines = slices.Clone(m.lines)
+	m.lines[m.blocks[m.cursor].row] = m.row(m.snapshot.Events[m.cursor], false)
+	m.cursor = i
+	m.lines[m.blocks[i].row] = m.row(m.snapshot.Events[i], true)
+
+	return m.scroll()
+}
+
+// scroll sizes the event list to the window and scrolls it so the cursor event, the rules above
+// it and its annotations show.
+func (m Model) scroll() Model {
+	m.body.SetWidth(m.width)
+	m.body.SetHeight(max(m.height-lipgloss.Height(m.header())-lipgloss.Height(m.footer()), 1))
+	m.body.SetContentLines(m.lines)
+
+	var cursor block
+	if len(m.blocks) > 0 {
+		cursor = m.blocks[m.cursor]
+	}
+	offset := m.body.YOffset()
+	if cursor.bottom >= offset+m.body.Height() {
+		offset = cursor.bottom - m.body.Height() + 1
+	}
+	m.body.SetYOffset(min(offset, cursor.top))
 
 	return m
 }

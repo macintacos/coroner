@@ -1,4 +1,4 @@
-// Package viewer is the read-only terminal viewer 'coroner timeline view' opens on a terminal.
+// Package viewer is the read-only full-screen viewer 'coroner timeline view' opens on a terminal.
 package viewer
 
 import (
@@ -10,11 +10,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 
-	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// ErrInterrupted is what Run returns when Ctrl-C, or the end of its context, stops the viewer.
+// ErrInterrupted is what Run returns when Ctrl-C stops the viewer.
 var ErrInterrupted = errors.New("interrupted")
 
 // Snapshot is one read of a timeline.
@@ -26,36 +25,49 @@ type Snapshot struct {
 	Annotations []timeline.Annotation
 }
 
+// Match picks events by source (any of), tag (all of) and text, as event list's flags do.
+type Match struct {
+	Sources, Tags []string
+	Contains      string
+}
+
 // Options is what the viewer shows and how it reads the timeline again.
 type Options struct {
 	Snapshot Snapshot
-	// Filter selected Snapshot's events; the viewer changes only its Sources, Tags and Contains.
-	Filter store.EventFilter
-	// Load reads the timeline again under a filter. It must open and close the database itself,
-	// so the viewer holds nothing open between reads.
-	Load func(store.EventFilter) (Snapshot, error)
+	// Match is the match Snapshot's events were read under.
+	Match Match
+	// Load reads the timeline again under a match. It validates the match, opens and closes
+	// the database itself, and returns errors whose text is ready to show.
+	Load func(Match) (Snapshot, error)
 	// Location is the zone times show in, and typed times are read in.
-	Location *time.Location
-	Now      func() time.Time
+	Location  *time.Location
+	ZoneLabel string // shown verbatim in the header, e.g. "America/New_York" or "local"
+	// Now is the clock relative times typed at @ are read against.
+	Now func() time.Time
 }
 
 // Terminal is where the viewer draws and reads keys.
 type Terminal struct {
-	In      io.Reader
-	Out     io.Writer
+	// In must be the terminal: the viewer reads raw keys from it.
+	In  io.Reader
+	Out io.Writer
+	// NoColor drops colors but keeps bold, faint and reverse, so the cursor still shows.
 	NoColor bool
 }
 
-// Run shows the viewer on term until q, which returns nil, or Ctrl-C or the end of ctx, which
-// return ErrInterrupted.
+// Run shows the viewer on term until q, which returns nil, Ctrl-C, which returns ErrInterrupted,
+// or the end of ctx.
 func Run(ctx context.Context, term Terminal, opts Options) error {
-	programOptions := []tea.ProgramOption{tea.WithContext(ctx), tea.WithInput(term.In), tea.WithOutput(term.Out)}
+	profile := colorprofile.ANSI
 	if term.NoColor {
-		programOptions = append(programOptions, tea.WithColorProfile(colorprofile.ASCII))
+		profile = colorprofile.ASCII
 	}
 
-	_, err := tea.NewProgram(New(opts), programOptions...).Run()
-	if errors.Is(err, tea.ErrInterrupted) || errors.Is(err, tea.ErrProgramKilled) {
+	// The caller's context already ends on a signal, and the profile is pinned so bubbletea never
+	// reads the process environment to pick one.
+	_, err := tea.NewProgram(New(opts), tea.WithContext(ctx), tea.WithInput(term.In), tea.WithOutput(term.Out),
+		tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
+	if errors.Is(err, tea.ErrInterrupted) {
 		return ErrInterrupted
 	}
 

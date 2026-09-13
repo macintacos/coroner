@@ -2,7 +2,9 @@ package viewer_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"io"
 	"regexp"
 	"time"
 
@@ -11,7 +13,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/viewer"
 )
@@ -67,25 +68,26 @@ func newYork() *time.Location {
 	return loc
 }
 
-// loader is a Load that records every filter it gets and answers with the snapshot next holds.
+// loader is a Load that records every match it gets and answers with the snapshot next holds.
 type loader struct {
-	filters []store.EventFilter
+	matches []viewer.Match
 	next    viewer.Snapshot
 	err     error
 }
 
-func (l *loader) load(f store.EventFilter) (viewer.Snapshot, error) {
-	l.filters = append(l.filters, f)
+func (l *loader) load(match viewer.Match) (viewer.Snapshot, error) {
+	l.matches = append(l.matches, match)
 	return l.next, l.err
 }
 
-func open(snapshot viewer.Snapshot, filter store.EventFilter, l *loader) tea.Model {
+func open(snapshot viewer.Snapshot, match viewer.Match, l *loader) tea.Model {
 	m := viewer.New(viewer.Options{
-		Snapshot: snapshot,
-		Filter:   filter,
-		Load:     l.load,
-		Location: newYork(),
-		Now:      func() time.Time { return utc(12, 21, 30, 0) },
+		Snapshot:  snapshot,
+		Match:     match,
+		Load:      l.load,
+		Location:  newYork(),
+		ZoneLabel: "America/New_York",
+		Now:       func() time.Time { return utc(12, 21, 30, 0) },
 	})
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	return next
@@ -153,22 +155,22 @@ var _ = Describe("the viewer", func() {
 
 	Describe("its screen", func() {
 		It("lists events with gaps, day breaks and zone-labelled times", func() {
-			matchGolden("list", screen(open(fixture(), store.EventFilter{}, l)))
+			matchGolden("list", screen(open(fixture(), viewer.Match{}, l)))
 		})
 
 		It("expands the cursor event's evidence and comments on enter", func() {
-			m, _ := press(open(fixture(), store.EventFilter{}, l), "enter")
+			m, _ := press(open(fixture(), viewer.Match{}, l), "enter")
 			matchGolden("annotations", screen(m))
 		})
 
 		It("lists every key on ?", func() {
-			m, _ := press(open(fixture(), store.EventFilter{}, l), "?")
+			m, _ := press(open(fixture(), viewer.Match{}, l), "?")
 			matchGolden("help", screen(m))
 		})
 
 		It("says which events the filter keeps", func() {
 			l.next.Events = l.next.Events[:3]
-			m := open(fixture(), store.EventFilter{}, l)
+			m := open(fixture(), viewer.Match{}, l)
 			m, _ = press(m, "s")
 			m, cmd := press(typeText(m, "mongod, slack"), "enter")
 			m = settle(m, cmd)
@@ -180,19 +182,58 @@ var _ = Describe("the viewer", func() {
 		It("says how to add the first event when the timeline has none", func() {
 			empty := fixture()
 			empty.Events, empty.Annotations = nil, nil
-			matchGolden("empty", screen(open(empty, store.EventFilter{}, l)))
+			matchGolden("empty", screen(open(empty, viewer.Match{}, l)))
+		})
+
+		It("keeps the evidence mark on each line of a body with carriage returns", func() {
+			crlf := fixture()
+			crlf.Annotations[0].Body = "replSetStepDown called\r\nterm 12 -> 13\r"
+			m, _ := press(open(crlf, viewer.Match{}, l), "enter")
+
+			Expect(screen(m)).To(ContainSubstring("▌ evidence  replSetStepDown called  (from mongod, by julian)"))
+			Expect(screen(m)).To(ContainSubstring("▌           term 12 -> 13  "))
+		})
+
+		It("never sends a control sequence stored in event text to the terminal", func() {
+			hostile := fixture()
+			hostile.Events[0].Text = "Primary stepped down\x1b]52;c;aGk=\x07\x1b[2J"
+			m := open(hostile, viewer.Match{}, l)
+
+			Expect(m.View().Content).NotTo(ContainSubstring("\x1b]52"))
+			Expect(m.View().Content).NotTo(ContainSubstring("\x1b[2J"))
+		})
+
+		It("shows a coarse time in its own offset when the viewer's zone would cut its window elsewhere", func() {
+			tokyo, india := 9*60*60, 5*60*60+30*60
+			coarse := fixture()
+			coarse.Events = []timeline.Event{
+				{
+					ID: "0199a1b2-0000-7000-8000-000000000011", Seq: 1, OccurredAt: utc(11, 15, 0, 0), OccurredOffset: &tokyo,
+					Precision: timeline.PrecisionDay, Text: "Recorded in Tokyo",
+				},
+				{
+					ID: "0199a1b2-0000-7000-8000-000000000012", Seq: 2, OccurredAt: utc(12, 4, 30, 0), OccurredOffset: &india,
+					Precision: timeline.PrecisionHour, Text: "Recorded in India",
+				},
+			}
+			got := screen(open(coarse, viewer.Match{}, l))
+
+			Expect(got).To(ContainSubstring("── Sat 2026-09-12"))
+			Expect(got).NotTo(ContainSubstring("2026-09-11"))
+			Expect(got).To(MatchRegexp(`#1\s+--:-- \+09:00\s.*Recorded in Tokyo`))
+			Expect(got).To(MatchRegexp(`#2\s+10:-- \+05:30\s.*Recorded in India`))
 		})
 
 		It("says nothing matches when a filter keeps no event", func() {
 			empty := fixture()
 			empty.Events = []timeline.Event{}
-			Expect(screen(open(empty, store.EventFilter{Contains: "zebra"}, l))).To(ContainSubstring("No events match."))
+			Expect(screen(open(empty, viewer.Match{Contains: "zebra"}, l))).To(ContainSubstring("No events match."))
 		})
 	})
 
 	Describe("moving", func() {
 		It("scrolls a short window so the cursor event and the rules above it show", func() {
-			m, _ := open(fixture(), store.EventFilter{}, l).Update(tea.WindowSizeMsg{Width: 80, Height: 7})
+			m, _ := open(fixture(), viewer.Match{}, l).Update(tea.WindowSizeMsg{Width: 80, Height: 7})
 			m, _ = press(m, "G")
 
 			Expect(screen(m)).To(ContainSubstring("── Sat 2026-09-12"))
@@ -205,7 +246,7 @@ var _ = Describe("the viewer", func() {
 	})
 
 	Describe("its filter keys", func() {
-		initial := store.EventFilter{Sources: []string{"pagerduty"}, Tags: []string{"phase:detect"}, Contains: "primary"}
+		initial := viewer.Match{Sources: []string{"pagerduty"}, Tags: []string{"phase:detect"}, Contains: "primary"}
 
 		It("loads events from any of the sources s is given, keeping the rest of the filter", func() {
 			m, _ := press(open(fixture(), initial, l), "s")
@@ -215,7 +256,7 @@ var _ = Describe("the viewer", func() {
 			_, cmd = press(typeText(m, ", mongod, slack"), "enter")
 			settle(m, cmd)
 
-			Expect(l.filters).To(Equal([]store.EventFilter{
+			Expect(l.matches).To(Equal([]viewer.Match{
 				{Sources: []string{"pagerduty", "mongod", "slack"}, Tags: []string{"phase:detect"}, Contains: "primary"},
 			}))
 		})
@@ -225,7 +266,7 @@ var _ = Describe("the viewer", func() {
 			_, cmd := press(typeText(m, ",election"), "enter")
 			settle(m, cmd)
 
-			Expect(l.filters).To(HaveExactElements(HaveField("Tags", []string{"phase:detect", "election"})))
+			Expect(l.matches).To(HaveExactElements(HaveField("Tags", []string{"phase:detect", "election"})))
 		})
 
 		It("loads events whose text contains what / is given", func() {
@@ -233,7 +274,34 @@ var _ = Describe("the viewer", func() {
 			_, cmd := press(typeText(m, " stepped"), "enter")
 			settle(m, cmd)
 
-			Expect(l.filters).To(HaveExactElements(HaveField("Contains", "primary stepped")))
+			Expect(l.matches).To(HaveExactElements(HaveField("Contains", "primary stepped")))
+		})
+
+		It("matches the text / is given as typed, spaces included", func() {
+			m, _ := press(open(fixture(), viewer.Match{}, l), "/")
+			_, cmd := press(typeText(m, " primary "), "enter")
+			settle(m, cmd)
+
+			Expect(l.matches).To(HaveExactElements(HaveField("Contains", " primary ")))
+		})
+
+		It("clears the text filter given only spaces", func() {
+			m, _ := press(open(fixture(), initial, l), "/")
+			for range len("primary") {
+				m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+			}
+			_, cmd := press(typeText(m, "  "), "enter")
+			settle(m, cmd)
+
+			Expect(l.matches).To(HaveExactElements(HaveField("Contains", "")))
+		})
+
+		It("names each tag t is given once", func() {
+			m, _ := press(open(fixture(), initial, l), "t")
+			_, cmd := press(typeText(m, ", election, phase:detect,election"), "enter")
+			settle(m, cmd)
+
+			Expect(l.matches).To(HaveExactElements(HaveField("Tags", []string{"phase:detect", "election"})))
 		})
 
 		It("clears a filter given an empty value", func() {
@@ -244,35 +312,78 @@ var _ = Describe("the viewer", func() {
 			_, cmd := press(m, "enter")
 			settle(m, cmd)
 
-			Expect(l.filters).To(HaveExactElements(HaveField("Sources", BeEmpty())))
+			Expect(l.matches).To(HaveExactElements(HaveField("Sources", BeEmpty())))
+		})
+	})
+
+	Describe("loading", func() {
+		It("builds a filter on the one still loading", func() {
+			m, _ := press(open(fixture(), viewer.Match{}, l), "s")
+			m, _ = press(typeText(m, "mongod"), "enter")
+			m, _ = press(m, "t")
+			_, cmd := press(typeText(m, "election"), "enter")
+			cmd()
+
+			Expect(l.matches).To(Equal([]viewer.Match{{Sources: []string{"mongod"}, Tags: []string{"election"}}}))
 		})
 
-		It("loads nothing and names the problem when a tag breaks its grammar", func() {
-			m, _ := press(open(fixture(), initial, l), "t")
-			m, cmd := press(typeText(m, ",Bad Tag"), "enter")
+		It("shows the newest load when an older one finishes after it", func() {
+			m, _ := press(open(fixture(), viewer.Match{}, l), "s")
+			m, first := press(typeText(m, "mongod"), "enter")
+			m, _ = press(m, "t")
+			m, second := press(typeText(m, "election"), "enter")
+			newer, older := second(), first()
+			m, _ = m.Update(newer)
+			m, _ = m.Update(older)
 
-			Expect(cmd).To(BeNil())
-			Expect(screen(m)).To(ContainSubstring(`tag "Bad Tag"`))
+			Expect(screen(m)).To(ContainSubstring("from mongod, tagged election"))
+		})
+
+		It("builds the next filter on the events showing when a load fails", func() {
+			l.err = errors.New(`source "Mongod" is not valid`)
+			m, _ := press(open(fixture(), viewer.Match{}, l), "s")
+			m, cmd := press(typeText(m, "Mongod"), "enter")
+			m = settle(m, cmd)
+			m, _ = press(m, "t")
+			_, cmd = press(typeText(m, "election"), "enter")
+			cmd()
+
+			Expect(l.matches).To(HaveExactElements(HaveField("Sources", ConsistOf("Mongod")), Equal(viewer.Match{Tags: []string{"election"}})))
+		})
+
+		It("keeps the cursor where it moved while a load was running", func() {
+			m, cmd := press(open(fixture(), viewer.Match{}, l), "r")
+			m, _ = press(m, "down")
+
+			Expect(cursorLine(settle(m, cmd))).To(ContainSubstring("#1"))
 		})
 	})
 
 	Describe("jumping to a time", func() {
 		It("moves the cursor to the first event at or after the time @ is given", func() {
-			m, _ := press(open(fixture(), store.EventFilter{}, l), "@")
+			m, _ := press(open(fixture(), viewer.Match{}, l), "@")
 			m, _ = press(typeText(m, "2026-09-11 00:05"), "enter")
 
 			Expect(cursorLine(m)).To(ContainSubstring("#4"))
 		})
 
+		It("reads a time pasted at @", func() {
+			m, _ := press(open(fixture(), viewer.Match{}, l), "@")
+			m, _ = m.Update(tea.PasteMsg{Content: "2026-09-11 00:05"})
+			m, _ = press(m, "enter")
+
+			Expect(cursorLine(m)).To(ContainSubstring("#4"))
+		})
+
 		It("moves the cursor to the last event when every event is earlier", func() {
-			m, _ := press(open(fixture(), store.EventFilter{}, l), "@")
+			m, _ := press(open(fixture(), viewer.Match{}, l), "@")
 			m, _ = press(typeText(m, "2026-09-12 12:00"), "enter")
 
 			Expect(cursorLine(m)).To(ContainSubstring("#5"))
 		})
 
 		It("shows why a time it cannot read was rejected, leaving the cursor where it was", func() {
-			m, _ := press(open(fixture(), store.EventFilter{}, l), "@")
+			m, _ := press(open(fixture(), viewer.Match{}, l), "@")
 			m, _ = press(typeText(m, "gibberish"), "enter")
 
 			Expect(screen(m)).To(ContainSubstring(`time "gibberish"`))
@@ -282,25 +393,25 @@ var _ = Describe("the viewer", func() {
 
 	Describe("refreshing", func() {
 		It("reloads under the same filter and keeps the cursor on the same event", func() {
-			filter := store.EventFilter{Tags: []string{"phase:detect"}}
+			match := viewer.Match{Tags: []string{"phase:detect"}}
 			earlier := timeline.Event{
 				ID: "0199a1b2-0000-7000-8000-000000000006", Seq: 6, OccurredAt: utc(11, 2, 0, 0),
 				Precision: timeline.PrecisionSecond, Text: "Added while open",
 			}
 			l.next.Events = append([]timeline.Event{earlier}, l.next.Events...)
 
-			m, _ := press(open(fixture(), filter, l), "down")
+			m, _ := press(open(fixture(), match, l), "down")
 			m, cmd := press(m, "r")
 			m = settle(m, cmd)
 
-			Expect(l.filters).To(Equal([]store.EventFilter{filter}))
+			Expect(l.matches).To(Equal([]viewer.Match{match}))
 			Expect(screen(m)).To(ContainSubstring("Added while open"))
 			Expect(cursorLine(m)).To(ContainSubstring("#1"))
 		})
 
 		It("shows a failed load and keeps the events it had", func() {
 			l.err = errors.New("the database is busy")
-			m, cmd := press(open(fixture(), store.EventFilter{}, l), "r")
+			m, cmd := press(open(fixture(), viewer.Match{}, l), "r")
 			m = settle(m, cmd)
 
 			Expect(screen(m)).To(ContainSubstring("the database is busy"))
@@ -308,27 +419,51 @@ var _ = Describe("the viewer", func() {
 		})
 	})
 
+	Describe("running on a terminal", func() {
+		run := func(keys string, load func(viewer.Match) (viewer.Snapshot, error)) error {
+			in, typed := io.Pipe()
+			DeferCleanup(typed.Close)
+			go func() { _, _ = typed.Write([]byte(keys)) }()
+
+			return viewer.Run(context.Background(), viewer.Terminal{In: in, Out: io.Discard}, viewer.Options{
+				Snapshot: fixture(), Load: load, Location: newYork(), ZoneLabel: "America/New_York",
+				Now: func() time.Time { return utc(12, 21, 30, 0) },
+			})
+		}
+
+		It("returns ErrInterrupted on ctrl+c", func() {
+			Expect(run("\x03", l.load)).To(MatchError(viewer.ErrInterrupted))
+		})
+
+		It("returns a crash as an error, never as an interruption", func() {
+			err := run("r", func(viewer.Match) (viewer.Snapshot, error) { panic("index out of range") })
+
+			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(MatchError(viewer.ErrInterrupted))
+		})
+	})
+
 	Describe("leaving", func() {
 		It("quits on q", func() {
-			_, cmd := press(open(fixture(), store.EventFilter{}, l), "q")
+			_, cmd := press(open(fixture(), viewer.Match{}, l), "q")
 			Expect(cmd()).To(BeAssignableToTypeOf(tea.QuitMsg{}))
 		})
 
 		It("interrupts on ctrl+c, even while a prompt is open", func() {
-			_, cmd := press(open(fixture(), store.EventFilter{}, l), "ctrl+c")
+			_, cmd := press(open(fixture(), viewer.Match{}, l), "ctrl+c")
 			Expect(cmd()).To(BeAssignableToTypeOf(tea.InterruptMsg{}))
 
-			_, cmd = press(open(fixture(), store.EventFilter{}, l), "/", "ctrl+c")
+			_, cmd = press(open(fixture(), viewer.Match{}, l), "/", "ctrl+c")
 			Expect(cmd()).To(BeAssignableToTypeOf(tea.InterruptMsg{}))
 		})
 
 		It("types q into an open prompt rather than quitting", func() {
-			m, _ := press(open(fixture(), store.EventFilter{}, l), "/")
+			m, _ := press(open(fixture(), viewer.Match{}, l), "/")
 			m, _ = press(m, "q")
 			_, cmd := press(m, "enter")
 
 			settle(m, cmd)
-			Expect(l.filters).To(HaveExactElements(HaveField("Contains", "q")))
+			Expect(l.matches).To(HaveExactElements(HaveField("Contains", "q")))
 		})
 	})
 })

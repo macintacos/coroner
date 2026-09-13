@@ -3,9 +3,10 @@ package viewer
 import "charm.land/bubbles/v2/key"
 
 type keyMap struct {
-	up, down, pageUp, pageDown, top, bottom   key.Binding
-	annotations, source, tag, contains, jump  key.Binding
-	refresh, help, closeHelp, quit, interrupt key.Binding
+	up, down, pageUp, pageDown, top, bottom  key.Binding
+	annotations, source, tag, contains, jump key.Binding
+	refresh, help, submit, cancel, quit      key.Binding
+	interrupt                                key.Binding
 }
 
 func newKeyMap() keyMap {
@@ -13,9 +14,9 @@ func newKeyMap() keyMap {
 		up:          key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		down:        key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
 		pageUp:      key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "page up")),
-		pageDown:    key.NewBinding(key.WithKeys("pgdown", "space"), key.WithHelp("pgdn", "page down")),
-		top:         key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g", "first event")),
-		bottom:      key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G", "last event")),
+		pageDown:    key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdn", "page down")),
+		top:         key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g/home", "first")),
+		bottom:      key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G/end", "last")),
 		annotations: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "annotations")),
 		source:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "source")),
 		tag:         key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "tag")),
@@ -23,7 +24,8 @@ func newKeyMap() keyMap {
 		jump:        key.NewBinding(key.WithKeys("@"), key.WithHelp("@", "jump")),
 		refresh:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		help:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "keys")),
-		closeHelp:   key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close")),
+		submit:      key.NewBinding(key.WithKeys("enter")),
+		cancel:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "close")),
 		quit:        key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 		interrupt:   key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "interrupt")),
 	}
@@ -45,6 +47,6 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.up, k.down, k.pageUp, k.pageDown, k.top, k.bottom},
 		{k.annotations, jump, k.refresh},
 		{source, tag, contains},
-		{k.help, k.closeHelp, k.quit, k.interrupt},
+		{k.help, k.cancel, k.quit, k.interrupt},
 	}
 }

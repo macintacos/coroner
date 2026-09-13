@@ -231,6 +231,20 @@ var _ = Describe("timeline", func() {
 				Expect(out.String()).To(HaveSuffix("\n\n#3\t2026-09-11T04:20:30Z\t\tmongod\tNew primary elected\n"))
 			})
 
+			It("counts the annotations on the events it keeps and on the timeline itself", func(ctx SpecContext) {
+				s, err := store.Open(ctx, filepath.Join(home, "coroner.db"))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(s.AddAnnotation(ctx, timeline.Annotation{
+					ID: "0199a1b2-0000-7000-8000-300000000002", TimelineID: timelineID,
+					Kind: timeline.AnnotationComment, Body: "Why did the pager lag?", CreatedAt: now, UpdatedAt: now,
+				}, "0199a1b2-0000-7000-8000-400000000002")).To(Succeed())
+				Expect(s.Close()).To(Succeed())
+
+				Expect(run(ctx, "timeline", "view", "mongo-outage", "--source", "slack")).To(Equal(0), errOut.String())
+
+				Expect(out.String()).To(MatchRegexp(`(?m)^Annotations: +1$`))
+			})
+
 			Describe("on a terminal", func() {
 				// altScreen is the escape sequence a full-screen program starts with.
 				const altScreen = `\x1b\[\?1049h`
@@ -281,6 +295,15 @@ var _ = Describe("timeline", func() {
 					Eventually(code).Should(Receive(Equal(0)))
 					Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
 					Expect(screen.String()).NotTo(ContainSubstring("\x1b"))
+				})
+
+				It("prints plain text when TERM is dumb", func(ctx SpecContext) {
+					env["TERM"] = "dumb"
+					var screen bytes.Buffer
+					_, code := viewOn(ctx, &screen)
+
+					Eventually(code).Should(Receive(Equal(0)))
+					Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
 				})
 
 				It("prints plain text when stdin is not a terminal", func(ctx SpecContext) {

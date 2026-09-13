@@ -67,8 +67,8 @@ _Avoid_: resolution, granularity
 **Approximate**: Marks an occurred at as a guess, as in "around 10:15".\
 _Avoid_: fuzzy, uncertain
 
-**Gap**: A stretch of time between events that no event covers, often a blank the
-investigation still has to fill.\
+**Gap**: A stretch of time between events that no event covers, often one the
+investigation still has to explain.\
 _Avoid_: hole, blank
 
 ### Finding things

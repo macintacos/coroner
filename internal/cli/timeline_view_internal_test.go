@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -42,9 +43,9 @@ var _ = Describe("timelineLoader", func() {
 	open := func(ctx SpecContext) tea.Model {
 		GinkgoHelper()
 		load := timelineLoader(ctx, app, db, timelineID)
-		snapshot, err := load(store.EventFilter{})
+		snapshot, err := load(viewer.Match{})
 		Expect(err).NotTo(HaveOccurred())
-		return viewer.New(viewer.Options{Snapshot: snapshot, Load: load, Location: time.UTC, Now: app.Now})
+		return viewer.New(viewer.Options{Snapshot: snapshot, Load: load, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now})
 	}
 
 	// submit opens the prompt key names, types text into it and applies what it loads.
@@ -100,7 +101,8 @@ var _ = Describe("timelineLoader", func() {
 				ids++
 				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
 			},
-			OpenStore: store.Open,
+			OpenStore:         store.Open,
+			OpenStoreReadOnly: store.OpenReadOnly,
 		}
 
 		for _, args := range [][]string{
@@ -132,9 +134,31 @@ var _ = Describe("timelineLoader", func() {
 		Entry("every one of several tags", []string{"--tag", "election", "--tag", "phase:detect"},
 			[][2]string{{"t", "election, phase:detect"}}),
 		Entry("text, ignoring case", []string{"--contains", "PRIMARY"}, [][2]string{{"/", "PRIMARY"}}),
+		Entry("text with a leading space", []string{"--contains", " primary"}, [][2]string{{"/", " primary"}}),
 		Entry("a source, a tag and text together", []string{"--source", "mongod", "--tag", "election", "--contains", "elected"},
 			[][2]string{{"s", "mongod"}, {"t", "election"}, {"/", "elected"}}),
 	)
+
+	It("shows a tag's grammar error with its suggestion, keeping the events it showed", func(ctx SpecContext) {
+		m, _ := open(ctx).Update(tea.WindowSizeMsg{Width: 400, Height: 24})
+		shown := shownSeqs(m)
+
+		m = submit(m, "t", "Election")
+
+		Expect(m.View().Content).To(ContainSubstring(`tag "Election"`))
+		Expect(m.View().Content).To(ContainSubstring("Did you mean `election`?"))
+		Expect(shownSeqs(m)).To(Equal(shown))
+	})
+
+	It("never creates the database when it is gone before a refresh", func(ctx SpecContext) {
+		load := timelineLoader(ctx, app, db, timelineID)
+		Expect(os.Remove(db)).To(Succeed())
+
+		_, err := load(viewer.Match{})
+
+		Expect(err).To(HaveOccurred())
+		Expect(db).NotTo(BeAnExistingFile())
+	})
 
 	It("lets another coroner add an event while it is open, and shows it on refresh", func(ctx SpecContext) {
 		m := open(ctx)

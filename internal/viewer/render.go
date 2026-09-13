@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -14,9 +15,7 @@ import (
 
 const (
 	// gapThreshold is the shortest silence between events that gets its own row.
-	gapThreshold = 5 * time.Minute
-	// chromeHeight is the lines the header and footer take from the window.
-	chromeHeight   = 4
+	gapThreshold   = 5 * time.Minute
 	maxSourceWidth = 16
 	maxTagsWidth   = 24
 	indent         = "  "
@@ -26,8 +25,7 @@ type styles struct {
 	name, faint, time, source, tags, gap, day, evidence, comment, selected, failure lipgloss.Style
 }
 
-// newStyles uses only the 16 ANSI colors, so the terminal's own theme picks the shades, and never
-// lets a color carry meaning a glyph or word does not also carry.
+// newStyles uses only the 16 ANSI colors, so the terminal's theme picks the shades.
 func newStyles() styles {
 	s := lipgloss.NewStyle()
 	return styles{
@@ -50,13 +48,9 @@ func (m Model) header() string {
 	t := m.snapshot.Timeline
 	left := m.styles.name.Render(t.Name)
 	if t.Title != "" {
-		left += "  " + t.Title
+		left += "  " + oneLine(t.Title)
 	}
-	zone := m.opts.Location.String()
-	if zone == "Local" {
-		zone = "local"
-	}
-	right := m.styles.faint.Render("times in " + zone)
+	right := m.styles.faint.Render("times in " + m.opts.ZoneLabel)
 	space := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 1)
 
 	return m.fit(left+strings.Repeat(" ", space)+right) + "\n" + m.fit(m.styles.faint.Render(m.summary()))
@@ -70,14 +64,14 @@ func (m Model) summary() string {
 	}
 
 	var kept []string
-	if len(m.filter.Sources) > 0 {
-		kept = append(kept, "from "+strings.Join(m.filter.Sources, " or "))
+	if len(m.match.Sources) > 0 {
+		kept = append(kept, "from "+strings.Join(m.match.Sources, " or "))
 	}
-	if len(m.filter.Tags) > 0 {
-		kept = append(kept, "tagged "+strings.Join(m.filter.Tags, " and "))
+	if len(m.match.Tags) > 0 {
+		kept = append(kept, "tagged "+strings.Join(m.match.Tags, " and "))
 	}
-	if m.filter.Contains != "" {
-		kept = append(kept, fmt.Sprintf("containing %q", m.filter.Contains))
+	if m.match.Contains != "" {
+		kept = append(kept, fmt.Sprintf("containing %q", m.match.Contains))
 	}
 
 	return strings.TrimSpace(count + " " + strings.Join(kept, ", "))
@@ -107,46 +101,49 @@ func (m Model) keyHelp() string {
 	return strings.Join(lines[:height], "\n")
 }
 
-// bodyLines returns the event list's lines, and the first and last line of the cursor event's
-// block: the rules above it, its row and its annotations.
-func (m Model) bodyLines() ([]string, int, int) {
+// block is where an event's lines sit in the event list: the rules above it, its row and its
+// annotations.
+type block struct {
+	top, row, bottom int
+}
+
+// bodyLines returns the event list's lines, and each event's block in them.
+func (m Model) bodyLines() ([]string, []block) {
 	events := m.snapshot.Events
 	if len(events) == 0 {
-		return []string{indent + m.emptyMessage()}, 0, 0
+		return []string{indent + m.emptyMessage()}, nil
 	}
 
 	gaps := map[int]time.Duration{}
 	for _, g := range timeline.Gaps(events, gapThreshold) {
 		gaps[g.Before] = g.Duration
 	}
-	widths := measure(events, m.opts.Location)
 
-	var lines []string
-	var top, bottom int
+	lines := make([]string, 0, len(events))
+	blocks := make([]block, len(events))
 	day := ""
 	for i, e := range events {
-		start := len(lines)
+		top := len(lines)
 		if d, ok := gaps[i]; ok {
 			lines = append(lines, m.rule(formatGap(d), m.styles.gap))
 		}
-		if date := e.OccurredAt.In(m.opts.Location).Format("Mon 2006-01-02"); date != day {
+		if date := wall(e, m.opts.Location).Format("Mon 2006-01-02"); date != day {
 			lines = append(lines, m.rule(date, m.styles.day))
 			day = date
 		}
-		lines = append(lines, m.row(e, widths, i == m.cursor))
+		row := len(lines)
+		lines = append(lines, m.row(e, i == m.cursor))
 		if m.expanded[e.ID] {
 			lines = append(lines, m.annotationLines(e.ID)...)
 		}
-		if i == m.cursor {
-			top, bottom = start, len(lines)-1
-		}
+		blocks[i] = block{top: top, row: row, bottom: len(lines) - 1}
 	}
 
-	return lines, top, bottom
+	return lines, blocks
 }
 
 func (m Model) emptyMessage() string {
-	if len(m.filter.Sources) > 0 || len(m.filter.Tags) > 0 || m.filter.Contains != "" {
+	if len(m.match.Sources) > 0 || len(m.match.Tags) > 0 || m.match.Contains != "" {
 		return "No events match. Press s, t or / to change the filter."
 	}
 
@@ -156,7 +153,7 @@ func (m Model) emptyMessage() string {
 // rule is a full-width line carrying label, such as a gap or a date.
 func (m Model) rule(label string, style lipgloss.Style) string {
 	text := indent + "── " + label + " "
-	return style.Render(text + strings.Repeat("─", max(m.width-lipgloss.Width(text), 2)))
+	return m.fit(style.Render(text + strings.Repeat("─", max(m.width-lipgloss.Width(text), 2))))
 }
 
 // widths are the event list's column widths.
@@ -167,23 +164,24 @@ type widths struct {
 func measure(events []timeline.Event, loc *time.Location) widths {
 	var w widths
 	for _, e := range events {
-		w.seq = max(w.seq, len(seqText(e)))
+		w.seq = max(w.seq, lipgloss.Width(seqText(e)))
 		w.time = max(w.time, lipgloss.Width(eventTime(e, loc)))
-		w.source = max(w.source, min(len(sourceText(e)), maxSourceWidth))
-		w.tags = max(w.tags, min(len(tagsText(e)), maxTagsWidth))
+		w.source = max(w.source, min(lipgloss.Width(sourceText(e)), maxSourceWidth))
+		w.tags = max(w.tags, min(lipgloss.Width(tagsText(e)), maxTagsWidth))
 	}
 
 	return w
 }
 
 // row is e's line: seq, time, source, tags, text and how many annotations it has.
-func (m Model) row(e timeline.Event, w widths, selected bool) string {
+func (m Model) row(e timeline.Event, selected bool) string {
+	w := m.widths
 	fields := []string{
 		pad(seqText(e), w.seq),
 		pad(eventTime(e, m.opts.Location), w.time),
 		pad(ansi.Truncate(sourceText(e), w.source, "…"), w.source),
 		pad(ansi.Truncate(tagsText(e), w.tags, "…"), w.tags),
-		strings.Join(strings.Fields(e.Text), " "),
+		oneLine(e.Text),
 	}
 	count := ""
 	if n := len(m.annotations[e.ID]); n > 0 {
@@ -212,13 +210,15 @@ func (m Model) annotationLines(eventID string) []string {
 	for _, a := range annotations {
 		mark, label, style := "▌", "evidence", m.styles.evidence
 		if a.Kind == timeline.AnnotationComment {
-			mark, label, style = "│", "comment ", m.styles.comment
+			mark, label, style = "│", "comment", m.styles.comment
 		}
 
-		body := strings.Split(strings.ReplaceAll(a.Body, "\t", "    "), "\n")
-		lines = append(lines, m.fit(indent+"    "+style.Render(mark+" "+label)+"  "+body[0]+m.styles.faint.Render(attribution(a))))
+		head := fmt.Sprintf("%s %-8s  ", mark, label)
+		under := strings.Repeat(" ", lipgloss.Width(head)-lipgloss.Width(mark))
+		body := strings.Split(printable(a.Body), "\n")
+		lines = append(lines, m.fit(indent+"    "+style.Render(head)+body[0]+m.styles.faint.Render(attribution(a))))
 		for _, line := range body[1:] {
-			lines = append(lines, m.fit(indent+"    "+style.Render(mark)+strings.Repeat(" ", len(label)+3)+line))
+			lines = append(lines, m.fit(indent+"    "+style.Render(mark)+under+line))
 		}
 	}
 
@@ -231,13 +231,30 @@ func attribution(a timeline.Annotation) string {
 		by = append(by, "from "+*a.Source)
 	}
 	if a.Author != nil {
-		by = append(by, "by "+*a.Author)
+		by = append(by, "by "+oneLine(*a.Author))
 	}
 	if len(by) == 0 {
 		return ""
 	}
 
 	return "  (" + strings.Join(by, ", ") + ")"
+}
+
+// printable is s with line endings made \n, tabs made four spaces and every other control
+// character dropped, so stored text cannot move the cursor or send the terminal a sequence.
+func printable(s string) string {
+	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\t", "    ")
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// oneLine is s printable, with each run of white space made one space.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(printable(s)), " ")
 }
 
 // fit cuts line to the window's width.
@@ -265,22 +282,43 @@ func tagsText(e timeline.Event) string {
 	return strings.Join(e.Tags, ",")
 }
 
-// eventTime is e's occurred at in loc to its precision, ~ when approximate, then its ended at
-// when it has one, then the zone's abbreviation. A space stands in for ~ so times align.
+// wall is e's occurred at in loc, or in its own offset when its precision window does not line up
+// in loc, so a coarse window is never re-cut in another zone.
+func wall(e timeline.Event, loc *time.Location) time.Time {
+	t := e.OccurredAt.In(loc)
+	if e.Precision.Truncate(t).Equal(e.OccurredAt) {
+		return t
+	}
+
+	offset := 0 // a nil offset means the window was cut in UTC
+	if e.OccurredOffset != nil {
+		offset = *e.OccurredOffset
+	}
+
+	return e.OccurredAt.In(time.FixedZone("", offset))
+}
+
+// eventTime is e's wall time to its precision, ~ when approximate, then its ended at when it has
+// one, then the zone's abbreviation, or the offset when e's window does not line up in loc. A
+// space stands in for ~ so times align.
 func eventTime(e timeline.Event, loc *time.Location) string {
-	start := e.OccurredAt.In(loc)
+	start := wall(e, loc)
 	text := " " + clock(start, e.Precision)
 	if e.Approximate {
 		text = "~" + clock(start, e.Precision)
 	}
 
 	if e.EndedAt != nil {
-		end := e.EndedAt.In(loc)
+		end := e.EndedAt.In(start.Location())
 		if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
 			text += "–" + end.Format("Jan 02 ") + clock(end, e.Precision)
 		} else {
 			text += "–" + clock(end, e.Precision)
 		}
+	}
+
+	if start.Location() != loc {
+		return text + " " + start.Format("-07:00")
 	}
 
 	return text + " " + start.Format("MST")
@@ -308,7 +346,7 @@ func clock(t time.Time, precision timeline.Precision) string {
 	return t.Format(time.TimeOnly)
 }
 
-// formatGap renders d in its two largest units, as in 45s, 47m, 1h05m or 2d03h.
+// formatGap renders d to the minute, as in 47m, 1h05m or 2d03h.
 func formatGap(d time.Duration) string {
 	const day = 24 * time.Hour
 	switch {
@@ -316,11 +354,9 @@ func formatGap(d time.Duration) string {
 		return fmt.Sprintf("%dd%02dh", d/day, d%day/time.Hour)
 	case d >= time.Hour:
 		return fmt.Sprintf("%dh%02dm", d/time.Hour, d%time.Hour/time.Minute)
-	case d >= time.Minute:
-		return fmt.Sprintf("%dm", d/time.Minute)
 	}
 
-	return fmt.Sprintf("%ds", d/time.Second)
+	return fmt.Sprintf("%dm", d/time.Minute)
 }
 
 func pad(s string, width int) string {
