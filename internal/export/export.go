@@ -42,8 +42,8 @@ type Envelope struct {
 	Annotations []Annotation `json:"annotations"`
 }
 
-// Query is the selection an export was made with. Every field but Timelines filters events,
-// and null or an empty list means that filter was not applied.
+// Query is the selection an export was made with. Every field but Timelines and Order filters
+// events, and null or an empty list means that filter was not applied.
 type Query struct {
 	// Timelines are the names of the timelines exported.
 	Timelines []string `json:"timelines"`
@@ -59,6 +59,23 @@ type Query struct {
 	Contains *string `json:"contains" jsonschema:"nullable"`
 	// Limit caps how many events were exported.
 	Limit *int `json:"limit" jsonschema:"nullable"`
+	// Order is which end Limit kept events from: asc the earliest, desc the latest. Exported
+	// events are listed in ascending order either way.
+	Order string `json:"order"`
+}
+
+// Header is the first record of a JSONL export: the envelope without its record lists.
+type Header struct {
+	// Format is always "coroner.export".
+	Format string `json:"format"`
+	// FormatVersion is the MAJOR.MINOR version of the export format.
+	FormatVersion string `json:"format_version"`
+	// CoronerVersion is the version of coroner that wrote the export.
+	CoronerVersion string `json:"coroner_version"`
+	// ExportedAt is when the export was written.
+	ExportedAt Instant `json:"exported_at"`
+	// Query is the selection the export was made with.
+	Query Query `json:"query"`
 }
 
 // Timeline is the named chronology of one investigation.
@@ -150,21 +167,28 @@ type Annotation struct {
 }
 
 // NewEnvelope returns an envelope with the format identifiers set, written by coronerVersion
-// at exportedAt, with an empty query and no records.
+// at exportedAt, with a query that filters nothing and no records.
 func NewEnvelope(coronerVersion string, exportedAt time.Time) Envelope {
 	return Envelope{
 		Format:         Format,
 		FormatVersion:  FormatVersion,
 		CoronerVersion: coronerVersion,
 		ExportedAt:     Instant(exportedAt),
+		Query:          Query{Order: "asc"},
+	}
+}
+
+func (e Envelope) header() Header {
+	return Header{
+		Format: e.Format, FormatVersion: e.FormatVersion, CoronerVersion: e.CoronerVersion, ExportedAt: e.ExportedAt, Query: e.Query,
 	}
 }
 
 // Write encodes v and a newline to w: struct keys in declaration order, map keys sorted, and
-// <, > and & escaped so the JSON can be embedded in HTML. It fails on invalid UTF-8, and
-// writes nothing to w when encoding fails.
-func Write(w io.Writer, v any) error {
-	b, err := json.Marshal(v, json.Deterministic(true), jsontext.EscapeForHTML(true))
+// <, > and & escaped so the JSON can be embedded in HTML, then any opts, such as an indent.
+// It fails on invalid UTF-8, and writes nothing to w when encoding fails.
+func Write(w io.Writer, v any, opts ...json.Options) error {
+	b, err := json.Marshal(v, append([]json.Options{json.Deterministic(true), jsontext.EscapeForHTML(true)}, opts...)...)
 	if err != nil {
 		return err
 	}

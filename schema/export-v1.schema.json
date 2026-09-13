@@ -310,6 +310,10 @@
             }
           ],
           "description": "Limit caps how many events were exported."
+        },
+        "order": {
+          "type": "string",
+          "description": "Order is which end Limit kept events from: asc the earliest, desc the latest. Exported events are listed in ascending order either way."
         }
       },
       "type": "object",
@@ -320,9 +324,10 @@
         "sources",
         "tags",
         "contains",
-        "limit"
+        "limit",
+        "order"
       ],
-      "description": "Query is the selection an export was made with. Every field but Timelines filters events, and null or an empty list means that filter was not applied."
+      "description": "Query is the selection an export was made with. Every field but Timelines and Order filters events, and null or an empty list means that filter was not applied."
     },
     "Source": {
       "properties": {

@@ -2,6 +2,8 @@ package export_test
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"strings"
 	"time"
@@ -42,7 +44,7 @@ var _ = Describe("Write", func() {
 
 		Expect(encode(envelope)).To(Equal(
 			`{"format":"coroner.export","format_version":"1.0","coroner_version":"0.1.0","exported_at":"2026-09-13T00:30:00.000000000Z",` +
-				`"query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null},` +
+				`"query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"},` +
 				`"timelines":[],"sources":[],"events":[],"annotations":[]}` + "\n"))
 	})
 
@@ -69,6 +71,13 @@ var _ = Describe("Write", func() {
 		Expect(err).To(MatchError(ContainSubstring("invalid UTF-8")))
 		Expect(out).To(BeEmpty())
 	})
+
+	It("applies extra options, such as indentation, and still escapes for HTML", func() {
+		var b bytes.Buffer
+
+		Expect(export.Write(&b, export.Source{Name: "<"}, jsontext.WithIndent("  "))).To(Succeed())
+		Expect(b.String()).To(Equal("{\n  \"id\": \"\",\n  \"name\": \"\\u003c\",\n  \"created_at\": \"0001-01-01T00:00:00.000000000Z\"\n}\n"))
+	})
 })
 
 var _ = Describe("Instant", func() {
@@ -91,4 +100,17 @@ var _ = Describe("Instant", func() {
 		Entry("after 9999", time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), "10000"),
 		Entry("before 0000", time.Date(-1, 12, 31, 23, 59, 59, 0, time.UTC), "-1"),
 	)
+
+	It("decodes a canonical instant", func() {
+		var i export.Instant
+
+		Expect(json.Unmarshal([]byte(`"2026-09-12T14:05:03.180000000Z"`), &i)).To(Succeed())
+		Expect(time.Time(i)).To(BeTemporally("==", time.Date(2026, 9, 12, 14, 5, 3, 180_000_000, time.UTC)))
+	})
+
+	It("rejects an instant not in the canonical spelling", func() {
+		var i export.Instant
+
+		Expect(json.Unmarshal([]byte(`"2026-09-12T14:05:03Z"`), &i)).To(MatchError(ContainSubstring("2026-09-12T14:05:03Z")))
+	})
 })

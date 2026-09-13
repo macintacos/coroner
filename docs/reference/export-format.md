@@ -40,7 +40,8 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
     "sources": [],
     "tags": [],
     "contains": null,
-    "limit": null
+    "limit": null,
+    "order": "asc"
   },
   "timelines": [],
   "sources": [],
@@ -71,8 +72,9 @@ sort them yourself if you need one.
 
 ### query
 
-`timelines` names the timelines exported. Every other key is a filter on events, and
-`null` or an empty list means that filter was not applied.
+`timelines` names the timelines exported, and `order` says which events `limit` kept.
+Every other key is a filter on events, and `null` or an empty list means that filter was
+not applied.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -83,6 +85,7 @@ sort them yourself if you need one.
 | `tags` | array of string | Kept events carrying **all** of these tags. |
 | `contains` | string or null | Kept events whose text contains it, ignoring ASCII case. |
 | `limit` | integer or null | At most this many events were exported. |
+| `order` | string | `asc` when `limit` kept the earliest events, `desc` the latest. `events` is ascending either way. |
 
 ## Records
 
