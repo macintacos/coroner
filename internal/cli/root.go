@@ -1,37 +1,51 @@
 package cli
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-
-	"github.com/macintacos/coroner/internal/config"
 )
+
+const additionalCommands = "additional"
 
 func newRoot(app App) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "coroner",
-		Short: "coroner CLI",
+		Use:   "coroner <command> [flags]",
+		Short: "Build root-cause investigation timelines",
+		Long: "coroner records what happened during an investigation, in order: name a timeline,\n" +
+			"add timestamped events from logs, chat and people, then view and export it.",
+		Example: "  $ coroner version --json\n" +
+			"  $ coroner completion zsh > \"${fpath[1]}/_coroner\"",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// TODO: hand the resolved Config to the first command that needs it.
-			_, err := resolveConfig(cmd, app)
-			if err != nil {
-				return err
+			if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
+				return writeVersion(cmd, app)
 			}
 
-			_, err = fmt.Fprintln(app.Out, "Hello, world!")
-			return err
+			return cmd.Help()
 		},
 	}
 
 	root.PersistentFlags().AddFlagSet(globalFlags())
+	// Cobra's own Version field would print through OutOrStdout rather than app.Out.
+	root.Flags().Bool("version", false, "Show coroner's version")
 	// Run prints errors once, and usage only on request.
 	root.SilenceErrors = true
 	root.SilenceUsage = true
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return usageError(cmd, err)
 	})
+
+	help := newHelpTemplate()
+	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
+		// A help function cannot fail the command.
+		_ = help.Execute(app.Out, cmd)
+	})
+
+	root.AddGroup(&cobra.Group{ID: additionalCommands, Title: "ADDITIONAL COMMANDS"})
+	root.SetHelpCommandGroupID(additionalCommands)
+	root.SetCompletionCommandGroupID(additionalCommands)
+	root.AddCommand(newVersionCommand(app))
+	addCompletionCommand(root, app)
+
 	wrapRunErrors(root)
 
 	return root
@@ -40,16 +54,32 @@ func newRoot(app App) *cobra.Command {
 // globalFlags declares the flags every command accepts. Each call returns a fresh set.
 func globalFlags() *pflag.FlagSet {
 	flags := pflag.NewFlagSet("global", pflag.ContinueOnError)
-	flags.String("db", "", "path to the database file")
-	flags.String("config", "", "path to the config file")
-	flags.String("format", "text", "output format: text, json or jsonl")
-	flags.Bool("json", false, "short for --format json")
-	flags.BoolP("quiet", "q", false, "print only essential output")
-	flags.Bool("no-color", false, "disable color")
-	flags.String("tz", "", "time zone for times in this invocation")
-	flags.Bool("debug", false, "print debug detail on stderr")
+	flags.String("db", "", "Database file `path` (env: CORONER_DB)")
+	flags.String("config", "", "Config file `path` (env: CORONER_CONFIG)")
+	flags.String("format", string(formatText), "Output `format`: {text|json|jsonl}")
+	flags.Bool("json", false, "Short for --format json")
+	flags.BoolP("quiet", "q", false, "Print only essential output")
+	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
+	flags.String("tz", "", "Time `zone` for this invocation (default: config default_timezone, then TZ)")
+	flags.Bool("debug", false, "Print debug detail on stderr (env: CORONER_DEBUG)")
 
 	return flags
+}
+
+// addCompletionCommand adds cobra's completion command now rather than at execution, so its
+// scripts go to app.Out: it captures root's OutOrStdout when added. Out is set for that call
+// only, before anything can print a deprecation notice through it.
+func addCompletionCommand(root *cobra.Command, app App) {
+	root.SetOut(app.Out)
+	root.InitDefaultCompletionCmd()
+	root.SetOut(nil)
+
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "completion" {
+			cmd.Example = "  $ coroner completion zsh > \"${fpath[1]}/_coroner\"\n" +
+				"  $ coroner completion fish > ~/.config/fish/completions/coroner.fish"
+		}
+	}
 }
 
 // wrapRunErrors makes every error a command body returns an *Error, so Run can tell an
@@ -64,21 +94,4 @@ func wrapRunErrors(cmd *cobra.Command) {
 	for _, child := range cmd.Commands() {
 		wrapRunErrors(child)
 	}
-}
-
-func resolveConfig(cmd *cobra.Command, app App) (config.Config, error) {
-	return config.Resolve(config.Flags{
-		DBPath:     flagValue(cmd, "db"),
-		ConfigPath: flagValue(cmd, "config"),
-	}, app.LookupEnv, app.ReadFile)
-}
-
-// flagValue returns the named flag's value, or nil when it was not given on the command line.
-func flagValue(cmd *cobra.Command, name string) *string {
-	flag := cmd.Flags().Lookup(name)
-	if !flag.Changed {
-		return nil
-	}
-
-	return new(flag.Value.String())
 }

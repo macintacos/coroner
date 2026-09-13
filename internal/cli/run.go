@@ -16,10 +16,12 @@ import (
 // fields, never cobra's InOrStdin, OutOrStdout or ErrOrStderr.
 type App struct {
 	// Args excludes the program name.
-	Args      []string
-	In        io.Reader
-	Out, Err  io.Writer
-	ErrIsTTY  bool
+	Args               []string
+	In                 io.Reader
+	Out, Err           io.Writer
+	OutIsTTY, ErrIsTTY bool
+	// Version is the build's module version, as debug.ReadBuildInfo reports it.
+	Version   string
 	LookupEnv func(key string) (string, bool)
 	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
 	ReadFile func(name string) ([]byte, error)
@@ -36,7 +38,8 @@ func Run(ctx context.Context, app App) int {
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
 	// No SetOut: cobra prints deprecation notices through OutOrStderr, which returns Out
-	// once set. TODO: cobra's own help and usage output still reach os.Stdout/os.Stderr.
+	// once set. TODO: those notices, `help <unknown>` and __complete's output still reach
+	// os.Stderr or os.Stdout rather than Err and Out.
 	root.SetErr(app.Err)
 
 	cmd, err := root.ExecuteContextC(ctx)
