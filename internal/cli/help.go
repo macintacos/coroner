@@ -115,9 +115,9 @@ func addHelpCommand(root *cobra.Command, app App, topics []HelpTopic) {
 		Example: "  $ coroner help\n  $ coroner help version\n  $ coroner help time",
 		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			var completions []cobra.Completion
-			for _, name := range helpNames(root, args, topics) {
-				if strings.HasPrefix(name.name, toComplete) {
-					completions = append(completions, cobra.CompletionWithDesc(name.name, name.short))
+			for _, candidate := range helpNames(root, args, topics) {
+				if strings.HasPrefix(candidate.name, toComplete) {
+					completions = append(completions, cobra.CompletionWithDesc(candidate.name, candidate.short))
 				}
 			}
 
