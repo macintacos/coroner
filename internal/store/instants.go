@@ -18,3 +18,19 @@ func (p *instants) parse(s string) time.Time {
 	p.err = cmp.Or(p.err, err)
 	return t
 }
+
+func (p *instants) parseOptional(s *string) *time.Time {
+	if s == nil {
+		return nil
+	}
+
+	return new(p.parse(*s))
+}
+
+func formatOptional(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+
+	return new(timeline.FormatInstant(*t))
+}
