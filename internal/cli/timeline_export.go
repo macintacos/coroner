@@ -26,7 +26,8 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"a zone.\n\n" +
 			"The filter flags mean what they do on event list, and annotations on the events they\n" +
 			"leave out are left out too. --order picks which end --limit keeps events from; exported\n" +
-			"events are always in the order they happened. Redirect stdout to write a file.",
+			"events are always in the order they happened. Redirect stdout to write a file.\n\n" +
+			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md"},
 		Example: "  $ coroner timeline export -t mongo-outage --format json > rca.json\n" +
@@ -43,7 +44,7 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc|desc}"
 	cmd.Flags().Lookup("limit").Usage = "Export at most this `number` of events (default: every one)"
 	cmd.Flags().String("group-by", "", "Section Markdown events by a `field`: {source|tag} (experimental)")
-	cmd.Flags().Bool("include-raw", false, "Add each event's time as it was written to Markdown")
+	cmd.Flags().Bool("include-raw", false, "Add each event's time as it was given (--format md only)")
 
 	return cmd
 }
@@ -120,8 +121,6 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 
 // readMarkdownOptions returns how --format md presents the export: in z when --tz was given,
 // and otherwise in UTC, so a shared document never depends on the zone of whoever exported it.
-// It rejects --group-by and --include-raw under another format, and a --group-by it does not
-// know.
 func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.MarkdownOptions, error) {
 	if chosen != formatMarkdown {
 		for _, name := range []string{"group-by", "include-raw"} {
@@ -141,8 +140,10 @@ func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.Ma
 	}
 	opts.IncludeRaw, _ = flags.GetBool("include-raw")
 	if groupBy := changedString(flags, "group-by"); groupBy != nil {
-		opts.GroupBy = export.GroupBy(*groupBy)
-		if opts.GroupBy != export.GroupBySource && opts.GroupBy != export.GroupByTag {
+		var ok bool
+		opts.GroupBy, ok = export.ParseGroupBy(*groupBy)
+		// ParseGroupBy reads "" as the default, but A-9 rejects an empty flag value.
+		if !ok || *groupBy == "" {
 			return opts, &Error{
 				Kind: KindUsage, Message: fmt.Sprintf("--group-by %q is not source or tag", *groupBy), Hint: "Pass --group-by source or --group-by tag.",
 			}
@@ -225,7 +226,7 @@ func newExportQuery(timelineName string, f store.EventFilter) export.Query {
 }
 
 // writeExport writes env as o's format asks: json as one document, indented on a terminal,
-// jsonl as records, and md as markdown presents it.
+// jsonl as records, and md through export.WriteMarkdown with the markdown options.
 func writeExport(o output, env export.Envelope, markdown export.MarkdownOptions) error {
 	switch o.format {
 	case formatMarkdown:

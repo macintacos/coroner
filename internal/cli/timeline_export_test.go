@@ -183,5 +183,6 @@ var _ = Describe("timeline export", func() {
 		Entry("--group-by with json", "--group-by", "--format", "json", "--group-by", "source"),
 		Entry("--include-raw with jsonl", "--include-raw", "--format", "jsonl", "--include-raw"),
 		Entry("an unknown --group-by", "--group-by", "--format", "md", "--group-by", "kind"),
+		Entry("an empty --group-by", "--group-by", "--format", "md", "--group-by", ""),
 	)
 })

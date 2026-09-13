@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,6 +27,17 @@ const (
 	GroupByTag GroupBy = "tag"
 )
 
+// ParseGroupBy returns the grouping name selects, "" selecting GroupByDay, and false when
+// name selects none.
+func ParseGroupBy(name string) (GroupBy, bool) {
+	switch g := GroupBy(name); g {
+	case GroupByDay, GroupBySource, GroupByTag:
+		return g, true
+	}
+
+	return GroupByDay, false
+}
+
 // MarkdownOptions are how a Markdown export presents its timeline.
 type MarkdownOptions struct {
 	// Zone is where times and days are shown, each labelled with the zone's abbreviation at
@@ -39,13 +51,14 @@ type MarkdownOptions struct {
 // WriteMarkdown writes env's timeline to w as a CommonMark outline for people: a title,
 // metadata bullets, the annotations on the whole timeline, then a section per day of its
 // events by occurred at and seq, with each event's annotations nested under it. It fails,
-// writing nothing, unless env holds one timeline and the event of every annotation.
+// writing nothing, unless env holds one timeline and the event of every annotation, and
+// opts a grouping ParseGroupBy knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if len(env.Timelines) != 1 {
-		return fmt.Errorf("markdown export: want one timeline, got %d", len(env.Timelines))
+		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
 	}
-	if !slices.Contains([]GroupBy{GroupByDay, GroupBySource, GroupByTag}, opts.GroupBy) {
-		return fmt.Errorf("markdown export: unknown grouping %q", opts.GroupBy)
+	if _, ok := ParseGroupBy(string(opts.GroupBy)); !ok {
+		return fmt.Errorf("unknown grouping %q", opts.GroupBy)
 	}
 	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
 	onTimeline, byEvent, err := groupAnnotations(env.Annotations, events)
@@ -53,14 +66,21 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		return err
 	}
 
-	md := markdownWriter{
+	md := markdownRenderer{
 		zone:       cmp.Or(opts.Zone, time.UTC),
 		groupBy:    opts.GroupBy,
 		includeRaw: opts.IncludeRaw,
 		byEvent:    byEvent,
-		escaper:    strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "|", `\|`, "&", `\&`),
+		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
+		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
+		escaper: strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "|", `\|`, "&", `\&`, "~", `\~`),
+		urls:    regexp.MustCompile("https?://[^\\s<>`]+"),
 	}
-	blocks := slices.Concat(md.header(env, events), md.timelineAnnotations(onTimeline), md.sections(events))
+	blocks := slices.Concat(
+		md.header(env.Timelines[0], events, md.exported(env.ExportedAt, env.CoronerVersion)),
+		md.timelineAnnotations(onTimeline),
+		md.sections(events),
+	)
 
 	_, err = io.WriteString(w, strings.Join(blocks, "\n\n")+"\n")
 	return err
@@ -90,20 +110,20 @@ func groupAnnotations(annotations []Annotation, events []Event) ([]Annotation, m
 	return onTimeline, byEvent, nil
 }
 
-// markdownWriter renders the blocks of a Markdown export. Each block is a heading, paragraph
-// or list without a trailing newline, and blocks are separated by a blank line.
-type markdownWriter struct {
+// markdownRenderer renders the blocks of a Markdown export. Each block is a heading, paragraph
+// or list without a trailing newline, for the caller to separate by a blank line.
+type markdownRenderer struct {
 	zone       *time.Location
 	groupBy    GroupBy
 	includeRaw bool
 	byEvent    map[string][]Annotation
 	escaper    *strings.Replacer
+	urls       *regexp.Regexp
 }
 
-// header returns the title and the metadata list: refs, the window events span, counts, and
-// when and by which coroner the export was written.
-func (md markdownWriter) header(env Envelope, events []Event) []string {
-	t := env.Timelines[0]
+// header returns t's title and the metadata list: refs, the window events span, the event
+// summary, then exported.
+func (md markdownRenderer) header(t Timeline, events []Event, exported string) []string {
 	title := "# " + md.oneLine(t.Name)
 	if strings.TrimSpace(t.Title) != "" {
 		title = "# " + md.oneLine(t.Title) + " (" + md.oneLine(t.Name) + ")"
@@ -120,26 +140,27 @@ func (md markdownWriter) header(env Envelope, events []Event) []string {
 	if len(events) > 0 {
 		metadata = append(metadata, "- **Window:** "+md.window(events))
 	}
-	exportedAt := time.Time(env.ExportedAt).In(md.zone)
-	metadata = append(metadata,
-		"- **Events:** "+counts(events),
-		"- **Exported:** "+exportedAt.Format("2006-01-02 15:04")+" "+zoneName(exportedAt)+" by coroner "+md.oneLine(env.CoronerVersion),
-	)
+	metadata = append(metadata, eventSummary(events), exported)
 
 	return []string{title, strings.Join(metadata, "\n")}
 }
 
+// exported returns the metadata bullet saying when and by which coroner the export was written.
+func (md markdownRenderer) exported(at Instant, coronerVersion string) string {
+	local := time.Time(at).In(md.zone)
+
+	return "- **Exported:** " + local.Format("2006-01-02 15:04") + " " + zoneName(local) + " by coroner " + md.oneLine(coronerVersion)
+}
+
 // window returns the span from the first event to the last moment any event reaches, to the
 // second, labelled once when both ends share a zone abbreviation.
-func (md markdownWriter) window(events []Event) string {
-	start := time.Time(events[0].OccurredAt).In(md.zone)
-	end := start
+func (md markdownRenderer) window(events []Event) string {
+	var instants []time.Time
 	for _, e := range events {
-		end = latest(end, time.Time(e.OccurredAt).In(md.zone))
-		if e.EndedAt != nil {
-			end = latest(end, time.Time(*e.EndedAt).In(md.zone))
-		}
+		instants = append(instants, eventInstants(e)...)
 	}
+	start := time.Time(events[0].OccurredAt).In(md.zone)
+	end := slices.MaxFunc(instants, time.Time.Compare).In(md.zone)
 
 	text := start.Format(time.DateTime)
 	if zoneName(start) != zoneName(end) {
@@ -153,8 +174,9 @@ func (md markdownWriter) window(events []Event) string {
 	return text + " → " + end.Format(endLayout) + " " + zoneName(end)
 }
 
-// counts returns how many events there are, and the sources and tags they name, by name.
-func counts(events []Event) string {
+// eventSummary returns the metadata bullet counting events, with the sources and tags they
+// name, by name.
+func eventSummary(events []Event) string {
 	var sources, tags []string
 	for _, e := range events {
 		if e.Source != nil {
@@ -165,7 +187,7 @@ func counts(events []Event) string {
 	slices.Sort(sources)
 	slices.Sort(tags)
 
-	text := strconv.Itoa(len(events))
+	text := "- **Events:** " + strconv.Itoa(len(events))
 	if sources = slices.Compact(sources); len(sources) > 0 {
 		text += " · **Sources:** " + codeSpans(sources, "", ", ")
 	}
@@ -178,16 +200,16 @@ func counts(events []Event) string {
 
 // timelineAnnotations returns a lead-in paragraph and the list of annotations on no event, or
 // nothing when there are none. The paragraph keeps the list from merging into the metadata.
-func (md markdownWriter) timelineAnnotations(annotations []Annotation) []string {
+func (md markdownRenderer) timelineAnnotations(annotations []Annotation) []string {
 	if len(annotations) == 0 {
 		return nil
 	}
 
-	return []string{"Annotations on the whole timeline:", strings.TrimSuffix(md.annotationList(annotations, ""), "\n")}
+	return []string{"Annotations on the whole timeline:", md.annotationList(annotations, "")}
 }
 
 // sections returns the event sections md.groupBy asks for.
-func (md markdownWriter) sections(events []Event) []string {
+func (md markdownRenderer) sections(events []Event) []string {
 	var blocks []string
 	switch md.groupBy {
 	case GroupBySource:
@@ -264,7 +286,7 @@ func tagsOf(e Event) []string {
 // daySections returns a heading at level, such as ##, and an event list for each day events
 // fall on, in date order. Events in the section of groupTag list their other tags instead of
 // all of them.
-func (md markdownWriter) daySections(events []Event, level, groupTag string) []string {
+func (md markdownRenderer) daySections(events []Event, level, groupTag string) []string {
 	var blocks []string
 	for _, day := range md.days(events) {
 		label, offsets := md.dayZone(day)
@@ -274,7 +296,7 @@ func (md markdownWriter) daySections(events []Event, level, groupTag string) []s
 		}
 		blocks = append(blocks,
 			level+" "+md.date(day[0])+" ("+label+")",
-			strings.TrimSuffix(strings.Join(items, "\n"), "\n"),
+			list(items),
 		)
 	}
 
@@ -283,7 +305,7 @@ func (md markdownWriter) daySections(events []Event, level, groupTag string) []s
 
 // days splits events, in occurred at and seq order, by the day each belongs to, with
 // day-precision events first within their day.
-func (md markdownWriter) days(events []Event) [][]Event {
+func (md markdownRenderer) days(events []Event) [][]Event {
 	sorted := slices.Clone(events)
 	slices.SortStableFunc(sorted, func(a, b Event) int {
 		return cmp.Or(cmp.Compare(md.date(a), md.date(b)), cmp.Compare(timed(a), timed(b)))
@@ -302,7 +324,7 @@ func (md markdownWriter) days(events []Event) [][]Event {
 
 // date returns the day e belongs to: its date in the zone, or the date a day-precision event
 // states, read in its own offset.
-func (md markdownWriter) date(e Event) string {
+func (md markdownRenderer) date(e Event) string {
 	at := time.Time(e.OccurredAt)
 	if e.Precision == timeline.PrecisionDay {
 		return at.In(time.FixedZone("", deref(e.OccurredOffset))).Format(time.DateOnly)
@@ -313,7 +335,7 @@ func (md markdownWriter) date(e Event) string {
 
 // dayZone returns the zone abbreviations a day's times are shown in, in order, joined by /,
 // and whether they span more than one offset, so that every time on the day needs its own.
-func (md markdownWriter) dayZone(day []Event) (string, bool) {
+func (md markdownRenderer) dayZone(day []Event) (string, bool) {
 	var names []string
 	offsets := map[int]bool{}
 	for _, e := range day {
@@ -338,7 +360,7 @@ func (md markdownWriter) dayZone(day []Event) (string, bool) {
 // eventItem returns e's list item: its time, source, text and tags, and under it e's
 // annotations. offsets adds the zone offset to every time. In the section of groupTag, the
 // item names only e's other tags, as (also: …).
-func (md markdownWriter) eventItem(e Event, offsets bool, groupTag string) string {
+func (md markdownRenderer) eventItem(e Event, offsets bool, groupTag string) string {
 	var parts []string
 	if when := md.when(e, offsets); when != "" {
 		parts = append(parts, "**"+when+"**")
@@ -369,15 +391,20 @@ func (md markdownWriter) eventItem(e Event, offsets bool, groupTag string) strin
 }
 
 // when returns e's time at its precision in the zone, its interval's end, and ~ when it is
-// approximate. The end carries its date when that differs from the start's.
-func (md markdownWriter) when(e Event, offsets bool) string {
+// approximate. The end carries its date when that differs from the start's. A day-precision
+// event has dayWhen's instead.
+func (md markdownRenderer) when(e Event, offsets bool) string {
+	if e.Precision == timeline.PrecisionDay {
+		return md.dayWhen(e)
+	}
+
 	start := time.Time(e.OccurredAt).In(md.zone)
 	when := clock(start, e.Precision, offsets)
 	if e.EndedAt != nil {
 		end := time.Time(*e.EndedAt).In(md.zone)
 		endText := clock(end, e.Precision, offsets)
-		if endText == "" || end.Format(time.DateOnly) != start.Format(time.DateOnly) {
-			endText = strings.TrimSpace(end.Format(time.DateOnly) + " " + endText)
+		if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
+			endText = end.Format(time.DateOnly) + " " + endText
 		}
 		when += "–" + endText
 	}
@@ -388,20 +415,44 @@ func (md markdownWriter) when(e Event, offsets bool) string {
 	return when
 }
 
-// annotationList returns the list items of annotations, each indented by indent. An item that
-// ends in a code block ends in a newline, so a blank line follows it.
-func (md markdownWriter) annotationList(annotations []Annotation, indent string) string {
+// dayWhen returns what a day-precision event's section heading leaves unsaid: approximately
+// when it is approximate, and the date in the zone its interval runs until.
+func (md markdownRenderer) dayWhen(e Event) string {
+	var parts []string
+	if e.Approximate {
+		parts = append(parts, "approximately")
+	}
+	if e.EndedAt != nil {
+		parts = append(parts, "until "+time.Time(*e.EndedAt).In(md.zone).Format(time.DateOnly))
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+// annotationList returns the list items of annotations, each indented by indent.
+func (md markdownRenderer) annotationList(annotations []Annotation, indent string) string {
 	items := make([]string, 0, len(annotations))
 	for _, a := range annotations {
 		items = append(items, md.annotationItem(a, indent))
 	}
 
-	return strings.Join(items, "\n")
+	return list(items)
+}
+
+// list joins items into one list, with a blank line between items when any item holds
+// one: the list is loose then anyway, and a fence needs blank lines around it.
+func list(items []string) string {
+	sep := "\n"
+	if slices.ContainsFunc(items, func(item string) bool { return strings.Contains(item, "\n\n") }) {
+		sep = "\n\n"
+	}
+
+	return strings.Join(items, sep)
 }
 
 // annotationItem returns a's list item: evidence as code, anything else as emphasized
 // commentary.
-func (md markdownWriter) annotationItem(a Annotation, indent string) string {
+func (md markdownRenderer) annotationItem(a Annotation, indent string) string {
 	by := ""
 	if a.Author != nil {
 		by = " (" + md.oneLine(*a.Author) + ")"
@@ -415,27 +466,42 @@ func (md markdownWriter) annotationItem(a Annotation, indent string) string {
 		return indent + "- evidence" + by + ": " + codeSpan(body[0])
 	}
 
-	return indent + "- evidence" + by + ":\n\n" + codeBlock(body, indent+"  ") + "\n"
+	return indent + "- evidence" + by + ":\n\n" + codeBlock(body, indent+"  ")
 }
 
 // text escapes s as CommonMark text that may start a line, its line breaks as hard breaks
 // followed by indent.
-func (md markdownWriter) text(s, indent string) string {
+func (md markdownRenderer) text(s, indent string) string {
 	escaped := lines(s)
 	for i, line := range escaped {
-		escaped[i] = md.escapeLineStart(md.escaper.Replace(line))
+		escaped[i] = escapeLineStart(md.escape(line))
 	}
 
 	return strings.Join(escaped, "\\\n"+indent)
 }
 
 // oneLine escapes s as CommonMark text inside a line, with its line breaks as spaces.
-func (md markdownWriter) oneLine(s string) string {
-	return md.escaper.Replace(strings.Join(lines(s), " "))
+func (md markdownRenderer) oneLine(s string) string {
+	return md.escape(strings.Join(lines(s), " "))
+}
+
+// escape escapes s with md.escaper, but for its http and https URLs, which it keeps as
+// written: GFM ends an autolink at a backslash.
+func (md markdownRenderer) escape(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, url := range md.urls.FindAllStringIndex(s, -1) {
+		b.WriteString(md.escaper.Replace(s[last:url[0]]))
+		b.WriteString(s[url[0]:url[1]])
+		last = url[1]
+	}
+	b.WriteString(md.escaper.Replace(s[last:]))
+
+	return b.String()
 }
 
 // escapeLineStart backslash-escapes the character that would make line start a block.
-func (markdownWriter) escapeLineStart(line string) string {
+func escapeLineStart(line string) string {
 	start := len(line) - len(strings.TrimLeft(line, " \t"))
 	if marker := blockMarker(line[start:]); marker >= 0 {
 		return line[:start+marker] + `\` + line[start+marker:]
@@ -445,9 +511,10 @@ func (markdownWriter) escapeLineStart(line string) string {
 }
 
 // blockMarker returns the index of the character that would make line start a heading, list
-// item, fence or setext underline, or -1.
+// item or setext underline, or -1. *, _, >, ~ and backticks need no check: the escaper escapes
+// them everywhere.
 func blockMarker(line string) int {
-	if line != "" && strings.ContainsRune("#-+=~", rune(line[0])) {
+	if line != "" && strings.ContainsRune("#-+=", rune(line[0])) {
 		return 0
 	}
 	digits := len(line) - len(strings.TrimLeft(line, "0123456789"))
@@ -459,13 +526,17 @@ func blockMarker(line string) int {
 }
 
 // clock returns t's wall clock to precision, and its offset when offset is set; a day has none.
+// An hour shows its minutes when the zone puts its start off the hour.
 func clock(t time.Time, precision timeline.Precision, offset bool) string {
 	layout := "15:04:05.000000000"
 	switch precision {
 	case timeline.PrecisionDay:
 		return ""
 	case timeline.PrecisionHour:
-		layout = "15h"
+		layout = "15:--"
+		if t.Minute() != 0 {
+			layout = "15:04"
+		}
 	case timeline.PrecisionMinute:
 		layout = "15:04"
 	case timeline.PrecisionSecond:
@@ -504,7 +575,8 @@ func codeSpan(s string) string {
 	return fence + s + fence
 }
 
-// codeBlock returns lines as a fenced code block indented by indent.
+// codeBlock returns lines as a fenced code block indented by indent. Blank lines stay empty, so
+// no line ends in spaces.
 func codeBlock(lines []string, indent string) string {
 	fence := strings.Repeat("`", max(3, longestRun(strings.Join(lines, "\n"), '`')+1))
 	block := []string{indent + fence + "text"}
@@ -518,11 +590,15 @@ func codeBlock(lines []string, indent string) string {
 	return strings.Join(append(block, indent+fence), "\n")
 }
 
-// lines returns s split at its line breaks, of any convention, without trailing empty lines.
+// lines returns s split at its line breaks, of any convention, without trailing blank lines.
 func lines(s string) []string {
-	s = strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s)
+	split := strings.Split(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s), "\n")
+	last := len(split) - 1
+	for last > 0 && strings.TrimSpace(split[last]) == "" {
+		last--
+	}
 
-	return strings.Split(strings.TrimRight(s, "\n"), "\n")
+	return split[:last+1]
 }
 
 func longestRun(s string, c byte) int {
@@ -553,14 +629,6 @@ func timed(e Event) int {
 	}
 
 	return 1
-}
-
-func latest(a, b time.Time) time.Time {
-	if b.After(a) {
-		return b
-	}
-
-	return a
 }
 
 func zoneName(t time.Time) string {

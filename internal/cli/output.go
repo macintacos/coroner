@@ -18,7 +18,7 @@ const (
 	formatText  format = "text"
 	formatJSON  format = "json"
 	formatJSONL format = "jsonl"
-	// formatMarkdown is CommonMark for people, which only timeline export writes.
+	// formatMarkdown is not machine(), so errors under it print as text.
 	formatMarkdown format = "md"
 )
 

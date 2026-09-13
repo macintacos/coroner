@@ -18,6 +18,8 @@ The filter flags mean what they do on event list, and annotations on the events 
 leave out are left out too. --order picks which end --limit keeps events from; exported
 events are always in the order they happened. Redirect stdout to write a file.
 
+--group-by is experimental and may change before 1.0.
+
 ```
 coroner timeline export --format {json | jsonl | md} [flags]
 ```
@@ -35,7 +37,7 @@ coroner timeline export --format {json | jsonl | md} [flags]
 ```
       --contains text      Keep events whose text contains this text, ignoring case
       --group-by field     Section Markdown events by a field: {source|tag} (experimental)
-      --include-raw        Add each event's time as it was written to Markdown
+      --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
       --since time         Keep events at or after this time

@@ -31,4 +31,5 @@ Annotations on the whole timeline:
     ```
 
   - _comment:_ Election took three minutes.
+
 - **00:07** · Rolled back deploy 812

@@ -23,9 +23,8 @@ missing a required value exits 2 instead of asking.
 - `text` is for people.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.
 - `jsonl` is one JSON object per line.
-- `md`, which only `coroner timeline export` writes, is a CommonMark outline for people to
-  paste into a document or chat. Its times are in UTC unless `--tz` names another zone,
-  and are always labelled with their zone; `json` and `jsonl` instants stay in UTC.
+- `md` is a CommonMark outline for people to paste into a document or chat, with times in
+  UTC unless `--tz` names another zone, each labelled with its zone.
 
 ## What JSON output promises
 

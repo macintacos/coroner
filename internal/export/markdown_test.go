@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 
@@ -105,8 +107,9 @@ func checkoutSpike() export.Envelope {
 }
 
 // precisions has one event at every precision, approximate times, intervals within a day
-// and across midnight, and a day-precision event stated in -05:00 that belongs to the day
-// it names although an hour-precision event on that day is earlier.
+// and across midnight, a day-precision interval, an hour stated in +05:30 that starts
+// half past an hour in UTC, and a day-precision event stated in -05:00 that belongs to the
+// day it names although an hour-precision event on that day is earlier.
 func precisions() export.Envelope {
 	event := func(seq int64, at string, precision timeline.Precision, text string) export.Event {
 		return export.Event{
@@ -115,6 +118,10 @@ func precisions() export.Envelope {
 	}
 	dayInNewYork := event(1, "2026-09-11T05:00:00Z", timeline.PrecisionDay, "Deploy window opened")
 	dayInNewYork.OccurredOffset = new(-5 * 60 * 60)
+	dayInterval := event(12, "2026-09-11T00:00:00Z", timeline.PrecisionDay, "Error budget burned")
+	dayInterval.EndedAt = new(utc("2026-09-12T00:00:00Z"))
+	hourInKolkata := event(13, "2026-09-11T04:30:00Z", timeline.PrecisionHour, "Support in Bengaluru escalated")
+	hourInKolkata.OccurredOffset = new(5*60*60 + 30*60)
 	approximateMinute := event(4, "2026-09-11T03:14:00Z", timeline.PrecisionMinute, "Someone restarted db-2")
 	approximateMinute.Approximate = true
 	interval := event(9, "2026-09-11T03:15:00Z", timeline.PrecisionSecond, "Replica set has no primary")
@@ -128,6 +135,8 @@ func precisions() export.Envelope {
 		export.Timeline{ID: "t1", Name: "precisions", Refs: []string{}},
 		[]export.Event{
 			dayInNewYork,
+			dayInterval,
+			hourInKolkata,
 			event(3, "2026-09-11T03:00:00Z", timeline.PrecisionHour, "Traffic started climbing"),
 			approximateMinute,
 			event(5, "2026-09-11T03:14:07Z", timeline.PrecisionSecond, "Primary stepped down"),
@@ -177,8 +186,14 @@ func parseMarkdown(source []byte) ast.Node {
 	return goldmark.New().Parser().Parse(text.NewReader(source))
 }
 
+// parseGFM parses source as the apps an export is pasted into do: GitHub Flavored Markdown,
+// with its strikethrough and autolinks.
+func parseGFM(source []byte) ast.Node {
+	return goldmark.New(goldmark.WithExtensions(extension.GFM)).Parser().Parse(text.NewReader(source))
+}
+
 // visibleText returns the text a reader sees in n: escapes and entities resolved, line
-// breaks as \n, code as written, and nothing of nested lists.
+// breaks as \n, code and links as written, and nothing of nested lists.
 func visibleText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -187,6 +202,9 @@ func visibleText(n ast.Node, source []byte) string {
 		}
 		switch n := n.(type) {
 		case *ast.List:
+			return ast.WalkSkipChildren, nil
+		case *ast.AutoLink:
+			b.Write(n.Label(source))
 			return ast.WalkSkipChildren, nil
 		case *ast.Text:
 			value := n.Segment.Value(source)
@@ -217,6 +235,44 @@ func visibleText(n ast.Node, source []byte) string {
 	return b.String()
 }
 
+// autoLinks returns the text of every autolink in n, in order.
+func autoLinks(n ast.Node, source []byte) []string {
+	var links []string
+	_ = ast.Walk(n, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if link, ok := n.(*ast.AutoLink); ok && entering {
+			links = append(links, string(link.Label(source)))
+		}
+
+		return ast.WalkContinue, nil
+	})
+
+	return links
+}
+
+// listDepth returns how many lists hold n, counting n when it is one.
+func listDepth(n ast.Node) int {
+	depth := 0
+	for ; n != nil; n = n.Parent() {
+		if n.Kind() == ast.KindList {
+			depth++
+		}
+	}
+
+	return depth
+}
+
+// headingPath is the text of the latest heading at each level, reset below a new heading.
+type headingPath [6]string
+
+// visit makes h, showing text, the latest heading at its level, and returns a key naming it
+// by the headings above it and its own text.
+func (p *headingPath) visit(h *ast.Heading, text string) string {
+	p[h.Level-1] = text
+	clear(p[h.Level:])
+
+	return strings.Join(p[:h.Level], "\x00")
+}
+
 // listItems returns the items of the last list directly inside parent.
 func listItems(parent ast.Node) []ast.Node {
 	GinkgoHelper()
@@ -235,6 +291,19 @@ func listItems(parent ast.Node) []ast.Node {
 
 	return items
 }
+
+var _ = DescribeTable("ParseGroupBy parses the groupings it knows, and nothing else",
+	func(name string, want export.GroupBy, known bool) {
+		got, ok := export.ParseGroupBy(name)
+		Expect(ok).To(Equal(known))
+		Expect(got).To(Equal(want))
+	},
+	Entry("day, by default", "", export.GroupByDay, true),
+	Entry("source", "source", export.GroupBySource, true),
+	Entry("tag", "tag", export.GroupByTag, true),
+	Entry("an unknown name", "kind", export.GroupByDay, false),
+	Entry("a name in another case", "Source", export.GroupByDay, false),
+)
 
 var _ = Describe("WriteMarkdown", func() {
 	It("outlines a timeline: title, metadata, timeline annotations, then events by day with their annotations", func() {
@@ -290,7 +359,7 @@ var _ = Describe("WriteMarkdown", func() {
 				},
 			)
 			source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
-			doc := parseMarkdown(source)
+			doc := parseGFM(source)
 
 			event := listItems(doc)[0]
 			Expect(visibleText(event, source)).To(Equal("03:14:07 · "+input), string(source))
@@ -306,10 +375,71 @@ var _ = Describe("WriteMarkdown", func() {
 		Entry("an HTML tag", "<script>alert(1)</script>"),
 		Entry("an entity and a pipe", "&lt; is not < and a | b"),
 		Entry("link syntax", "[x](https://example.com) and ![img](y)"),
+		Entry("tildes", "~~struck~~ and ~one~"),
+		Entry("a URL", "see https://grafana.example.com/d/x?org_id=1&from=now-1h here"),
 		Entry("block markers at the start of lines", "intro\n#tag at line start\n- item\n+ item\n1. item\n2) item\n> quote\n===\n---\n~~~"),
 		Entry("an empty line", "first\n\nthird"),
 		Entry("a 10 KB line", strings.Repeat("ab*c", 2560)),
 	)
+
+	DescribeTable("keeps hostile text visibly intact in the title, refs and authors",
+		func(input string) {
+			env := envelope(
+				export.Timeline{ID: "t1", Name: "hostile", Title: input, Refs: []string{input}},
+				[]export.Event{},
+				[]export.Annotation{{
+					ID: "a1", Kind: timeline.AnnotationComment, Author: new(input), Body: "body",
+					CreatedAt: utc("2026-09-12T09:00:00Z"),
+				}},
+			)
+			source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
+			doc := parseGFM(source)
+
+			title, metadata := doc.FirstChild(), doc.FirstChild().NextSibling()
+			Expect(visibleText(title, source)).To(Equal(input+" (hostile)"), string(source))
+			Expect(visibleText(metadata.FirstChild(), source)).To(Equal("Refs: "+input), string(source))
+			Expect(visibleText(listItems(doc)[0], source)).To(HavePrefix("comment ("+input+"):"), string(source))
+		},
+		Entry("backticks", "run `rs.status()` then ``` and ``"),
+		Entry("emphasis markers", "*bold*, _under_ and **strong**"),
+		Entry("an HTML tag", "<script>alert(1)</script>"),
+		Entry("an entity and a pipe", "&lt; is not < and a | b"),
+		Entry("link syntax", "[x](https://example.com) and ![img](y)"),
+		Entry("tildes", "~~struck~~ and ~one~"),
+		Entry("a URL", "see https://grafana.example.com/d/x?org_id=1&from=now-1h here"),
+	)
+
+	It("drops trailing blank lines from text, so no line break ends it", func() {
+		env := envelope(
+			export.Timeline{ID: "t1", Name: "trailing", Refs: []string{}},
+			[]export.Event{{
+				ID: "e1", Seq: new(int64(1)), OccurredAt: utc("2026-09-11T03:14:07Z"), Precision: timeline.PrecisionSecond,
+				Tags: []string{}, Text: "line one\n   \n\t",
+			}},
+			[]export.Annotation{},
+		)
+		source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
+
+		Expect(visibleText(listItems(parseGFM(source))[0], source)).To(Equal("03:14:07 · line one"), string(source))
+	})
+
+	It("writes URLs as they are, so GFM autolinks each one whole", func() {
+		const url = "https://grafana.example.com/d/x?org_id=1&from=now-1h"
+		env := envelope(
+			export.Timeline{ID: "t1", Name: "links", Title: "see " + url, Refs: []string{url}},
+			[]export.Event{{
+				ID: "e1", Seq: new(int64(1)), OccurredAt: utc("2026-09-11T03:14:07Z"), Precision: timeline.PrecisionSecond,
+				Tags: []string{}, Text: "see " + url + " here",
+			}},
+			[]export.Annotation{{
+				ID: "a1", EventID: new("e1"), Kind: timeline.AnnotationComment, Author: new(url), Body: url + "\nand " + url,
+				CreatedAt: utc("2026-09-12T09:00:00Z"),
+			}},
+		)
+		source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
+
+		Expect(autoLinks(parseGFM(source), source)).To(Equal(slices.Repeat([]string{url}, 6)), string(source))
+	})
 
 	It("fails, writing nothing, when an annotation's event is not in the export", func() {
 		env := checkoutSpike()
@@ -355,36 +485,22 @@ var _ = Describe("Markdown goldens", func() {
 			doc := parseMarkdown(source)
 
 			titles, seen := 0, map[string]bool{}
-			parents := map[int]string{}
+			var headings headingPath
 			Expect(ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 				if !entering {
 					return ast.WalkContinue, nil
 				}
 				Expect(n.Kind()).NotTo(BeElementOf(ast.KindHTMLBlock, ast.KindRawHTML), "raw HTML")
 				if n.Kind() == ast.KindList {
-					depth := 0
-					for p := n; p != nil; p = p.Parent() {
-						if p.Kind() == ast.KindList {
-							depth++
-						}
-					}
-					Expect(depth).To(BeNumerically("<=", 2), "list depth")
+					Expect(listDepth(n)).To(BeNumerically("<=", 2), "list depth")
 				}
 				if heading, ok := n.(*ast.Heading); ok {
 					if heading.Level == 1 {
 						titles++
 					}
-					path := make([]string, 0, heading.Level)
-					for level := 1; level < heading.Level; level++ {
-						path = append(path, parents[level])
-					}
-					key := strings.Join(append(path, visibleText(heading, source)), "\x00")
+					key := headings.visit(heading, visibleText(heading, source))
 					Expect(seen).NotTo(HaveKey(key), "heading repeated under the same parent: "+visibleText(heading, source))
 					seen[key] = true
-					parents[heading.Level] = visibleText(heading, source)
-					for level := heading.Level + 1; level <= 6; level++ {
-						delete(parents, level)
-					}
 				}
 
 				return ast.WalkContinue, nil
