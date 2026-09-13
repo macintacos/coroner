@@ -15,6 +15,9 @@ trailing newline and is never read otherwise.
 -e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or
 unique id prefix. The event must be in the timeline the annotation goes to.
 
+On a terminal, with no body or with --interactive, a form asks for each flag, picks the event
+from the timeline, and prints the command each entry equals.
+
 ```
 coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
 ```
@@ -25,6 +28,7 @@ coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
   $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log
   $ coroner annotation add "Step-down lands 5 s after the COLLSCAN burst" -e 12 --kind comment
   $ coroner annotation add "Root cause: undersized oplog" --kind comment --dry-run --json
+  $ coroner annotation add --interactive -e 12
 ```
 
 ### Options

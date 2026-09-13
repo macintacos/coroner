@@ -105,7 +105,10 @@ digraph coroner_rules_router {
   definition's values, calls a plain run function that returns a result, and renders it. A
   spec in [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fails
   when a flag has no form field, a form field has no flag, or the two reject a bad value
-  differently.
+  differently. On a terminal, `event add` and `annotation add` open that form
+  ([`add_form.go`](internal/cli/add_form.go)), run each submit through the same run
+  function, and print the flags-only command it equals
+  ([`command_echo.go`](internal/cli/command_echo.go)).
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
   the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract

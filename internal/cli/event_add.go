@@ -31,14 +31,17 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"A time with no offset is read in --tz, then the config file's default_timezone, then the\n" +
 			"local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.\n" +
 			"Run 'coroner help time' for the times you can type.\n\n" +
-			"Pass - to read the text from stdin, which is never read otherwise.",
+			"Pass - to read the text from stdin, which is never read otherwise.\n\n" +
+			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
+			"time as you type it, and prints the command each entry equals.",
 		Args:        eventTextArg,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
 			"      --source mongod --tag election\n" +
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
-			"      --ended \"2026-09-11 14:20\" --dry-run --json",
+			"      --ended \"2026-09-11 14:20\" --dry-run --json\n" +
+			"  $ coroner event add --interactive --source mongod",
 	}
 
 	return eventAddForm().attach(ctx, cmd, app, terminalForms(app))

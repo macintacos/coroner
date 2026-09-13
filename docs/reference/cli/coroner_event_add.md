@@ -16,6 +16,9 @@ Run 'coroner help time' for the times you can type.
 
 Pass - to read the text from stdin, which is never read otherwise.
 
+On a terminal, with no text or with --interactive, a form asks for each flag, previews the
+time as you type it, and prints the command each entry equals.
+
 ```
 coroner event add {<text> | -} [flags]
 ```
@@ -28,6 +31,7 @@ coroner event add {<text> | -} [flags]
   $ pbpaste | coroner event add - --source slack --at "yesterday 23:02"
   $ coroner event add "Deploy started" --at "around 2026-09-11 14:00" \
       --ended "2026-09-11 14:20" --dry-run --json
+  $ coroner event add --interactive --source mongod
 ```
 
 ### Options
