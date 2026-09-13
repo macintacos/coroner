@@ -30,12 +30,12 @@ func ValidateTag(tag string) error {
 	return validateSlug("tag", tag, sourceTagPunct)
 }
 
-func validateSlug(what, s, punct string) error {
-	if s != "" && len(s) <= maxSlugLength &&
-		strings.ContainsRune(slugStart, rune(s[0])) && strings.Trim(s, slugStart+punct) == "" {
+func validateSlug(what, slug, punct string) error {
+	if slug != "" && len(slug) <= maxSlugLength &&
+		strings.ContainsRune(slugStart, rune(slug[0])) && strings.Trim(slug, slugStart+punct) == "" {
 		return nil
 	}
 
 	return fmt.Errorf("%s %q: must be at most %d lowercase letters, digits or %q, starting with a letter or digit",
-		what, s, maxSlugLength, punct)
+		what, slug, maxSlugLength, punct)
 }
