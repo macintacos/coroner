@@ -40,6 +40,7 @@ linters:
     - unparam
     - usestdlibvars
     # Design: dependencies arrive as parameters, output goes to an injected writer
+    - depguard
     - forbidigo
     - gochecknoglobals
     - gochecknoinits
@@ -63,6 +64,34 @@ linters:
     - staticcheck
     - unused
   settings:
+    depguard:
+      rules:
+        timeline-pure:
+          list-mode: strict
+          files:
+            - "**/internal/timeline/**"
+          allow:
+            - $gostd
+          deny:
+            - pkg: os
+              desc: take I/O as parameters
+            - pkg: database/sql
+              desc: storage lives in internal/store
+        sqlcgen-private:
+          files:
+            - "!**/internal/store/**"
+          deny:
+            - pkg: github.com/macintacos/coroner/internal/store/sqlcgen
+              desc: use internal/store; never serialize sqlc models
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+          msg: write to an injected io.Writer
+        - pattern: ^os\.(Exit|Getenv|LookupEnv|Environ|Args|Stdin|Stdout|Stderr)$
+          msg: only main.go talks to the process
+        - pattern: ^time\.Now$
+          msg: inject a clock (func() time.Time)
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -78,6 +107,14 @@ linters:
       dot-import-whitelist:
         - github.com/onsi/ginkgo/v2
         - github.com/onsi/gomega
+  exclusions:
+    rules:
+      # The process boundary, tests, and `go run` generators. A new path here is a
+      # design decision, not a lint fix.
+      - path: ^main\.go$|_test\.go$|^internal/tools/
+        linters:
+          - depguard
+          - forbidigo
 formatters:
   # No golines: it splits every argument of an over-long call onto its own line,
   # which tears `"key", value` pairs apart in slog/testify-style calls.
