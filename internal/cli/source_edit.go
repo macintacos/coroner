@@ -35,7 +35,7 @@ func newSourceEditCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) error {
+func editSource(ctx context.Context, cmd *cobra.Command, app App, oldName string) error {
 	newName, err := readSourceName(cmd)
 	if err != nil {
 		return err
@@ -54,7 +54,7 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) e
 		if err != nil {
 			return err
 		}
-		source, err := findSource(usages, name)
+		source, err := findSource(usages, oldName)
 		if err != nil {
 			return err
 		}
@@ -62,7 +62,7 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) e
 		renamed.Name = newName
 
 		if dryRun {
-			return previewSourceEdit(o, usages, renamed, name)
+			return previewSourceEdit(o, usages, renamed, oldName)
 		}
 
 		err = s.RenameSource(ctx, source.ID, newName)
@@ -77,7 +77,7 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) e
 			return err
 		}
 
-		return o.notify("Renamed source `%s` to `%s`.", name, newName)
+		return o.notify("Renamed source `%s` to `%s`.", oldName, newName)
 	})
 }
 
