@@ -30,6 +30,7 @@ var (
 	ErrUnrecognized = errors.New("not a time coroner recognizes")
 	ErrDSTGap       = errors.New("that wall-clock time does not exist in the time zone")
 	ErrDSTFold      = errors.New("that wall-clock time happens twice in the time zone")
+	ErrTooCoarse    = errors.New("names a month or year, not a day")
 )
 
 // ParseError is a rejected input. Err is one of the Err kinds; Hint says how to fix the input.
@@ -53,7 +54,7 @@ type layer func(text string, now time.Time, loc *time.Location) (Resolved, error
 func Parse(input string, now time.Time, loc *time.Location) (Resolved, error) {
 	text, approximate := cutApproximate(strings.TrimSpace(input))
 
-	for _, parse := range []layer{parseEpoch, parseLayout, parseNaive, parseSyslog} {
+	for _, parse := range []layer{parseEpoch, parseLayout, parseNaive, parseSyslog, parseNatural} {
 		got, err := parse(text, now, loc)
 		rejected, ok := errors.AsType[*ParseError](err)
 		if ok {
