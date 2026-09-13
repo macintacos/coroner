@@ -121,7 +121,7 @@
               "type": "null"
             }
           ],
-          "description": "OccurredOffset is the input's offset in seconds east of UTC; null when the input\nstated none."
+          "description": "OccurredOffset is the input's offset from UTC in seconds, positive east; null when the\ninput was Z or an epoch, which say nothing about a local offset."
         },
         "precision": {
           "type": "string",
@@ -276,7 +276,7 @@
             "type": "string"
           },
           "type": "array",
-          "description": "Tags keeps events carrying any of these tags."
+          "description": "Tags keeps events carrying all of these tags."
         },
         "contains": {
           "oneOf": [
@@ -287,7 +287,7 @@
               "type": "null"
             }
           ],
-          "description": "Contains keeps events whose text contains it."
+          "description": "Contains keeps events whose text contains it, ignoring ASCII case."
         },
         "limit": {
           "oneOf": [
@@ -298,7 +298,7 @@
               "type": "null"
             }
           ],
-          "description": "Limit is the most events exported."
+          "description": "Limit caps how many events were exported."
         }
       },
       "type": "object",
@@ -311,7 +311,7 @@
         "contains",
         "limit"
       ],
-      "description": "Query is the selection an export was made with; an empty list or null selects everything."
+      "description": "Query is the selection an export was made with."
     },
     "Source": {
       "properties": {

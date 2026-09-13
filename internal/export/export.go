@@ -38,7 +38,8 @@ type Envelope struct {
 	Annotations []Annotation `json:"annotations"`
 }
 
-// Query is the selection an export was made with; an empty list or null selects everything.
+// Query is the selection an export was made with. Every field but Timelines filters events,
+// and null or an empty list means that filter was not applied.
 type Query struct {
 	// Timelines are the names of the timelines exported.
 	Timelines []string `json:"timelines"`
@@ -48,11 +49,11 @@ type Query struct {
 	Until *Instant `json:"until" jsonschema:"nullable"`
 	// Sources keeps events from any of these source names.
 	Sources []string `json:"sources"`
-	// Tags keeps events carrying any of these tags.
+	// Tags keeps events carrying all of these tags.
 	Tags []string `json:"tags"`
-	// Contains keeps events whose text contains it.
+	// Contains keeps events whose text contains it, ignoring ASCII case.
 	Contains *string `json:"contains" jsonschema:"nullable"`
-	// Limit is the most events exported.
+	// Limit caps how many events were exported.
 	Limit *int `json:"limit" jsonschema:"nullable"`
 }
 
@@ -85,8 +86,8 @@ type Event struct {
 	// OccurredAt is when the event happened, or its interval started: the start of its
 	// precision window.
 	OccurredAt Instant `json:"occurred_at"`
-	// OccurredOffset is the input's offset in seconds east of UTC; null when the input
-	// stated none.
+	// OccurredOffset is the input's offset from UTC in seconds, positive east; null when the
+	// input was Z or an epoch, which say nothing about a local offset.
 	OccurredOffset *int `json:"occurred_offset" jsonschema:"nullable"`
 	// Precision is how exact occurred_at is, from day to nanosecond. Consumers must accept
 	// values they do not know.
