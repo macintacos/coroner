@@ -1,3 +1,0 @@
-# --help opens no store, so it creates no database file.
-exec coroner --help
-! exists .local/share/coroner
