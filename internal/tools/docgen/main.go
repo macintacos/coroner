@@ -64,8 +64,8 @@ func write(root *cobra.Command, dir string) error {
 	return generate(root, dir)
 }
 
-// check prints an added, changed or removed line to out for each page dir differs by from
-// root's reference, and fails if any.
+// check prints an added, changed or removed line to out for each page dir that differs
+// from root's reference, and fails if any.
 func check(root *cobra.Command, dir string, out io.Writer) error {
 	tmp, err := os.MkdirTemp("", "docgen")
 	if err != nil {
