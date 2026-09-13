@@ -219,8 +219,8 @@ var _ = Describe("add forms", func() {
 
 				Expect(runForm(ctx, command, "event", "add", "Primary stepped down", "--interactive", "--source", "mongod")).To(Succeed())
 
-				Expect(formValue(asked[0], "text")).To(Equal("Primary stepped down"))
-				Expect(formValue(asked[0], "source")).To(Equal("mongod"))
+				Expect(fieldText(asked[0], "text")).To(Equal("Primary stepped down"))
+				Expect(fieldText(asked[0], "source")).To(Equal("mongod"))
 			})
 
 			It("write what the form submits and echo a command that dry-runs to the same event", func(ctx SpecContext) {
@@ -242,7 +242,7 @@ var _ = Describe("add forms", func() {
 				Expect(runForm(ctx, command, "annotation", "add", "replSetStepDown")).To(Succeed())
 
 				Expect(asked).NotTo(BeEmpty())
-				Expect(formValue(asked[0], "body")).To(Equal("replSetStepDown"))
+				Expect(fieldText(asked[0], "body")).To(Equal("replSetStepDown"))
 			})
 
 			It("open with no kind chosen", func(ctx SpecContext) {
@@ -250,7 +250,7 @@ var _ = Describe("add forms", func() {
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
-				Expect(formValue(asked[0], "kind")).To(BeEmpty())
+				Expect(fieldText(asked[0], "kind")).To(BeEmpty())
 			})
 
 			It("keep an event given by id prefix, and write the annotation on it", func(ctx SpecContext) {
@@ -261,7 +261,7 @@ var _ = Describe("add forms", func() {
 				Expect(json.Unmarshal(out.Bytes(), &event)).To(Succeed())
 				prefix := event.ID[:8]
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					Expect(formValue(fields, "event")).To(Equal(prefix))
+					Expect(fieldText(fields, "event")).To(Equal(prefix))
 					return true, nil
 				}, decline))
 
@@ -273,16 +273,16 @@ var _ = Describe("add forms", func() {
 
 			It("write an annotation on the picked event and echo a command that dry-runs to the same one", func(ctx SpecContext) {
 				Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0), errOut.String())
-				var eventOptions []string
+				var offered []string
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					eventOptions = optionValues(namedField(fields, "event"))
+					offered = optionValues(namedField(fields, "event"))
 					return submit(map[string]string{"body": "replSetStepDown", "event": "1", "kind": "evidence"})(fields)
 				}, decline))
 
 				Expect(runForm(ctx, command, "annotation", "add", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
 
-				Expect(eventOptions).To(Equal([]string{"", "1"}))
+				Expect(offered).To(Equal([]string{"", "1"}))
 				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
 				Expect(withoutRecordKeys(out.Bytes())).To(Equal(written))
 				Expect(written).To(HaveKey("event_id"))
@@ -299,11 +299,11 @@ var _ = Describe("add forms", func() {
 					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 
 					second := asked[2]
-					Expect(formValue(second, "source")).To(Equal("mongod"))
-					Expect(formValue(second, "tag")).To(Equal("election"))
-					Expect(formValue(second, "text")).To(BeEmpty())
-					Expect(formValue(second, "at")).To(BeEmpty())
-					Expect(formValue(second, "url")).To(BeEmpty())
+					Expect(fieldText(second, "source")).To(Equal("mongod"))
+					Expect(fieldText(second, "tag")).To(Equal("election"))
+					Expect(fieldText(second, "text")).To(BeEmpty())
+					Expect(fieldText(second, "at")).To(BeEmpty())
+					Expect(fieldText(second, "url")).To(BeEmpty())
 					Expect(errOut.String()).To(ContainSubstring("-t mongo-outage"))
 				})
 
@@ -336,7 +336,7 @@ var _ = Describe("add forms", func() {
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 				Expect(errOut.String()).To(ContainSubstring("--ended"))
-				Expect(formValue(asked[1], "ended")).To(Equal("2026-09-11T03:00:00Z"))
+				Expect(fieldText(asked[1], "ended")).To(Equal("2026-09-11T03:00:00Z"))
 			})
 
 			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
@@ -501,8 +501,8 @@ func fill(fields []huh.Field, values map[string]string) {
 	}
 }
 
-// formValue returns the value the field called name opened with or holds, as text.
-func formValue(fields []huh.Field, name string) string {
+// fieldText returns the value the field called name opened with or holds, as text.
+func fieldText(fields []huh.Field, name string) string {
 	GinkgoHelper()
 	return fmt.Sprint(namedField(fields, name).GetValue())
 }

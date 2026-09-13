@@ -129,10 +129,10 @@ var _ = Describe("time input", func() {
 			z, err := timeZone(new("America/New_York"), "local", local)
 			Expect(err).NotTo(HaveOccurred())
 			def := eventAddDefinition()
-			f := def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == name })]
+			found := def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == name })]
 
 			// testNow is 2026-09-12T17:30:00-04:00.
-			Expect(f.preview(input, checkEnv{now: testNow(), zone: z})).To(want)
+			Expect(found.preview(input, checkEnv{now: testNow(), zone: z})).To(want)
 		},
 		Entry("RFC 3339", "at", "2026-09-11T03:14:07Z",
 			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),

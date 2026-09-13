@@ -98,7 +98,7 @@ func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 	return env
 }
 
-func (f field) formField(value *string, bindings []*string, form fieldForm) huh.Field {
+func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
 	title := f.name
@@ -120,21 +120,21 @@ func (f field) formField(value *string, bindings []*string, form fieldForm) huh.
 
 	switch {
 	case f.typ == boolField:
-		b, _ := strconv.ParseBool(*value)
+		b, _ := strconv.ParseBool(*bound)
 		return huh.NewConfirm().Key(f.name).Title(title).Description(help).Value(&b)
 	case f.typ == stringsField:
-		return huh.NewText().Key(f.name).Title(title).Description(help).Value(value).Validate(func(text string) error {
+		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)
 		})
 	case form.choices.options[f.name] != nil:
-		selectField := huh.NewSelect[string]().Key(f.name).Title(title).Description(help).Value(value).
-			Options(withGiven(form.choices.options[f.name], *value)...).Validate(check)
+		selectField := huh.NewSelect[string]().Key(f.name).Title(title).Description(help).Value(bound).
+			Options(withGiven(form.choices.options[f.name], *bound)...).Validate(check)
 		return selectField.DescriptionFunc(func() string {
 			return f.description(help, fmt.Sprint(selectField.GetValue()), form.env())
 		}, bindings)
 	}
 
-	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(value).
+	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).
 		Suggestions(form.choices.suggestions[f.name]).Validate(check)
 	return input.DescriptionFunc(func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
