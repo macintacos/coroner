@@ -125,12 +125,12 @@ type fieldEdit struct {
 	value *string
 }
 
-func (f fieldEdit) apply(value *string) *string {
+func (f fieldEdit) apply(current *string) *string {
 	if f.set {
 		return f.value
 	}
 
-	return value
+	return current
 }
 
 // eventEdit is the change edit's flags ask for, read and resolved before the store opens.
@@ -235,38 +235,38 @@ func readFieldEdit(flags *pflag.FlagSet, name string) (fieldEdit, error) {
 
 // readEditTimes resolves --at and --ended as of now in z, rejecting an approximate --ended.
 func readEditTimes(flags *pflag.FlagSet, now time.Time, z zone) (editTimes, error) {
-	var t editTimes
+	var times editTimes
 	var echoes []string
 	if raw := changedString(flags, "at"); raw != nil {
 		at, err := resolveTime("--at", raw, now, z.loc)
 		if err != nil {
-			return t, err
+			return times, err
 		}
-		t.at, t.raw = &at, raw
+		times.at, times.raw = &at, raw
 		echoes = append(echoes, "at "+formatResolved(at, z))
 	}
 
 	ended := changedString(flags, "ended")
-	t.clearEnded = ended != nil && *ended == clearKeyword
-	if ended != nil && !t.clearEnded {
+	times.clearEnded = ended != nil && *ended == clearKeyword
+	if ended != nil && !times.clearEnded {
 		r, err := resolveTime("--ended", ended, now, z.loc)
 		if err != nil {
-			return t, err
+			return times, err
 		}
 		if r.Approximate {
-			return t, &Error{
+			return times, &Error{
 				Kind: KindInvalidTime, Message: "--ended must not be approximate", Hint: "~ and around mark --at only; pass --approximate.",
 			}
 		}
-		t.ended = &r
+		times.ended = &r
 		echoes = append(echoes, "ended "+formatResolved(r, z))
 	}
 
 	if len(echoes) > 0 {
-		t.when = " " + strings.Join(echoes, ", ")
+		times.when = " " + strings.Join(echoes, ", ")
 	}
 
-	return t, nil
+	return times, nil
 }
 
 // apply returns ev with the edit made and updated at set, rejecting a result the store would,

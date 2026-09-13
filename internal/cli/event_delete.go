@@ -43,11 +43,11 @@ func deleteEvents(ctx context.Context, cmd *cobra.Command, app App, refs []strin
 	}
 	parsed := make([]eventRef, 0, len(refs))
 	for _, ref := range refs {
-		p, err := parseEventRef(ref)
+		parsedRef, err := parseEventRef(ref)
 		if err != nil {
 			return err
 		}
-		parsed = append(parsed, p)
+		parsed = append(parsed, parsedRef)
 	}
 	o, err := newOutput(cmd, app)
 	if err != nil {
@@ -103,7 +103,7 @@ func findEvents(ctx context.Context, s *store.Store, refs []eventRef, selection 
 		if err != nil {
 			return found, err
 		}
-		if !slices.ContainsFunc(found.events, func(named timeline.Event) bool { return named.ID == e.ID }) {
+		if !slices.ContainsFunc(found.events, func(existing timeline.Event) bool { return existing.ID == e.ID }) {
 			found.events = append(found.events, e)
 			found.timelines[t.ID] = t
 		}
