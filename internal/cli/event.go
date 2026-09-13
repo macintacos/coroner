@@ -23,7 +23,7 @@ func newEventCommand(ctx context.Context, app App) *cobra.Command {
 	}
 
 	addTimelineFlag(cmd.PersistentFlags())
-	cmd.AddCommand(newEventAddCommand(ctx, app))
+	cmd.AddCommand(newEventAddCommand(ctx, app), newEventListCommand(ctx, app))
 
 	return cmd
 }

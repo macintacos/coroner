@@ -31,5 +31,11 @@ stdout '^Events: +2,'
 stdout '^#1\t2026-09-10T23:14:07\.412-04:00\t\tmongod\tPrimary stepped down: replSetStepDown$'
 stdout '^#2\t2026-09-10T23:15:00-04:00\t\+52\.588s\tslack\tPager fires for db-2$'
 
+# Piped, event list prints one tab-separated row per event: seq, time, source, tags, text.
+exec coroner event list --tag election
+cmp stdout election.tsv
+
 -- slack.txt --
 Pager fires for db-2
+-- election.tsv --
+#1	2026-09-10T23:14:07.412-04:00	mongod	election	Primary stepped down: replSetStepDown
