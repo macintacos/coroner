@@ -59,4 +59,10 @@ var _ = Describe("Grammar", func() {
 		Entry("namespaced tag", "phase:detect"),
 		Entry("host and process", "db-2/mongod"),
 	)
+
+	It("reserves none as a source name, for clearing an event's source", func() {
+		rejects(timeline.ValidateSourceName, "none")
+		accepts(timeline.ValidateTag, "none")
+		accepts(timeline.ValidateTimelineName, "none")
+	})
 })

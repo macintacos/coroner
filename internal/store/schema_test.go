@@ -170,7 +170,7 @@ var _ = Describe("Schema", func() {
 	grammarCorpus := []any{}
 	for _, input := range []string{
 		"a", "inc-465", "db.2_x", strings.Repeat("a", 64), strings.Repeat("a", 65), "", "-a", ".a", "Inc",
-		"inc 465", "phase:detect", "phase:Detect", "db-2/mongod", "a]", "a*", "é",
+		"inc 465", "phase:detect", "phase:Detect", "db-2/mongod", "a]", "a*", "é", "none",
 	} {
 		grammarCorpus = append(grammarCorpus, Entry(fmt.Sprintf("%q", input), input))
 	}
