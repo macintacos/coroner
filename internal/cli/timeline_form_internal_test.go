@@ -25,7 +25,7 @@ var _ = Describe("timeline forms", func() {
 		asked       [][]huh.Field
 	)
 
-	// appOn returns a terminal App on home's database file path.
+	// appOn returns a terminal App on home.
 	appOn := func() App {
 		app := scratchApp(home, &out, &errOut, func() (uuid.UUID, error) {
 			ids++

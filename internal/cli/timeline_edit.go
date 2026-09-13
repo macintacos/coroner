@@ -191,7 +191,7 @@ func timelineEditValues(t timeline.Timeline, nameOrID string, submitted fieldVal
 	return values
 }
 
-// editTyped applies the edit values give, and prints the timeline, the old name it no longer answers
+// editTyped applies the edit values given, and prints the timeline, the old name it no longer answers
 // to after a rename, and the equivalent command; when values change nothing, it says so and writes
 // nothing.
 func editTyped(ctx context.Context, s formSession, z zone, oldName string, values fieldValues) error {
