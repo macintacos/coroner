@@ -4,20 +4,24 @@
 
 ## Choosing a format
 
-`--format text|json|jsonl` picks the format, and `--json` is short for `--format json`.
-Text is the default, and it stays the default when output is piped: coroner never switches
-to JSON on its own. A command exits 2 when asked for a format it cannot print. On a
-terminal, `coroner timeline view` opens an interactive viewer; `--format text` or a pipe
-prints plain text instead. On a terminal, `coroner event add` and `coroner annotation add`
-open a form when their text, body or `--kind` is missing, `coroner timeline create` when
-its name is missing, `coroner timeline edit` when no change is given, and each with
-`--interactive`. Under `--json` a form opens only with `--interactive`. `--no-input` or
-`CORONER_NO_INPUT` keeps every form, the `coroner timeline list` picker and the viewer
-closed: a command line missing a required value exits 2 instead of asking.
+`--format text|json|jsonl` picks the format, plus `md` on `coroner timeline export`, and
+`--json` is short for `--format json`. Text is the default, and it stays the default when
+output is piped: coroner never switches to JSON on its own. A command exits 2 when asked
+for a format it cannot print. On a terminal, `coroner timeline view` opens an interactive
+viewer; `--format text` or a pipe prints plain text instead. On a terminal,
+`coroner event add` and `coroner annotation add` open a form when their text, body or
+`--kind` is missing, `coroner timeline create` when its name is missing,
+`coroner timeline edit` when no change is given, and each with `--interactive`. Under
+`--json` a form opens only with `--interactive`. `--no-input` or `CORONER_NO_INPUT` keeps
+every form, the `coroner timeline list` picker and the viewer closed: a command line
+missing a required value exits 2 instead of asking.
 
 - `text` is for people.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.
 - `jsonl` is one JSON object per line.
+- `md`, which only `coroner timeline export` writes, is a CommonMark outline for people to
+  paste into a document or chat. Its times are in UTC unless `--tz` names another zone,
+  and are always labelled with their zone; `json` and `jsonl` instants stay in UTC.
 
 ## What JSON output promises
 
