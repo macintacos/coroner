@@ -19,8 +19,8 @@
    mirrors them. SQLite cannot alter a CHECK, so changing one, even to add a precision or
    an annotation kind, needs a migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
-   another table references (`timeline`, `event`, `source`) is rebuilt in a migration
-   marked `-- +goose NO TRANSACTION`, because inside goose's transaction
+   another table references (`timeline`, `event`, `annotation`, `source`) is rebuilt in a
+   migration marked `-- +goose NO TRANSACTION`, because inside goose's transaction
    `PRAGMA foreign_keys = OFF` is ignored and `DROP TABLE` cascades into every child row.
    Recreate the rebuilt table's indexes and triggers before `COMMIT`:
 
@@ -72,13 +72,17 @@
    later process opens.
 9. **An attachment's blob is named before its row is written, and only garbage collection
    deletes a blob:** `AddAttachment` streams the content into a synced temporary file in
-   the blob directory outside any transaction, then renames it to its SHA-256 and inserts
-   the row inside one `Store.write`. `GarbageCollectBlobs` deletes unreferenced blobs
-   inside `Store.write` too, so the write lock keeps it from deleting a blob between an
-   add's rename and its insert. A crash leaves at most an unreferenced blob, never a row
-   without one. Nothing else deletes a blob, not `Open`, a delete or a migration, so every
-   `<db>.pre-v<N>.bak` backup still finds its blobs.
+   the blob directory outside any transaction, then, inside one `Store.write`, checks the
+   owner, renames the file to its SHA-256 and inserts the row, so a missing owner leaves
+   nothing. `GarbageCollectBlobs` deletes unreferenced blobs inside `Store.write` too, so
+   the write lock keeps it from deleting a blob between an add's rename and its insert. A
+   crash leaves at most an unreferenced blob or a staged `.tmp-*` file, which garbage
+   collection leaves, never a row without its blob. Nothing else deletes a blob, not
+   `Open`, a delete or a migration. A `<db>.pre-v<N>.bak` backup copies the database file
+   only: restored to the database's own path, it finds its blobs until
+   `GarbageCollectBlobs` deletes those whose rows were removed.
 10. **The blob directory comes from `config.BlobDir`, and a filename is never a path:**
-    `Open` derives the directory from the database path, so two databases never share one
-    and one's garbage collection never deletes another's blobs. Blobs are keyed by hash
-    alone, created 0600 in a 0700 directory; `Attachment.Filename` is display text.
+    `Open` and `OpenReadOnly` derive the directory from the database path, so two
+    databases never share one and one's garbage collection never deletes another's blobs.
+    Blobs are keyed by hash alone, created 0600 in a 0700 directory; `Attachment.Filename`
+    is display text.

@@ -10,10 +10,10 @@ import (
 )
 
 // AddAttachment stores content as a blob and adds a, which carries its ID, Owner, Filename and
-// CreatedAt, returning a with the content's MIME, SHA256 and Size. The blob is written
-// before the row, so a failed add leaves at most an unreferenced blob for
-// GarbageCollectBlobs, never a row without its blob. It returns an error wrapping
-// ErrNotFound when the owner does not exist.
+// CreatedAt, returning a with the content's MIME, SHA256 and Size. It returns an error
+// wrapping ErrNotFound when the owner does not exist, having named no blob. A crash or
+// failed insert after the blob is named leaves it unreferenced until GarbageCollectBlobs,
+// never a row without its blob.
 func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, content io.Reader) (timeline.Attachment, error) {
 	err := a.Owner.Validate()
 	if err != nil {
@@ -24,7 +24,8 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 	if err != nil {
 		return timeline.Attachment{}, err
 	}
-	// Once commitBlob renames it there is nothing left to remove.
+	// Removes the staged file on every failure; once commitBlob has renamed or discarded it,
+	// the error is expected.
 	defer func() { _ = os.Remove(staged.tempPath) }()
 
 	a.MIME = detectMIME(staged.head, a.Filename)
@@ -34,11 +35,11 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 	// Naming the blob inside the write transaction keeps GarbageCollectBlobs, which holds the
 	// same lock, from deleting it before the row that references it commits.
 	err = s.write(ctx, func(q *sqlcgen.Queries) error {
-		err := commitBlob(s.blobDir, staged)
+		err := checkOwner(ctx, q, a.Owner)
 		if err != nil {
 			return err
 		}
-		err = checkOwner(ctx, q, a.Owner)
+		err = commitBlob(s.blobDir, staged)
 		if err != nil {
 			return err
 		}

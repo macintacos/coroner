@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -31,7 +31,14 @@ type stagedBlob struct {
 // stageBlob copies content into a new temporary file in dir, creating dir (mode 0700) when
 // missing, and hashes it on the way.
 func stageBlob(dir string, content io.Reader) (stagedBlob, error) {
-	err := os.MkdirAll(dir, 0o700)
+	err := os.Mkdir(dir, 0o700)
+	switch {
+	case err == nil:
+		// Without it, a power loss can drop the new directory, and with it a committed row's blob.
+		err = syncDir(filepath.Dir(dir))
+	case errors.Is(err, fs.ErrExist):
+		err = nil
+	}
 	if err != nil {
 		return stagedBlob{}, fmt.Errorf("create blob directory: %w", err)
 	}
@@ -75,26 +82,28 @@ func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {
 	return stagedBlob{sha256: hex.EncodeToString(hash.Sum(nil)), size: size, head: head}, nil
 }
 
-// commitBlob names a staged blob by its hash, or discards it when a blob with that hash
-// already exists, then syncs dir so the name survives a crash. Store.write may retry it, so
-// a staged file already renamed is not an error.
+// commitBlob names a staged blob by its hash and syncs dir so the name survives a crash, or
+// discards it when a blob with that hash already exists. Store.write may retry it, so a
+// staged file already renamed is not an error.
 func commitBlob(dir string, staged stagedBlob) error {
 	final := filepath.Join(dir, staged.sha256)
 	_, err := os.Lstat(final)
 	switch {
 	case err == nil:
 		err = os.Remove(staged.tempPath)
-		if errors.Is(err, fs.ErrNotExist) {
-			err = nil
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 		}
+		return nil
 	case errors.Is(err, fs.ErrNotExist):
 		err = os.Rename(staged.tempPath, final)
-	}
-	if err != nil {
+		if err != nil {
+			return fmt.Errorf("store blob %s: %w", staged.sha256, err)
+		}
+		return syncDir(dir)
+	default:
 		return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 	}
-
-	return syncDir(dir)
 }
 
 func syncDir(dir string) error {
@@ -108,6 +117,8 @@ func syncDir(dir string) error {
 
 // deleteUnreferenced deletes every blob in dir whose hash is not in referenced and returns
 // their hashes in name order. It leaves anything that is not a blob, such as a staged file.
+// ponytail: staged .tmp-* files a crash left are never collected; sweep by age with an
+// injected clock if they accumulate.
 func deleteUnreferenced(dir string, referenced []string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -140,17 +151,26 @@ func deleteUnreferenced(dir string, referenced []string) ([]string, error) {
 }
 
 // detectMIME sniffs head, the content's first bytes, and falls back to filename's extension
-// when the content does not reveal its type.
+// when sniffing finds only bytes or text, which it reports for any UTF-8 such as JSON. The
+// table is fixed because mime.TypeByExtension also reads the host's mime.types files.
 func detectMIME(head []byte, filename string) string {
 	detected := http.DetectContentType(head)
-	if detected != "application/octet-stream" {
+	if detected != "application/octet-stream" && !strings.HasPrefix(detected, "text/plain") {
 		return detected
 	}
 
-	byExtension := mime.TypeByExtension(filepath.Ext(filename))
-	if byExtension == "" {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".json", ".har":
+		return "application/json"
+	case ".csv":
+		return "text/csv"
+	case ".svg":
+		return "image/svg+xml"
+	case ".md":
+		return "text/markdown"
+	case ".yaml", ".yml":
+		return "application/yaml"
+	default:
 		return detected
 	}
-
-	return byExtension
 }

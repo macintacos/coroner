@@ -46,7 +46,10 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 
 		expectCompatFixture(ctx, path)
 
-		backup := path + ".pre-v2.bak"
+		backups, err := filepath.Glob(path + ".pre-v*.bak")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(backups).To(HaveLen(1))
+		backup := backups[0]
 		Expect(querySQLite(ctx, backup, "SELECT max(version_id) FROM goose_db_version")).To(Equal(int64(1)))
 		Expect(querySQLite(ctx, backup, "SELECT count(*) FROM event")).To(Equal(int64(len(fixture.Events()))))
 	})

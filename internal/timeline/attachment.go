@@ -13,21 +13,24 @@ type AttachmentOwner struct {
 	EventID, AnnotationID *string
 }
 
-// Attachment is a file kept with an event or annotation. Its bytes are stored once per
-// SHA256, however many attachments share them.
+// Attachment is a file kept with one event or annotation, identified by its content's
+// SHA256.
 type Attachment struct {
 	ID    string
 	Owner AttachmentOwner
 	// Filename is the name the file was attached under, for display only: never a path.
 	Filename string
-	MIME     string
+	// MIME is the media type detected when the file was added, possibly with parameters such
+	// as charset.
+	MIME string
 	// SHA256 is the content's hash in 64 lowercase hex digits.
-	SHA256    string
+	SHA256 string
+	// Size is the content's length in bytes.
 	Size      int64
 	CreatedAt time.Time
 }
 
-// Validate reports every way o breaks the domain rules, or nil.
+// Validate returns an error unless exactly one of EventID and AnnotationID is set.
 func (o AttachmentOwner) Validate() error {
 	if (o.EventID == nil) == (o.AnnotationID == nil) {
 		return errors.New("owner: must be exactly one event or annotation")

@@ -5,9 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"testing/iotest"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -108,11 +111,15 @@ var _ = Describe("Attachments", func() {
 		Expect(s.ListAttachments(ctx, onPager)).To(BeEmpty())
 	})
 
-	It("takes the MIME type from the filename's extension when the content does not reveal it",
-		func(ctx SpecContext) {
-			Expect(add(ctx, attachment(10, onPager, "trace.json"), []byte{0x00, 0x01, 0x02})).
-				To(HaveField("MIME", "application/json"))
-		})
+	DescribeTable("takes the MIME type from the filename's extension when the content sniffs as generic text",
+		func(ctx SpecContext, filename, content, want string) {
+			Expect(add(ctx, attachment(10, onPager, filename), []byte(content))).To(HaveField("MIME", want))
+		},
+		Entry("JSON", "trace.json", `{"spans":[1,2]}`, "application/json"),
+		Entry("SVG", "panel.svg", `<svg xmlns="http://www.w3.org/2000/svg"></svg>`, "image/svg+xml"),
+		Entry("an extension it does not know keeps the sniffed type",
+			"mongod.log", "election timeout after 10000ms\n", "text/plain; charset=utf-8"),
+	)
 
 	It("keeps one blob for identical content until garbage collection finds no attachment using it",
 		func(ctx SpecContext) {
@@ -142,15 +149,35 @@ var _ = Describe("Attachments", func() {
 
 	It("leaves only an orphan blob, which garbage collection deletes, when the row cannot be written",
 		func(ctx SpecContext) {
-			missing := timeline.AttachmentOwner{EventID: new(uuid(99))}
+			first := add(ctx, attachment(10, onPager, "grafana.png"), screenshot)
+			other := []byte("\x89PNG\r\n\x1a\nanother panel")
 
-			_, err := s.AddAttachment(ctx, attachment(10, missing, "grafana.png"), bytes.NewReader(screenshot))
+			_, err := s.AddAttachment(ctx, attachment(10, onPager, "other.png"), bytes.NewReader(other))
 
-			Expect(err).To(MatchError(store.ErrNotFound))
-			Expect(s.ListAttachments(ctx, missing)).To(BeEmpty())
-			Expect(filepath.Join(blobDir, sha256Hex(screenshot))).To(BeAnExistingFile())
-			Expect(s.GarbageCollectBlobs(ctx)).To(Equal([]string{sha256Hex(screenshot)}))
+			Expect(err).To(MatchError(store.ErrConflict))
+			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{first}))
+			Expect(filepath.Join(blobDir, sha256Hex(other))).To(BeAnExistingFile())
+			Expect(s.GarbageCollectBlobs(ctx)).To(Equal([]string{sha256Hex(other)}))
 		})
+
+	It("reports an owner that does not exist with ErrNotFound, writing no blob", func(ctx SpecContext) {
+		missing := timeline.AttachmentOwner{EventID: new(uuid(99))}
+
+		_, err := s.AddAttachment(ctx, attachment(10, missing, "grafana.png"), bytes.NewReader(screenshot))
+
+		Expect(err).To(MatchError(store.ErrNotFound))
+		Expect(os.ReadDir(blobDir)).To(BeEmpty())
+	})
+
+	It("leaves nothing in the blob directory when reading the content fails", func(ctx SpecContext) {
+		boom := errors.New("boom")
+		content := io.MultiReader(bytes.NewReader(screenshot), iotest.ErrReader(boom))
+
+		_, err := s.AddAttachment(ctx, attachment(10, onPager, "grafana.png"), content)
+
+		Expect(err).To(MatchError(boom))
+		Expect(os.ReadDir(blobDir)).To(BeEmpty())
+	})
 
 	It("never garbage-collects a file that is not a blob, such as a write still in progress", func(ctx SpecContext) {
 		Expect(os.MkdirAll(blobDir, 0o700)).To(Succeed())

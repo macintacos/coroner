@@ -27,7 +27,7 @@ chat message.
 
 **Attachment**: A file, such as a screenshot, kept with one event or annotation. Identical
 files attached twice are two attachments sharing one blob.\
-_Avoid_: upload, file, image
+_Avoid_: upload, image
 
 **Blob**: The bytes of an attachment, stored once under their SHA-256 in the blob
 directory beside the database.\

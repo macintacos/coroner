@@ -1,6 +1,7 @@
 // Package store is coroner's SQLite store. It opens and migrates the database and maps
-// its rows to and from internal/timeline types; the sqlc-generated queries in sqlcgen
-// never leave it.
+// its rows to and from internal/timeline types, and keeps attachment blobs in a
+// content-addressed directory beside it; the sqlc-generated queries in sqlcgen never leave
+// it.
 package store
 
 import (
@@ -47,10 +48,11 @@ type Schema struct {
 
 // Open opens the coroner database at path, creating it and its directory (mode 0700) when
 // missing, and applies pending migrations. Before migrating a database that already has a
-// schema, it copies it to <path>.pre-v<N>.bak, N being the schema it migrates to. It
-// returns ErrForeignDatabase for a directory or a SQLite file coroner did not create,
-// ErrDatabaseTooNew for a database a newer coroner migrated, and ErrBackupExists when that
-// backup is already there.
+// schema, it copies it to <path>.pre-v<N>.bak, N being the schema it migrates to. While
+// migrations are pending it holds a flock on <path>.lock, which stays beside the database
+// once created. It returns ErrForeignDatabase for a directory or a SQLite file coroner did
+// not create, ErrDatabaseTooNew for a database a newer coroner migrated, even while Open
+// waited on the lock, and ErrBackupExists when that backup is already there.
 func Open(ctx context.Context, path string) (*Store, error) {
 	fsys, err := fs.Sub(migrations, "migrations")
 	if err != nil {
@@ -159,8 +161,8 @@ func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 		return err
 	}
 
-	// goose has no SQLite locker, so without this two processes both run a pending migration.
-	// migrate re-reads the version once the lock is held.
+	// goose has no SQLite locker. Waiting on the lock can outlast another coroner's migration,
+	// so migrate checks the version again once it is held.
 	if pending {
 		unlock, err := lockFile(path + ".lock")
 		if err != nil {
@@ -233,7 +235,9 @@ func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) (bool, error) {
 
 // lockFile blocks until it holds an exclusive flock on path, creating the file when missing,
 // and returns the function that releases it. The file stays: unlinking it would let a waiter
-// lock a file no later process opens.
+// lock a file no later process opens. syscall.Flock makes the store unix-only.
+// ponytail: blocks ignoring ctx, so a hung migrating coroner silently blocks every later one;
+// poll LOCK_EX|LOCK_NB against ctx if that bites.
 func lockFile(path string) (func(), error) {
 	f, err := os.OpenFile(filepath.Clean(path), os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
@@ -291,6 +295,10 @@ func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 	current, target, err := provider.GetVersions(ctx)
 	if err != nil {
 		return fmt.Errorf("read schema version: %w", err)
+	}
+
+	if current > target {
+		return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
 	}
 
 	if current > 0 && current < target {

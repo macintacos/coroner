@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"testing/fstest"
 	"time"
 
@@ -89,14 +90,13 @@ var _ = Describe("Open", func() {
 			bumpSchemaVersion(ctx, path)
 			before, err := os.ReadFile(filepath.Clean(path))
 			Expect(err).NotTo(HaveOccurred())
-			beside, err := os.ReadDir(filepath.Dir(path))
-			Expect(err).NotTo(HaveOccurred())
 
 			_, err = store.Open(ctx, path)
 
 			Expect(err).To(MatchError(store.ErrDatabaseTooNew))
 			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
-			Expect(os.ReadDir(filepath.Dir(path))).To(Equal(beside))
+			Expect(os.ReadDir(filepath.Dir(path))).To(HaveExactElements(
+				HaveField("Name()", "coroner.db"), HaveField("Name()", "coroner.db.lock")))
 		})
 
 	It("finishes a first migration that failed after creating the version table", func(ctx SpecContext) {
@@ -217,8 +217,8 @@ var _ = Describe("Open from several processes at once", func() {
 
 		Expect(openAll(ctx, path)).To(HaveEach(Succeed()))
 
-		Expect(querySQLite(ctx, path, "SELECT count(*) FROM goose_db_version WHERE version_id > 0")).
-			To(Equal(querySQLite(ctx, path, "SELECT max(version_id) FROM goose_db_version")))
+		Expect(querySQLite(ctx, path, `SELECT count(*) FROM
+			(SELECT version_id FROM goose_db_version GROUP BY version_id HAVING count(*) > 1)`)).To(BeZero())
 	}, SpecTimeout(time.Minute))
 
 	It("upgrades an older database exactly once, taking one backup", func(ctx SpecContext) {
@@ -231,6 +231,34 @@ var _ = Describe("Open from several processes at once", func() {
 
 		Expect(filepath.Glob(path + ".pre-v*.bak")).To(HaveLen(1))
 		Expect(querySQLite(ctx, path, "SELECT count(*) FROM sqlite_schema WHERE name = 'attachment'")).To(Equal(int64(1)))
+	}, SpecTimeout(time.Minute))
+
+	It("refuses a database a newer coroner migrated while it waited for the lock", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		s, err := store.OpenWithMigrations(ctx, path, schemaOne())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Close()).To(Succeed())
+		lock, err := os.OpenFile(filepath.Clean(path+".lock"), os.O_RDWR|os.O_CREATE, 0o600)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { _ = lock.Close() })
+		Expect(syscall.Flock(int(lock.Fd()), syscall.LOCK_EX)).To(Succeed())
+
+		opened := make(chan error, 1)
+		go func() {
+			defer GinkgoRecover()
+			s, err := store.Open(ctx, path)
+			if err == nil {
+				err = s.Close()
+			}
+			opened <- err
+		}()
+		Consistently(opened).WithTimeout(200 * time.Millisecond).ShouldNot(Receive())
+
+		execSQLite(ctx, path, "INSERT INTO goose_db_version (version_id, is_applied) VALUES (2, 1), (3, 1)")
+		Expect(lock.Close()).To(Succeed())
+
+		Eventually(ctx, opened).Should(Receive(&err))
+		Expect(err).To(MatchError(store.ErrDatabaseTooNew))
 	}, SpecTimeout(time.Minute))
 })
 
