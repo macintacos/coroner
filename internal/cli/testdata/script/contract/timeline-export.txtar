@@ -53,12 +53,10 @@ stdout '"seq":1,'
 ! stdout '"seq":2,'
 stderr '1 of 3'
 
-# --format is required, and only json and jsonl are exports: exit 2.
+# --format is required, and only json, jsonl and md are exports: exit 2.
 exits 2 coroner timeline export
 ! stdout .
 exits 2 coroner timeline export --format text
-! stdout .
-exits 2 coroner timeline export --format md
 ! stdout .
 
 # A timeline that does not exist exits 3, kind timeline_not_found.

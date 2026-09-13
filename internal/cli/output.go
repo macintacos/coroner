@@ -18,6 +18,8 @@ const (
 	formatText  format = "text"
 	formatJSON  format = "json"
 	formatJSONL format = "jsonl"
+	// formatMarkdown is CommonMark for people, which only timeline export writes.
+	formatMarkdown format = "md"
 )
 
 // formatsAnnotation is the cmd.Annotations key listing the formats a command prints,

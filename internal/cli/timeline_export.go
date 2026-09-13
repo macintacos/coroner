@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
@@ -16,18 +17,21 @@ import (
 
 func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "export --format {json | jsonl}",
-		Short: "Export a timeline as JSON or JSONL",
+		Use:   "export --format {json | jsonl | md}",
+		Short: "Export a timeline as JSON, JSONL or Markdown",
 		Long: "Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its\n" +
 			"events, their annotations and the sources they name. --format json writes one document,\n" +
-			"indented on a terminal; --format jsonl writes a header record, then one record per line.\n\n" +
+			"indented on a terminal; --format jsonl writes a header record, then one record per line;\n" +
+			"--format md writes a CommonMark outline for people, with times in UTC unless --tz names\n" +
+			"a zone.\n\n" +
 			"The filter flags mean what they do on event list, and annotations on the events they\n" +
 			"leave out are left out too. --order picks which end --limit keeps events from; exported\n" +
 			"events are always in the order they happened. Redirect stdout to write a file.",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "json,jsonl"},
+		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md"},
 		Example: "  $ coroner timeline export -t mongo-outage --format json > rca.json\n" +
-			"  $ coroner timeline export --format jsonl --since \"2026-09-11T03:00Z\" --source mongod > mongod.jsonl",
+			"  $ coroner timeline export --format jsonl --since \"2026-09-11T03:00Z\" --source mongod > mongod.jsonl\n" +
+			"  $ coroner timeline export --format md --tz America/New_York > rca.md",
 		PreRunE: requireFormat,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return exportTimeline(ctx, cmd, app)
@@ -38,6 +42,8 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	addEventFilterFlags(cmd.Flags())
 	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc|desc}"
 	cmd.Flags().Lookup("limit").Usage = "Export at most this `number` of events (default: every one)"
+	cmd.Flags().String("group-by", "", "Section Markdown events by a `field`: {source|tag} (experimental)")
+	cmd.Flags().Bool("include-raw", false, "Add each event's time as it was written to Markdown")
 
 	return cmd
 }
@@ -51,7 +57,7 @@ func requireFormat(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	return &Error{Kind: KindUsage, Message: "--format is required", Hint: "Pass --format json or --format jsonl."}
+	return &Error{Kind: KindUsage, Message: "--format is required", Hint: "Pass --format json, --format jsonl or --format md."}
 }
 
 func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
@@ -69,6 +75,10 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 	now := app.Now()
 	filter, bounds, err := readEventFilter(cmd.Flags(), now, z)
+	if err != nil {
+		return err
+	}
+	markdown, err := readMarkdownOptions(cmd.Flags(), o.format, z)
 	if err != nil {
 		return err
 	}
@@ -99,13 +109,47 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 			}
 		}
 
-		err = writeExport(o, newExport(input))
+		err = writeExport(o, newExport(input), markdown)
 		if err != nil {
 			return err
 		}
 
 		return notifyTruncated(o, page)
 	})
+}
+
+// readMarkdownOptions returns how --format md presents the export: in z when --tz was given,
+// and otherwise in UTC, so a shared document never depends on the zone of whoever exported it.
+// It rejects --group-by and --include-raw under another format, and a --group-by it does not
+// know.
+func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.MarkdownOptions, error) {
+	if chosen != formatMarkdown {
+		for _, name := range []string{"group-by", "include-raw"} {
+			if flags.Changed(name) {
+				return export.MarkdownOptions{}, &Error{
+					Kind: KindUsage, Message: "--" + name + " applies only to --format md", Hint: "Pass --format md, or leave --" + name + " out.",
+				}
+			}
+		}
+
+		return export.MarkdownOptions{}, nil
+	}
+
+	opts := export.MarkdownOptions{Zone: time.UTC}
+	if flags.Changed("tz") {
+		opts.Zone = z.loc
+	}
+	opts.IncludeRaw, _ = flags.GetBool("include-raw")
+	if groupBy := changedString(flags, "group-by"); groupBy != nil {
+		opts.GroupBy = export.GroupBy(*groupBy)
+		if opts.GroupBy != export.GroupBySource && opts.GroupBy != export.GroupByTag {
+			return opts, &Error{
+				Kind: KindUsage, Message: fmt.Sprintf("--group-by %q is not source or tag", *groupBy), Hint: "Pass --group-by source or --group-by tag.",
+			}
+		}
+	}
+
+	return opts, nil
 }
 
 // exportInput is what an export is made from, as the store returned it.
@@ -180,10 +224,12 @@ func newExportQuery(timelineName string, f store.EventFilter) export.Query {
 	return q
 }
 
-// writeExport writes env as o's format asks: json as one document, indented on a terminal, and
-// jsonl as records.
-func writeExport(o output, env export.Envelope) error {
+// writeExport writes env as o's format asks: json as one document, indented on a terminal,
+// jsonl as records, and md as markdown presents it.
+func writeExport(o output, env export.Envelope, markdown export.MarkdownOptions) error {
 	switch o.format {
+	case formatMarkdown:
+		return export.WriteMarkdown(o.out, env, markdown)
 	case formatJSON:
 		if o.outTTY {
 			return export.Write(o.out, env, jsontext.WithIndent("  "))
@@ -200,6 +246,6 @@ func writeExport(o output, env export.Envelope) error {
 	case formatText:
 	}
 
-	// Unreachable: the formats annotation admits json and jsonl only.
+	// Unreachable: the formats annotation admits json, jsonl and md only.
 	return fmt.Errorf("timeline export cannot write --format %s", o.format)
 }
