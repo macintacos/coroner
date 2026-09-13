@@ -57,3 +57,16 @@
    and run `rumdl check` on them with MD013 off. `rumdl fmt` skips that directory, so a
    golden changes only through `go test ./internal/export -update`, with its diff read
    before committing.
+9. **The Mermaid export has one writer:** render it only through `export.WriteMermaid`, or
+   `export.WriteMarkdown` with `Diagram`, from the same `Envelope`, so the diagram shows
+   the events every other format exports. Its layout is not a contract (`AGENTS.md` Rule
+   3), but it keeps to gantt syntax that hosts running an old Mermaid still draw:
+   second-precision `dateFormat`, and no `tickInterval`, `displayMode: compact`, `crit` or
+   colours. Every piece of text goes through its escaper, which writes `#`, `:` and `%` as
+   entities, and a task label that starts with what Mermaid's gantt lexer reads before
+   task text, such as `section`, `title`, `click` or a date, has its first character
+   written as an entity too. Unescaped, such text is silently dropped, starts a section,
+   replaces the title or fails to parse. A change to the escaper or the diagram's syntax
+   is checked by rendering `internal/export/testdata/mermaid/hostile.mmd` in a real
+   Mermaid. Those goldens change only through `go test ./internal/export -update`, with
+   the diff read before committing.

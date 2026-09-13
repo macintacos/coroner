@@ -4,23 +4,27 @@
 
 ## Choosing a format
 
-`--format text|json|jsonl` picks the format, plus `md` on `coroner timeline export`, and
-`--json` is short for `--format json`. Text is the default, and it stays the default when
-output is piped: coroner never switches to JSON on its own. A command exits 2 when asked
-for a format it cannot print. On a terminal, `coroner timeline view` opens an interactive
-viewer; `--format text` or a pipe prints plain text instead. On a terminal,
-`coroner event add` and `coroner annotation add` open a form when their text, body or
-`--kind` is missing, `coroner timeline create` when its name is missing,
-`coroner timeline edit` when no change is given, and each with `--interactive`. Under
-`--json` a form opens only with `--interactive`. `--no-input` or `CORONER_NO_INPUT` keeps
-every form, the `coroner timeline list` picker and the viewer closed: a command line
-missing a required value exits 2 instead of asking.
+`--format text|json|jsonl` picks the format, plus `md` and `mermaid` on
+`coroner timeline export`, and `--json` is short for `--format json`. Text is the default,
+and it stays the default when output is piped: coroner never switches to JSON on its own.
+A command exits 2 when asked for a format it cannot print. On a terminal,
+`coroner timeline view` opens an interactive viewer; `--format text` or a pipe prints
+plain text instead. On a terminal, `coroner event add` and `coroner annotation add` open a
+form when their text, body or `--kind` is missing, `coroner timeline create` when its name
+is missing, `coroner timeline edit` when no change is given, and each with
+`--interactive`. Under `--json` a form opens only with `--interactive`. `--no-input` or
+`CORONER_NO_INPUT` keeps every form, the `coroner timeline list` picker and the viewer
+closed: a command line missing a required value exits 2 instead of asking.
 
 - `text` is for people.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.
 - `jsonl` is one JSON object per line.
 - `md` is a CommonMark outline for people to paste into a document or chat, with times in
   UTC unless `--tz` names another zone, each labelled with its zone.
+- `mermaid` is a Mermaid gantt diagram of the events, a section per source, for GitHub,
+  GitLab, Linear, Obsidian or Notion to draw, in the same zone as `md`. `--diagram`
+  appends it to `md`. Past 50,000 characters, which most hosts refuse to draw, coroner
+  warns on stderr.
 
 ## What JSON output promises
 
@@ -45,6 +49,7 @@ missing a required value exits 2 instead of asking.
 
 - Ignore keys you don't know: new ones are added over time.
 - Tolerate enum values you don't know, such as a new `type` or error `kind`.
-- Never parse text output or the layout of exported Markdown. Neither is a contract.
+- Never parse text output or the layout of exported Markdown or Mermaid. None of them is a
+  contract.
 - Read errors from the exit code and, under `json` and `jsonl`, from the JSON error
   envelope on the last line of stderr. See `coroner help exit-codes`.
