@@ -1,0 +1,34 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: tools
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      # Each check runs even when an earlier one failed, so every breakage reports on its own step.
+      - name: Lint
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: mise run lint
+      - name: CLI reference drift
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: go run ./internal/tools/docgen --check
+      - name: Test
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: mise run test
+      # Last: it rewrites the tree, which would hide drift from the steps above.
+      - name: Formatter and generator drift
+        if: ${{ !cancelled() && steps.tools.outcome == 'success' }}
+        run: |
+          mise run format
+          git add --all --intent-to-add
+          git diff --exit-code
