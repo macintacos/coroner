@@ -79,9 +79,10 @@ digraph coroner_rules_router {
 ## Where things live and what to call them
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
-  Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
-  `internal/config`. JSON export types, envelope, encoder and JSONL decoder, and the
-  Markdown export's renderer: `internal/export`, the JSON described by
+  Typed time input: `internal/timeparse`. Config file, XDG paths and precedence, and the
+  attachment blob directory beside the database: `internal/config`. JSON export types,
+  envelope, encoder and JSONL decoder, and the Markdown export's renderer:
+  `internal/export`, the JSON described by
   [the export format reference](docs/reference/export-format.md). The terminal viewer
   `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. `main.go`
   builds `cli.App` from the process; code below it takes everything from `cli.App`, never

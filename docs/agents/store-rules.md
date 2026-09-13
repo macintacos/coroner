@@ -12,11 +12,12 @@
    `;`, so the statement breaks without them.
 3. **The CHECK constraints mirror `internal/timeline`:** the timeline name, source and tag
    grammars, the canonical instant, the precisions, the annotation kinds, the not-blank
-   checks on ref, text and body, and ended at not before occurred at. Change the Go and
-   the SQL in the same change. Only the table enforces that `id` is 36 characters,
-   `seq > 0`, `occurred_offset` is within ±86400 seconds and `approximate` is 0 or 1; no
-   Go rule mirrors them. SQLite cannot alter a CHECK, so changing one, even to add a
-   precision or an annotation kind, needs a migration that rebuilds the table
+   checks on ref, text and body, ended at not before occurred at, and an attachment's
+   single owner, sha256 and non-negative size. Change the Go and the SQL in the same
+   change. Only the table enforces that `id` is 36 characters, `seq > 0`,
+   `occurred_offset` is within ±86400 seconds and `approximate` is 0 or 1; no Go rule
+   mirrors them. SQLite cannot alter a CHECK, so changing one, even to add a precision or
+   an annotation kind, needs a migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
    another table references (`timeline`, `event`, `source`) is rebuilt in a migration
    marked `-- +goose NO TRANSACTION`, because inside goose's transaction
@@ -65,4 +66,19 @@
 8. **`Open` checks the file before it changes it:** `journal_mode = WAL` is set after the
    application-id check, never as a DSN pragma, which would rewrite a foreign file's
    header on connect. `OpenReadOnly` never sets it, and reads the schema version by hand,
-   never through goose's `GetVersions`, which creates goose's table.
+   never through goose's `GetVersions`, which creates goose's table. When migrations are
+   pending, `Open` holds a `flock` on `<db>.lock` from the WAL pragma through `Up`,
+   because goose has no SQLite locker; never delete that file, or a waiter locks a file no
+   later process opens.
+9. **An attachment's blob is named before its row is written, and only garbage collection
+   deletes a blob:** `AddAttachment` streams the content into a synced temporary file in
+   the blob directory outside any transaction, then renames it to its SHA-256 and inserts
+   the row inside one `Store.write`. `GarbageCollectBlobs` deletes unreferenced blobs
+   inside `Store.write` too, so the write lock keeps it from deleting a blob between an
+   add's rename and its insert. A crash leaves at most an unreferenced blob, never a row
+   without one. Nothing else deletes a blob, not `Open`, a delete or a migration, so every
+   `<db>.pre-v<N>.bak` backup still finds its blobs.
+10. **The blob directory comes from `config.BlobDir`, and a filename is never a path:**
+    `Open` derives the directory from the database path, so two databases never share one
+    and one's garbage collection never deletes another's blobs. Blobs are keyed by hash
+    alone, created 0600 in a 0700 directory; `Attachment.Filename` is display text.

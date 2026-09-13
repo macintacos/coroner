@@ -25,6 +25,14 @@ chat message.
 
 **Comment**: An annotation that carries an investigator's commentary.
 
+**Attachment**: A file, such as a screenshot, kept with one event or annotation. Identical
+files attached twice are two attachments sharing one blob.\
+_Avoid_: upload, file, image
+
+**Blob**: The bytes of an attachment, stored once under their SHA-256 in the blob
+directory beside the database.\
+_Avoid_: object, asset
+
 **Source**: The system, service or person an event or annotation came from, such as
 `slack` or `db-2/mongod`.\
 _Avoid_: process, origin, channel
