@@ -70,7 +70,8 @@ digraph coroner_rules_router {
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
   `internal/config`. `main.go` builds `cli.App` from the process; code below it takes
-  everything from `cli.App`, never from `os`.
+  everything from `cli.App`, never from `os`. Dev tools run with `go run`:
+  `internal/tools/` (`docgen` writes the CLI reference).
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `Kind.ExitCode` in
   [`internal/cli/errors.go`](internal/cli/errors.go) is the table. Any other error, or a

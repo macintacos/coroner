@@ -1,6 +1,6 @@
 // Command docgen writes coroner's CLI reference into docs/reference/cli, one Markdown file
 // per command. With --check it lists how that directory drifts from the commands instead,
-// and exits 1 on any drift.
+// and exits 1 on any drift. Run it from the module root.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
 
 	"github.com/macintacos/coroner/internal/cli"
@@ -27,11 +28,19 @@ func main() {
 	checkOnly := flag.Bool("check", false, "list drift from "+outDir+" and exit 1 on any, writing nothing")
 	flag.Parse()
 
+	if flag.NArg() > 0 {
+		fmt.Fprintln(os.Stderr, "usage: go run ./internal/tools/docgen [--check]")
+		os.Exit(2)
+	}
+
+	// A zero App is enough: rendering pages runs no command.
+	root := cli.NewRoot(cli.App{})
+
 	var err error
 	if *checkOnly {
-		err = check(outDir, os.Stderr)
+		err = check(root, outDir, os.Stderr)
 	} else {
-		err = write(outDir)
+		err = write(root, outDir)
 	}
 
 	if err != nil {
@@ -41,7 +50,7 @@ func main() {
 }
 
 // write replaces dir with the reference, so pages of removed commands go with it.
-func write(dir string) error {
+func write(root *cobra.Command, dir string) error {
 	err := os.RemoveAll(dir)
 	if err != nil {
 		return err
@@ -52,33 +61,33 @@ func write(dir string) error {
 		return err
 	}
 
-	return generate(dir)
+	return generate(root, dir)
 }
 
-// check writes a line to out for each page dir lacks, holds with other content, or holds for
-// no command, and fails when there is any.
-func check(dir string, out io.Writer) error {
+// check prints an added, changed or removed line to out for each page dir differs by from
+// root's reference, and fails if any.
+func check(root *cobra.Command, dir string, out io.Writer) error {
 	tmp, err := os.MkdirTemp("", "docgen")
 	if err != nil {
 		return err
 	}
 
-	return errors.Join(checkAgainst(tmp, dir, out), os.RemoveAll(tmp))
+	return errors.Join(checkAgainst(root, tmp, dir, out), os.RemoveAll(tmp))
 }
 
-// checkAgainst is check, generating the reference to compare dir with into tmp.
-func checkAgainst(tmp, dir string, out io.Writer) error {
-	err := generate(tmp)
+// checkAgainst is check's body; check owns tmp so its removal error is joined to the result.
+func checkAgainst(root *cobra.Command, tmp, dir string, out io.Writer) error {
+	err := generate(root, tmp)
 	if err != nil {
 		return err
 	}
 
-	want, err := readTree(os.DirFS(tmp))
+	want, err := readPages(os.DirFS(tmp))
 	if err != nil {
 		return err
 	}
 
-	got, err := readTree(os.DirFS(dir))
+	got, err := readPages(os.DirFS(dir))
 	if err != nil {
 		return err
 	}
@@ -93,9 +102,7 @@ func checkAgainst(tmp, dir string, out io.Writer) error {
 	return errors.Join(err, fmt.Errorf("%s is out of date; run `go run ./internal/tools/docgen`", dir))
 }
 
-func generate(dir string) error {
-	// Building the tree reads nothing from App; only running a command does.
-	root := cli.NewRoot(cli.App{})
+func generate(root *cobra.Command, dir string) error {
 	root.DisableAutoGenTag = true
 
 	return doc.GenMarkdownTreeCustom(root, dir, frontMatter, func(link string) string { return link })
@@ -107,8 +114,8 @@ func frontMatter(filename string) string {
 	return "---\ntitle: " + title + "\n---\n\n"
 }
 
-// readTree reads the files at the top of fsys by name. A missing directory reads as empty.
-func readTree(fsys fs.FS) (map[string][]byte, error) {
+// readPages reads the .md files at the top of fsys by name. A missing directory reads as empty.
+func readPages(fsys fs.FS) (map[string][]byte, error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string][]byte{}, nil
@@ -118,19 +125,19 @@ func readTree(fsys fs.FS) (map[string][]byte, error) {
 		return nil, err
 	}
 
-	tree := make(map[string][]byte, len(entries))
+	pages := make(map[string][]byte, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".md" {
 			continue
 		}
 
-		tree[entry.Name()], err = fs.ReadFile(fsys, entry.Name())
+		pages[entry.Name()], err = fs.ReadFile(fsys, entry.Name())
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return tree, nil
+	return pages, nil
 }
 
 // drift describes, sorted by path, how got differs from want: "added" for a page only want

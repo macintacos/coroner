@@ -78,7 +78,8 @@ digraph coroner_docs_router {
 ## Audience, stated at the top of every new doc
 
 Every new doc states its audience in its first line under the title (rumdl's MD041 needs
-the title first), so a reader knows in one line whether it is written for them.
+the title first), so a reader knows in one line whether it is written for them. Generated
+docs such as `docs/reference/cli/` are exempt; their landscape entry names the audience.
 
 `README.md` and the docs site are **human-facing**. `AGENTS.md` and everything under
 `docs/agents/` are **agent-facing**. A new doc outside both groups names its audience when
