@@ -1,0 +1,89 @@
+# Migration policy
+
+_Audience: maintainers and contributors, human or agent, who change coroner's database
+schema or cut a release._
+
+coroner keeps a user's timelines in one local SQLite file, which may have been written
+years earlier by an older coroner. The file never leaves that machine, so nobody else
+would notice a broken upgrade path. These rules keep every database a release wrote
+opening in every later release, and the fixture databases turn that promise into a failing
+test.
+
+## The rules
+
+1. **A released migration is never edited.** Once a release tag contains a migration in
+   `internal/store/migrations/`, never edit or renumber it; change the schema by adding
+   the next numbered file. Before the first tag, `00001_initial_schema.sql` can still
+   change.
+2. **Migrations only go forward.** coroner never migrates down. Migrations have no
+   `-- +goose Down` block, and no user is ever told to roll one back.
+3. **A newer database is refused.** When a database's schema version is higher than the
+   highest migration the build embeds, `store.Open` leaves the file untouched and fails
+   with `ErrDatabaseTooNew`: "this database was written by a newer coroner (schema N);
+   upgrade coroner". The CLI exits 5 as `db_too_new`. An older build writing to a schema
+   it does not know could damage it.
+4. **A database is backed up before it is upgraded.** Before applying pending migrations
+   to a database that already has a schema, `store.Open` copies it with `VACUUM INTO` to
+   `<db>.pre-v<N>.bak`, where N is the schema it migrates to. It never overwrites a
+   backup: when that file exists, it fails with `ErrBackupExists` and names the file to
+   move aside. A new database gets no backup.
+5. **Every release commits a fixture database.** Each release adds
+   `internal/store/testdata/compat/v<X.Y.Z>.db`, written by that release, and every later
+   build must open, migrate and read it ([§ Fixture databases](#fixture-databases)).
+6. **The schema is internal, never a contract.** JSON and JSONL exports are the sharing
+   contract ([`AGENTS.md`](../../AGENTS.md) Rule 3). The schema can change freely through
+   new migrations, as long as every committed fixture still opens.
+
+## Fixture databases
+
+`go run ./internal/tools/compatfixture -o <path>` writes a new database through the store
+API, never raw SQL, so it holds what that release really writes:
+
+- two timelines, one with several refs, and one of them current;
+- events at every precision, including an approximate one and an interval, with offsets
+  that are nil, zero and non-zero;
+- events with and without a source, and with several tags;
+- evidence and comment annotations on events, and one annotation on the timeline itself.
+
+The compatibility spec in
+[`internal/store/compat_test.go`](../../internal/store/compat_test.go), which
+`mise run test` runs, copies each `testdata/compat/*.db` into a temporary directory and
+opens the copy with `store.Open`, which migrates an older fixture after backing it up. It
+then reads every timeline, event and annotation back through the store API and checks
+their counts and known values. The committed file is never opened in place. Until the
+first release commits a fixture, the spec checks a database the current build writes
+instead.
+
+A fixture records what a release wrote, so it is never edited, regenerated or deleted.
+When a new migration breaks a committed fixture, fix the migration. The spec's
+expectations describe compatfixture's records, so changing those records breaks every
+committed fixture too.
+
+### Adding a release's fixture
+
+The release checklist (not in the repo yet — EXC-1304) carries these steps, run once the
+release is tagged:
+
+1. From a checkout of the new tag, run
+   `go run ./internal/tools/compatfixture -o /tmp/v<X.Y.Z>.db`.
+2. On `main`, move the file to `internal/store/testdata/compat/v<X.Y.Z>.db`.
+   `.gitattributes` already marks `*.db` as binary.
+3. With the first fixture, `v0.1.0.db`, also delete the fallback spec that builds a
+   database when `testdata/compat/` is empty, so an empty directory fails the suite from
+   then on.
+4. Run `mise run test`, then commit.
+
+## Deferred gaps
+
+- **No migration lock.** goose ships lockers for Postgres and MySQL, but not for SQLite.
+  Two coroner processes that open the same database while a migration is pending,
+  including a brand-new file, can both run it. One of them then fails, either with a
+  migration error such as "table timeline already exists" or with `ErrBackupExists` on the
+  backup the other just took. The fix is to hold `syscall.Flock` on `<db>.lock` around the
+  version check, the backup and `Up`, and to check for pending migrations again once the
+  lock is held. It waits for the second migration, `00002_attachments` (EXC-1296).
+- **Migrations run with foreign keys on.** A migration that rebuilds a table other tables
+  reference relies on [store rule 3](../agents/store-rules.md) to turn foreign keys off;
+  one that forgets it deletes every child row through the cascade. Running goose on a
+  connection opened without `foreign_keys(1)`, then `PRAGMA foreign_key_check`, would rule
+  that out. It waits for the same migration.

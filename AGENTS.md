@@ -72,7 +72,8 @@ digraph coroner_rules_router {
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
   `internal/config`. `main.go` builds `cli.App` from the process; code below it takes
   everything from `cli.App`, never from `os`. Dev tools run with `go run`:
-  `internal/tools/` (`docgen` writes the CLI reference).
+  `internal/tools/` (`docgen` writes the CLI reference, `compatfixture` a release's
+  fixture database).
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
   `exit-codes` disagrees with the exit-code map or `environment` misses an environment
@@ -104,8 +105,11 @@ digraph coroner_rules_router {
    CLI reference is stale. Expected output in `internal/cli/testdata/script/*.txtar` is
    rewritten by `go test ./internal/cli -run 'TestScripts/script$' -update`; contract
    scripts change only as a deliberate contract change (Rule 3), through the `contract`
-   subtest. Each issue that adds a generated artifact, such as `schema/*.json`, adds its
-   path and how to regenerate it here.
+   subtest. `internal/store/testdata/compat/v*.db` is written once, from its release's
+   tag, by `go run ./internal/tools/compatfixture -o <path>`, and never regenerated
+   ([the migration policy](docs/contributing/migrations.md)). Each issue that adds a
+   generated artifact, such as `schema/*.json`, adds its path and how to regenerate it
+   here.
 3. **JSON output is a contract:** change it by editing the Go types, regenerating the
    schema and adding a fixture; an additive change bumps `format_version` minor, and any
    other change needs the maintainer's explicit approval and a major bump. Frozen export

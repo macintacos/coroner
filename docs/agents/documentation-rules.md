@@ -21,6 +21,7 @@ digraph coroner_docs_router {
     "Edit AGENTS.md" [shape=box];
     "Edit docs/agents/*.md" [shape=box];
     "Edit docs/contributing/command-checklist.md" [shape=box];
+    "Edit docs/contributing/migrations.md" [shape=box];
     "Edit .github/pull_request_template.md" [shape=box];
     "Edit internal/cli/testdata/script/contract/README.md" [shape=box];
     "Edit CONTEXT.md" [shape=box];
@@ -35,6 +36,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks and hk hooks, the routing digraph, where things live, the repository rules"];
     "Which doc does the change affect?" -> "Edit docs/agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
+    "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
     "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin, and what a diff under contract/ means"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
@@ -60,6 +62,9 @@ digraph coroner_docs_router {
 - **[`docs/contributing/command-checklist.md`](../contributing/command-checklist.md)** —
   the [clig.dev](https://clig.dev/) rules with stable IDs (cite them as "violates OUT-3")
   and the verb glossary.
+- **[`docs/contributing/migrations.md`](../contributing/migrations.md)** (humans and
+  agents) — the migration policy, the fixture database each release commits and how to add
+  it, and the migration gaps deferred so far.
 - **[`.github/pull_request_template.md`](../../.github/pull_request_template.md)** — the
   checkbox that makes a pull request cite the checklist IDs it was checked against.
 - **[`internal/cli/testdata/script/contract/README.md`](../../internal/cli/testdata/script/contract/README.md)**
