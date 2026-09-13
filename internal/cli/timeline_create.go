@@ -63,7 +63,7 @@ func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name strin
 				return err
 			}
 
-			return printCreated(cmd, app, existing, fmt.Sprintf("Timeline `%s` already exists.\n", name))
+			return printChanged(cmd, app, existing, fmt.Sprintf("Timeline `%s` already exists.\n", name))
 		case errors.Is(err, store.ErrConflict):
 			return &Error{
 				Kind:    KindTimelineExists,
@@ -75,18 +75,7 @@ func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name strin
 			return err
 		}
 
-		return printCreated(cmd, app, t, fmt.Sprintf(
+		return printChanged(cmd, app, t, fmt.Sprintf(
 			"Created timeline `%[1]s`.\nNext: coroner timeline use %[1]s\n      coroner event add -t %[1]s <text>\n", name))
 	})
-}
-
-func printCreated(cmd *cobra.Command, app App, t timeline.Timeline, message string) error {
-	if printsJSON(cmd) {
-		err := writeJSON(app.Out, app.OutIsTTY, newTimelineJSON(t))
-		if err != nil {
-			return err
-		}
-	}
-
-	return notify(cmd, app, message)
 }

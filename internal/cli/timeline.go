@@ -35,6 +35,8 @@ func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
 		newTimelineListCommand(ctx, app),
 		newTimelineViewCommand(ctx, app),
 		newTimelineUseCommand(ctx, app),
+		newTimelineEditCommand(ctx, app),
+		newTimelineDeleteCommand(ctx, app),
 	)
 
 	return cmd
@@ -138,6 +140,18 @@ func appendRefs(refs []string, add ...string) []string {
 func printsJSON(cmd *cobra.Command) bool {
 	chosen, _ := outputFormat(cmd)
 	return chosen == formatJSON
+}
+
+// printChanged prints t as JSON when cmd was asked for JSON, then message.
+func printChanged(cmd *cobra.Command, app App, t timeline.Timeline, message string) error {
+	if printsJSON(cmd) {
+		err := writeJSON(app.Out, app.OutIsTTY, newTimelineJSON(t))
+		if err != nil {
+			return err
+		}
+	}
+
+	return notify(cmd, app, message)
 }
 
 // notify writes message, meant for people, to app.Err unless --quiet was given.
