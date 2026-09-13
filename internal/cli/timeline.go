@@ -300,6 +300,19 @@ func suggestName(name string) string {
 	return suggestSlug(name, namePunct, timeline.ValidateTimelineName)
 }
 
+// withOneArg returns run behind cobra.ExactArgs(1), failing as Run reports cobra's own rejection,
+// for a command whose form opens without its argument.
+func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		err := cobra.ExactArgs(1)(cmd, args)
+		if err != nil {
+			return usageError(cmd, err)
+		}
+
+		return run(cmd, args)
+	}
+}
+
 func timelineExistsError(name, hint string, err error) *Error {
 	return &Error{Kind: KindTimelineExists, Message: fmt.Sprintf("timeline %q already exists", name), Hint: hint, Err: err}
 }

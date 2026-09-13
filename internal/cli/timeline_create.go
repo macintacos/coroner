@@ -3,7 +3,10 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 
+	"charm.land/huh/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
@@ -12,31 +15,145 @@ import (
 )
 
 func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
-	def := timelineCreateDefinition()
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a timeline",
 		Long: "Create a timeline. Its name is how commands select it: at most 64 lowercase letters,\n" +
 			"digits, '.', '_' or '-', starting with a letter or digit. Put free text in --title.\n" +
 			"Creating a timeline does not make it current; run 'coroner timeline use' for that.",
-		Args:        cobra.ExactArgs(1),
+		Args:        cobra.MaximumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline create mongo-outage-2026-09-11 --title \"Primary election storm\" \\\n" +
 			"      --ref INC-4821 --ref https://jira.example.com/browse/INC-4821\n" +
 			"  $ coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json",
-		RunE: writeRunE(ctx, app, def, createTimeline),
 	}
 
-	def.addFlags(cmd.Flags())
+	return timelineCreateForm(ctx, app).attach(cmd, app, terminalForms(app))
+}
 
-	return cmd
+// timelineCreateForm is timeline create with its form, which opens on a terminal when the name is
+// missing.
+func timelineCreateForm(ctx context.Context, app App) formCommand {
+	create := addForm[timelineCreated]{path: "timeline create", def: timelineCreateDefinition(), run: createTimeline}
+	return formCommand{
+		def:       create.def,
+		ready:     func(in fieldValues) bool { return requiredGiven(create.def, in) },
+		flagsOnly: withOneArg(writeRunE(ctx, app, create.def, create.run)),
+		session: func(_ *cobra.Command, s formSession, in fieldValues) error {
+			return askTimelineCreate(ctx, s, create, in)
+		},
+	}
+}
+
+// askTimelineCreate asks for the timeline to create, prefilled from in, until one is created or
+// used, or Esc ends the form. A taken name offers the existing timeline; a correctable rejection
+// asks again with what was typed.
+func askTimelineCreate(ctx context.Context, s formSession, create addForm[timelineCreated], in fieldValues) error {
+	taken, err := timelineNames(ctx, s)
+	if err != nil {
+		return err
+	}
+	def := withoutField(create.def, "if-not-exists")
+	def.fields[0].preview = namePreview(taken, "Timeline `%s` exists; submitting offers to use it.")
+
+	for {
+		fields := def.formFields(baseCheckEnv(s), in, formChoices{})
+		submitted, err := s.ask(ctx, fields...)
+		switch {
+		case err != nil:
+			return askError(err)
+		case !submitted:
+			return nil
+		}
+
+		typed := def.formValues(fields)
+		done, err := createTyped(ctx, s, create, typed)
+		if done || err != nil {
+			return err
+		}
+		in = typed
+	}
+}
+
+// createTyped creates the timeline typed, and reports whether the form is done; when it is not, the
+// form asks again with what was typed.
+func createTyped(ctx context.Context, s formSession, create addForm[timelineCreated], typed fieldValues) (bool, error) {
+	err := create.add(ctx, s, typed)
+	rejected, _ := errors.AsType[*Error](err)
+	switch {
+	case err == nil:
+		return true, nil
+	case rejected != nil && rejected.Kind == KindTimelineExists:
+		return useExisting(ctx, s, create, typed)
+	case !correctable(err):
+		return true, err
+	}
+
+	return false, writeError(s.app.Err, rejected, s.style)
+}
+
+// useExisting asks whether to use the existing timeline typed names, and prints it as
+// --if-not-exists does when so; it reports whether the form is done.
+func useExisting(ctx context.Context, s formSession, create addForm[timelineCreated], typed fieldValues) (bool, error) {
+	use := true
+	confirm := huh.NewConfirm().Title("Timeline `" + *typed.value("name") + "` already exists").
+		Affirmative("Use it").Negative("Pick another name").Value(&use)
+	submitted, err := s.ask(ctx, confirm)
+	switch {
+	case err != nil:
+		return true, askError(err)
+	case !submitted:
+		return true, nil
+	}
+	// Value can rebind the confirm, so read what it holds.
+	if use, _ = confirm.GetValue().(bool); !use {
+		return false, nil
+	}
+
+	typed["if-not-exists"] = []string{"true"}
+	return true, create.add(ctx, s, typed)
+}
+
+// timelineNames returns the names of the timelines in the session's database.
+func timelineNames(ctx context.Context, s formSession) ([]string, error) {
+	var names []string
+	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+		timelines, err := st.Timelines(ctx)
+		for _, t := range timelines {
+			names = append(names, t.Name)
+		}
+		return err
+	})
+
+	return names, err
+}
+
+// namePreview returns the preview of a timeline name field: checkName's hint for a rejected name,
+// note, formatted with the name, for one of taken, and nothing otherwise.
+func namePreview(taken []string, note string) func(string, checkEnv) string {
+	return func(name string, _ checkEnv) string {
+		rejected, ok := errors.AsType[*Error](checkName(name))
+		switch {
+		case name == "":
+			return ""
+		case ok:
+			return rejected.Hint
+		case slices.Contains(taken, name):
+			return fmt.Sprintf(note, name)
+		}
+
+		return ""
+	}
 }
 
 func timelineCreateDefinition() definition {
 	return definition{fields: []field{
-		{name: "name", usage: "Timeline `name`, which commands select it by", arg: true, check: withoutEnv(checkName)},
+		{
+			name: "name", usage: "Timeline `name`, which commands select it by", arg: true, required: true,
+			check: withoutEnv(checkName), suggest: suggestName,
+		},
 		{name: "title", usage: "Free-text `title`"},
-		{name: "ref", typ: stringsField, usage: "Ticket key or URL the timeline belongs to; repeat for more"},
+		{name: "ref", typ: stringsField, list: true, usage: "Ticket key or URL the timeline belongs to; repeat for more"},
 		{name: "if-not-exists", typ: boolField, usage: "Print the existing timeline instead of failing when the name is taken"},
 	}}
 }
