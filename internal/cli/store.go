@@ -16,14 +16,9 @@ import (
 // against it and closes it. Config errors return as usage; errors from opening the store or
 // from fn pass through storeError.
 func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.Store) error) error {
-	flags := cmd.Flags()
-	resolved, err := config.Resolve(
-		config.Flags{DBPath: changedString(flags, "db"), ConfigPath: changedString(flags, "config")},
-		app.LookupEnv, app.ReadFile)
+	resolved, err := resolveConfig(cmd, app)
 	if err != nil {
-		return &Error{
-			Kind: KindUsage, Message: err.Error(), Hint: "Check --db, --config, CORONER_DB and CORONER_CONFIG.", Err: err,
-		}
+		return err
 	}
 
 	s, err := app.OpenStore(ctx, resolved.DBPath)
@@ -38,6 +33,22 @@ func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.
 	}
 
 	return err
+}
+
+// resolveConfig returns the configuration --db, --config and the environment select, with
+// its errors as usage.
+func resolveConfig(cmd *cobra.Command, app App) (config.Config, error) {
+	flags := cmd.Flags()
+	resolved, err := config.Resolve(
+		config.Flags{DBPath: changedString(flags, "db"), ConfigPath: changedString(flags, "config")},
+		app.LookupEnv, app.ReadFile)
+	if err != nil {
+		return resolved, &Error{
+			Kind: KindUsage, Message: err.Error(), Hint: "Check --db, --config, CORONER_DB and CORONER_CONFIG.", Err: err,
+		}
+	}
+
+	return resolved, nil
 }
 
 // changedString returns the value of the flag called name, or nil when it was not given.
