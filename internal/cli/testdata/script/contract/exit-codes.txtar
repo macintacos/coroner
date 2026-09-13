@@ -1,6 +1,7 @@
 # Each exit code a command line can reach, with its kind in the stderr JSON error
 # envelope. Nothing reaches 1 (internal) or 130 (interrupted) from a script yet;
-# cli.Run's specs pin those.
+# cli.Run's specs pin those. No command raises id_conflict yet. Kind strings are
+# experimental until 1.0.
 
 # 0: success. stdout is valid JSON and stderr is empty.
 exits 0 coroner version --format json
@@ -32,3 +33,19 @@ stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 exits 2 coroner versio
 ! stdout .
 ! stderr '\{'
+
+# 5, db_too_new: a database a newer coroner migrated.
+exits 0 coroner timeline create future --db $WORK/new.db
+bumpschema $WORK/new.db
+exits 5 coroner timeline list --db $WORK/new.db --json
+! stdout .
+stderr '^\{"error":\{"kind":"db_too_new","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# 5, db_unreadable: --db names a directory, whether the command writes or only reads.
+mkdir $WORK/dir
+exits 5 coroner timeline create outage --db $WORK/dir --json
+! stdout .
+stderr '^\{"error":\{"kind":"db_unreadable","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 5 coroner status --db $WORK/dir --json
+! stdout .
+stderr '^\{"error":\{"kind":"db_unreadable",[^\n]+\}\}\n\z'
