@@ -57,6 +57,7 @@ func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) er
 	}
 	var rows []viewer.TimelineRow
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+		var err error
 		rows, err = readTimelineRows(ctx, s)
 		return err
 	})
@@ -78,15 +79,20 @@ func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) er
 		return err
 	}
 
-	used, err := useTimeline(ctx, app, cfg, fieldValues{"timeline": {picked.Name}})
-	if err == nil {
-		err = used.render(o)
+	used, err := useTimeline(ctx, app, cfg, fieldValues{"timeline": {picked.ID}})
+	if err != nil {
+		return err
 	}
-	if warning := shadowWarning(app.LookupEnv, picked); err == nil && warning != "" {
-		err = o.notify("%s", warning)
+	err = used.render(o)
+	if err != nil {
+		return err
+	}
+	warning := shadowWarning(app.LookupEnv, *used.timeline)
+	if warning == "" {
+		return nil
 	}
 
-	return err
+	return o.notify("%s", warning)
 }
 
 // readTimelineRows returns listTimelines' timelines with their event counts and last events.
@@ -98,16 +104,14 @@ func readTimelineRows(ctx context.Context, s *store.Store) ([]viewer.TimelineRow
 
 	rows := make([]viewer.TimelineRow, 0, len(timelines))
 	for _, t := range timelines {
-		// ponytail: reads every event to count them; add a count and last event query to the
-		// store if a timeline ever holds enough events to slow the picker's start.
-		events, err := s.Events(ctx, t.ID)
+		last, err := s.ListEvents(ctx, t.ID, store.EventFilter{Order: store.OrderDesc, Limit: 1})
 		if err != nil {
 			return nil, err
 		}
 
-		row := viewer.TimelineRow{Timeline: t, Events: len(events), Current: t.ID == currentID}
-		if len(events) > 0 {
-			row.Last = &events[len(events)-1]
+		row := viewer.TimelineRow{Timeline: t, EventCount: last.Total, Current: t.ID == currentID}
+		if len(last.Events) > 0 {
+			row.Last = &last.Events[0]
 		}
 		rows = append(rows, row)
 	}

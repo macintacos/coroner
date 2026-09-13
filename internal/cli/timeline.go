@@ -345,7 +345,8 @@ func printTimeline(o output, t timeline.Timeline) error {
 }
 
 // shadowNotice returns what the timeline picker says while CORONER_TIMELINE selects the
-// timeline commands act on over the one it stores, or "" when the variable is unset or empty.
+// timeline commands act on over the current timeline, or "" when the variable is unset or
+// empty.
 func shadowNotice(lookupEnv func(string) (string, bool)) string {
 	nameOrID, by := resolveTimeline(nil, lookupEnv, "")
 	if by != selectedByEnv {

@@ -2,14 +2,14 @@
   Timelines                                                                     
   3 timelines                                                                   
                                                                                 
-     mongo-outage       5 events  last 2026-09-12 --:-- EDT   Primary election …
-› *  db-2-disk-full     0 events  -                           -                …
-     checkout-rollback  1 event   last 2026-09-11 ~00:01 EDT  Checkout deploy r…
+     mongo-outage       Primary election storm                                  
+     5 events  last 2026-09-12 --:-- EDT   INC-4821, https://jira.example.com/b…
                                                                                 
+› *  db-2-disk-full     -                                                       
+›    0 events  -                           -                                    
                                                                                 
-                                                                                
-                                                                                
-                                                                                
+     checkout-rollback  Checkout deploy rolled back                             
+     1 event   last 2026-09-11 ~00:01 EDT  INC-4830                             
                                                                                 
                                                                                 
                                                                                 

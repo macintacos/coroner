@@ -3,7 +3,6 @@ package viewer_test
 import (
 	"context"
 	"io"
-	"regexp"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -23,7 +22,7 @@ func pickerRows() []viewer.TimelineRow {
 				ID: "0199a1b2-0000-7000-8000-000000000010", Name: "mongo-outage", Title: "Primary election storm",
 				Refs: []string{"INC-4821", "https://jira.example.com/browse/INC-4821"},
 			},
-			Events: 5, Last: &events[4],
+			EventCount: 5, Last: &events[4],
 		},
 		{
 			Timeline: timeline.Timeline{ID: "0199a1b2-0000-7000-8000-000000000020", Name: "db-2-disk-full"},
@@ -34,7 +33,7 @@ func pickerRows() []viewer.TimelineRow {
 				ID: "0199a1b2-0000-7000-8000-000000000030", Name: "checkout-rollback", Title: "Checkout deploy rolled back",
 				Refs: []string{"INC-4830"},
 			},
-			Events: 1, Last: &events[1],
+			EventCount: 1, Last: &events[1],
 		},
 	}
 }
@@ -83,18 +82,27 @@ func pickedName(m tea.Model) string {
 
 var _ = Describe("the timeline picker", func() {
 	DescribeTable("a row's fields: marker, name, event count, last event, title and refs",
-		func(row viewer.TimelineRow, want []string) {
+		func(row viewer.TimelineRow, want viewer.PickerColumns) {
 			Expect(viewer.PickerFields(row, newYork())).To(Equal(want))
 		},
 		Entry("marks the current timeline", pickerRows()[1],
-			[]string{"*", "db-2-disk-full", "0 events", "-", "-", "-"}),
+			viewer.PickerColumns{Marker: "*", Name: "db-2-disk-full", Events: "0 events", Last: "-", Title: "-", Refs: "-"}),
 		Entry("joins refs and counts events", pickerRows()[0],
-			[]string{" ", "mongo-outage", "5 events", "last 2026-09-12 --:-- EDT", "Primary election storm", "INC-4821, https://jira.example.com/browse/INC-4821"}),
+			viewer.PickerColumns{
+				Marker: " ", Name: "mongo-outage", Events: "5 events", Last: "last 2026-09-12 --:-- EDT", Title: "Primary election storm",
+				Refs: "INC-4821, https://jira.example.com/browse/INC-4821",
+			}),
 		Entry("counts one event and marks an approximate last event", pickerRows()[2],
-			[]string{" ", "checkout-rollback", "1 event", "last 2026-09-11 ~00:01 EDT", "Checkout deploy rolled back", "INC-4830"}),
+			viewer.PickerColumns{
+				Marker: " ", Name: "checkout-rollback", Events: "1 event", Last: "last 2026-09-11 ~00:01 EDT", Title: "Checkout deploy rolled back",
+				Refs: "INC-4830",
+			}),
+		Entry("spans an interval last event from its start to its end",
+			viewer.TimelineRow{Timeline: timeline.Timeline{Name: "x"}, EventCount: 3, Last: &fixture().Events[2]},
+			viewer.PickerColumns{Marker: " ", Name: "x", Events: "3 events", Last: "last 2026-09-11 00:10–00:40 EDT", Title: "-", Refs: "-"}),
 		Entry("keeps a title on one line with no control characters",
 			viewer.TimelineRow{Timeline: timeline.Timeline{Name: "x", Title: "Primary\n\tstepped\x1b[2J down"}},
-			[]string{" ", "x", "0 events", "-", "Primary stepped[2J down", "-"}),
+			viewer.PickerColumns{Marker: " ", Name: "x", Events: "0 events", Last: "-", Title: "Primary stepped[2J down", Refs: "-"}),
 	)
 
 	Describe("its screen", func() {
@@ -107,12 +115,30 @@ var _ = Describe("the timeline picker", func() {
 		})
 	})
 
-	cursorRow := func(m tea.Model) string {
-		return regexp.MustCompile(`(?m)^›.*$`).FindString(screen(m))
-	}
+	It("shows every row's title, refs, event count and last event, however long a name", func() {
+		long := viewer.TimelineRow{
+			Timeline: timeline.Timeline{
+				Name: "payments-api-latency-regression-after-connection-pool-resize-eu1", Title: "Pool resize starved checkout",
+				Refs: []string{"INC-4840"},
+			},
+			EventCount: 2, Last: &fixture().Events[2],
+		}
+		m, _ := viewer.NewPicker(viewer.PickOptions{Rows: append(pickerRows(), long), Location: newYork()}).
+			Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+
+		s := screen(m)
+		Expect(s).To(ContainSubstring("payments-api-latency-regression-after-connection-pool-resize-eu1  Pool"))
+		for _, field := range []string{
+			"Primary election storm", "5 events", "last 2026-09-12 --:-- EDT", "INC-4821",
+			"Checkout deploy rolled back", "1 event", "last 2026-09-11 ~00:01 EDT", "INC-4830",
+			"2 events", "last 2026-09-11 00:10–00:40 EDT", "INC-4840",
+		} {
+			Expect(s).To(ContainSubstring(field))
+		}
+	})
 
 	It("opens with the cursor on the current timeline", func() {
-		Expect(cursorRow(openPicker(""))).To(MatchRegexp(`\*\s+db-2-disk-full`))
+		Expect(cursorLine(openPicker(""))).To(MatchRegexp(`\*\s+db-2-disk-full`))
 	})
 
 	It("picks the timeline under the cursor on enter", func() {

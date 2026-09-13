@@ -1,4 +1,5 @@
-// Package viewer is the read-only full-screen viewer 'coroner timeline view' opens on a terminal.
+// Package viewer is the full-screen viewer 'coroner timeline view' opens and the picker
+// 'coroner timeline list' opens on a terminal.
 package viewer
 
 import (
@@ -13,7 +14,7 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// ErrInterrupted is what Run returns when Ctrl-C stops the viewer.
+// ErrInterrupted is what Run and Pick return when Ctrl-C stops them.
 var ErrInterrupted = errors.New("interrupted")
 
 // Snapshot is one read of a timeline.
@@ -58,6 +59,13 @@ type Terminal struct {
 // Run shows the viewer on term until q, which returns nil, Ctrl-C, which returns ErrInterrupted,
 // or the end of ctx.
 func Run(ctx context.Context, term Terminal, opts Options) error {
+	_, err := program(ctx, term, New(opts))
+	return err
+}
+
+// program runs model on term until it quits, returning its final state, or ErrInterrupted on
+// Ctrl-C.
+func program(ctx context.Context, term Terminal, model tea.Model) (tea.Model, error) {
 	profile := colorprofile.ANSI
 	if term.NoColor {
 		profile = colorprofile.ASCII
@@ -65,11 +73,11 @@ func Run(ctx context.Context, term Terminal, opts Options) error {
 
 	// The caller's context already ends on a signal, and the profile is pinned so bubbletea never
 	// reads the process environment to pick one.
-	_, err := tea.NewProgram(New(opts), tea.WithContext(ctx), tea.WithInput(term.In), tea.WithOutput(term.Out),
+	final, err := tea.NewProgram(model, tea.WithContext(ctx), tea.WithInput(term.In), tea.WithOutput(term.Out),
 		tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
 	if errors.Is(err, tea.ErrInterrupted) {
-		return ErrInterrupted
+		return final, ErrInterrupted
 	}
 
-	return err
+	return final, err
 }

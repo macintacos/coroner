@@ -43,6 +43,10 @@ type timelineUsed struct {
 }
 
 func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineUsed, error) {
+	err := timelineUseDefinition().check(in, checkEnv{})
+	if err != nil {
+		return timelineUsed{}, err
+	}
 	nameOrID := in.value("timeline")
 	clearing, _ := in.boolean("clear")
 	if clearing == (nameOrID != nil) {
@@ -54,7 +58,7 @@ func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues
 	}
 
 	var used timelineUsed
-	err := withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		if clearing {
 			return s.ClearCurrentTimeline(ctx)
 		}

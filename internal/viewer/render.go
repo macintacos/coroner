@@ -18,11 +18,13 @@ const (
 	gapThreshold   = 5 * time.Minute
 	maxSourceWidth = 16
 	maxTagsWidth   = 24
+	maxNameWidth   = 32
+	maxTitleWidth  = 32
 	indent         = "  "
 )
 
 type styles struct {
-	name, faint, time, source, tags, gap, day, evidence, comment, selected, failure lipgloss.Style
+	name, faint, time, source, tags, gap, day, evidence, comment, selected, failure, notice lipgloss.Style
 }
 
 // newStyles uses only the 16 ANSI colors, so the terminal's theme picks the shades.
@@ -40,6 +42,7 @@ func newStyles() styles {
 		comment:  s.Faint(true).Italic(true),
 		selected: s.Reverse(true),
 		failure:  s.Foreground(lipgloss.Red),
+		notice:   s.Bold(true).Foreground(lipgloss.Yellow),
 	}
 }
 

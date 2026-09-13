@@ -8,8 +8,8 @@
    while rendering: an agent keeps running `coroner event add` while a person watches. The
    `viewer-no-store` depguard rule in [`.golangci.yml`](../../.golangci.yml) fails any
    non-test viewer file that imports `internal/store`. The timeline picker reads nothing
-   itself: its rows arrive in `PickOptions`, read by a store that is closed before it
-   opens.
+   itself: its rows arrive in `PickOptions`, read from a store the command closes before
+   the picker opens.
 2. **Filtering re-queries the store:** a filter key changes the viewer's `Match` and calls
    `Load`, so the viewer keeps exactly the events `coroner event list` keeps with the same
    flags. Never filter or sort events in memory. The picker's `/` narrows its timeline

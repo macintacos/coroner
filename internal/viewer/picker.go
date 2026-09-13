@@ -2,37 +2,34 @@ package viewer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-const maxTitleWidth = 32
-
 // TimelineRow is one timeline the picker lists.
 type TimelineRow struct {
-	Timeline timeline.Timeline
-	Events   int
+	Timeline   timeline.Timeline
+	EventCount int
 	// Last is the timeline's last event in timeline.CompareEvents order, nil when it has none.
 	Last *timeline.Event
 	// Current marks the timeline 'coroner timeline use' stored.
 	Current bool
 }
 
-// PickOptions is what the picker lists.
+// PickOptions is what the picker lists and says, and the zone its times show in.
 type PickOptions struct {
 	Rows []TimelineRow
 	// Notice is shown above the rows; "" shows none.
@@ -41,20 +38,12 @@ type PickOptions struct {
 	Location *time.Location
 }
 
-// Pick shows the picker on term until enter, which returns the timeline under the cursor, q or
-// esc, which return ok false, Ctrl-C, which returns ErrInterrupted, or the end of ctx.
+// Pick shows the picker on term until enter, which returns the timeline under the cursor, q, or
+// esc when no filter is applied, which return ok false, Ctrl-C, which returns ErrInterrupted, or
+// the end of ctx.
 func Pick(ctx context.Context, term Terminal, opts PickOptions) (timeline.Timeline, bool, error) {
-	profile := colorprofile.ANSI
-	if term.NoColor {
-		profile = colorprofile.ASCII
-	}
-
-	final, err := tea.NewProgram(NewPicker(opts), tea.WithContext(ctx), tea.WithInput(term.In), tea.WithOutput(term.Out),
-		tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
-	switch {
-	case errors.Is(err, tea.ErrInterrupted):
-		return timeline.Timeline{}, false, ErrInterrupted
-	case err != nil:
+	final, err := program(ctx, term, NewPicker(opts))
+	if err != nil {
 		return timeline.Timeline{}, false, err
 	}
 
@@ -65,11 +54,11 @@ func Pick(ctx context.Context, term Terminal, opts PickOptions) (timeline.Timeli
 
 // Picker is the timeline picker's state; build it with NewPicker.
 type Picker struct {
-	list   list.Model
-	notice string
-	styles styles
-	picked *timeline.Timeline
-	width  int
+	list           list.Model
+	notice         string
+	styles         styles
+	picked         *timeline.Timeline
+	interrupt, use key.Binding
 }
 
 // NewPicker returns the picker listing opts.Rows with the cursor on the current timeline, sized
@@ -77,20 +66,23 @@ type Picker struct {
 func NewPicker(opts PickOptions) Picker {
 	s := newStyles()
 	items := make([]list.Item, 0, len(opts.Rows))
-	fields := make([][]string, 0, len(opts.Rows))
+	columns := make([]pickerColumns, 0, len(opts.Rows))
 	for _, row := range opts.Rows {
-		f := pickerFields(row, opts.Location)
-		items = append(items, pickerItem{timeline: row.Timeline, fields: f})
-		fields = append(fields, f)
+		c := pickerFields(row, opts.Location)
+		items = append(items, pickerItem{timeline: row.Timeline, columns: c})
+		columns = append(columns, c)
 	}
 
-	l := list.New(items, pickerDelegate{widths: columnWidths(fields), styles: s}, 0, 0)
+	l := list.New(items, pickerDelegate{widths: measureColumns(columns), styles: s}, 0, 0)
 	l.Title = "Timelines"
 	l.SetStatusBarItemName("timeline", "timelines")
 	l.Styles = listStyles(s)
+	l.Help.Styles = helpStyles(s)
 	l.FilterInput.SetStyles(filterStyles())
+	// list.New copied the dots from its default styles.
 	l.Paginator.ActiveDot = l.Styles.ActivePaginationDot.String()
 	l.Paginator.InactiveDot = l.Styles.InactivePaginationDot.String()
+	// bubbles v2.2.1's default Quit is bound to v.
 	l.KeyMap.Quit = key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q", "quit"))
 	use := key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "use"))
 	l.AdditionalShortHelpKeys = func() []key.Binding { return []key.Binding{use} }
@@ -99,7 +91,7 @@ func NewPicker(opts PickOptions) Picker {
 		l.Select(i)
 	}
 
-	return Picker{list: l, notice: opts.Notice, styles: s}.resize(80, 24)
+	return Picker{list: l, notice: opts.Notice, styles: s, interrupt: newKeyMap().interrupt, use: use}.resize(80, 24)
 }
 
 // Picked returns the timeline enter picked, and false when none was.
@@ -123,9 +115,10 @@ func (p Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p.resize(msg.Width, msg.Height), nil
 	case tea.KeyPressMsg:
 		switch {
-		case msg.String() == "ctrl+c":
+		// Before the list, whose ForceQuit quits rather than interrupts.
+		case key.Matches(msg, p.interrupt):
 			return p, tea.Interrupt
-		case msg.String() == "enter" && p.list.FilterState() != list.Filtering:
+		case key.Matches(msg, p.use) && p.list.FilterState() != list.Filtering:
 			if item, ok := p.list.SelectedItem().(pickerItem); ok {
 				p.picked = &item.timeline
 				return p, tea.Quit
@@ -140,67 +133,84 @@ func (p Picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View draws the notice, then the list.
 func (p Picker) View() tea.View {
-	v := tea.NewView(p.noticeView() + p.list.View())
+	content := p.list.View()
+	if notice := p.noticeView(); notice != "" {
+		content = notice + "\n" + content
+	}
+
+	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
 }
 
 func (p Picker) resize(width, height int) Picker {
-	p.width = width
-	p.list.SetSize(width, max(height-strings.Count(p.noticeView(), "\n"), 1))
+	p.list.SetWidth(width)
+	if notice := p.noticeView(); notice != "" {
+		height -= lipgloss.Height(notice)
+	}
+	p.list.SetHeight(max(height, 1))
 	return p
 }
 
-// noticeView is the notice, wrapped to the window, and a line break; "" when there is none.
+// noticeView is the notice, wrapped to the window; "" when there is none.
 func (p Picker) noticeView() string {
 	if p.notice == "" {
 		return ""
 	}
 
-	return p.styles.gap.PaddingLeft(len(indent)).Width(p.width).Render(oneLine(p.notice)) + "\n"
+	return p.styles.notice.PaddingLeft(len(indent)).Width(p.list.Width()).Render(oneLine(p.notice))
 }
 
-// pickerFields returns row's marker, "*" on the current timeline, then its name, event count,
-// last event time in loc, title and refs: the fields a narrow window cuts come last.
-func pickerFields(row TimelineRow, loc *time.Location) []string {
+// pickerColumns are the fields of a timeline's row.
+type pickerColumns struct {
+	marker, name, events, last, title, refs string
+}
+
+// pickerFields returns row's fields: its marker, "*" on the current timeline, name, event count,
+// last event time in loc, title and refs.
+func pickerFields(row TimelineRow, loc *time.Location) pickerColumns {
 	t := row.Timeline
-	marker, title, refs, last := " ", "-", "-", "-"
+	c := pickerColumns{
+		marker: " ", name: t.Name, events: fmt.Sprintf("%d %s", row.EventCount, plural(row.EventCount, "event")),
+		last: "-", title: "-", refs: "-",
+	}
 	if row.Current {
-		marker = "*"
+		c.marker = "*"
 	}
 	if t.Title != "" {
-		title = oneLine(t.Title)
+		c.title = oneLine(t.Title)
 	}
 	if len(t.Refs) > 0 {
-		refs = oneLine(strings.Join(t.Refs, ", "))
+		c.refs = oneLine(strings.Join(t.Refs, ", "))
 	}
 	if row.Last != nil {
-		last = "last " + wall(*row.Last, loc).Format(time.DateOnly) + " " + strings.TrimSpace(eventTime(*row.Last, loc))
+		c.last = "last " + wall(*row.Last, loc).Format(time.DateOnly) + " " + strings.TrimSpace(eventTime(*row.Last, loc))
 	}
 
-	return []string{marker, t.Name, fmt.Sprintf("%d %s", row.Events, plural(row.Events, "event")), last, title, refs}
+	return c
 }
 
-// columnWidths returns the widest of each field across rows, capping the title.
-func columnWidths(rows [][]string) []int {
-	caps := []int{0, 0, 0, 0, maxTitleWidth, 0}
-	widths := make([]int, len(caps))
-	for _, fields := range rows {
-		for i, field := range fields {
-			width := lipgloss.Width(field)
-			if caps[i] > 0 {
-				width = min(width, caps[i])
-			}
-			widths[i] = max(widths[i], width)
-		}
+// pickerWidths are the picker's column widths.
+type pickerWidths struct {
+	name, events, last int
+}
+
+// measureColumns returns the widest of each column, capping the name: a longer name is never cut,
+// and pushes only its own title.
+func measureColumns(rows []pickerColumns) pickerWidths {
+	var w pickerWidths
+	for _, c := range rows {
+		w.name = max(w.name, min(lipgloss.Width(c.name), maxNameWidth))
+		w.events = max(w.events, lipgloss.Width(c.events))
+		w.last = max(w.last, lipgloss.Width(c.last))
 	}
 
-	return widths
+	return w
 }
 
 type pickerItem struct {
 	timeline timeline.Timeline
-	fields   []string
+	columns  pickerColumns
 }
 
 // FilterValue is what typing after / matches: the name and title.
@@ -208,15 +218,16 @@ func (i pickerItem) FilterValue() string {
 	return i.timeline.Name + " " + i.timeline.Title
 }
 
-// pickerDelegate draws each timeline on one line, its fields in aligned columns.
+// pickerDelegate draws each timeline on two lines, in aligned columns: its marker, name and title,
+// then, under the name, its event count, last event and refs.
 type pickerDelegate struct {
-	widths []int
+	widths pickerWidths
 	styles styles
 }
 
-func (d pickerDelegate) Height() int { return 1 }
+func (d pickerDelegate) Height() int { return 2 }
 
-func (d pickerDelegate) Spacing() int { return 0 }
+func (d pickerDelegate) Spacing() int { return 1 }
 
 func (d pickerDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
 
@@ -226,21 +237,18 @@ func (d pickerDelegate) Render(w io.Writer, m list.Model, index int, item list.I
 		return
 	}
 
-	fields := make([]string, len(it.fields))
-	for i, field := range it.fields {
-		fields[i] = pad(ansi.Truncate(field, d.widths[i], "…"), d.widths[i])
-	}
-
-	s := d.styles
+	c, s := it.columns, d.styles
+	name, title := pad(c.name, d.widths.name), ansi.Truncate(c.title, maxTitleWidth, "…")
+	details := pad(c.events, d.widths.events) + "  " + pad(c.last, d.widths.last) + "  " + c.refs
+	fit := func(line string) string { return ansi.Truncate(line, m.Width(), "…") }
 	if index == m.Index() {
-		_, _ = io.WriteString(w, s.selected.Render(ansi.Truncate("› "+strings.Join(fields, "  "), m.Width(), "…")))
+		top, bottom := fit("› "+c.marker+"  "+name+"  "+title), fit("›    "+details)
+		_, _ = io.WriteString(w, s.selected.Render(top)+"\n"+s.selected.Render(bottom))
 		return
 	}
 
-	styled := []string{
-		fields[0], s.name.Render(fields[1]), s.faint.Render(fields[2]), s.faint.Render(fields[3]), fields[4], s.source.Render(fields[5]),
-	}
-	_, _ = io.WriteString(w, ansi.Truncate(indent+strings.Join(styled, "  "), m.Width(), "…"))
+	top, bottom := fit(indent+c.marker+"  "+s.name.Render(name)+"  "+title), fit(indent+"   "+s.faint.Render(details))
+	_, _ = io.WriteString(w, top+"\n"+bottom)
 }
 
 // listStyles are the list's styles in the 16 ANSI colors, with bold and faint in place of shades.
@@ -265,7 +273,22 @@ func listStyles(s styles) list.Styles {
 	}
 }
 
-// filterStyles styles the filter prompt in ANSI colors, with a cursor that does not blink.
+// helpStyles are the help line's styles in the 16 ANSI colors.
+func helpStyles(s styles) help.Styles {
+	plain := lipgloss.NewStyle()
+	return help.Styles{
+		Ellipsis:       s.faint,
+		ShortKey:       plain,
+		ShortDesc:      s.faint,
+		ShortSeparator: s.faint,
+		FullKey:        plain,
+		FullDesc:       s.faint,
+		FullSeparator:  s.faint,
+	}
+}
+
+// filterStyles styles the filter prompt in ANSI colors, with a cursor that does not blink: a
+// blinking cursor re-arms its tick forever, so a keystroke's commands never settle.
 func filterStyles() textinput.Styles {
 	f := textinput.DefaultStyles(true)
 	f.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
