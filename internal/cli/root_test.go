@@ -2,7 +2,9 @@ package cli_test
 
 import (
 	"bytes"
+	"context"
 	"io/fs"
+	"maps"
 	"os"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -54,12 +56,98 @@ var _ = Describe("Run", func() {
 		Expect(out.String()).To(Equal("Hello, world!\n"))
 	})
 
-	It("reports a rejected flag on Err and exits 1", func(ctx SpecContext) {
+	It("reports a rejected flag on Err and exits 2", func(ctx SpecContext) {
 		code := cli.Run(ctx, newApp("--no-such-flag"))
 
-		Expect(code).To(Equal(1))
+		Expect(code).To(Equal(2))
 		Expect(errOut.String()).To(ContainSubstring("--no-such-flag"))
 		Expect(out.String()).To(BeEmpty())
+	})
+
+	It("ends a text-mode error with the fix and prints no JSON", func(ctx SpecContext) {
+		cli.Run(ctx, newApp("--no-such-flag"))
+
+		Expect(lastLine(errOut.String())).To(ContainSubstring("coroner --help"))
+		Expect(errOut.String()).NotTo(ContainSubstring("{"))
+	})
+
+	DescribeTable("ends Err with a one-line JSON error envelope under a machine format",
+		func(ctx SpecContext, args ...string) {
+			code := cli.Run(ctx, newApp(args...))
+
+			Expect(code).To(Equal(2))
+			Expect(out.String()).To(BeEmpty())
+			envelope := decodeEnvelope(lastLine(errOut.String()))
+			Expect(envelope).To(HaveKeyWithValue("kind", "usage"))
+			Expect(envelope).To(HaveKeyWithValue("message", ContainSubstring("--no-such-flag")))
+			Expect(envelope).To(HaveKey("hint"))
+		},
+		Entry("--format json", "--format", "json", "--no-such-flag"),
+		Entry("--format=jsonl", "--format=jsonl", "--no-such-flag"),
+		Entry("--json before the bad flag", "--json", "--no-such-flag"),
+		Entry("--json after the bad flag", "--no-such-flag", "--json"),
+	)
+
+	It("exits 130 with kind interrupted once the context is cancelled", func(ctx SpecContext) {
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+
+		code := cli.Run(cancelled, newApp("--json"))
+
+		Expect(code).To(Equal(130))
+		Expect(decodeEnvelope(lastLine(errOut.String()))).To(HaveKeyWithValue("kind", "interrupted"))
+	})
+
+	Describe("error colour", func() {
+		const red = "\x1b[31m"
+
+		It("marks the error in red when Err is a terminal", func(ctx SpecContext) {
+			app := newApp("--no-such-flag")
+			app.ErrIsTTY = true
+
+			cli.Run(ctx, app)
+
+			Expect(errOut.String()).To(HavePrefix(red))
+		})
+
+		DescribeTable("prints no escape codes when colour is off",
+			func(ctx SpecContext, isTTY bool, extraEnv map[string]string, args ...string) {
+				maps.Copy(env, extraEnv)
+				app := newApp(append(args, "--no-such-flag")...)
+				app.ErrIsTTY = isTTY
+
+				cli.Run(ctx, app)
+
+				Expect(errOut.String()).NotTo(ContainSubstring("\x1b"))
+			},
+			Entry("Err is not a terminal", false, nil),
+			Entry("NO_COLOR is set", true, map[string]string{"NO_COLOR": "1"}),
+			Entry("CORONER_NO_COLOR is set", true, map[string]string{"CORONER_NO_COLOR": "1"}),
+			Entry("TERM is dumb", true, map[string]string{"TERM": "dumb"}),
+			Entry("--no-color is passed", true, nil, "--no-color"),
+		)
+	})
+
+	Describe("debug output", func() {
+		It("logs the failure's kind and exit code under --debug", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("--debug", "--no-such-flag"))
+
+			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*kind=usage exit_code=2`))
+		})
+
+		It("logs the failure under CORONER_DEBUG", func(ctx SpecContext) {
+			env["CORONER_DEBUG"] = "1"
+
+			cli.Run(ctx, newApp("--no-such-flag"))
+
+			Expect(errOut.String()).To(ContainSubstring("level=DEBUG"))
+		})
+
+		It("prints no log lines without debug", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("--no-such-flag"))
+
+			Expect(errOut.String()).NotTo(ContainSubstring("level="))
+		})
 	})
 
 	It("rejects an empty --db", func(ctx SpecContext) {

@@ -17,4 +17,10 @@ Usage:
 Flags:
       --config string   path to the config file
       --db string       path to the database file
+      --debug           print debug detail on stderr
+      --format string   output format: text, json or jsonl (default "text")
   -h, --help            help for coroner
+      --json            short for --format json
+      --no-color        disable color
+  -q, --quiet           print only essential output
+      --tz string       time zone for times in this invocation
