@@ -11,3 +11,7 @@ func (s *Store) DB() *sql.DB { return s.db }
 func OpenWithMigrations(ctx context.Context, path string, migrations fs.FS) (*Store, error) {
 	return open(ctx, path, migrations)
 }
+
+func BuildEventQuery(timelineID string, f EventFilter) (string, []any) {
+	return buildEventQuery(timelineID, f)
+}
