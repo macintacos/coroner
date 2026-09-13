@@ -20,12 +20,15 @@ func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
 		Short: "Create a timeline",
 		Long: "Create a timeline. Its name is how commands select it: at most 64 lowercase letters,\n" +
 			"digits, '.', '_' or '-', starting with a letter or digit. Put free text in --title.\n" +
-			"Creating a timeline does not make it current; run 'coroner timeline use' for that.",
+			"Creating a timeline does not make it current; run 'coroner timeline use' for that.\n\n" +
+			"On a terminal, with no name or with --interactive, a form asks for the name, title and\n" +
+			"refs, offers the existing timeline when the name is taken, and prints the command it equals.",
 		Args:        cobra.MaximumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline create mongo-outage-2026-09-11 --title \"Primary election storm\" \\\n" +
 			"      --ref INC-4821 --ref https://jira.example.com/browse/INC-4821\n" +
-			"  $ coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json",
+			"  $ coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json\n" +
+			"  $ coroner timeline create --interactive",
 	}
 
 	return timelineCreateForm(ctx, app).attach(cmd, app, terminalForms(app))

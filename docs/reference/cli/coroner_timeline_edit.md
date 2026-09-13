@@ -12,6 +12,10 @@ Change a timeline's name, title or refs. Its id never changes, so its events, an
 anything naming it by id, still resolve after a rename. Refs are removed before they are
 added; adding a ref it has, or removing one it lacks, changes nothing.
 
+On a terminal, with no flags or with --interactive, a form opens on the timeline, or on the
+current one when none is named, applies only what you change, and prints the command it
+equals.
+
 ```
 coroner timeline edit <name|id> [flags]
 ```
@@ -21,6 +25,7 @@ coroner timeline edit <name|id> [flags]
 ```
   $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822
   $ coroner timeline edit mongo-failover --title "" --dry-run --json
+  $ coroner timeline edit mongo-failover --interactive
 ```
 
 ### Options
