@@ -20,6 +20,11 @@ func newVersionCommand(app App) *cobra.Command {
 	}
 }
 
+func throwawayLintViolation() int {
+	len := 1
+	return len
+}
+
 type versionJSON struct {
 	CoronerVersion string `json:"coroner_version"`
 }
