@@ -77,21 +77,21 @@ never renumber a rule, only retire it.
   ([clig.dev](https://clig.dev/#output))
 - **OUT-11** stderr is not a log file: no `WARN`/`ERR` level labels outside verbose or
   debug mode. ([clig.dev](https://clig.dev/#output))
-- **OUT-12** Page only when stdout is a TTY, with `less -FIRX`, and never by default.
-  ([clig.dev](https://clig.dev/#output))
+- **OUT-12** Page only when stdout is a TTY, with `less -FIRX`. The pager is deferred: AWS
+  CLI v2's default-on pager is the cautionary tale. ([clig.dev](https://clig.dev/#output))
 
 ## Errors
 
 - **E-1** Catch expected errors and rewrite them for humans, with the fix.
   ([clig.dev](https://clig.dev/#errors))
-- **E-2** Signal over noise: group repeated errors under one header with a count.
-  ([clig.dev](https://clig.dev/#errors))
+- **E-2** Signal over noise: group repeated errors under one header with a count and the
+  first few occurrences. ([clig.dev](https://clig.dev/#errors))
 - **E-3** Put the most important line last. Use red sparingly.
   ([clig.dev](https://clig.dev/#errors))
 - **E-4** Unexpected errors print a short message and an issue URL, with no raw stack
   trace by default. `SilenceUsage` and `SilenceErrors` are set on root, and errors print
-  once. Debug detail appears only under `--debug`/`CORONER_DEBUG`.
-  ([clig.dev](https://clig.dev/#errors))
+  once, from `main`, which also maps them to exit codes. Debug detail appears only under
+  `--debug`/`CORONER_DEBUG`. ([clig.dev](https://clig.dev/#errors))
 
 ## Arguments and flags
 
@@ -104,7 +104,7 @@ never renumber a rule, only retire it.
   ([clig.dev](https://clig.dev/#arguments-and-flags))
 - **A-4** Use standard names: `--all`, `--force`, `--json`, `--dry-run` (long only; `-n`
   means "count" elsewhere), `--yes`, `--no-input`, `--quiet`, `--version`, and
-  `-o/--output` means a *file*. Never `-v`.
+  `-o/--output` means a *file*. Never `-v`: it is ambiguous between verbose and version.
   ([clig.dev](https://clig.dev/#arguments-and-flags))
 - **A-5** Defaults suit most users. ([clig.dev](https://clig.dev/#arguments-and-flags))
 - **A-6** Never *require* a prompt. With no TTY, fail and name the flag to pass.
@@ -165,8 +165,8 @@ never renumber a rule, only retire it.
   ([clig.dev](https://clig.dev/#future-proofing))
 - **F-4** No catch-all command: `coroner "text"` must not mean `event add`.
   ([clig.dev](https://clig.dev/#future-proofing))
-- **F-5** No abbreviations, and no aliases in the MVP (`ls`, `rm`). An alias, once added,
-  is permanent. ([clig.dev](https://clig.dev/#future-proofing))
+- **F-5** No abbreviations, and no aliases in the MVP (`ls`, `rm`). An alias, if ever
+  added, is explicit and permanent. ([clig.dev](https://clig.dev/#future-proofing))
 - **F-6** No time bombs: no network calls and no update checks by default.
   ([clig.dev](https://clig.dev/#future-proofing))
 
@@ -181,8 +181,8 @@ never renumber a rule, only retire it.
 
 - **C-1** Precedence is flags, then environment, then project config, then user config,
   then system config. ([clig.dev](https://clig.dev/#configuration))
-- **C-2** XDG on macOS too; never `os.UserConfigDir`.
-  ([clig.dev](https://clig.dev/#configuration))
+- **C-2** XDG on macOS too; never `os.UserConfigDir`, which returns
+  `~/Library/Application Support` on macOS. ([clig.dev](https://clig.dev/#configuration))
 - **C-3** Environment variable names are upper-case with a `CORONER_` prefix and
   single-line values. ([clig.dev](https://clig.dev/#environment-variables))
 - **C-4** Honor the general-purpose variables: `NO_COLOR`, `TERM`, `TZ`, `HOME`, `XDG_*`,
@@ -215,8 +215,9 @@ Every new command reuses one of these verbs.
 | `export` | Render an object into a document format |
 | `import` | Ingest the machine format that `list` and `export` produce |
 
-Rejected synonyms: `show`, `get`, `describe`, `inspect`, `rm`, `remove`, `update`. S-3
-forbids `show` next to `view`, so "show a timeline" is `timeline view`.
+Rejected synonyms: `show`, `get`, `describe`, and `inspect` (use `view`); `rm` and
+`remove` (use `delete`); `update` (use `edit`). S-3 forbids `show` next to `view`, so
+"show a timeline" is `timeline view`.
 
 Help text follows
 [gh's command-line syntax](https://github.com/cli/cli/blob/trunk/docs/command-line-syntax.md):
