@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -34,7 +35,7 @@ func main() {
 	}
 
 	// A zero App is enough: rendering pages runs no command.
-	root := cli.NewRoot(cli.App{})
+	root := cli.NewRoot(context.Background(), cli.App{})
 
 	var err error
 	if *checkOnly {
