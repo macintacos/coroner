@@ -19,7 +19,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
   Pkl formatting, `go mod tidy` or `sqlc generate`; only `mise run format` and
   `pre-commit` apply those.
 - `mise run test` runs the Ginkgo suites, and through them the testscript end-to-end
-  scripts; a package pattern or `--focus <regexp>` narrows it.
+  scripts and the rapid properties; a package pattern narrows it, and `--focus <regexp>`
+  narrows Ginkgo specs only, so plain `Test*` functions such as `TestScripts` still run.
 - `mise run preflight` runs lint, test and build. It is the gate before declaring work
   done (Rule 7).
 
