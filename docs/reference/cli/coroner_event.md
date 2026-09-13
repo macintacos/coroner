@@ -47,4 +47,5 @@ coroner event [flags]
 * [coroner](coroner.md)	 - Build root-cause investigation timelines
 * [coroner event add](coroner_event_add.md)	 - Add an event to the current timeline
 * [coroner event list](coroner_event_list.md)	 - List a timeline's events, filtered
+* [coroner event view](coroner_event_view.md)	 - Show an event and its annotations
 
