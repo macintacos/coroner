@@ -20,22 +20,24 @@ var _ = Describe("time input", func() {
 		return loc
 	}
 
-	DescribeTable("timeLocation reads naive input in --tz, then the config default, then local",
-		func(tz *string, defaultTimezone, want string) {
-			got, err := timeLocation(tz, defaultTimezone, local)
+	DescribeTable("timeZone reads naive input in --tz, else the config default, labelled local for the local zone",
+		func(tz *string, defaultTimezone, wantZone, wantLabel string) {
+			got, err := timeZone(tz, defaultTimezone, local)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(got.String()).To(Equal(want))
+			Expect(got.loc.String()).To(Equal(wantZone))
+			Expect(got.label).To(Equal(wantLabel))
 		},
-		Entry("local when neither names a zone", nil, "local", "Test/Local"),
-		Entry("the config default over local", nil, "Asia/Tokyo", "Asia/Tokyo"),
-		Entry("--tz over the config default", new("Europe/Berlin"), "Asia/Tokyo", "Europe/Berlin"),
-		Entry("local when --tz says so, over the config default", new("local"), "Asia/Tokyo", "Test/Local"),
+		Entry("local when the config default says so", nil, "local", "Test/Local", "local"),
+		Entry("the config default when --tz is not given", nil, "Asia/Tokyo", "Asia/Tokyo", "Asia/Tokyo"),
+		Entry("--tz over the config default", new("Europe/Berlin"), "Asia/Tokyo", "Europe/Berlin", "Europe/Berlin"),
+		Entry("local when --tz says so, over the config default", new("local"), "Asia/Tokyo", "Test/Local", "local"),
+		Entry("local in any case", new("Local"), "Asia/Tokyo", "Test/Local", "local"),
 	)
 
-	DescribeTable("timeLocation rejects a zone it cannot load as usage, naming where the zone came from",
+	DescribeTable("timeZone rejects a zone it cannot load as usage, naming where the zone came from",
 		func(tz *string, defaultTimezone, source string) {
-			_, err := timeLocation(tz, defaultTimezone, local)
+			_, err := timeZone(tz, defaultTimezone, local)
 
 			Expect(err).To(SatisfyAll(HaveField("Kind", KindUsage), MatchError(ContainSubstring(source))))
 		},
@@ -80,31 +82,42 @@ var _ = Describe("time input", func() {
 				MatchError(ContainSubstring("--ended")),
 				HaveField("Hint", ContainSubstring("-05:00"))))
 		})
+
+		DescribeTable("rejects an instant outside the years 0000 to 9999 in UTC as invalid_time, naming the flag",
+			func(input string) {
+				_, err := resolveTime("--at", &input, now, time.UTC)
+
+				Expect(err).To(SatisfyAll(
+					HaveField("Kind", KindInvalidTime),
+					MatchError(ContainSubstring("--at")),
+					HaveField("Hint", ContainSubstring("0000 to 9999"))))
+			},
+			Entry("before 0000", "0000-01-01T00:00:00+01:00"),
+			Entry("after 9999", "9999-12-31T23:00:00-01:00"),
+		)
 	})
 
-	DescribeTable("formatResolved shows the UTC instant to its precision, then the wall clock in loc",
+	DescribeTable("formatResolved shows the UTC instant to its precision, then the wall clock in the zone",
 		func(r timeparse.Resolved, zoneName, want string) {
-			loc := local
-			if zoneName != "" {
-				loc = loadZone(zoneName)
-			}
+			z, err := timeZone(&zoneName, "local", local)
+			Expect(err).NotTo(HaveOccurred())
 
-			Expect(formatResolved(r, loc, local)).To(Equal(want))
+			Expect(formatResolved(r, z)).To(Equal(want))
 		},
 		Entry("milliseconds, in local",
-			resolved(412_000_000, timeline.PrecisionMillisecond, false), "",
+			resolved(412_000_000, timeline.PrecisionMillisecond, false), "local",
 			"2026-09-11T03:14:07.412Z (-03:00 local: 00:14:07)"),
 		Entry("seconds, in a named zone",
 			resolved(0, timeline.PrecisionSecond, false), "America/New_York",
 			"2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07)"),
 		Entry("microseconds",
-			resolved(412_000, timeline.PrecisionMicrosecond, false), "",
+			resolved(412_000, timeline.PrecisionMicrosecond, false), "local",
 			"2026-09-11T03:14:07.000412Z (-03:00 local: 00:14:07)"),
 		Entry("nanoseconds",
 			resolved(412, timeline.PrecisionNanosecond, false), "UTC",
 			"2026-09-11T03:14:07.000000412Z (+00:00 UTC: 03:14:07)"),
 		Entry("an approximate time, marked with ~",
-			resolved(0, timeline.PrecisionSecond, true), "",
+			resolved(0, timeline.PrecisionSecond, true), "local",
 			"~2026-09-11T03:14:07Z (-03:00 local: 00:14:07)"),
 	)
 })

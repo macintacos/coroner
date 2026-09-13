@@ -21,8 +21,10 @@ type App struct {
 	Args     []string
 	In       io.Reader
 	Out, Err io.Writer
-	// Color and layout are decided per stream; a command never waits on a terminal In.
-	InIsTTY, OutIsTTY, ErrIsTTY bool
+	// A command never waits on a terminal In.
+	InIsTTY bool
+	// Color and layout are decided per stream.
+	OutIsTTY, ErrIsTTY bool
 	// Version is the build's module version, as debug.ReadBuildInfo reports it.
 	Version   string
 	LookupEnv func(key string) (string, bool)

@@ -7,7 +7,7 @@ exits 0 coroner timeline use mongo-outage
 
 # --dry-run prints the event object with a null seq, and adds nothing.
 exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07.412Z --dry-run --json
-stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[^"]{36}","seq":null,'
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","seq":null,'
 
 # add prints the event object, every key present. A Z time has a null offset.
 exits 0 coroner event add 'Primary stepped down: replSetStepDown' --at 2026-09-11T03:14:07.412Z --ended 2026-09-11T03:20:00Z --source mongod --tag election --tag phase:detect --url https://logs.example.com/l/1 --author julian --json

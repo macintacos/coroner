@@ -4,7 +4,7 @@ stderr 'coroner event add --help'
 exits 2 coroner event add 'Primary stepped down' --source 'DB-2 Mongod'
 stderr 'Did you mean `db-2-mongod`\?'
 exits 2 coroner event add 'Primary stepped down' --at '2026-03-08 02:30'
-stderr 'America/New_York; state the offset you mean, such as 2026-03-08T02:30:00-05:00'
+stderr 'America/New_York.*-05:00'
 exits 2 coroner event add 'Primary stepped down' --tz ''
 stderr '--tz must not be empty'
 ! exists $WORK/.local/share/coroner

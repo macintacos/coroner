@@ -16,7 +16,7 @@ import (
 )
 
 // The characters and length of timeline names, sources and tags; keep in sync with
-// timeline.ValidateTimelineName and timeline.ValidateSourceName.
+// internal/timeline/grammar.go.
 const (
 	slugAlphanumerics = "abcdefghijklmnopqrstuvwxyz0123456789"
 	namePunct         = "._-"
@@ -327,6 +327,6 @@ func printTimeline(o output, t timeline.Timeline) error {
 }
 
 func displayInstant(t time.Time) string {
-	// ponytail: instants print in UTC; show them in the --tz zone once EXC-1308 resolves it.
+	// ponytail: instants print in UTC; show them in the --tz zone with EXC-1309's event list.
 	return timeline.FormatInstant(t)
 }

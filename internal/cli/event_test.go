@@ -172,10 +172,11 @@ var _ = Describe("event add", func() {
 		})
 
 		It("marks the time approximate from --approximate or an around prefix", func(ctx SpecContext) {
-			run(ctx, "event", "add", "Deploy started", "--at", "2026-09-11 14:00", "--approximate", "--json")
+			Expect(run(ctx, "event", "add", "Deploy started", "--at", "2026-09-11 14:00", "--approximate", "--json")).
+				To(Equal(0))
 			Expect(out.String()).To(ContainSubstring(`"approximate":true`))
 
-			run(ctx, "event", "add", "Deploy started", "--at", "around 2026-09-11 14:00", "--json")
+			Expect(run(ctx, "event", "add", "Deploy started", "--at", "around 2026-09-11 14:00", "--json")).To(Equal(0))
 			Expect(out.String()).To(ContainSubstring(`"approximate":true`))
 			Expect(errOut.String()).To(ContainSubstring("at ~2026-09-11T18:00:00Z"))
 		})
@@ -192,6 +193,25 @@ var _ = Describe("event add", func() {
 				"--json")).To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
+		})
+
+		DescribeTable("exits 2 with kind invalid_time and a hint to use --approximate on an approximate --ended",
+			func(ctx SpecContext, ended string) {
+				Expect(run(ctx, "event", "add", "Deploy", "--at", "2026-09-11 14:00", "--ended", ended, "--json")).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
+				Expect(errOut.String()).To(ContainSubstring("pass --approximate"))
+				Expect(storedEvents(ctx)).To(BeEmpty())
+			},
+			Entry(nil, "~2026-09-11 14:20"),
+			Entry(nil, "around 2026-09-11 14:20"),
+		)
+
+		It("exits 2 with kind invalid_time and the years it takes on a time outside them in UTC", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "add", "Epoch", "--at", "0000-01-01T00:00:00+01:00", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
+			Expect(errOut.String()).To(ContainSubstring("0000 to 9999"))
 		})
 
 		Describe("--dry-run", func() {
@@ -237,13 +257,32 @@ var _ = Describe("event add", func() {
 				in, inIsTTY = reader, true
 
 				Expect(run(ctx, "event", "add", "-")).To(Equal(2))
-				Expect(errOut.String()).To(ContainSubstring("stdin"))
+				Expect(errOut.String()).To(ContainSubstring("Pipe the text in"))
+			}, SpecTimeout(10*time.Second))
+
+			It("is read from stdin only once the flags are valid", func(ctx SpecContext) {
+				reader, writer := io.Pipe()
+				DeferCleanup(writer.Close)
+				in = reader
+
+				Expect(run(ctx, "event", "add", "-", "--tz", "Mars/Olympus")).To(Equal(2))
 			}, SpecTimeout(10*time.Second))
 
 			It("exits 2 when blank", func(ctx SpecContext) {
 				in = strings.NewReader("\n")
 
 				Expect(run(ctx, "event", "add", "-")).To(Equal(2))
+				Expect(errOut.String()).To(ContainSubstring("Pass non-blank text."))
+			})
+
+			It("exits 2 with kind usage when not UTF-8", func(ctx SpecContext) {
+				in = strings.NewReader("Primary stepped down \xff")
+
+				Expect(run(ctx, "event", "add", "-", "--json")).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+				Expect(errOut.String()).To(ContainSubstring("UTF-8"))
+				Expect(storedEvents(ctx)).To(BeEmpty())
 			})
 
 			It("exits 2 when split over several arguments, hinting to quote it", func(ctx SpecContext) {
@@ -255,8 +294,8 @@ var _ = Describe("event add", func() {
 
 		Describe("its source", func() {
 			It("is created the first time an event names it", func(ctx SpecContext) {
-				run(ctx, "event", "add", "Primary stepped down", "--source", "db-2/mongod")
-				run(ctx, "event", "add", "New primary elected", "--source", "db-2/mongod")
+				Expect(run(ctx, "event", "add", "Primary stepped down", "--source", "db-2/mongod")).To(Equal(0))
+				Expect(run(ctx, "event", "add", "New primary elected", "--source", "db-2/mongod")).To(Equal(0))
 
 				s, err := store.Open(ctx, filepath.Join(home, "coroner.db"))
 				Expect(err).NotTo(HaveOccurred())
@@ -274,7 +313,8 @@ var _ = Describe("event add", func() {
 
 		Describe("its tags", func() {
 			It("keeps a repeated tag once, in the order first given", func(ctx SpecContext) {
-				run(ctx, "event", "add", "Failover", "--tag", "phase:detect", "--tag", "db", "--tag", "phase:detect", "--json")
+				Expect(run(ctx, "event", "add", "Failover", "--tag", "phase:detect", "--tag", "db", "--tag", "phase:detect", "--json")).
+					To(Equal(0))
 
 				Expect(out.String()).To(ContainSubstring(`"tags":["phase:detect","db"]`))
 			})
@@ -312,7 +352,7 @@ var _ = Describe("event add", func() {
 		)
 	})
 
-	It("exits 2 with kind timeline_required when no timeline is current", func(ctx SpecContext) {
+	It("exits 2 with kind timeline_required when no timeline is selected", func(ctx SpecContext) {
 		Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
 
 		Expect(run(ctx, "event", "add", "Primary stepped down", "--json")).To(Equal(2))
