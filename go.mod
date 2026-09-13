@@ -21,6 +21,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
+	github.com/yuin/goldmark v1.8.6
 	modernc.org/sqlite v1.58.0
 	pgregory.net/rapid v1.3.0
 )
