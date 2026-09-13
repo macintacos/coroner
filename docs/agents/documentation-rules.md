@@ -22,7 +22,7 @@ digraph coroner_docs_router {
     "Edit docs/agents/*.md" [shape=box];
     "Edit docs/contributing/command-checklist.md" [shape=box];
     "Edit .github/pull_request_template.md" [shape=box];
-    "Edit CONTEXT.md (not in the repo yet — EXC-1320)" [shape=box];
+    "Edit CONTEXT.md" [shape=box];
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
     "Regenerate the CLI reference (not in the repo yet — EXC-1331)" [shape=box];
@@ -34,7 +34,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
-    "Which doc does the change affect?" -> "Edit CONTEXT.md (not in the repo yet — EXC-1320)" [label="domain vocabulary: a new or renamed noun"];
+    "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
     "Which doc does the change affect?" -> "Regenerate the CLI reference (not in the repo yet — EXC-1331)" [label="a command or flag changed: regenerate, never hand-edit"];
@@ -58,8 +58,8 @@ digraph coroner_docs_router {
   and the verb glossary.
 - **[`.github/pull_request_template.md`](../../.github/pull_request_template.md)** — the
   checkbox that makes a pull request cite the checklist IDs it was checked against.
-- **`CONTEXT.md`** (not in the repo yet — EXC-1320) — the vocabulary glossary for names in
-  code, flags, JSON and docs.
+- **[`CONTEXT.md`](../../CONTEXT.md)** — the vocabulary glossary for names in code, flags,
+  JSON and docs.
 - **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the
   deprecation mechanics.
 - **The docs site pages** (not in the repo yet) — the site itself (EXC-1300), the tutorial

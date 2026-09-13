@@ -12,34 +12,7 @@ import (
 
 func created() time.Time { return time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC) }
 
-// quarterPast is 10:15 EDT, a minute-precision instant.
-func quarterPast() time.Time { return time.Date(2026, 9, 12, 14, 15, 0, 0, time.UTC) }
-
-func validEvent() timeline.Event {
-	return timeline.Event{
-		ID:         "0199a1b2-0000-7000-8000-000000000001",
-		TimelineID: "0199a1b2-0000-7000-8000-000000000000",
-		Seq:        1,
-		OccurredAt: quarterPast(),
-		Precision:  timeline.PrecisionMinute,
-		Source:     new("slack/inc-465"),
-		Tags:       []string{"phase:detect"},
-		Text:       "Pager fires for db-2",
-		CreatedAt:  created(),
-		UpdatedAt:  created(),
-	}
-}
-
-func validAnnotation() timeline.Annotation {
-	return timeline.Annotation{
-		ID:         "0199a1b2-0000-7000-8000-000000000002",
-		TimelineID: "0199a1b2-0000-7000-8000-000000000000",
-		Kind:       timeline.AnnotationEvidence,
-		Body:       "2026-09-12T14:15:03.180+00:00 mongod: election timeout",
-		CreatedAt:  created(),
-		UpdatedAt:  created(),
-	}
-}
+func quarterPast() time.Time { return time.Date(2026, 9, 12, 10, 15, 0, 0, time.UTC) }
 
 var _ = Describe("Timeline.Validate", func() {
 	valid := func() timeline.Timeline {
@@ -59,48 +32,65 @@ var _ = Describe("Timeline.Validate", func() {
 	It("rejects a name outside the grammar", func() {
 		t := valid()
 		t.Name = "INC 465"
-		Expect(t.Validate()).NotTo(Succeed())
+		Expect(t.Validate()).To(MatchError(HavePrefix("timeline name")))
 	})
 
 	It("rejects a blank ref", func() {
 		t := valid()
 		t.Refs = append(t.Refs, " ")
-		Expect(t.Validate()).NotTo(Succeed())
+		Expect(t.Validate()).To(MatchError(HavePrefix("ref")))
 	})
 })
 
 var _ = Describe("Event.Validate", func() {
+	valid := func() timeline.Event {
+		return timeline.Event{
+			ID:         "0199a1b2-0000-7000-8000-000000000001",
+			TimelineID: "0199a1b2-0000-7000-8000-000000000000",
+			Seq:        1,
+			OccurredAt: quarterPast(),
+			Precision:  timeline.PrecisionMinute,
+			Source:     new("slack/inc-465"),
+			Tags:       []string{"phase:detect"},
+			Text:       "Pager fires for db-2",
+			CreatedAt:  created(),
+			UpdatedAt:  created(),
+		}
+	}
+
 	It("accepts a well-formed event", func() {
-		Expect(validEvent().Validate()).To(Succeed())
+		Expect(valid().Validate()).To(Succeed())
 	})
 
 	DescribeTable("rejects",
-		func(mutate func(*timeline.Event)) {
-			e := validEvent()
+		func(rule string, mutate func(*timeline.Event)) {
+			e := valid()
 			mutate(&e)
-			Expect(e.Validate()).NotTo(Succeed())
+			Expect(e.Validate()).To(MatchError(HavePrefix(rule)))
 		},
-		Entry("empty text", func(e *timeline.Event) { e.Text = "" }),
-		Entry("whitespace-only text", func(e *timeline.Event) { e.Text = " \n\t" }),
-		Entry("an unknown precision", func(e *timeline.Event) { e.Precision = "fortnight" }),
-		Entry("an instant inside its precision window rather than at its start",
+		Entry("empty text", "text", func(e *timeline.Event) { e.Text = "" }),
+		Entry("whitespace-only text", "text", func(e *timeline.Event) { e.Text = " \n\t" }),
+		Entry("an unknown precision", "precision", func(e *timeline.Event) { e.Precision = "fortnight" }),
+		Entry("an instant inside its precision window rather than at its start", "occurred at",
 			func(e *timeline.Event) { e.OccurredAt = quarterPast().Add(3 * time.Second) }),
-		Entry("an hour window measured in UTC rather than the observed +05:30",
+		Entry("an hour window measured in UTC rather than the stated +05:30", "occurred at",
 			func(e *timeline.Event) {
 				e.Precision = timeline.PrecisionHour
 				e.OccurredOffset = new(19800)
 				e.OccurredAt = time.Date(2026, 9, 12, 5, 0, 0, 0, time.UTC)
 			}),
-		Entry("an ended at before occurred at",
+		Entry("an ended at before occurred at", "ended at",
 			func(e *timeline.Event) { e.EndedAt = new(quarterPast().Add(-time.Minute)) }),
-		Entry("a year the canonical instant cannot render",
+		Entry("an occurred at year the canonical instant cannot render", "occurred at",
 			func(e *timeline.Event) { e.OccurredAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) }),
-		Entry("a source outside the grammar", func(e *timeline.Event) { e.Source = new("Slack") }),
-		Entry("a tag outside the grammar", func(e *timeline.Event) { e.Tags = []string{"Phase Detect"} }),
+		Entry("an ended at year the canonical instant cannot render", "ended at",
+			func(e *timeline.Event) { e.EndedAt = new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)) }),
+		Entry("a source outside the grammar", "source", func(e *timeline.Event) { e.Source = new("Slack") }),
+		Entry("a tag outside the grammar", "tag", func(e *timeline.Event) { e.Tags = []string{"Phase Detect"} }),
 	)
 
-	It("accepts an hour window measured in the observed +05:30", func() {
-		e := validEvent()
+	It("accepts an hour window measured in the stated +05:30", func() {
+		e := valid()
 		e.Precision = timeline.PrecisionHour
 		e.OccurredOffset = new(19800)
 		e.OccurredAt = time.Date(2026, 9, 12, 4, 30, 0, 0, time.UTC)
@@ -108,48 +98,69 @@ var _ = Describe("Event.Validate", func() {
 	})
 
 	It("accepts an interval that ends when it starts", func() {
-		e := validEvent()
+		e := valid()
 		e.EndedAt = new(quarterPast())
 		Expect(e.Validate()).To(Succeed())
 	})
 
 	It("reports every problem at once", func() {
-		e := validEvent()
+		e := valid()
 		e.Text = ""
 		e.Tags = []string{"Phase Detect"}
 		Expect(e.Validate()).To(MatchError(And(ContainSubstring("text"), ContainSubstring("Phase Detect"))))
 	})
+
+	It("reports an unknown precision and an out-of-range occurred at together", func() {
+		e := valid()
+		e.Precision = "fortnight"
+		e.OccurredAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+		Expect(e.Validate()).To(MatchError(And(ContainSubstring("precision"), ContainSubstring("occurred at"))))
+	})
 })
 
 var _ = Describe("Annotation.Validate", func() {
+	valid := func() timeline.Annotation {
+		return timeline.Annotation{
+			ID:         "0199a1b2-0000-7000-8000-000000000002",
+			TimelineID: "0199a1b2-0000-7000-8000-000000000000",
+			Kind:       timeline.AnnotationEvidence,
+			Body:       "2026-09-12T14:15:03.180+00:00 mongod: election timeout",
+			CreatedAt:  created(),
+			UpdatedAt:  created(),
+		}
+	}
+
 	It("accepts well-formed evidence on the timeline itself", func() {
-		Expect(validAnnotation().Validate()).To(Succeed())
+		Expect(valid().Validate()).To(Succeed())
 	})
 
 	It("accepts a comment on an event", func() {
-		a := validAnnotation()
+		a := valid()
 		a.Kind = timeline.AnnotationComment
 		a.EventID = new("0199a1b2-0000-7000-8000-000000000001")
 		Expect(a.Validate()).To(Succeed())
 	})
 
 	DescribeTable("rejects",
-		func(mutate func(*timeline.Annotation)) {
-			a := validAnnotation()
+		func(rule string, mutate func(*timeline.Annotation)) {
+			a := valid()
 			mutate(&a)
-			Expect(a.Validate()).NotTo(Succeed())
+			Expect(a.Validate()).To(MatchError(HavePrefix(rule)))
 		},
-		Entry("empty body", func(a *timeline.Annotation) { a.Body = "" }),
-		Entry("whitespace-only body", func(a *timeline.Annotation) { a.Body = "  " }),
-		Entry("an unknown kind", func(a *timeline.Annotation) { a.Kind = "note" }),
-		Entry("a source outside the grammar", func(a *timeline.Annotation) { a.Source = new("db 2") }),
+		Entry("empty body", "body", func(a *timeline.Annotation) { a.Body = "" }),
+		Entry("whitespace-only body", "body", func(a *timeline.Annotation) { a.Body = "  " }),
+		Entry("an unknown kind", "annotation kind", func(a *timeline.Annotation) { a.Kind = "note" }),
+		Entry("a source outside the grammar", "source", func(a *timeline.Annotation) { a.Source = new("db 2") }),
 	)
 })
 
 var _ = Describe("Source.Validate", func() {
-	It("accepts a name in the grammar and rejects one outside it", func() {
+	It("accepts a name in the grammar", func() {
 		Expect(timeline.Source{ID: "0199a1b2-0000-7000-8000-000000000003", Name: "db-2/mongod", CreatedAt: created()}.Validate()).To(Succeed())
-		Expect(timeline.Source{ID: "0199a1b2-0000-7000-8000-000000000003", Name: "db-2 mongod", CreatedAt: created()}.Validate()).NotTo(Succeed())
+	})
+
+	It("rejects a name outside the grammar", func() {
+		Expect(timeline.Source{ID: "0199a1b2-0000-7000-8000-000000000003", Name: "db-2 mongod", CreatedAt: created()}.Validate()).To(MatchError(HavePrefix("source")))
 	})
 })
 

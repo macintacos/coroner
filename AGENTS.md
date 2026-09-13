@@ -42,19 +42,21 @@ digraph coroner_rules_router {
     "Load AGENTS.md § Rules" [shape=box];
     "Load docs/contributing/command-checklist.md" [shape=box];
     "Load .golangci.yml" [shape=box];
-    "Load CONTEXT.md (not in the repo yet — EXC-1320)" [shape=box];
+    "Load CONTEXT.md" [shape=box];
     "Load STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
     "Load docs/agents/documentation-rules.md" [shape=box];
+    "Load docs/agents/timeline-rules.md" [shape=box];
 
     "Working on coroner" -> "What does the change touch?";
     "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
     "What does the change touch?" -> "Load docs/contributing/command-checklist.md" [label="a command, flag, output or error message (Rule 1)"];
     "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
-    "What does the change touch?" -> "Load CONTEXT.md (not in the repo yet — EXC-1320)" [label="naming something in code, flags, JSON or docs"];
+    "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md (not in the repo yet — EXC-1303)" [label="JSON output, exports or another contract (Rule 3)"];
     "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
     "What does the change touch?" -> "Load docs/agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task or hk hook, a docs/agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
+    "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
 }
 ```
 
