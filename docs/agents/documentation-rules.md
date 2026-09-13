@@ -29,7 +29,7 @@ digraph coroner_docs_router {
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
-    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, first use"];
+    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status"];
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks and hk hooks, the routing digraph, where things live, the seven rules"];
     "Which doc does the change affect?" -> "Edit docs/agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
@@ -44,8 +44,8 @@ digraph coroner_docs_router {
 
 ## The doc landscape
 
-- **`README.md`** (human-facing) — the front door: what coroner is, install, and first
-  use. Today it is only a title.
+- **`README.md`** (human-facing) — the front door: what coroner is, install, the two
+  `mise` tasks a new developer runs, and project status.
 - **`AGENTS.md`** (agent-facing) — the router: what coroner is, the `mise` tasks and `hk`
   hooks, the routing digraph, where things live, and the seven repository rules.
   `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through the import; it never
@@ -95,7 +95,8 @@ So, **in the same change**:
 1. **Adding, removing, or renaming** a doc, a `mise` task, a rule file under
    `docs/agents/`, or a generated artifact updates this map (the digraph and the landscape
    entry) and `AGENTS.md`: its routing digraph, its task list, and, for a generated
-   artifact, Rule 2's list.
+   artifact, Rule 2's list. A renamed or removed task also updates every doc that names
+   it, such as `README.md`'s Development section.
 2. **Landing something marked "not in the repo yet"** removes the marker everywhere it
    appears (`grep -rn 'not in the repo yet'`) and turns the path mention into a link,
    outside code blocks.
