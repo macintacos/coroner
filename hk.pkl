@@ -7,7 +7,7 @@ import "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Builtin
 //
 // Two mappings keep the mise tasks single-purpose:
 //   mise run format -> the `fix` hook   -> `formatters` (write mode)
-//   mise run lint   -> the `check` hook -> `linters` (read-only rule checks)
+//   mise run lint   -> the `check` hook -> `linters`, plus the CLI reference's drift check
 // The `pre-commit` hook runs BOTH, so every commit stays formatted and clean.
 //
 // Step keys use a uniform `Language(Action)  [[builtins.tool]]` scheme,
@@ -22,6 +22,8 @@ local formatters = new Mapping<String, Step> {
   // patch instead of running `fix`, and their diffs don't apply cleanly. Builtins.rumdl
   // also sets `check_after_diff`, which hk rejects without a check_diff.
   ["Markdown(Format)  [[builtins.rumdl]]"] = (Builtins.rumdl) {
+    // docgen may delete these mid-run, and rumdl fails on a missing path.
+    exclude = List("docs/reference/cli/*.md")
     check = "rumdl fmt --check {{ files }}"
     check_diff = null
     check_after_diff = false
@@ -52,7 +54,7 @@ local formatters = new Mapping<String, Step> {
 
   // docgen writes the CLI reference outside the glob, so stage it explicitly.
   ["Docs(Generate)    [[docgen]]"] = new Step {
-    glob = List("internal/cli/**/*.go", "internal/tools/docgen/**/*.go")
+    glob = List("internal/cli/**/*.go", "internal/tools/docgen/**/*.go", "go.mod")
     check = "go run ./internal/tools/docgen --check"
     fix = "go run ./internal/tools/docgen"
     stage = List("docs/reference/cli/*.md")
@@ -66,6 +68,8 @@ local linters = new Mapping<String, Step> {
   // Same tool, read-only lint: `rumdl check` reports violations (exit 1);
   // pre-commit autofixes via the builtin's `rumdl check --fix`. Config: .rumdl.toml.
   ["Markdown(Lint)    [[builtins.rumdl]]"] = (Builtins.rumdl) {
+    // docgen may delete these mid-run, and rumdl fails on a missing path.
+    exclude = List("docs/reference/cli/*.md")
     check = "rumdl check {{ files }}"
     check_diff = null
     check_after_diff = false
@@ -86,12 +90,19 @@ local linters = new Mapping<String, Step> {
   }
 }
 
+// hk's stage globs match only files on disk, so a removed command's deleted page needs git add --all.
+local preCommitFormatters = (formatters) {
+  ["Docs(Generate)    [[docgen]]"] {
+    fix = "go run ./internal/tools/docgen && git add --all -- docs/reference/cli"
+  }
+}
+
 hooks {
   ["pre-commit"] {
     fix = true
     stash = "git"
     steps = new Mapping<String, Step> {
-      ...formatters
+      ...preCommitFormatters
       ...linters
     }
   }
@@ -111,8 +122,10 @@ hooks {
     steps = formatters
   }
 
-  // `mise run lint` — linters only (rule checks); read-only.
+  // `mise run lint` — linters, plus the generated CLI reference's drift check; read-only.
   ["check"] {
-    steps = linters
+    steps = (linters) {
+      ["Docs(Generate)    [[docgen]]"] = formatters["Docs(Generate)    [[docgen]]"]
+    }
   }
 }

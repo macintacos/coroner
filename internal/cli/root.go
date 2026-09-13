@@ -10,7 +10,8 @@ import (
 
 const additionalCommands = "additional"
 
-// NewRoot builds coroner's command tree, whose commands run against app.
+// NewRoot builds coroner's command tree, whose commands run against app. Execute it only
+// through Run, which supplies its arguments, streams and exit codes.
 func NewRoot(app App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "coroner <command> [flags]",

@@ -4,5 +4,3 @@
 set -euo pipefail
 
 hk check --all
-# The `check` hook runs linters only, so a stale CLI reference would otherwise pass.
-go run ./internal/tools/docgen --check
