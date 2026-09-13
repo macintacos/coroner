@@ -119,8 +119,8 @@ func sortAnnotations(annotations []timeline.Annotation, order eventOrder) {
 		if a.EventID == nil {
 			return -1
 		}
-		if e, ok := order[*a.EventID]; ok {
-			return e.position
+		if place, ok := order[*a.EventID]; ok {
+			return place.position
 		}
 		return math.MaxInt
 	}
