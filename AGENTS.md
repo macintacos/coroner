@@ -29,6 +29,10 @@ linter and applies fixes, regenerating the CLI reference when a help topic or th
 it documents changes, and `pre-push` runs `mise run test` when Go files, `go.mod` or
 `go.sum` change.
 
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request and
+push to `main`: `mise run lint`, the CLI reference check, `mise run test`, then
+`mise run format` failing on any diff. A commit made with `--no-verify` still fails there.
+
 ## Routing
 
 Read the digraph as a checklist, not a single path:

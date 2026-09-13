@@ -18,6 +18,9 @@ mise run setup      # install pinned tools and Go modules, register git hooks
 mise run preflight  # lint, test, and build: run before pushing
 ```
 
+CI runs lint and tests, and fails on unformatted or stale generated files, on every pull
+request and push to `main`.
+
 ## Status
 
 Pre-0.1 and unstable: commands, flags, and the database schema can change without notice.
