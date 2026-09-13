@@ -3,9 +3,9 @@
 *Audience: coding agents whose change `AGENTS.md` routes here.*
 
 1. **The package is pure:** `internal/timeparse` takes `now` and `loc` as parameters, and
-   its own code never reads `time.Local` or touches `os`; forbidigo in
-   [`.golangci.yml`](../../.golangci.yml) fails `time.Now`. Resolving `loc` from `--tz`
-   and the config file belongs to the caller.
+   its own code never reads a clock, reads `time.Local` or touches `os`. Resolving `loc`
+   from `--tz` and the config file belongs to the caller. forbidigo in
+   [`.golangci.yml`](../../.golangci.yml) catches the clock.
 2. **The golden corpus is the behaviour contract:** a row in
    [`corpus_test.go`](../../internal/timeparse/corpus_test.go) that changes after a
    go-dateparser upgrade is a change in what users' input means. Decide on it; never edit

@@ -70,6 +70,12 @@ local linters = new Mapping<String, Step> {
   ["Pkl(Lint)         [[builtins.pkl]]"] = Builtins.pkl
 
   ["Go(Lint)          [[builtins.golangci_lint]]"] = Builtins.golangci_lint
+
+  // golangci-lint ignores unknown keys, so a misspelled setting silently disables its rule.
+  ["Go(LintConfig)    [[golangci-lint config verify]]"] = new Step {
+    glob = List(".golangci.yml")
+    check = "golangci-lint config verify"
+  }
 }
 
 hooks {

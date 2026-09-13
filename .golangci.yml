@@ -69,7 +69,8 @@ linters:
         timeline-pure:
           list-mode: strict
           files:
-            - "**/internal/timeline/**"
+            - "${base-path}/internal/timeline/**"
+            - "!$test"
           allow:
             - $gostd
           deny:
@@ -79,18 +80,20 @@ linters:
               desc: storage lives in internal/store
         sqlcgen-private:
           files:
-            - "!**/internal/store/**"
+            - "!${base-path}/internal/store/**"
           deny:
             - pkg: github.com/macintacos/coroner/internal/store/sqlcgen
               desc: use internal/store; never serialize sqlc models
     forbidigo:
       analyze-types: true
       forbid:
-        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+        - pattern: ^(fmt\.Print(|f|ln)|print|println|log\.(Print|Fatal|Panic)(|f|ln))$
           msg: write to an injected io.Writer
-        - pattern: ^os\.(Exit|Getenv|LookupEnv|Environ|Args|Stdin|Stdout|Stderr)$
+        - pattern: ^os\.(Exit|Getenv|LookupEnv|Environ|ExpandEnv|Setenv|Unsetenv|Clearenv|Args|Stdin|Stdout|Stderr|User(Home|Config|Cache)Dir|Getwd|Chdir|Hostname)$
           msg: only main.go talks to the process
-        - pattern: ^time\.Now$
+        - pattern: ^syscall\.(Exit|Getenv|Setenv|Environ)$
+          msg: only main.go talks to the process
+        - pattern: ^time\.(Now|Since|Until)$
           msg: inject a clock (func() time.Time)
     nolintlint:
       require-explanation: true
@@ -113,7 +116,6 @@ linters:
       # design decision, not a lint fix.
       - path: ^main\.go$|_test\.go$|^internal/tools/
         linters:
-          - depguard
           - forbidigo
 formatters:
   # No golines: it splits every argument of an over-long call onto its own line,
