@@ -91,14 +91,14 @@ func withTestClock(app cli.App) (cli.App, error) {
 }
 
 var _ = Describe("withTestClock", func() {
-	lookup := func(value string) func(string) (string, bool) {
+	fakeLookupEnv := func(value string) func(string) (string, bool) {
 		return func(key string) (string, bool) {
 			return value, key == "CORONER_TEST_NOW"
 		}
 	}
 
 	It("pins App.Now to the instant in CORONER_TEST_NOW", func() {
-		app, err := withTestClock(cli.App{LookupEnv: lookup("2026-09-12T21:30:00-04:00"), Now: time.Now})
+		app, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("2026-09-12T21:30:00-04:00"), Now: time.Now})
 
 		Expect(err).NotTo(HaveOccurred())
 		want := time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)
@@ -106,14 +106,14 @@ var _ = Describe("withTestClock", func() {
 	})
 
 	It("returns the pinned instant in the local zone, as time.Now does", func() {
-		app, err := withTestClock(cli.App{LookupEnv: lookup("2026-09-12T21:30:00+13:07"), Now: time.Now})
+		app, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("2026-09-12T21:30:00+13:07"), Now: time.Now})
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(app.Now().Location().String()).To(Equal(time.Local.String()))
 	})
 
 	It("rejects a CORONER_TEST_NOW that is not RFC 3339", func() {
-		_, err := withTestClock(cli.App{LookupEnv: lookup("yesterday"), Now: time.Now})
+		_, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("yesterday"), Now: time.Now})
 
 		Expect(err).To(MatchError(ContainSubstring("CORONER_TEST_NOW")))
 	})
