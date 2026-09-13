@@ -7,6 +7,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 )
@@ -55,6 +56,66 @@ func outputFormat(cmd *cobra.Command) (format, error) {
 	}
 
 	return format(chosen), nil
+}
+
+// output is how and where a command prints, read once from its flags and App.
+type output struct {
+	format        format
+	quiet, outTTY bool
+	out, err      io.Writer
+}
+
+func newOutput(cmd *cobra.Command, app App) (output, error) {
+	chosen, err := outputFormat(cmd)
+	if err != nil {
+		return output{}, err
+	}
+	quiet, _ := cmd.Flags().GetBool("quiet")
+
+	return output{format: chosen, quiet: quiet, outTTY: app.OutIsTTY, out: app.Out, err: app.Err}, nil
+}
+
+// notify writes a message meant for people, and a newline, to o.err unless --quiet was given.
+func (o output) notify(message string, args ...any) error {
+	if o.quiet {
+		return nil
+	}
+
+	_, err := fmt.Fprintf(o.err, message+"\n", args...)
+	return err
+}
+
+func (o output) json(v any) error {
+	return writeJSON(o.out, o.outTTY, v)
+}
+
+// rows writes one line per row, aligned on a terminal and tab-separated otherwise. Tabs and
+// line breaks inside a field print escaped, so no field splits a row.
+func (o output) rows(rows [][]string) error {
+	escape := strings.NewReplacer("\t", `\t`, "\n", `\n`, "\r", `\r`)
+	var b strings.Builder
+	for _, row := range rows {
+		for i, field := range row {
+			if i > 0 {
+				b.WriteByte('\t')
+			}
+			_, _ = escape.WriteString(&b, field)
+		}
+		b.WriteByte('\n')
+	}
+
+	if !o.outTTY {
+		_, err := io.WriteString(o.out, b.String())
+		return err
+	}
+
+	table := tabwriter.NewWriter(o.out, 0, 0, 2, ' ', 0)
+	_, err := io.WriteString(table, b.String())
+	if err != nil {
+		return err
+	}
+
+	return table.Flush()
 }
 
 // writeJSON writes v as one JSON document, indented when pretty.

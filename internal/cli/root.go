@@ -80,6 +80,7 @@ func runNoun(cmd *cobra.Command, args []string) error {
 	}
 
 	message := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+	// cobra defaults the distance to 2 only when it suggests for root.
 	cmd.SuggestionsMinimumDistance = cmp.Or(cmd.SuggestionsMinimumDistance, 2)
 	if suggestions := cmd.SuggestionsFor(args[0]); len(suggestions) > 0 {
 		message += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")

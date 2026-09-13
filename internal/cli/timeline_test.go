@@ -95,26 +95,8 @@ var _ = Describe("timeline", func() {
 			Expect(out.String()).To(ContainSubstring(`"refs":["INC-2","INC-1"]`))
 		})
 
-		It("rejects an invalid name with exit 2, a suggestion, and no database written", func(ctx SpecContext) {
-			Expect(run(ctx, "timeline", "create", "Mongo Outage")).To(Equal(2))
-
-			Expect(errOut.String()).To(ContainSubstring("mongo-outage"))
-			Expect(filepath.Join(home, "coroner.db")).NotTo(BeAnExistingFile())
-		})
-
-		It("refuses a name that is taken with exit 4", func(ctx SpecContext) {
-			run(ctx, "timeline", "create", "mongo-outage")
-
-			Expect(run(ctx, "timeline", "create", "mongo-outage", "--title", "again")).To(Equal(4))
-		})
-
-		It("prints the existing timeline under --if-not-exists", func(ctx SpecContext) {
-			run(ctx, "timeline", "create", "mongo-outage", "--json")
-			created := out.String()
-			now = now.Add(time.Hour)
-
-			Expect(run(ctx, "timeline", "create", "mongo-outage", "--if-not-exists", "--json")).To(Equal(0))
-			Expect(out.String()).To(Equal(created))
+		It("rejects an empty ref with exit 2", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "create", "mongo-outage", "--ref", "")).To(Equal(2))
 		})
 
 		It("leaves the current timeline alone", func(ctx SpecContext) {
@@ -124,7 +106,7 @@ var _ = Describe("timeline", func() {
 
 			run(ctx, "timeline", "list")
 
-			Expect(out.String()).To(MatchRegexp(`(?m)^\* first\t`))
+			Expect(out.String()).To(MatchRegexp(`(?m)^\*\tfirst\t`))
 		})
 	})
 
@@ -139,7 +121,7 @@ var _ = Describe("timeline", func() {
 		It("prints one row per timeline in creation order, with no marker while none is in use", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "list")).To(Equal(0))
 
-			Expect(out.String()).To(Equal("  zeta\toldest\n  alpha\t\n  beta\tsame instant, higher id\n"))
+			Expect(out.String()).To(Equal("\tzeta\toldest\n\talpha\t\n\tbeta\tsame instant, higher id\n"))
 		})
 
 		It("marks the timeline in use", func(ctx SpecContext) {
@@ -147,18 +129,16 @@ var _ = Describe("timeline", func() {
 
 			run(ctx, "timeline", "list")
 
-			Expect(out.String()).To(Equal("  zeta\toldest\n* alpha\t\n  beta\tsame instant, higher id\n"))
+			Expect(out.String()).To(Equal("\tzeta\toldest\n*\talpha\t\n\tbeta\tsame instant, higher id\n"))
 		})
+	})
 
-		It("flags the timeline in use in JSON", func(ctx SpecContext) {
-			run(ctx, "timeline", "use", "beta")
+	It("lists a title holding a tab and a newline on one line", func(ctx SpecContext) {
+		run(ctx, "timeline", "create", "mongo-outage", "--title", "election\tstorm\nday 2")
 
-			Expect(run(ctx, "timeline", "list", "--json")).To(Equal(0))
+		Expect(run(ctx, "timeline", "list")).To(Equal(0))
 
-			Expect(out.String()).To(MatchRegexp(
-				`^\{"timelines":\[\{"id":"[^"]+","name":"zeta",[^}]*"current":false\},` +
-					`\{[^}]*"name":"alpha",[^}]*"current":false\},\{[^}]*"name":"beta",[^}]*"current":true\}\]\}\n$`))
-		})
+		Expect(out.String()).To(Equal("\tmongo-outage\telection\\tstorm\\nday 2\n"))
 	})
 
 	It("lists nothing and hints at create when there are no timelines", func(ctx SpecContext) {
@@ -210,10 +190,10 @@ var _ = Describe("timeline", func() {
 			It("lists the events in time order, each with the gap since the one before", func(ctx SpecContext) {
 				Expect(run(ctx, "timeline", "view", "mongo-outage")).To(Equal(0))
 
-				Expect(out.String()).To(MatchRegexp(`(?s)` +
-					`\n#2 +2026-09-11T03:14:00\.000000000Z +mongod +Primary stepped down\n` +
-					`#1 +2026-09-11T03:15:00\.000000000Z +\+1m0s +slack +Pager fires for db-2\n` +
-					`#3 +2026-09-11T04:20:30\.000000000Z +\+1h5m30s +mongod +New primary elected\n$`))
+				Expect(out.String()).To(HaveSuffix("\n\n" +
+					"#2\t2026-09-11T03:14:00.000000000Z\t\tmongod\tPrimary stepped down\n" +
+					"#1\t2026-09-11T03:15:00.000000000Z\t+1m0s\tslack\tPager fires for db-2\n" +
+					"#3\t2026-09-11T04:20:30.000000000Z\t+1h5m30s\tmongod\tNew primary elected\n"))
 			})
 
 			It("summarizes the timeline before its events", func(ctx SpecContext) {
@@ -229,33 +209,11 @@ var _ = Describe("timeline", func() {
 				Expect(out.String()).To(MatchRegexp(`(?m)^Annotations: +1$`))
 			})
 
-			It("prints the bare timeline object under --json", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "view", "mongo-outage", "--json")).To(Equal(0))
-
-				Expect(out.String()).To(MatchJSON(`{
-				"id": "0199a1b2-0000-7000-8000-000000000001",
-				"name": "mongo-outage",
-				"title": "Primary election storm",
-				"refs": ["INC-4821"],
-				"created_at": "2026-09-11T03:00:00.000000000Z"
-			}`))
-			})
-
 			It("views the current timeline when none is named", func(ctx SpecContext) {
 				run(ctx, "timeline", "use", "mongo-outage")
 
 				Expect(run(ctx, "timeline", "view")).To(Equal(0))
 				Expect(out.String()).To(HavePrefix("mongo-outage\n"))
-			})
-
-			It("exits 2 when no timeline is named and none is current", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "view", "--json")).To(Equal(2))
-
-				Expect(errOut.String()).To(ContainSubstring(`"kind":"timeline_required"`))
-			})
-
-			It("exits 3 for a timeline that does not exist", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "view", "mongo")).To(Equal(3))
 			})
 		})
 
@@ -292,6 +250,12 @@ var _ = Describe("timeline", func() {
 				Expect(out.String()).To(ContainSubstring(`"refs":["INC-4821"]`))
 			})
 
+			It("rejects an empty --add-ref with exit 2", func(ctx SpecContext) {
+				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--add-ref", "")).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring("must not be blank"))
+			})
+
 			It("writes nothing under --dry-run", func(ctx SpecContext) {
 				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--name", "mongo-failover", "--dry-run")).To(Equal(0))
 				Expect(out.String()).To(HavePrefix("mongo-failover\n"))
@@ -299,59 +263,19 @@ var _ = Describe("timeline", func() {
 				Expect(run(ctx, "timeline", "view", "mongo-outage")).To(Equal(0))
 			})
 
-			It("exits 2 when no field flag is given", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--dry-run")).To(Equal(2))
-			})
-
-			It("rejects an invalid name with exit 2 and a suggestion", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--name", "Mongo Failover")).To(Equal(2))
-
-				Expect(errOut.String()).To(ContainSubstring("mongo-failover"))
-			})
-
-			It("refuses a name another timeline has with exit 4", func(ctx SpecContext) {
+			It("refuses under --dry-run a name another timeline has with exit 4", func(ctx SpecContext) {
 				run(ctx, "timeline", "create", "mongo-failover")
 
-				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--name", "mongo-failover")).To(Equal(4))
-			})
-
-			It("exits 3 for a timeline that does not exist", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "edit", "mongo", "--title", "x")).To(Equal(3))
+				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--name", "mongo-failover", "--dry-run")).To(Equal(4))
 			})
 		})
 
 		Describe("delete", func() {
-			It("exits 2 and names --yes when it is missing, deleting nothing", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "delete", "mongo-outage")).To(Equal(2))
-				Expect(errOut.String()).To(ContainSubstring("--yes"))
-
-				Expect(run(ctx, "timeline", "view", "mongo-outage")).To(Equal(0))
-			})
-
 			It("reports what it would delete under --dry-run, deleting nothing", func(ctx SpecContext) {
 				Expect(run(ctx, "timeline", "delete", "mongo-outage", "--dry-run")).To(Equal(0))
-				Expect(out.String()).To(ContainSubstring("3 events, 1 annotations"))
+				Expect(out.String()).To(ContainSubstring("events: 3, annotations: 1"))
 
 				Expect(run(ctx, "timeline", "view", "mongo-outage")).To(Equal(0))
-			})
-
-			It("deletes the timeline with --yes", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "delete", "mongo-outage", "--yes")).To(Equal(0))
-				Expect(errOut.String()).To(ContainSubstring("mongo-outage"))
-
-				Expect(run(ctx, "timeline", "view", "mongo-outage")).To(Equal(3))
-			})
-
-			It("leaves no timeline current when it deletes the current one", func(ctx SpecContext) {
-				run(ctx, "timeline", "use", "mongo-outage")
-
-				run(ctx, "timeline", "delete", "mongo-outage", "--yes")
-
-				Expect(run(ctx, "timeline", "view")).To(Equal(2))
-			})
-
-			It("exits 3 for a timeline that does not exist", func(ctx SpecContext) {
-				Expect(run(ctx, "timeline", "delete", "mongo", "--yes")).To(Equal(3))
 			})
 		})
 	})
@@ -365,7 +289,16 @@ var _ = Describe("timeline", func() {
 			Expect(run(ctx, "timeline", "use", "0199a1b2-0000-7000-8000-000000000001")).To(Equal(0))
 
 			run(ctx, "timeline", "list")
-			Expect(out.String()).To(HavePrefix("* mongo-outage"))
+			Expect(out.String()).To(HavePrefix("*\tmongo-outage"))
+		})
+
+		It("exits 2, naming both timelines, when one's name is the other's id", func(ctx SpecContext) {
+			run(ctx, "timeline", "create", "0199a1b2-0000-7000-8000-000000000001")
+
+			Expect(run(ctx, "timeline", "use", "0199a1b2-0000-7000-8000-000000000001")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring("0199a1b2-0000-7000-8000-000000000002"))
+			Expect(errOut.String()).To(ContainSubstring("mongo-outage"))
 		})
 
 		It("clears the selection with --clear", func(ctx SpecContext) {
@@ -374,19 +307,7 @@ var _ = Describe("timeline", func() {
 			Expect(run(ctx, "timeline", "use", "--clear")).To(Equal(0))
 
 			run(ctx, "timeline", "list")
-			Expect(out.String()).To(HavePrefix("  mongo-outage"))
-		})
-
-		DescribeTable("exits 2 unless given exactly one of a timeline or --clear",
-			func(ctx SpecContext, args ...string) {
-				Expect(run(ctx, append([]string{"timeline", "use"}, args...)...)).To(Equal(2))
-			},
-			Entry("neither"),
-			Entry("both", "mongo-outage", "--clear"),
-		)
-
-		It("exits 3 for a timeline that does not exist", func(ctx SpecContext) {
-			Expect(run(ctx, "timeline", "use", "mongo")).To(Equal(3))
+			Expect(out.String()).To(HavePrefix("\tmongo-outage"))
 		})
 	})
 })

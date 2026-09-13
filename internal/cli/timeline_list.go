@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -17,19 +16,25 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List timelines, marking the current one",
-		Long: "List every timeline, oldest first. A '*' marks the current timeline, the one\n" +
-			"'coroner timeline use' selected. Each row is the marker and name, a tab, then the title.",
+		Long: "List every timeline, oldest first. Each row is a marker, the name and the title; a '*'\n" +
+			"marks the current timeline, the one 'coroner timeline use' selected. Piped, the fields\n" +
+			"are tab-separated.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example:     "  $ coroner timeline list\n  $ coroner timeline list --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			o, err := newOutput(cmd, app)
+			if err != nil {
+				return err
+			}
+
 			return withStore(ctx, cmd, app, func(s *store.Store) error {
-				listed, err := listTimelines(ctx, s)
+				timelines, currentID, err := listTimelines(ctx, s)
 				if err != nil {
 					return err
 				}
 
-				return printTimelines(cmd, app, listed)
+				return printTimelines(o, timelines, currentID)
 			})
 		},
 	}
@@ -47,49 +52,58 @@ type listedTimelineJSON struct {
 	Current bool `json:"current"`
 }
 
-// listTimelines returns every timeline, oldest first, each marked whether it is current.
-func listTimelines(ctx context.Context, s *store.Store) ([]listedTimelineJSON, error) {
+// listTimelines returns every timeline, oldest first, and the current timeline's id, or ""
+// when none is current. It sorts because store.Timelines orders by name.
+func listTimelines(ctx context.Context, s *store.Store) ([]timeline.Timeline, string, error) {
 	timelines, err := s.Timelines(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	current, err := s.CurrentTimeline(ctx)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return nil, err
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		current.ID = ""
+	case err != nil:
+		return nil, "", err
 	}
 
 	slices.SortFunc(timelines, func(a, b timeline.Timeline) int {
 		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), cmp.Compare(a.ID, b.ID))
 	})
 
-	listed := make([]listedTimelineJSON, 0, len(timelines))
-	for _, t := range timelines {
-		listed = append(listed, listedTimelineJSON{newTimelineJSON(t), t.ID == current.ID})
-	}
-
-	return listed, nil
+	return timelines, current.ID, nil
 }
 
-func printTimelines(cmd *cobra.Command, app App, listed []listedTimelineJSON) error {
-	if printsJSON(cmd) {
-		return writeJSON(app.Out, app.OutIsTTY, timelineListJSON{Timelines: listed})
+func printTimelines(o output, timelines []timeline.Timeline, currentID string) error {
+	if o.format == formatJSON {
+		return o.json(newTimelineListJSON(timelines, currentID))
+	}
+	if len(timelines) == 0 {
+		return o.notify("No timelines yet. Create one with: coroner timeline create <name>")
 	}
 
-	if len(listed) == 0 {
-		return notify(cmd, app, "No timelines yet. Create one with: coroner timeline create <name>\n")
+	return o.rows(timelineRows(timelines, currentID))
+}
+
+func newTimelineListJSON(timelines []timeline.Timeline, currentID string) timelineListJSON {
+	listed := make([]listedTimelineJSON, 0, len(timelines))
+	for _, t := range timelines {
+		listed = append(listed, listedTimelineJSON{timelineJSON: newTimelineJSON(t), Current: t.ID == currentID})
 	}
 
-	for _, t := range listed {
-		marker := " "
-		if t.Current {
+	return timelineListJSON{Timelines: listed}
+}
+
+// timelineRows returns a row per timeline: a marker, "*" on the current one, its name and title.
+func timelineRows(timelines []timeline.Timeline, currentID string) [][]string {
+	rows := make([][]string, 0, len(timelines))
+	for _, t := range timelines {
+		marker := ""
+		if t.ID == currentID {
 			marker = "*"
 		}
-
-		_, err := fmt.Fprintf(app.Out, "%s %s\t%s\n", marker, t.Name, t.Title)
-		if err != nil {
-			return err
-		}
+		rows = append(rows, []string{marker, t.Name, t.Title})
 	}
 
-	return nil
+	return rows
 }

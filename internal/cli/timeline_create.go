@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -38,8 +37,11 @@ func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
 func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name string) error {
 	flags := cmd.Flags()
 	title, _ := flags.GetString("title")
-	refs, _ := flags.GetStringArray("ref")
 	ifNotExists, _ := flags.GetBool("if-not-exists")
+	o, err := newOutput(cmd, app)
+	if err != nil {
+		return err
+	}
 
 	id, err := app.NewID()
 	if err != nil {
@@ -47,7 +49,8 @@ func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name strin
 	}
 	now := app.Now()
 	t := timeline.Timeline{
-		ID: id.String(), Name: name, Title: title, Refs: appendRefs(nil, refs...), CreatedAt: now, UpdatedAt: now,
+		ID: id.String(), Name: name, Title: title, Refs: appendRefs(nil, stringArray(flags, "ref")...),
+		CreatedAt: now, UpdatedAt: now,
 	}
 	err = checkTimeline(t)
 	if err != nil {
@@ -62,20 +65,23 @@ func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name strin
 			if err != nil {
 				return err
 			}
-
-			return printChanged(cmd, app, existing, fmt.Sprintf("Timeline `%s` already exists.\n", name))
-		case errors.Is(err, store.ErrConflict):
-			return &Error{
-				Kind:    KindTimelineExists,
-				Message: fmt.Sprintf("timeline %q already exists", name),
-				Hint:    "Pick another name, or pass --if-not-exists to use the existing timeline.",
-				Err:     err,
+			err = printTimeline(o, existing)
+			if err != nil {
+				return err
 			}
+
+			return o.notify("Timeline `%s` already exists.", name)
+		case errors.Is(err, store.ErrConflict):
+			return timelineExistsError(name, "Pick another name, or pass --if-not-exists to use the existing timeline.", err)
 		case err != nil:
 			return err
 		}
 
-		return printChanged(cmd, app, t, fmt.Sprintf(
-			"Created timeline `%[1]s`.\nNext: coroner timeline use %[1]s\n      coroner event add -t %[1]s <text>\n", name))
+		err = printTimeline(o, t)
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Created timeline `%[1]s`.\nNext: coroner timeline use %[1]s\n      coroner event add -t %[1]s <text>", name)
 	})
 }
