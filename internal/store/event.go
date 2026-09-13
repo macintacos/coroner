@@ -78,6 +78,20 @@ func (s *Store) EventBySeq(ctx context.Context, timelineID string, seq int64) (t
 	})
 }
 
+// EventsByIDPrefix returns up to limit events, in any timeline, whose id starts with
+// prefix, ordered by id. prefix must hold only lowercase hex digits and dashes: GLOB reads
+// other characters as patterns.
+func (s *Store) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error) {
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Event, error) {
+		rows, err := q.ListEventsByIDPrefix(ctx, sqlcgen.ListEventsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
+		if err != nil {
+			return nil, err
+		}
+
+		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, q, r) })
+	})
+}
+
 // Events returns the events of the timeline with timelineID, ordered by occurred at, then
 // seq.
 func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event, error) {
@@ -134,16 +148,24 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 	})
 }
 
-// DeleteEvent deletes the event with id, with its tags and annotations. Its seq is never
-// given to another event.
-func (s *Store) DeleteEvent(ctx context.Context, id string) error {
+// DeleteEvents deletes the events with ids, with their tags and annotations, or none of
+// them when any does not exist. Their seqs are never given to other events.
+func (s *Store) DeleteEvents(ctx context.Context, ids ...string) error {
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		_, err := q.GetEvent(ctx, id)
-		if err != nil {
-			return err
+		for _, id := range ids {
+			_, err := q.GetEvent(ctx, id)
+			if err != nil {
+				return err
+			}
+		}
+		for _, id := range ids {
+			err := q.DeleteEvent(ctx, id)
+			if err != nil {
+				return err
+			}
 		}
 
-		return q.DeleteEvent(ctx, id)
+		return nil
 	})
 }
 
