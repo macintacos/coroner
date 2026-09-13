@@ -17,9 +17,12 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List timelines, marking the current one",
-		Long: "List every timeline, oldest first. Each row is a marker, the name and the title; a '*'\n" +
-			"marks the current timeline, the one 'coroner timeline use' selected. Piped, the fields\n" +
-			"are tab-separated.",
+		Long: "List every timeline, oldest first. A '*' marks the current timeline, the one\n" +
+			"'coroner timeline use' selected.\n\n" +
+			"On a terminal it opens a picker that also shows each timeline's refs, event count and\n" +
+			"last event: / filters, enter makes the timeline under the cursor current, and q quits.\n" +
+			"--format text, --json or piping the output prints the list instead: a marker, the name\n" +
+			"and the title on each row, tab-separated when piped.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example:     "  $ coroner timeline list\n  $ coroner timeline list --json",

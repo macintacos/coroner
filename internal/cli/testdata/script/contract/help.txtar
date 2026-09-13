@@ -1149,9 +1149,13 @@ LEARN MORE
   Use `coroner <command> --help` for more information about a command.
   Report bugs and send feedback at https://github.com/macintacos/coroner/issues
 -- coroner_timeline_list.txt --
-List every timeline, oldest first. Each row is a marker, the name and the title; a '*'
-marks the current timeline, the one 'coroner timeline use' selected. Piped, the fields
-are tab-separated.
+List every timeline, oldest first. A '*' marks the current timeline, the one
+'coroner timeline use' selected.
+
+On a terminal it opens a picker that also shows each timeline's refs, event count and
+last event: / filters, enter makes the timeline under the cursor current, and q quits.
+--format text, --json or piping the output prints the list instead: a marker, the name
+and the title on each row, tab-separated when piped.
 
 USAGE
   coroner timeline list [flags]
