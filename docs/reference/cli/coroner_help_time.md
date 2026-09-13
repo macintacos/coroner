@@ -14,8 +14,8 @@ same way.
 coroner reads a time in the first zone of:
 
 1. The offset or zone in the input, such as `Z`, `+02:00` or `UTC`.
-2. `--tz`.
-3. `default_timezone` in the config file.
+2. `--tz`: an IANA zone such as `America/New_York`, or `local`.
+3. `default_timezone` in the config file, which takes the same values.
 4. The local time zone, which `TZ` sets.
 
 Relative words and times of day, as in `yesterday 14:05`, are read in that zone too.
