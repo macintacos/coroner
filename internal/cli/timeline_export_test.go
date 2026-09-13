@@ -23,6 +23,7 @@ var _ = Describe("timeline export", func() {
 		home        string
 		ids         int
 		now         time.Time
+		tick        time.Duration
 		outTTY      bool
 	)
 
@@ -37,7 +38,10 @@ var _ = Describe("timeline export", func() {
 			OutIsTTY:  outTTY,
 			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
 			ReadFile:  readNoFile,
-			Now:       func() time.Time { return now },
+			Now: func() time.Time {
+				now = now.Add(tick)
+				return now
+			},
 			NewID: func() (uuid.UUID, error) {
 				ids++
 				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
@@ -55,6 +59,7 @@ var _ = Describe("timeline export", func() {
 		home = GinkgoT().TempDir()
 		ids = 0
 		now = time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)
+		tick = 0
 		outTTY = false
 		for _, args := range [][]string{
 			{"timeline", "create", "mongo-outage"},
@@ -91,6 +96,22 @@ var _ = Describe("timeline export", func() {
 		Expect(export.WriteRecords(&b, records)).To(Succeed())
 
 		Expect(b.String()).To(Equal(jsonl))
+	})
+
+	It("resolves a relative bound against the instant it records as exported at", func(ctx SpecContext) {
+		instant := func(key string) time.Time {
+			GinkgoHelper()
+			m := regexp.MustCompile(`"` + key + `":"([^"]*)"`).FindStringSubmatch(out.String())
+			Expect(m).To(HaveLen(2), out.String())
+			t, err := time.Parse(time.RFC3339Nano, m[1])
+			Expect(err).NotTo(HaveOccurred())
+			return t
+		}
+		tick = time.Second
+
+		Expect(run(ctx, "timeline", "export", "--json", "--since", "3 seconds ago")).To(Equal(0), errOut.String())
+
+		Expect(instant("since")).To(Equal(instant("exported_at").Add(-3 * time.Second)))
 	})
 
 	It("indents JSON on a terminal", func(ctx SpecContext) {

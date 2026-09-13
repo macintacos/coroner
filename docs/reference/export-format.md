@@ -8,8 +8,8 @@ that wrote it and its schema can change in any release; an export is what leaves
 page describes the export format: its envelope, its objects, how they are encoded, and how
 the format evolves.
 
-`coroner timeline export` writes an export of the timeline `-t`, `CORONER_TIMELINE` or
-`coroner timeline use` selects to stdout. `--format json` writes the
+`coroner timeline export` writes to stdout an export of the timeline that `-t`,
+`CORONER_TIMELINE` or `coroner timeline use` selects. `--format json` writes the
 [envelope](#the-envelope), and `--format jsonl` writes the
 [JSONL stream](#the-jsonl-stream):
 
@@ -190,16 +190,16 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 ## The JSONL stream
 
 A JSONL export is [JSON Lines](https://jsonlines.org/): UTF-8, one record per line, each
-line ended by `\n`. A record is one of the objects above with one extra key first, `type`,
-naming the object: `timeline`, `source`, `event`, or `annotation`.
+line ended by `\n`. A record is the header or one of the objects above, with one extra key
+first, `type`, naming it: `header`, `timeline`, `source`, `event`, or `annotation`.
 
 ```json
 {"type":"event","id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":"mongod","tags":["election"],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
 ```
 
-The first record has `type` `header`. It holds the envelope's `format`, `format_version`,
-`coroner_version`, `exported_at`, and `query`, with the same meanings, and none of its
-record lists.
+The first record has `type` `header`. It is not one of the objects above: it carries the
+envelope's leading keys, `format`, `format_version`, `coroner_version`, `exported_at`, and
+`query`, with the same meanings, and none of its record lists.
 
 ### Record order
 
@@ -207,11 +207,11 @@ The records of an export always come in this order. It is part of the contract: 
 it is a major version.
 
 1. The `header`.
-2. The timelines.
+2. The timelines, by `name`.
 3. The annotations on the whole timeline, by `created_at`, then `id`.
 4. The sources, by `name`.
-5. The events, by `occurred_at`, then `seq`. Each event is followed immediately by its
-   annotations, by `created_at`, then `id`.
+5. The events, by `occurred_at`, then `seq`, then `id`. Each event is followed immediately
+   by its annotations, by `created_at`, then `id`.
 
 Records stay in this order under every filter, and under `--order desc`: `--order` only
 decides which end `--limit` keeps events from.

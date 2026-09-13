@@ -1,13 +1,15 @@
 // Package export is coroner's public machine representation: the canonical JSON object for
-// each timeline, source, event and annotation, the versioned export envelope that carries
-// them, and the one encoder that writes them. Every key is always present, so no field here
-// uses omitempty or omitzero; a value that may be absent is a pointer, which encodes as null.
+// each timeline, source, event and annotation, the versioned export envelope and JSONL record
+// stream that carry them, and the one encoder and decoder for both. Every key is always
+// present, so no field here uses omitempty or omitzero; a value that may be absent is a
+// pointer, which encodes as null.
 package export
 
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/macintacos/coroner/internal/timeline"
@@ -184,11 +186,12 @@ func (e Envelope) header() Header {
 	}
 }
 
-// Write encodes v and a newline to w: struct keys in declaration order, map keys sorted, and
-// <, > and & escaped so the JSON can be embedded in HTML, then any opts, such as an indent.
-// It fails on invalid UTF-8, and writes nothing to w when encoding fails.
+// Write encodes v and a newline to w with opts, such as an indent, and always with struct keys
+// in declaration order, map keys sorted, and <, > and & escaped so the JSON can be embedded in
+// HTML. It fails on invalid UTF-8, and writes nothing to w when encoding fails.
 func Write(w io.Writer, v any, opts ...json.Options) error {
-	b, err := json.Marshal(v, append([]json.Options{json.Deterministic(true), jsontext.EscapeForHTML(true)}, opts...)...)
+	// json/v2 lets a later option win, so the mandatory ones go last.
+	b, err := json.Marshal(v, slices.Concat(opts, []json.Options{json.Deterministic(true), jsontext.EscapeForHTML(true)})...)
 	if err != nil {
 		return err
 	}

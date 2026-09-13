@@ -29,8 +29,11 @@ own archive. When a later command only shows a behaviour through one field, such
 `current`, `truncated` or which timeline was selected, check that field with a `stdout`
 pattern preceded by `jsonvalid stdout`, which fails unless stdout is empty or holds only
 JSON values. Output that differs by machine or build, such as a path under `$WORK`, the
-version or the schema version, stays a pattern. Match an error envelope as the last line
-of stderr by pattern: its `kind` is the contract, its `message` and `hint` are not.
+version or the schema version, stays a pattern. A `cmp` file may still hold
+`coroner_version` `(devel)`: `runCoroner` reads the test binary's build info, which
+`go test` never stamps with a version, so whole export documents can be compared. Match an
+error envelope as the last line of stderr by pattern: its `kind` is the contract, its
+`message` and `hint` are not.
 
 `go test ./internal/cli -run 'TestScripts/script$' -update` refreshes only the scripts
 outside `contract/`. `go test ./internal/cli -run 'TestScripts/contract$' -update`

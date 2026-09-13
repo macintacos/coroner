@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json/jsontext"
+	"fmt"
 	"slices"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 
 func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "export --format {json|jsonl}",
+		Use:   "export --format {json | jsonl}",
 		Short: "Export a timeline as JSON or JSONL",
 		Long: "Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its\n" +
 			"events, their annotations and the sources they name. --format json writes one document,\n" +
@@ -35,12 +36,15 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 
 	addTimelineFlag(cmd.Flags())
 	addEventFilterFlags(cmd.Flags())
+	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc|desc}"
+	cmd.Flags().Lookup("limit").Usage = "Export at most this `number` of events (default: every one)"
 
 	return cmd
 }
 
-// requireFormat is usage unless --format or --json was given. It runs before wrapRunErrors
-// checks the format, which would otherwise report the default text as unsupported.
+// requireFormat returns a usage error unless --format or --json was given. It is a PreRunE
+// because wrapRunErrors checks the format before RunE, and would report the default text as
+// unsupported.
 func requireFormat(cmd *cobra.Command, _ []string) error {
 	flags := cmd.Flags()
 	if asJSON, _ := flags.GetBool("json"); asJSON || flags.Changed("format") {
@@ -63,13 +67,14 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	filter, bounds, err := readEventFilter(cmd.Flags(), app.Now(), z)
+	now := app.Now()
+	filter, bounds, err := readEventFilter(cmd.Flags(), now, z)
 	if err != nil {
 		return err
 	}
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		in := exportInput{version: app.Version, at: app.Now(), filter: filter}
+		in := exportInput{version: app.Version, at: now, filter: filter}
 		in.timeline, err = selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
@@ -196,5 +201,5 @@ func writeExport(o output, env export.Envelope) error {
 	}
 
 	// Unreachable: the formats annotation admits json and jsonl only.
-	return nil
+	return fmt.Errorf("timeline export cannot write --format %s", o.format)
 }

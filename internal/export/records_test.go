@@ -104,6 +104,32 @@ var _ = Describe("Records", func() {
 		}))
 	})
 
+	It("orders timelines by name", func() {
+		env := export.NewEnvelope("0.1.0", at(9, 0))
+		env.Timelines = []export.Timeline{{ID: "t1", Name: "redis-outage"}, {ID: "t2", Name: "mongo-outage"}}
+
+		records, err := export.Records(env)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(labels(records)).To(Equal([]string{"header", "timeline t2", "timeline t1"}))
+	})
+
+	DescribeTable("orders events tying on occurred at and seq by id, whatever their input order",
+		func(ids ...string) {
+			env := export.NewEnvelope("0.1.0", at(9, 0))
+			for _, id := range ids {
+				env.Events = append(env.Events, event(id, 1, at(3, 14)))
+			}
+
+			records, err := export.Records(env)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(labels(records)).To(Equal([]string{"header", "event e1", "event e2"}))
+		},
+		Entry("in id order", "e1", "e2"),
+		Entry("in reverse id order", "e2", "e1"),
+	)
+
 	It("fails naming an annotation whose event is not in the export", func() {
 		env := export.NewEnvelope("0.1.0", at(9, 0))
 		env.Annotations = []export.Annotation{annotation("a1", new("gone"), at(10, 0))}

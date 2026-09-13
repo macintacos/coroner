@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json/v2"
 	"errors"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing/iotest"
 
@@ -120,19 +122,30 @@ var _ = Describe("Decode", func() {
 		Expect(records).To(Equal([]export.Record{sampleEvent(eventID, 1)}))
 	})
 
-	It("rejects a header of an unsupported major version, naming both versions, and skips its records", func() {
-		v2 := headerLine(func(h, _ map[string]any) { h["format_version"] = "2.0" })
-		keep := func(map[string]any) {}
-		v1, _, _ := strings.Cut(sampleExport(), "\n")
+	DescribeTable("rejects a header of an unsupported format_version, naming both versions, and skips its records",
+		func(version string, dropKeys ...string) {
+			unsupported := headerLine(func(h, _ map[string]any) {
+				h["format_version"] = version
+				for _, key := range dropKeys {
+					delete(h, key)
+				}
+			})
+			keep := func(map[string]any) {}
+			v1, _, _ := strings.Cut(sampleExport(), "\n")
 
-		records, err := export.Decode(strings.NewReader(v2 + eventLine(keep) + v1 + "\n" + eventLine(keep)))
+			records, err := export.Decode(strings.NewReader(unsupported + eventLine(keep) + v1 + "\n" + eventLine(keep)))
 
-		Expect(labels(records)).To(Equal([]string{"header", "event " + eventID}))
-		decodeErr, ok := errors.AsType[*export.DecodeError](err)
-		Expect(ok).To(BeTrue(), "a *DecodeError")
-		Expect(decodeErr.Lines).To(ConsistOf(SatisfyAll(
-			HaveField("Line", 1), HaveField("Err", MatchError(MatchRegexp(`"2\.0".*1\.`))))))
-	})
+			Expect(labels(records)).To(Equal([]string{"header", "event " + eventID}))
+			decodeErr, ok := errors.AsType[*export.DecodeError](err)
+			Expect(ok).To(BeTrue(), "a *DecodeError")
+			Expect(decodeErr.Lines).To(ConsistOf(SatisfyAll(
+				HaveField("Line", 1), HaveField("Err", MatchError(MatchRegexp(regexp.QuoteMeta(strconv.Quote(version))+`.*1\.`))))))
+		},
+		Entry("another major version", "2.0"),
+		Entry("another major version whose other keys differ", "2.0", "query"),
+		Entry("no minor version", "1"),
+		Entry("a minor version that is not a number", "1.banana"),
+	)
 
 	It("rejects a header whose query lacks a key", func() {
 		partial := headerLine(func(_, q map[string]any) { delete(q, "order") })
@@ -142,11 +155,24 @@ var _ = Describe("Decode", func() {
 		Expect(err).To(MatchError(And(ContainSubstring("line 1"), ContainSubstring(`"order"`))))
 	})
 
-	It("rejects a header whose format is not coroner.export", func() {
+	It("reads the records after a header that is invalid but of a supported version", func() {
+		badTag := headerLine(func(_, q map[string]any) { q["tags"] = []string{"Bad"} })
+		badID := eventLine(func(m map[string]any) { m["id"] = "e1" })
+
+		records, err := export.Decode(strings.NewReader(badTag + eventLine(func(map[string]any) {}) + badID))
+
+		Expect(labels(records)).To(Equal([]string{"event " + eventID}))
+		decodeErr, ok := errors.AsType[*export.DecodeError](err)
+		Expect(ok).To(BeTrue(), "a *DecodeError")
+		Expect(decodeErr.Lines).To(HaveExactElements(HaveField("Line", 1), HaveField("Line", 3)))
+	})
+
+	It("rejects a header whose format is not coroner.export, and skips its records", func() {
 		other := headerLine(func(h, _ map[string]any) { h["format"] = "grafana.annotations" })
 
-		_, err := export.Decode(strings.NewReader(other))
+		records, err := export.Decode(strings.NewReader(other + eventLine(func(map[string]any) {})))
 
+		Expect(records).To(BeEmpty())
 		Expect(err).To(MatchError(ContainSubstring("grafana.annotations")))
 	})
 
@@ -178,11 +204,14 @@ var _ = Describe("Decode", func() {
 			decodeErr, ok := errors.AsType[*export.DecodeError](err)
 			Expect(ok).To(BeTrue(), "a *DecodeError")
 			Expect(decodeErr.Lines).To(ConsistOf(SatisfyAll(
-				HaveField("Line", 2), HaveField("Err", MatchError(ContainSubstring(reason))))))
+				HaveField("Line", 2), HaveField("Err", MatchError(SatisfyAll(ContainSubstring(reason), Not(ContainSubstring(" Go "))))))))
 		},
 		Entry("a missing key", func() string { return eventLine(func(m map[string]any) { delete(m, "seq") }) }, `"seq"`),
 		Entry("null for a key that is never null", func() string { return eventLine(func(m map[string]any) { m["text"] = nil }) }, `"text"`),
-		Entry("a value of the wrong JSON type", func() string { return eventLine(func(m map[string]any) { m["seq"] = "one" }) }, "seq"),
+		Entry("a value of the wrong JSON type", func() string { return eventLine(func(m map[string]any) { m["seq"] = "one" }) }, `key "seq"`),
+		Entry("a list item of the wrong JSON type", func() string { return eventLine(func(m map[string]any) { m["tags"] = []int{1} }) }, "tags"),
+		Entry("a query value of the wrong JSON type",
+			func() string { return headerLine(func(_, q map[string]any) { q["tags"] = "phase:detect" }) }, "tags"),
 		Entry("an instant not in the canonical spelling",
 			func() string { return eventLine(func(m map[string]any) { m["occurred_at"] = "2026-09-11T03:01:00Z" }) },
 			"2026-09-11T03:01:00Z"),
@@ -200,9 +229,25 @@ var _ = Describe("Decode", func() {
 			},
 			"Mongo Outage"),
 		Entry("a missing type", func() string { return eventLine(func(m map[string]any) { delete(m, "type") }) }, `"type"`),
-		Entry("a line that is not an object", func() string { return "[1,2]\n" }, "array"),
+		Entry("a type that is not a string", func() string { return eventLine(func(m map[string]any) { m["type"] = 1 }) }, `key "type"`),
+		Entry("a line that is not an object", func() string { return "[1,2]\n" }, "not a JSON object"),
+		Entry("a blank line", func() string { return " \n" }, "blank line"),
 		Entry("a duplicate key", func() string { return `{"type":"event","type":"event"}` + "\n" }, "duplicate"),
 	)
+
+	It("lists every reason a line is invalid on that line's one entry", func() {
+		bad := eventLine(func(m map[string]any) {
+			m["id"] = strings.ToUpper(eventID)
+			m["source"] = "DB 2"
+		})
+
+		_, err := export.Decode(strings.NewReader(bad))
+
+		Expect(err).To(HaveOccurred())
+		Expect(strings.Split(err.Error(), "\n")).To(HaveExactElements(
+			HavePrefix("1 line "),
+			SatisfyAll(HavePrefix("line 1: "), ContainSubstring(strings.ToUpper(eventID)), ContainSubstring("DB 2"))))
+	})
 
 	It("groups many invalid lines under one count, listing the first five", func() {
 		records, err := export.Decode(strings.NewReader(strings.Repeat("{}\n", 7)))
@@ -211,7 +256,7 @@ var _ = Describe("Decode", func() {
 		message := err.Error()
 		Expect(strings.Split(message, "\n")).To(HaveLen(7))
 		Expect(message).To(SatisfyAll(
-			ContainSubstring("7"), ContainSubstring("line 5:"), Not(ContainSubstring("line 6:")), HaveSuffix("and 2 more")))
+			HavePrefix("7 "), ContainSubstring("line 5:"), Not(ContainSubstring("line 6:")), HaveSuffix("and 2 more")))
 	})
 
 	It("returns the error of a reader that fails", func() {

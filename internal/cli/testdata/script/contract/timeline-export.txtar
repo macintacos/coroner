@@ -32,6 +32,15 @@ cmp stdout export.jsonl
 exits 0 coroner timeline export -t mongo-outage --format jsonl --source mongod
 cmp stdout filtered.jsonl
 
+# Of the events from 03:14 up to 03:15, only event 2 has the tag phase:detect and text
+# containing primary. query records each filter, and stderr echoes the bounds it resolved.
+exits 0 coroner timeline export --json --since 2026-09-11T03:14:00Z --until 2026-09-11T03:15:00Z --tag phase:detect --contains primary
+jsonvalid stdout
+stdout '"since":"2026-09-11T03:14:00.000000000Z","until":"2026-09-11T03:15:00.000000000Z","sources":\[\],"tags":\["phase:detect"\],"contains":"primary",'
+stdout '"seq":2,'
+! stdout '"seq":[13],'
+stderr '^Events since 2026-09-11T03:14:00Z\b.* until 2026-09-11T03:15:00Z\b'
+
 # --order picks which end --limit keeps events from; exported events stay in the order they
 # happened, and stderr says when the export was cut short.
 exits 0 coroner timeline export --json --order desc

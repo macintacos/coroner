@@ -13,7 +13,7 @@ import (
 type Record interface {
 	// line returns the record as its JSONL object, with "type" as the first key.
 	line() any
-	// validate reports a malformed ID, name or tag in the record.
+	// validate reports why the decoded record is not one coroner can read.
 	validate() error
 }
 
@@ -53,15 +53,15 @@ func (a Annotation) line() any {
 	}{"annotation", a}
 }
 
-// Records returns env's records in export order: the header; the timelines; the annotations
-// on no event, by created at then id; the sources, by name; then the events, by occurred at
-// then seq, each followed by its annotations, by created at then id. env's own list order does
-// not matter. It fails when an annotation's event is not in env.Events.
+// Records returns env's records in export order: the header; the timelines, by name; the
+// annotations on no event, by created at then id; the sources, by name; then the events, by
+// occurred at, seq, then id, each followed by its annotations, by created at then id. env's
+// own list order does not matter. It fails when an annotation's event is not in env.Events.
 func Records(env Envelope) ([]Record, error) {
 	annotations := slices.SortedFunc(slices.Values(env.Annotations), compareAnnotations)
 	byEvent := map[string][]Annotation{}
 	records := []Record{env.header()}
-	for _, t := range env.Timelines {
+	for _, t := range slices.SortedFunc(slices.Values(env.Timelines), compareTimelines) {
 		records = append(records, t)
 	}
 	for _, a := range annotations {
@@ -71,7 +71,7 @@ func Records(env Envelope) ([]Record, error) {
 			byEvent[*a.EventID] = append(byEvent[*a.EventID], a)
 		}
 	}
-	for _, s := range slices.SortedFunc(slices.Values(env.Sources), func(a, b Source) int { return cmp.Compare(a.Name, b.Name) }) {
+	for _, s := range slices.SortedFunc(slices.Values(env.Sources), compareSources) {
 		records = append(records, s)
 	}
 	for _, e := range slices.SortedFunc(slices.Values(env.Events), compareEvents) {
@@ -107,12 +107,22 @@ func WriteRecords(w io.Writer, records []Record) error {
 	return err
 }
 
+func compareTimelines(a, b Timeline) int {
+	return cmp.Compare(a.Name, b.Name)
+}
+
+func compareSources(a, b Source) int {
+	return cmp.Compare(a.Name, b.Name)
+}
+
 func compareAnnotations(a, b Annotation) int {
 	return cmp.Or(time.Time(a.CreatedAt).Compare(time.Time(b.CreatedAt)), cmp.Compare(a.ID, b.ID))
 }
 
 func compareEvents(a, b Event) int {
-	return cmp.Or(time.Time(a.OccurredAt).Compare(time.Time(b.OccurredAt)), cmp.Compare(deref(a.Seq), deref(b.Seq)))
+	return cmp.Or(
+		time.Time(a.OccurredAt).Compare(time.Time(b.OccurredAt)), cmp.Compare(deref(a.Seq), deref(b.Seq)), cmp.Compare(a.ID, b.ID),
+	)
 }
 
 // deref returns what p points to, or the zero value when p is nil.

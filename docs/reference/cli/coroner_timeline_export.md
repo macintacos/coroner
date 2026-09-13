@@ -17,7 +17,7 @@ leave out are left out too. --order picks which end --limit keeps events from; e
 events are always in the order they happened. Redirect stdout to write a file.
 
 ```
-coroner timeline export --format {json|jsonl} [flags]
+coroner timeline export --format {json | jsonl} [flags]
 ```
 
 ### Examples
@@ -31,8 +31,8 @@ coroner timeline export --format {json|jsonl} [flags]
 
 ```
       --contains text      Keep events whose text contains this text, ignoring case
-      --limit number       Show at most this number of events (default: every one)
-      --order order        Order by occurred at, then seq, as an order: {asc|desc} (default "asc")
+      --limit number       Export at most this number of events (default: every one)
+      --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them

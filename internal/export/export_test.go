@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ var _ = Describe("Write", func() {
 				`"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"}`),
 	)
 
-	It("emits a new envelope's format identifiers, its version and time, an empty query and empty record lists", func() {
+	It("emits a new envelope's format identifiers, its version and time, a query that filters nothing and empty record lists", func() {
 		envelope := export.NewEnvelope("0.1.0", time.Date(2026, 9, 13, 1, 30, 0, 0, time.FixedZone("", 3600)))
 
 		Expect(encode(envelope)).To(Equal(
@@ -77,6 +78,26 @@ var _ = Describe("Write", func() {
 
 		Expect(export.Write(&b, export.Source{Name: "<"}, jsontext.WithIndent("  "))).To(Succeed())
 		Expect(b.String()).To(Equal("{\n  \"id\": \"\",\n  \"name\": \"\\u003c\",\n  \"created_at\": \"0001-01-01T00:00:00.000000000Z\"\n}\n"))
+	})
+
+	It("escapes for HTML even when the caller's options turn escaping off", func() {
+		var b bytes.Buffer
+
+		Expect(export.Write(&b, export.Source{Name: "<"}, jsontext.EscapeForHTML(false))).To(Succeed())
+		Expect(b.String()).To(ContainSubstring(`"name":"\u003c"`))
+	})
+})
+
+var _ = Describe("Header", func() {
+	It("has the envelope's leading fields, with the same keys and types, up to its record lists", func() {
+		header, envelope := reflect.TypeFor[export.Header](), reflect.TypeFor[export.Envelope]()
+		for i := range header.NumField() {
+			h, e := header.Field(i), envelope.Field(i)
+			Expect(h.Tag.Get("json")).To(Equal(e.Tag.Get("json")), h.Name)
+			Expect(h.Type).To(Equal(e.Type), h.Name)
+		}
+
+		Expect(envelope.Field(header.NumField()).Tag.Get("json")).To(Equal("timelines"))
 	})
 })
 
