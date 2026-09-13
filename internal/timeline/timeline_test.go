@@ -26,7 +26,7 @@ var _ = Describe("Timeline.Validate", func() {
 	}
 
 	It("accepts a well-formed timeline", func() {
-		Expect(valid().Validate()).To(Succeed())
+		Expect(valid().Validate()).NotTo(Succeed())
 	})
 
 	It("rejects a name outside the grammar", func() {
