@@ -30,7 +30,6 @@ func newRoot(app App) *cobra.Command {
 	return root
 }
 
-// resolveConfig resolves the global flags, environment and config file for cmd.
 func resolveConfig(cmd *cobra.Command, app App) (config.Config, error) {
 	return config.Resolve(config.Flags{
 		DBPath:     flagValue(cmd, "db"),
