@@ -1,6 +1,6 @@
 # JSON output and exit codes of event view, edit and delete, which name an event by seq,
-# timeline#seq or id. Ids are UUIDv7 and differ per run, so they match by pattern; created and
-# updated at come from CORONER_TEST_NOW.
+# timeline#seq or id. Ids come from CORONER_TEST_IDS and created and updated at from
+# CORONER_TEST_NOW, so whole documents are compared with the files below.
 
 exits 0 coroner timeline create mongo-outage
 exits 0 coroner timeline use mongo-outage
@@ -9,17 +9,17 @@ exits 0 coroner event add 'Pager fires for db-2' --at 2026-09-11T03:15:00Z
 
 # view prints the event object event add prints, every key present.
 exits 0 coroner event view 'mongo-outage#1' --json
-stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","seq":1,"occurred_at":"2026-09-11T03:14:07\.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07\.412Z","ended_at":null,"source":"mongod","tags":\["election"\],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00\.000000000Z","updated_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+cmp stdout event.json
 
 # edit --dry-run prints the edited event object, and changes nothing.
 exits 0 coroner event edit 1 --add-tag root-cause --remove-tag election --source none --dry-run --json
-stdout '"seq":1,[^\n]*"source":null,"tags":\["root-cause"\],'
+cmp stdout edited.json
 exits 0 coroner event view 1 --json
-stdout '"source":"mongod","tags":\["election"\],'
+cmp stdout event.json
 
 # delete prints the deleted events as event list does.
 exits 0 coroner event delete 2 --json
-stdout '^\{"events":\[\{"id":"[0-9a-f-]{36}",[^{}]*"seq":2,[^{}]*\}\],"truncated":false,"total":1\}$'
+cmp stdout deleted.json
 
 # A missing event exits 3, kind event_not_found, and delete then deletes nothing.
 exits 3 coroner event view 2 --json
@@ -28,6 +28,7 @@ stderr '^\{"error":\{"kind":"event_not_found","message":"[^\n]+","hint":"[^\n]+"
 exits 3 coroner event delete 1 2 --json
 stderr '^\{"error":\{"kind":"event_not_found",[^\n]+\}\}\n\z'
 exits 0 coroner event view 1 --json
+cmp stdout event.json
 
 # An id start two events share exits 2, kind ambiguous_id.
 exits 0 coroner event add 'New primary elected' --at 2026-09-11T03:16:00Z
@@ -39,3 +40,10 @@ exits 2 coroner event view '#1' --json
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 exits 2 coroner event edit 1 --json
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+-- event.json --
+{"id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":"mongod","tags":["election"],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+-- edited.json --
+{"id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":null,"tags":["root-cause"],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+-- deleted.json --
+{"events":[{"id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-11T03:15:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-11T03:15:00Z","ended_at":null,"source":null,"tags":[],"text":"Pager fires for db-2","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}],"truncated":false,"total":1}
