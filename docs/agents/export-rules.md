@@ -81,3 +81,16 @@
    11.12.0's `gantt.jison`; a change to the escaper or the diagram's syntax is checked by
    rendering `internal/export/testdata/mermaid/hostile.mmd` in both. Those goldens change
    only through `go test ./internal/export -update`, with the diff read before committing.
+10. **The HTML export has one writer:** render it only through `export.WriteHTML`, from
+    the
+   same `Envelope`. The page embeds that envelope only as `export.Write` encodes it, in
+   its `coroner-data` script element, and inlines its viewer and the vendored
+   vis-timeline, so it makes no network request. The Go shell is a `text/template` that
+   interpolates no text a person typed: `viewer.js` puts every string from the export on
+   the page through `textContent` or an element it builds, never `innerHTML` or an HTML
+   string handed to vis-timeline, and links only `http` and `https` URLs. A spec renders
+   hostile text in every typed field and fails when it reaches the markup or ends a script
+   element early. The page's layout is not a contract (`AGENTS.md` Rule 3); its goldens in
+   `internal/export/testdata/html/`, with the inlined files elided, change only through
+   `go test ./internal/export -update`. The bundle changes only by the steps in
+   [its README](../../internal/export/html/vendor/README.md).
