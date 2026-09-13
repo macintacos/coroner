@@ -80,7 +80,6 @@ func runCoroner() {
 	os.Exit(cli.Run(ctx, app))
 }
 
-// withTestClock pins app.Now to the RFC 3339 instant in CORONER_TEST_NOW.
 func withTestClock(app cli.App) (cli.App, error) {
 	value, _ := app.LookupEnv("CORONER_TEST_NOW")
 	now, err := time.Parse(time.RFC3339, value)
