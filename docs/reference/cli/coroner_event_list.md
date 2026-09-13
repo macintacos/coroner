@@ -32,7 +32,7 @@ coroner event list [flags]
 ```
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
-      --order string    Order by occurred at, then seq: {asc|desc} (default "asc")
+      --order order     Order by occurred at, then seq, as an order: {asc|desc} (default "asc")
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
       --tag tag         Keep events with this tag; repeat to require all of them

@@ -30,6 +30,7 @@ var _ = Describe("event view, edit and delete", func() {
 		home        string
 		ids         int
 		in          io.Reader
+		inIsTTY     bool
 		env         map[string]string
 		now         time.Time
 	)
@@ -38,10 +39,11 @@ var _ = Describe("event view, edit and delete", func() {
 		out.Reset()
 		errOut.Reset()
 		return cli.Run(ctx, cli.App{
-			Args: append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			In:   in,
-			Out:  &out,
-			Err:  &errOut,
+			Args:    append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
+			In:      in,
+			InIsTTY: inIsTTY,
+			Out:     &out,
+			Err:     &errOut,
 			LookupEnv: func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
@@ -66,7 +68,7 @@ var _ = Describe("event view, edit and delete", func() {
 	BeforeEach(func(ctx SpecContext) {
 		home = GinkgoT().TempDir()
 		ids = 0
-		in = strings.NewReader("")
+		in, inIsTTY = strings.NewReader(""), false
 		env = map[string]string{"HOME": home}
 		newYork, err := time.LoadLocation("America/New_York")
 		Expect(err).NotTo(HaveOccurred())
@@ -101,6 +103,16 @@ var _ = Describe("event view, edit and delete", func() {
 
 			Expect(out.String()).To(HavePrefix(`{"id":"` + drill + `"`))
 		})
+
+		DescribeTable("exits 2 with kind usage given -t and anything but a bare seq",
+			func(ctx SpecContext, ref string) {
+				Expect(run(ctx, "event", "view", ref, "-t", "mongo-failover", "--json")).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			},
+			Entry("an id", steppedDown),
+			Entry("a timeline's seq", "mongo-outage#1"),
+		)
 
 		It("needs no selected timeline for an id, only for a bare seq", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "use", "--clear")).To(Equal(0))
@@ -186,6 +198,18 @@ var _ = Describe("event view, edit and delete", func() {
 			Expect(stored(ctx, steppedDown).Tags).To(Equal([]string{"election"}))
 		})
 
+		It("describes the edited event under --dry-run in text, says what it would do, and changes nothing",
+			func(ctx SpecContext) {
+				before := stored(ctx, steppedDown)
+
+				Expect(run(ctx, "event", "edit", "1", "--at", "2026-09-11T03:01:00Z", "--dry-run")).To(Equal(0), errOut.String())
+
+				Expect(out.String()).To(HavePrefix("Event #1 in timeline `mongo-outage`\n"))
+				Expect(errOut.String()).To(ContainSubstring(
+					"Would edit event #1 in timeline `mongo-outage` at 2026-09-11T03:01:00Z (-04:00 local: 23:01:00)"))
+				Expect(stored(ctx, steppedDown)).To(Equal(before))
+			})
+
 		It("reads --at as event add does, replacing the typed time, precision and offset, and says what it resolved to",
 			func(ctx SpecContext) {
 				Expect(run(ctx, "event", "edit", "1", "--at", "2026-09-11 03:20", "--tz", "Asia/Tokyo", "--json")).
@@ -227,6 +251,13 @@ var _ = Describe("event view, edit and delete", func() {
 			Expect(stored(ctx, pagerFires).Source).To(HaveValue(Equal("pagerduty")))
 		})
 
+		It("keeps an explicit --approximate=false over a ~ in --at", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", "1", "--at", "~2026-09-11T03:01:00Z", "--approximate=false")).
+				To(Equal(0), errOut.String())
+
+			Expect(stored(ctx, steppedDown).Approximate).To(BeFalse())
+		})
+
 		It("clears the approximate mark given --approximate=false", func(ctx SpecContext) {
 			Expect(run(ctx, "event", "edit", "1", "--approximate")).To(Equal(0), errOut.String())
 
@@ -243,12 +274,30 @@ var _ = Describe("event view, edit and delete", func() {
 			Expect(stored(ctx, steppedDown).Text).To(Equal("Primary stepped down: replSetStepDown"))
 		})
 
+		It("exits 2 instead of waiting on a terminal given --text -", func(ctx SpecContext) {
+			reader, writer := io.Pipe()
+			DeferCleanup(writer.Close)
+			in, inIsTTY = reader, true
+
+			Expect(run(ctx, "event", "edit", "1", "--text", "-")).To(Equal(2))
+		}, SpecTimeout(10*time.Second))
+
+		It("names both times when the event would end before it occurred", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", "1", "--ended", "2026-09-11T03:00:00Z")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring("2026-09-10T23:00:00-04:00"))
+			Expect(errOut.String()).To(ContainSubstring("2026-09-10T23:14:07.412-04:00"))
+		})
+
 		DescribeTable("exits 2 and changes nothing on an edit no event could take",
 			func(ctx SpecContext, kind string, args ...string) {
+				before := stored(ctx, steppedDown)
+				now = now.Add(time.Hour)
+
 				Expect(run(ctx, append([]string{"event", "edit", "1", "--json"}, args...)...)).To(Equal(2))
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"` + kind + `"`))
-				Expect(stored(ctx, steppedDown).UpdatedAt).To(BeTemporally("==", now))
+				Expect(stored(ctx, steppedDown)).To(Equal(before))
 			},
 			Entry("no field to change", "usage"),
 			Entry("blank text", "usage", "--text", " "),
@@ -259,6 +308,12 @@ var _ = Describe("event view, edit and delete", func() {
 			Entry("an approximate end", "invalid_time", "--ended", "~2026-09-11T03:20:00Z"),
 			Entry("a time it cannot read", "invalid_time", "--at", "the day before"),
 		)
+	})
+
+	It("exits 2 on event add --source none, saying why none is no source", func(ctx SpecContext) {
+		Expect(run(ctx, "event", "add", "x", "--source", "none")).To(Equal(2))
+
+		Expect(errOut.String()).To(ContainSubstring("none clears an event's source in event edit"))
 	})
 
 	Describe("delete", func() {

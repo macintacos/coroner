@@ -8,7 +8,7 @@ Show an event and its annotations
 
 ### Synopsis
 
-Show every field of an event, then its annotations.
+Show every field of an event, then its annotations. --json prints the event object alone.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts

@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	eventRefHint = "Pass a seq such as 12, a timeline's seq such as mongo-outage#12, or an event id or its start.\n" +
-		"Scripts pass full ids: seqs and id prefixes are for people."
+	// eventRefHelp is the part of an event command's help that says which references it takes.
+	eventRefHelp = "An event is named by its seq in the current timeline (12), by a timeline and seq\n" +
+		"(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts\n" +
+		"are for people; scripts pass full ids."
 	// shownCandidates is how many events an ambiguous id prefix lists.
 	shownCandidates = 10
 )
@@ -27,23 +29,25 @@ type eventRef struct {
 }
 
 // parseEventRef reads ref as a seq (12), a timeline's seq (mongo-outage#12) or an id prefix,
-// which it lowercases. A seq never starts with 0 and a UUIDv7 does, so the two never collide.
+// which it lowercases. A seq never starts with 0, and UUIDv7 text does until the year 2527, so
+// a bare number is always a seq.
 func parseEventRef(ref string) (eventRef, error) {
 	if seq, ok := parseSeq(ref); ok {
 		return eventRef{seq: seq}, nil
 	}
 
-	if i := strings.LastIndex(ref, "#"); i >= 0 {
-		seq, ok := parseSeq(ref[i+1:])
-		if i == 0 || !ok {
+	if name, seqText, ok := strings.Cut(ref, "#"); ok {
+		seq, ok := parseSeq(seqText)
+		if name == "" || !ok {
 			return eventRef{}, badEventRefError(ref)
 		}
 
-		return eventRef{timeline: ref[:i], seq: seq}, nil
+		return eventRef{timeline: name, seq: seq}, nil
 	}
 
 	prefix := strings.ToLower(ref)
-	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
+	if prefix == "" || !strings.ContainsRune("0123456789abcdef", rune(prefix[0])) ||
+		strings.Trim(prefix, "0123456789abcdef-") != "" {
 		return eventRef{}, badEventRefError(ref)
 	}
 
@@ -51,7 +55,7 @@ func parseEventRef(ref string) (eventRef, error) {
 }
 
 func badEventRefError(ref string) *Error {
-	return &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an event reference", ref), Hint: eventRefHint}
+	return &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an event reference", ref), Hint: eventRefHelp}
 }
 
 // parseSeq returns s as a seq: digits with no leading zero.
@@ -72,32 +76,34 @@ type timelineSelection struct {
 }
 
 // findEvent returns the event ref names and its timeline. A bare seq is in the selected
-// timeline, which only it needs; an id prefix searches every timeline.
+// timeline, and a <timeline>#<seq> in the timeline it names; an id prefix searches every
+// timeline. -t applies to a bare seq only: with any other ref it is usage.
 func findEvent(
-	ctx context.Context, s *store.Store, ref string, selection timelineSelection,
+	ctx context.Context, s *store.Store, ref eventRef, selection timelineSelection,
 ) (timeline.Event, timeline.Timeline, error) {
-	parsed, err := parseEventRef(ref)
-	if err != nil {
-		return timeline.Event{}, timeline.Timeline{}, err
+	if selection.flag != nil && (ref.idPrefix != "" || ref.timeline != "") {
+		return timeline.Event{}, timeline.Timeline{}, &Error{
+			Kind: KindUsage, Message: "-t selects the timeline of a bare seq only", Hint: eventRefHelp,
+		}
 	}
-	if parsed.idPrefix != "" {
-		return findEventByID(ctx, s, parsed.idPrefix)
+	if ref.idPrefix != "" {
+		return findEventByID(ctx, s, ref.idPrefix)
 	}
 
-	t, err := seqTimeline(ctx, s, parsed.timeline, selection)
+	t, err := seqTimeline(ctx, s, ref.timeline, selection)
 	if err != nil {
 		return timeline.Event{}, t, err
 	}
-	e, err := s.EventBySeq(ctx, t.ID, parsed.seq)
+	e, err := s.EventBySeq(ctx, t.ID, ref.seq)
 	if errors.Is(err, store.ErrNotFound) {
-		return e, t, eventNotFoundError(fmt.Sprintf("timeline `%s` has no event #%d", t.Name, parsed.seq), err)
+		return e, t, eventNotFoundError(fmt.Sprintf("timeline `%s` has no event #%d", t.Name, ref.seq), err)
 	}
 
 	return e, t, err
 }
 
-// seqTimeline returns the timeline called or with the id name, or the selected one when name
-// is empty.
+// seqTimeline returns the timeline name names, by name or id, or the selected one when name is
+// empty.
 func seqTimeline(ctx context.Context, s *store.Store, name string, selection timelineSelection) (timeline.Timeline, error) {
 	if name == "" {
 		return selectTimeline(ctx, s, selection.flag, selection.lookupEnv)

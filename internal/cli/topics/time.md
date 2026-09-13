@@ -17,7 +17,8 @@ coroner reads a time in the first zone of:
 Relative words and times of day, as in `yesterday 14:05`, are read in that zone too.
 
 Text output, such as `coroner event list`, shows times in the zone of steps 2 to 4, with
-its offset and to the event's precision, as in `2026-09-12T10:05:03-04:00`.
+its offset, and an event's occurred at to its precision, as in
+`2026-09-12T10:05:03-04:00`.
 
 ## What you can type
 

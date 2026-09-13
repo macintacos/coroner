@@ -141,6 +141,22 @@ var _ = Describe("event list", func() {
 		Expect(out.String()).To(Equal("#1\t2026-09-10T23:00:00-04:00\tpagerduty\tphase:detect\tPager fires for db-2\n"))
 	})
 
+	It("suggests event add on stderr when the timeline has no events and no filter was given", func(ctx SpecContext) {
+		Expect(run(ctx, "timeline", "create", "disk-full")).To(Equal(0), errOut.String())
+
+		Expect(run(ctx, "event", "list", "-t", "disk-full", "--order", "desc")).To(Equal(0))
+
+		Expect(out.String()).To(BeEmpty())
+		Expect(errOut.String()).To(Equal("No events yet. Add one with: coroner event add <text>\n"))
+	})
+
+	It("says on stderr that no events match when a filter leaves none", func(ctx SpecContext) {
+		Expect(run(ctx, "event", "list", "--tag", "no-such-tag")).To(Equal(0))
+
+		Expect(out.String()).To(BeEmpty())
+		Expect(errOut.String()).To(Equal("No events match.\n"))
+	})
+
 	It("says on stderr which times --since and --until resolved to, unless --quiet", func(ctx SpecContext) {
 		Expect(run(ctx, "event", "list", "--since", "2026-09-11 03:00", "--until", "2026-09-11T08:00:00Z")).To(Equal(0))
 		Expect(errOut.String()).To(ContainSubstring("2026-09-11T07:00:00Z (-04:00 local: 03:00:00)"))

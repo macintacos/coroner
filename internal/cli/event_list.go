@@ -47,7 +47,7 @@ func addEventFilterFlags(flags *pflag.FlagSet) {
 	flags.StringArray("source", nil, "Keep events from this `source`; repeat to match any of several")
 	flags.StringArray("tag", nil, "Keep events with this `tag`; repeat to require all of them")
 	flags.String("contains", "", "Keep events whose text contains this `text`, ignoring case")
-	flags.String("order", "asc", "Order by occurred at, then seq: {asc|desc}")
+	flags.String("order", "asc", "Order by occurred at, then seq, as an `order`: {asc|desc}")
 	flags.Int("limit", 0, "Show at most this `number` of events (default: every one)")
 }
 
@@ -85,8 +85,17 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 			}
 		}
 
-		return printEventPage(o, z, page)
+		return printEventPage(o, z, page, noEventsMessage(filter))
 	})
+}
+
+// noEventsMessage returns what text output says when f selects no events.
+func noEventsMessage(f store.EventFilter) string {
+	if f.Since != nil || f.Until != nil || len(f.Sources) > 0 || len(f.Tags) > 0 || f.Contains != "" || f.Limit > 0 {
+		return "No events match."
+	}
+
+	return "No events yet. Add one with: coroner event add <text>"
 }
 
 // readEventFilter returns the filter the flags ask for, and the times --since and --until
@@ -115,14 +124,14 @@ func readEventFilter(flags *pflag.FlagSet, now time.Time, z zone) (store.EventFi
 		return f, "", err
 	}
 
-	var bounds []string
-	f.Since, bounds, err = readBound(flags, "since", now, z, bounds)
+	var since, until string
+	f.Since, since, err = readBound(flags, "since", now, z)
 	if err != nil {
 		return f, "", err
 	}
-	f.Until, bounds, err = readBound(flags, "until", now, z, bounds)
+	f.Until, until, err = readBound(flags, "until", now, z)
 
-	return f, strings.Join(bounds, " "), err
+	return f, strings.TrimSpace(since + " " + until), err
 }
 
 func checkFilterSlugs(f store.EventFilter) error {
@@ -170,20 +179,20 @@ func readLimit(flags *pflag.FlagSet) (int, error) {
 	return limit, nil
 }
 
-// readBound resolves the time flag name gives, appending how it echoes to bounds; nil when
-// the flag was not given.
-func readBound(flags *pflag.FlagSet, name string, now time.Time, z zone, bounds []string) (*time.Time, []string, error) {
+// readBound resolves the time flag name gives, and how the command echoes it; the time is
+// nil and the echo "" when the flag was not given.
+func readBound(flags *pflag.FlagSet, name string, now time.Time, z zone) (*time.Time, string, error) {
 	input := changedString(flags, name)
 	if input == nil {
-		return nil, bounds, nil
+		return nil, "", nil
 	}
 
 	r, err := resolveTime("--"+name, input, now, z.loc)
 	if err != nil {
-		return nil, bounds, err
+		return nil, "", err
 	}
 
-	return &r.Instant, append(bounds, name+" "+formatResolved(r, z)), nil
+	return &r.Instant, name + " " + formatResolved(r, z), nil
 }
 
 type eventListJSON struct {
@@ -209,10 +218,10 @@ func newEventListJSON(page store.EventPage) eventListJSON {
 	return eventListJSON{Events: events, Truncated: page.Truncated, Total: page.Total}
 }
 
-// printEventPage prints page in o's format, with text times in z, then says on stderr when
-// its limit left events out.
-func printEventPage(o output, z zone, page store.EventPage) error {
-	err := writeEventPage(o, z, page)
+// printEventPage prints page in o's format, with text times in z and noEvents on stderr
+// when it is empty, then says on stderr when its limit left events out.
+func printEventPage(o output, z zone, page store.EventPage, noEvents string) error {
+	err := writeEventPage(o, z, page, noEvents)
 	if err != nil || !page.Truncated {
 		return err
 	}
@@ -220,7 +229,7 @@ func printEventPage(o output, z zone, page store.EventPage) error {
 	return o.notify("Showing %d of %d events; raise --limit, or leave it out, to see them all.", len(page.Events), page.Total)
 }
 
-func writeEventPage(o output, z zone, page store.EventPage) error {
+func writeEventPage(o output, z zone, page store.EventPage, noEvents string) error {
 	switch o.format {
 	case formatJSON:
 		return o.json(newEventListJSON(page))
@@ -237,7 +246,7 @@ func writeEventPage(o output, z zone, page store.EventPage) error {
 	}
 
 	if len(page.Events) == 0 {
-		return o.notify("No events match.")
+		return o.notify(noEvents)
 	}
 
 	return o.rows(eventListRows(page.Events, z))

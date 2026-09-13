@@ -293,7 +293,9 @@ func checkSlug(slug string, validate func(string) error) error {
 	}
 
 	hint := "Use lowercase letters, digits, '.', '_', ':', '/' and '-'."
-	if suggestion := suggestSlug(slug, sourceTagPunct, validate); suggestion != "" {
+	if slug == clearKeyword {
+		hint = "none clears an event's source in event edit, so no source can be called it; pick another name."
+	} else if suggestion := suggestSlug(slug, sourceTagPunct, validate); suggestion != "" {
 		hint = fmt.Sprintf("Did you mean `%s`?", suggestion)
 	}
 

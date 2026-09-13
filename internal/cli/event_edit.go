@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -15,7 +17,8 @@ import (
 	"github.com/macintacos/coroner/internal/timeparse"
 )
 
-// clearKeyword is the value that clears an optional field (A-9); no source may be called it.
+// clearKeyword is the value that clears an optional field (A-9); keep in sync with
+// timeline.ValidateSourceName and the source.name CHECK, which reject it as a source.
 const clearKeyword = "none"
 
 // eventEditFlags are the flags that change a field; edit needs at least one.
@@ -28,10 +31,10 @@ func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
 		Use:   "edit <event>",
 		Short: "Change an event's text, time, source, tags or other fields",
 		Long: "Change the fields of an event. --at and --ended are read as 'coroner event add' reads them,\n" +
-			"and the times they resolve to are printed. Tags are removed before they are added; adding\n" +
-			"a tag it has, or removing one it lacks, changes nothing. Pass none to --source, --url,\n" +
-			"--author or --ended to clear it. Pass --text - to read the text from stdin, which is never\n" +
-			"read otherwise.\n\n" + eventRefHelp,
+			"and the times they resolve to are printed on stderr. Tags are removed before they are\n" +
+			"added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to\n" +
+			"--source, --url, --author or --ended to clear it. Pass --text - to read the text from\n" +
+			"stdin, which is never read otherwise.\n\n" + eventRefHelp,
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run\n" +
@@ -61,7 +64,7 @@ func editEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	if err != nil {
 		return err
 	}
-	_, err = parseEventRef(ref)
+	parsed, err := parseEventRef(ref)
 	if err != nil {
 		return err
 	}
@@ -82,19 +85,27 @@ func editEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// event is overwritten; apply the edit inside one store write if that matters.
-		e, t, err := findEvent(ctx, s, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		e, t, err := findEvent(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}
-		e, err = edit.apply(e)
+		e, err = edit.apply(e, z)
 		if err != nil {
 			return err
 		}
 		if dryRun {
-			return previewEventEdit(o, z, e, t)
+			err = previewEventEdit(o, z, e, t)
+			if err != nil {
+				return err
+			}
+
+			return o.notify("Would edit event #%d in timeline `%s`%s", e.Seq, t.Name, edit.when)
 		}
 
 		err = s.UpdateEvent(ctx, e, edit.newSourceID)
+		if errors.Is(err, store.ErrNotFound) {
+			return eventNotFoundError("another coroner deleted the event first", err)
+		}
 		if err != nil {
 			return err
 		}
@@ -258,8 +269,9 @@ func readEditTimes(flags *pflag.FlagSet, now time.Time, z zone) (editTimes, erro
 	return t, nil
 }
 
-// apply returns ev with the edit made and updated at set, rejecting a result the store would.
-func (e eventEdit) apply(ev timeline.Event) (timeline.Event, error) {
+// apply returns ev with the edit made and updated at set, rejecting a result the store would,
+// with times in z.
+func (e eventEdit) apply(ev timeline.Event, z zone) (timeline.Event, error) {
 	if e.text != nil {
 		ev.Text = *e.text
 	}
@@ -268,7 +280,7 @@ func (e eventEdit) apply(ev timeline.Event) (timeline.Event, error) {
 		ev.Approximate, ev.OccurredRaw = e.at.Approximate, e.raw
 	}
 	if e.approximate != nil {
-		ev.Approximate = *e.approximate || (e.at != nil && e.at.Approximate)
+		ev.Approximate = *e.approximate
 	}
 	switch {
 	case e.clearEnded:
@@ -283,17 +295,18 @@ func (e eventEdit) apply(ev timeline.Event) (timeline.Event, error) {
 	slices.Sort(ev.Tags)
 	ev.UpdatedAt = e.now
 
-	return ev, checkEditedEvent(ev)
+	return ev, checkEditedEvent(ev, z)
 }
 
-// checkEditedEvent returns an ended at before occurred at as invalid_time, and any other rule
-// ev breaks as usage.
-func checkEditedEvent(ev timeline.Event) error {
+// checkEditedEvent returns an ended at before occurred at as invalid_time, naming both in z, and
+// any other rule ev breaks as usage.
+func checkEditedEvent(ev timeline.Event, z zone) error {
 	if ev.EndedAt != nil && ev.EndedAt.Before(ev.OccurredAt) {
 		return &Error{
-			Kind:    KindInvalidTime,
-			Message: "the event would end before it occurred",
-			Hint:    "Pass an --ended time no earlier than its occurred at, or --ended none.",
+			Kind: KindInvalidTime,
+			Message: fmt.Sprintf("the event would end at %s, before it occurred at %s",
+				ev.EndedAt.In(z.loc).Format(time.RFC3339Nano), occurredText(ev, z)),
+			Hint: "Pass an --ended time no earlier than its occurred at, or --ended none.",
 		}
 	}
 

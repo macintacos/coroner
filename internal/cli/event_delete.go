@@ -17,10 +17,11 @@ func newEventDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <event>...",
 		Short: "Delete events and their annotations",
-		Long: "Delete events, with their tags and annotations, and print each as it was, so it can be\n" +
-			"added again. Every event is found before any is deleted: when one does not exist,\n" +
-			"nothing is deleted and delete exits 3. A retried delete that exits 3 has already\n" +
-			"happened. A deleted event's seq is never given to another event.\n\n" + eventRefHelp,
+		Long: "Delete events, with their tags and annotations, and print each as it was, so its fields\n" +
+			"can be added again. Every event is found before any is deleted: when one does not exist,\n" +
+			"nothing is deleted and delete exits 3. Exit 3 means one of the events does not exist: if\n" +
+			"a retry exits 3, the first attempt may already have deleted them. A deleted event's seq\n" +
+			"is never given to another event.\n\n" + eventRefHelp,
 		Args:        cobra.MinimumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event delete 12 14 --dry-run\n" +
@@ -40,11 +41,13 @@ func deleteEvents(ctx context.Context, cmd *cobra.Command, app App, refs []strin
 	if err != nil {
 		return err
 	}
+	parsed := make([]eventRef, 0, len(refs))
 	for _, ref := range refs {
-		_, err = parseEventRef(ref)
+		p, err := parseEventRef(ref)
 		if err != nil {
 			return err
 		}
+		parsed = append(parsed, p)
 	}
 	o, err := newOutput(cmd, app)
 	if err != nil {
@@ -57,15 +60,20 @@ func deleteEvents(ctx context.Context, cmd *cobra.Command, app App, refs []strin
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		found, err := findEvents(ctx, s, refs, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		found, err := findEvents(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}
-		verb := "Would delete"
-		if !dryRun {
-			verb = "Deleted"
-			err = s.DeleteEvents(ctx, found.ids()...)
+		if dryRun {
+			err = writeDeletion(o, z, found)
+			if err != nil {
+				return err
+			}
+
+			return notifyDeletion(o, "Would delete", found)
 		}
+
+		err = s.DeleteEvents(ctx, found.ids()...)
 		if errors.Is(err, store.ErrNotFound) {
 			return eventNotFoundError("another coroner deleted one of the events first; nothing was deleted", err)
 		}
@@ -77,7 +85,7 @@ func deleteEvents(ctx context.Context, cmd *cobra.Command, app App, refs []strin
 			return err
 		}
 
-		return notifyDeletion(o, verb, found)
+		return notifyDeletion(o, "Deleted", found)
 	})
 }
 
@@ -88,7 +96,7 @@ type foundEvents struct {
 }
 
 // findEvents finds the event each of refs names, failing on the first that finds none.
-func findEvents(ctx context.Context, s *store.Store, refs []string, selection timelineSelection) (foundEvents, error) {
+func findEvents(ctx context.Context, s *store.Store, refs []eventRef, selection timelineSelection) (foundEvents, error) {
 	found := foundEvents{timelines: map[string]timeline.Timeline{}}
 	for _, ref := range refs {
 		e, t, err := findEvent(ctx, s, ref, selection)

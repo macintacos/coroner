@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -79,9 +81,13 @@ func (s *Store) EventBySeq(ctx context.Context, timelineID string, seq int64) (t
 }
 
 // EventsByIDPrefix returns up to limit events, in any timeline, whose id starts with
-// prefix, ordered by id. prefix must hold only lowercase hex digits and dashes: GLOB reads
-// other characters as patterns.
+// prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase hex
+// and dashes: *, ? and [ are patterns, and ids are lowercase.
 func (s *Store) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error) {
+	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
+		return nil, fmt.Errorf("event id prefix %q is not lowercase hex and dashes", prefix)
+	}
+
 	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Event, error) {
 		rows, err := q.ListEventsByIDPrefix(ctx, sqlcgen.ListEventsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
 		if err != nil {

@@ -15,16 +15,11 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// eventRefHelp is the part of an event command's help that says which references it takes.
-const eventRefHelp = "An event is named by its seq in the current timeline (12), by a timeline and seq\n" +
-	"(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts\n" +
-	"are for people; scripts pass full ids."
-
 func newEventViewCommand(ctx context.Context, app App) *cobra.Command {
 	return &cobra.Command{
 		Use:         "view <event>",
 		Short:       "Show an event and its annotations",
-		Long:        "Show every field of an event, then its annotations.\n\n" + eventRefHelp,
+		Long:        "Show every field of an event, then its annotations. --json prints the event object alone.\n\n" + eventRefHelp,
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event view 12\n" +
@@ -40,7 +35,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	if err != nil {
 		return err
 	}
-	_, err = parseEventRef(ref)
+	parsed, err := parseEventRef(ref)
 	if err != nil {
 		return err
 	}
@@ -54,7 +49,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	}
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		e, t, err := findEvent(ctx, s, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		e, t, err := findEvent(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}

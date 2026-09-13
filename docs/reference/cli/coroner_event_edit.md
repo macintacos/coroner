@@ -9,10 +9,10 @@ Change an event's text, time, source, tags or other fields
 ### Synopsis
 
 Change the fields of an event. --at and --ended are read as 'coroner event add' reads them,
-and the times they resolve to are printed. Tags are removed before they are added; adding
-a tag it has, or removing one it lacks, changes nothing. Pass none to --source, --url,
---author or --ended to clear it. Pass --text - to read the text from stdin, which is never
-read otherwise.
+and the times they resolve to are printed on stderr. Tags are removed before they are
+added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to
+--source, --url, --author or --ended to clear it. Pass --text - to read the text from
+stdin, which is never read otherwise.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts

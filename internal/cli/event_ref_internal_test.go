@@ -32,5 +32,8 @@ var _ = Describe("event references", func() {
 		Entry("a zero seq", "mongo-outage#0"),
 		Entry("a seq with a leading zero", "mongo-outage#012"),
 		Entry("a non-hex id", "zz-top"),
+		Entry("a dash", "-"),
+		Entry("dashes only", "---"),
+		Entry("a timeline name with a #", "a#b#1"),
 	)
 })

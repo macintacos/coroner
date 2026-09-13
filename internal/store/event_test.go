@@ -125,6 +125,23 @@ var _ = Describe("Events", func() {
 		Expect(ids("0199a1b2-0000-7000-8000-00000000003", 10)).To(BeEmpty())
 	})
 
+	DescribeTable("rejects an id prefix that is empty or is not lowercase hex and dashes, which GLOB would read as a pattern",
+		func(ctx SpecContext, prefix string) {
+			Expect(s.AddEvent(ctx, newEvent(10, quarterPast), uuid(30))).Error().NotTo(HaveOccurred())
+
+			events, err := s.EventsByIDPrefix(ctx, prefix, 10)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(MatchError(store.ErrNotFound))
+			Expect(events).To(BeEmpty())
+		},
+		Entry("empty", ""),
+		Entry("a star", "*"),
+		Entry("a question mark", "0199a1b2-?"),
+		Entry("a character class", "[0-9]"),
+		Entry("uppercase hex", "0199A1B2"),
+	)
+
 	It("deletes events with their annotations", func(ctx SpecContext) {
 		for n := range 2 {
 			Expect(s.AddEvent(ctx, newEvent(10+n, quarterPast), uuid(30))).Error().NotTo(HaveOccurred())
