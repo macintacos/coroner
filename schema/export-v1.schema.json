@@ -1,0 +1,436 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/macintacos/coroner/main/schema/export-v1.schema.json",
+  "$defs": {
+    "Annotation": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "timeline_id": {
+          "type": "string"
+        },
+        "event_id": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "EventID is the event annotated; null for an annotation on the whole timeline."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Kind is evidence or comment. Consumers must accept values they do not know."
+        },
+        "body": {
+          "type": "string"
+        },
+        "author": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Author is the person who added the annotation, not necessarily its source."
+        },
+        "source": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source is the name of the source the annotation came from."
+        },
+        "url": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "URL is a permalink to the thing itself, such as the log line or chat message."
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "timeline_id",
+        "event_id",
+        "kind",
+        "body",
+        "author",
+        "source",
+        "url",
+        "created_at",
+        "updated_at"
+      ],
+      "description": "Annotation is evidence or commentary attached to an event, or to its whole timeline."
+    },
+    "Event": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "timeline_id": {
+          "type": "string"
+        },
+        "seq": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Seq is the event's permanent per-timeline counter value; null only in a preview of an\nevent not yet added."
+        },
+        "occurred_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time",
+          "description": "OccurredAt is when the event happened, or its interval started: the start of its\nprecision window."
+        },
+        "occurred_offset": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "OccurredOffset is the input's offset in seconds east of UTC; null when the input\nstated none."
+        },
+        "precision": {
+          "type": "string",
+          "description": "Precision is how exact occurred_at is, from day to nanosecond. Consumers must accept\nvalues they do not know."
+        },
+        "approximate": {
+          "type": "boolean",
+          "description": "Approximate marks occurred_at as a guess."
+        },
+        "occurred_raw": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "OccurredRaw is the time exactly as it was given."
+        },
+        "ended_at": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "EndedAt is when the interval ended; null for an event at a single moment."
+        },
+        "source": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Source is the name of the source the event came from."
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        },
+        "url": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "URL is a permalink to the thing itself, such as the log line or chat message."
+        },
+        "author": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Author is the person who added the event, not necessarily its source."
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "timeline_id",
+        "seq",
+        "occurred_at",
+        "occurred_offset",
+        "precision",
+        "approximate",
+        "occurred_raw",
+        "ended_at",
+        "source",
+        "tags",
+        "text",
+        "url",
+        "author",
+        "created_at",
+        "updated_at"
+      ],
+      "description": "Event is something that happened at a moment, or over an interval, as a source reported it."
+    },
+    "Query": {
+      "properties": {
+        "timelines": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Timelines are the names of the timelines exported."
+        },
+        "since": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Since keeps events that occurred at or after it."
+        },
+        "until": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Until keeps events that occurred before it."
+        },
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Sources keeps events from any of these source names."
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Tags keeps events carrying any of these tags."
+        },
+        "contains": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Contains keeps events whose text contains it."
+        },
+        "limit": {
+          "oneOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Limit is the most events exported."
+        }
+      },
+      "type": "object",
+      "required": [
+        "timelines",
+        "since",
+        "until",
+        "sources",
+        "tags",
+        "contains",
+        "limit"
+      ],
+      "description": "Query is the selection an export was made with; an empty list or null selects everything."
+    },
+    "Source": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "created_at"
+      ],
+      "description": "Source is the system, service or person an event or annotation came from."
+    },
+    "Timeline": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name is the timeline's unique name, such as mongo-outage."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title is a free-text heading; it may be empty."
+        },
+        "refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Refs are issue-tracker keys or URLs the timeline belongs to, kept as written."
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time"
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "title",
+        "refs",
+        "created_at"
+      ],
+      "description": "Timeline is the named chronology of one investigation."
+    }
+  },
+  "properties": {
+    "format": {
+      "type": "string",
+      "description": "Format is always \"coroner.export\"."
+    },
+    "format_version": {
+      "type": "string",
+      "description": "FormatVersion is the MAJOR.MINOR version of the export format."
+    },
+    "coroner_version": {
+      "type": "string",
+      "description": "CoronerVersion is the version of coroner that wrote the export."
+    },
+    "exported_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+      "format": "date-time",
+      "description": "ExportedAt is when the export was written."
+    },
+    "query": {
+      "$ref": "#/$defs/Query",
+      "description": "Query is the selection the export was made with."
+    },
+    "timelines": {
+      "items": {
+        "$ref": "#/$defs/Timeline"
+      },
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/Event"
+      },
+      "type": "array"
+    },
+    "annotations": {
+      "items": {
+        "$ref": "#/$defs/Annotation"
+      },
+      "type": "array"
+    }
+  },
+  "type": "object",
+  "required": [
+    "format",
+    "format_version",
+    "coroner_version",
+    "exported_at",
+    "query",
+    "timelines",
+    "sources",
+    "events",
+    "annotations"
+  ],
+  "description": "Envelope is a whole export: what was exported, by which coroner, when and with which query, and the flat record lists."
+}

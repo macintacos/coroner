@@ -7,7 +7,7 @@ import "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Builtin
 //
 // Two mappings keep the mise tasks single-purpose:
 //   mise run format -> the `fix` hook   -> `formatters` (write mode)
-//   mise run lint   -> the `check` hook -> `linters`, plus the CLI reference's drift check
+//   mise run lint   -> the `check` hook -> `linters`, plus the generators' drift checks
 // The `pre-commit` hook runs BOTH, so every commit stays formatted and clean.
 //
 // Step keys use a uniform `Language(Action)  [[builtins.tool]]` scheme,
@@ -64,6 +64,21 @@ local formatters = new Mapping<String, Step> {
     check = "go run ./internal/tools/docgen --check"
     fix = "go run ./internal/tools/docgen"
     stage = List("docs/reference/cli/*.md")
+  }
+
+  // schemagen writes the export schema outside the Go globs, so stage it explicitly.
+  ["Schema(Generate)  [[schemagen]]"] = new Step {
+    glob =
+      List(
+        "internal/export/**/*.go",
+        "internal/timeline/**/*.go",
+        "internal/tools/schemagen/**/*.go",
+        "schema/*.json",
+        "go.mod",
+      )
+    check = "go run ./internal/tools/schemagen --check"
+    fix = "go run ./internal/tools/schemagen"
+    stage = List("schema/*.json")
   }
 }
 
@@ -148,10 +163,11 @@ hooks {
     steps = formatters
   }
 
-  // `mise run lint` — linters, plus the generated CLI reference's drift check; read-only.
+  // `mise run lint` — linters, plus the generated CLI reference's and export schema's drift checks; read-only.
   ["check"] {
     steps = (linters) {
       ["Docs(Generate)    [[docgen]]"] = formatters["Docs(Generate)    [[docgen]]"]
+      ["Schema(Generate)  [[schemagen]]"] = formatters["Schema(Generate)  [[schemagen]]"]
     }
   }
 }
