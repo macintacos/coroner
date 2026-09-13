@@ -28,13 +28,13 @@ func addTimelineCompletion(ctx context.Context, cmd *cobra.Command, app App) {
 // completeTimelineArg is the ValidArgsFunction of a command whose one positional is a
 // timeline name or id.
 func completeTimelineArg(ctx context.Context, app App) cobra.CompletionFunc {
-	names := completeTimelineNames(ctx, app)
+	completeNames := completeTimelineNames(ctx, app)
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		if len(args) > 0 || cmd.Flags().Changed("timeline") {
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		return names(cmd, args, toComplete)
+		return completeNames(cmd, args, toComplete)
 	}
 }
 
