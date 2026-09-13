@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mattn/go-isatty"
 
 	"github.com/macintacos/coroner/internal/cli"
@@ -36,6 +37,7 @@ func main() {
 		LookupEnv: os.LookupEnv,
 		ReadFile:  os.ReadFile,
 		Now:       time.Now,
+		NewID:     uuid.NewV7,
 		OpenStore: store.Open,
 	})
 	os.Exit(code)

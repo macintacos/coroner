@@ -45,6 +45,23 @@ var _ = Describe("wrapRunErrors", func() {
 	})
 })
 
+var _ = It("gives every command an example", func(ctx SpecContext) {
+	var missing []string
+	var visit func(*cobra.Command)
+	visit = func(cmd *cobra.Command) {
+		if !cmd.Hidden && cmd.Example == "" {
+			missing = append(missing, cmd.CommandPath())
+		}
+		for _, child := range cmd.Commands() {
+			visit(child)
+		}
+	}
+
+	visit(NewRoot(ctx, App{}))
+
+	Expect(missing).To(BeEmpty())
+})
+
 var _ = Describe("asInternal", func() {
 	It("makes a kindless *Error internal, keeping its message", func() {
 		Expect(asInternal(&Error{Message: "oops"})).To(SatisfyAll(

@@ -10,6 +10,9 @@ add timestamped events from logs, chat and people, then view and export it.
 USAGE
   coroner <command> [flags]
 
+CORE COMMANDS
+  timeline     Create, list and switch between timelines
+
 ADDITIONAL COMMANDS
   completion   Generate the autocompletion script for the specified shell
   help         Help about any command
