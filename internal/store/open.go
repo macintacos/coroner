@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/pressly/goose/v3"
@@ -83,7 +84,7 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	err = inspect(ctx, db, fsys)
+	_, err = inspect(ctx, db, fsys)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
 	}
@@ -151,9 +152,19 @@ func dsn(path string) string {
 }
 
 func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
-	err := inspect(ctx, db, fsys)
+	pending, err := inspect(ctx, db, fsys)
 	if err != nil {
 		return err
+	}
+
+	// goose has no SQLite locker, so without this two processes both run a pending migration.
+	// migrate re-reads the version once the lock is held.
+	if pending {
+		unlock, err := lockFile(path + ".lock")
+		if err != nil {
+			return err
+		}
+		defer unlock()
 	}
 
 	// Not a DSN pragma: that runs on connect and would rewrite a foreign file's header
@@ -187,32 +198,53 @@ func refuseForeign(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func inspect(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+// inspect refuses a database Open must not touch, and reports whether migrations in fsys are
+// pending.
+func inspect(ctx context.Context, db *sql.DB, fsys fs.FS) (bool, error) {
 	err := refuseForeign(ctx, db)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	return refuseTooNew(ctx, db, fsys)
 }
 
-// refuseTooNew returns ErrDatabaseTooNew for a database migrated past the migrations in fsys.
-func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+// refuseTooNew returns ErrDatabaseTooNew for a database migrated past the migrations in fsys,
+// and otherwise whether any of them are pending.
+func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) (bool, error) {
 	latest, err := latestVersion(db, fsys)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	current, err := schemaVersion(ctx, db)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if current > latest {
-		return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
+		return false, fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
 	}
 
-	return nil
+	return current < latest, nil
+}
+
+// lockFile blocks until it holds an exclusive flock on path, creating the file when missing,
+// and returns the function that releases it. The file stays: unlinking it would let a waiter
+// lock a file no later process opens.
+func lockFile(path string) (func(), error) {
+	f, err := os.OpenFile(filepath.Clean(path), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("lock migrations: %w", err)
+	}
+
+	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("lock migrations: %w", err), f.Close())
+	}
+
+	// Closing the file releases the lock, and a failed close leaves nothing to undo.
+	return func() { _ = f.Close() }, nil
 }
 
 // latestVersion returns the version of the last migration in fsys.

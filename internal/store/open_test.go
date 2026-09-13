@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing/fstest"
 	"time"
 
@@ -82,18 +83,20 @@ var _ = Describe("Open", func() {
 		Expect(os.ReadDir(dir)).To(BeEmpty())
 	})
 
-	It("refuses a database a newer coroner migrated, leaving it byte-identical with nothing beside it",
+	It("refuses a database a newer coroner migrated, leaving it byte-identical with nothing added beside it",
 		func(ctx SpecContext) {
 			path := migratedDatabase(ctx)
 			bumpSchemaVersion(ctx, path)
 			before, err := os.ReadFile(filepath.Clean(path))
+			Expect(err).NotTo(HaveOccurred())
+			beside, err := os.ReadDir(filepath.Dir(path))
 			Expect(err).NotTo(HaveOccurred())
 
 			_, err = store.Open(ctx, path)
 
 			Expect(err).To(MatchError(store.ErrDatabaseTooNew))
 			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
-			Expect(os.ReadDir(filepath.Dir(path))).To(HaveExactElements(HaveField("Name()", "coroner.db")))
+			Expect(os.ReadDir(filepath.Dir(path))).To(Equal(beside))
 		})
 
 	It("finishes a first migration that failed after creating the version table", func(ctx SpecContext) {
@@ -188,6 +191,49 @@ var _ = Describe("Open", func() {
 	})
 })
 
+var _ = Describe("Open from several processes at once", func() {
+	const openers = 8
+
+	// openAll opens path from openers goroutines at once, each with its own connection pool
+	// and lock file descriptor, as separate processes would, and returns every error.
+	openAll := func(ctx context.Context, path string) []error {
+		errs := make([]error, openers)
+		var wg sync.WaitGroup
+		for i := range openers {
+			wg.Go(func() {
+				s, err := store.Open(ctx, path)
+				if err == nil {
+					err = s.Close()
+				}
+				errs[i] = err
+			})
+		}
+		wg.Wait()
+		return errs
+	}
+
+	It("creates and migrates a new database exactly once", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+
+		Expect(openAll(ctx, path)).To(HaveEach(Succeed()))
+
+		Expect(querySQLite(ctx, path, "SELECT count(*) FROM goose_db_version WHERE version_id > 0")).
+			To(Equal(querySQLite(ctx, path, "SELECT max(version_id) FROM goose_db_version")))
+	}, SpecTimeout(time.Minute))
+
+	It("upgrades an older database exactly once, taking one backup", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		s, err := store.OpenWithMigrations(ctx, path, schemaOne())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Close()).To(Succeed())
+
+		Expect(openAll(ctx, path)).To(HaveEach(Succeed()))
+
+		Expect(filepath.Glob(path + ".pre-v*.bak")).To(HaveLen(1))
+		Expect(querySQLite(ctx, path, "SELECT count(*) FROM sqlite_schema WHERE name = 'attachment'")).To(Equal(int64(1)))
+	}, SpecTimeout(time.Minute))
+})
+
 var _ = Describe("OpenReadOnly", func() {
 	It("reports a missing path as not existing, creating neither it nor its directory", func(ctx SpecContext) {
 		path := filepath.Join(GinkgoT().TempDir(), "missing", "coroner.db")
@@ -262,6 +308,14 @@ var _ = Describe("OpenReadOnly", func() {
 		Expect(s.Schema(ctx)).To(Equal(store.Schema{Version: 0, Latest: latest}))
 	})
 })
+
+// schemaOne returns the migrations up to schema 1, the schema before attachments.
+func schemaOne() fstest.MapFS {
+	GinkgoHelper()
+	initial, err := os.ReadFile("migrations/00001_initial_schema.sql")
+	Expect(err).NotTo(HaveOccurred())
+	return fstest.MapFS{"00001_initial_schema.sql": {Data: initial}}
+}
 
 // migratedDatabase returns the path of a new database Open migrated to the latest schema.
 func migratedDatabase(ctx SpecContext) string {
