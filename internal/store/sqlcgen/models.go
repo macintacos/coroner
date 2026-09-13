@@ -4,12 +4,64 @@
 
 package sqlcgen
 
-import (
-	"database/sql"
-)
+type Annotation struct {
+	ID         string
+	TimelineID string
+	EventID    *string
+	Kind       string
+	Body       string
+	Author     *string
+	SourceID   *string
+	Url        *string
+	CreatedAt  string
+	UpdatedAt  string
+}
 
-type Author struct {
-	ID   int64
-	Name string
-	Bio  sql.NullString
+type Event struct {
+	ID                string
+	TimelineID        string
+	Seq               int64
+	OccurredAt        string
+	OccurredOffset    *int64
+	OccurredPrecision string
+	Approximate       int64
+	OccurredRaw       *string
+	EndedAt           *string
+	SourceID          *string
+	Text              string
+	Url               *string
+	Author            *string
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+type EventTag struct {
+	EventID string
+	Tag     string
+}
+
+type Setting struct {
+	Key   string
+	Value string
+}
+
+type Source struct {
+	ID        string
+	Name      string
+	Timezone  *string
+	CreatedAt string
+}
+
+type Timeline struct {
+	ID        string
+	Name      string
+	Title     string
+	NextSeq   int64
+	CreatedAt string
+	UpdatedAt string
+}
+
+type TimelineRef struct {
+	TimelineID string
+	Ref        string
 }
