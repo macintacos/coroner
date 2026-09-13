@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"path/filepath"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 var _ = Describe("timeline forms", func() {
@@ -170,7 +174,118 @@ var _ = Describe("timeline forms", func() {
 			Expect(out.String()).NotTo(ContainSubstring("Other title"))
 		})
 	})
+
+	Describe("timeline edit", func() {
+		edit := func(ctx SpecContext, forms func(bool) askFunc) *cobra.Command {
+			command := &cobra.Command{Use: "edit", Annotations: map[string]string{formatsAnnotation: "text,json"}}
+			return timelineEditForm(ctx, appOn()).attach(command, appOn(), forms)
+		}
+		seed := func(ctx SpecContext, path string) {
+			GinkgoHelper()
+			Expect(runOn(ctx, path, "timeline", "create", "mongo-outage", "--title", "Primary election storm",
+				"--ref", "INC-4821", "--ref", "INC-4822")).To(Equal(0), errOut.String())
+		}
+		// renamed fills in name and submits.
+		renamed := func(name string) func([]huh.Field) (bool, error) {
+			return submit(map[string]string{"name": name})
+		}
+
+		BeforeEach(func(ctx SpecContext) {
+			seed(ctx, db)
+		})
+
+		It("open prefilled with the stored name, title and refs when no change is given", func(ctx SpecContext) {
+			command := edit(ctx, answers(cancel))
+
+			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
+
+			Expect(fieldText(asked[0], "name")).To(Equal("mongo-outage"))
+			Expect(fieldText(asked[0], "title")).To(Equal("Primary election storm"))
+			Expect(fieldText(asked[0], "refs")).To(Equal("INC-4821\nINC-4822"))
+		})
+
+		It("store the refs added and removed, as its echoed command does", func(ctx SpecContext) {
+			command := edit(ctx, answers(func(fields []huh.Field) (bool, error) {
+				refs := namedField(fields, "refs")
+				for _, ref := range []string{"INC-1", "INC-2", "INC-3"} {
+					enter(refs, ref)
+				}
+				press(refs, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyBackspace)
+				return true, nil
+			}))
+
+			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--json")).To(Succeed())
+			written := withoutRecordKeys(out.Bytes())
+
+			Expect(written).To(HaveKeyWithValue("refs", []any{"INC-4822", "INC-1", "INC-2", "INC-3"}))
+			Expect(replay(ctx, func(path string) { seed(ctx, path) }, "--dry-run", "--json")).To(Equal(written))
+		})
+
+		It("keep a renamed current timeline current, as its echoed command renames it", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
+			command := edit(ctx, answers(renamed("mongo-failover")))
+
+			Expect(runForm(ctx, command, "timeline", "edit", "--json")).To(Succeed())
+			written := withoutRecordKeys(out.Bytes())
+
+			Expect(errOut.String()).To(ContainSubstring("`mongo-outage` no longer selects"))
+			Expect(replay(ctx, func(path string) { seed(ctx, path) }, "--dry-run", "--json")).To(Equal(written))
+			Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
+			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-failover")))
+		})
+
+		It("ask which timeline to edit when none is selected", func(ctx SpecContext) {
+			command := edit(ctx, answers(submit(map[string]string{"timeline": "mongo-outage"}), cancel))
+
+			Expect(runForm(ctx, command, "timeline", "edit")).To(Succeed())
+
+			Expect(asked).To(HaveLen(2))
+			Expect(fieldText(asked[1], "name")).To(Equal("mongo-outage"))
+		})
+
+		It("reopen with what was typed when the new name is taken", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "create", "second")).To(Equal(0), errOut.String())
+			command := edit(ctx, answers(renamed("second"), cancel))
+
+			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
+
+			Expect(errOut.String()).To(ContainSubstring(`timeline "second" already exists`))
+			Expect(fieldText(asked[1], "name")).To(Equal("second"))
+		})
+
+		It("write nothing and echo nothing when nothing changed", func(ctx SpecContext) {
+			command := edit(ctx, answers(submit(map[string]string{})))
+
+			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
+
+			Expect(errOut.String()).NotTo(ContainSubstring("Equivalent command"))
+		})
+	})
 })
+
+var _ = DescribeTable("timelineEditValues gives edit the changes a form made to a timeline",
+	func(submitted, want fieldValues) {
+		t := timeline.Timeline{Name: "mongo-outage", Title: "Primary election storm", Refs: []string{"INC-1", "INC-2"}}
+		unchanged := fieldValues{"name": {"mongo-outage"}, "title": {"Primary election storm"}, "refs": {"INC-1", "INC-2"}}
+		maps.Copy(unchanged, submitted)
+		maps.DeleteFunc(unchanged, func(_ string, values []string) bool { return values == nil })
+
+		Expect(timelineEditValues(t, "mongo-outage", unchanged)).To(Equal(want))
+	},
+	Entry("nothing when nothing changed", fieldValues{}, fieldValues{"timeline": {"mongo-outage"}}),
+	Entry("a new name", fieldValues{"name": {"mongo-failover"}},
+		fieldValues{"timeline": {"mongo-outage"}, "name": {"mongo-failover"}}),
+	Entry("a cleared title as an empty one", fieldValues{"title": nil},
+		fieldValues{"timeline": {"mongo-outage"}, "title": {""}}),
+	Entry("the refs added and those removed", fieldValues{"refs": {"INC-2", "INC-3", "INC-4"}},
+		fieldValues{"timeline": {"mongo-outage"}, "add-ref": {"INC-3", "INC-4"}, "remove-ref": {"INC-1"}}),
+	Entry("nothing for the same refs in another order", fieldValues{"refs": {"INC-2", "INC-1"}},
+		fieldValues{"timeline": {"mongo-outage"}}),
+	Entry("every ref removed", fieldValues{"refs": nil},
+		fieldValues{"timeline": {"mongo-outage"}, "remove-ref": {"INC-1", "INC-2"}}),
+	Entry("a dry run", fieldValues{"dry-run": {"true"}},
+		fieldValues{"timeline": {"mongo-outage"}, "dry-run": {"true"}}),
+)
 
 var _ = DescribeTable("a name field's preview",
 	func(name string, want OmegaMatcher) {

@@ -28,6 +28,7 @@ coroner timeline edit <name|id> [flags]
 ```
       --add-ref stringArray      Add a ticket key or URL; repeat for more
       --dry-run                  Show the edited timeline, and change nothing
+      --interactive              Open a form to fill in, prefilled from the other flags (needs a terminal)
       --name name                New name
       --remove-ref stringArray   Remove a ref; repeat for more
       --title title              New title; an empty one clears it
