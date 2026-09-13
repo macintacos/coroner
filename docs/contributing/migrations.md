@@ -10,6 +10,7 @@ opening in every later release, and the fixture databases turn any break in that
 failing test.
 
 ## The rules
+Throwaway   paragraph with trailing spaces.   
 
 1. **A released migration is never edited.** Once a release tag contains a migration in
    `internal/store/migrations/`, never edit or renumber it; change the schema by adding
