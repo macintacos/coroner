@@ -249,6 +249,15 @@ var _ = Describe("WriteMarkdown", func() {
 		matchGolden("dst-new-york", markdown(acrossFallBack(), export.MarkdownOptions{Zone: newYork()}))
 	})
 
+	It("sections events by source in order of first appearance, with days inside and unsourced events last", func() {
+		matchGolden("group-by-source",
+			markdown(checkoutSpike(), export.MarkdownOptions{Zone: time.UTC, GroupBy: export.GroupBySource}))
+	})
+
+	It("sections events under each of their tags, naming their other tags, with untagged events last", func() {
+		matchGolden("group-by-tag", markdown(checkoutSpike(), export.MarkdownOptions{Zone: time.UTC, GroupBy: export.GroupByTag}))
+	})
+
 	It("adds each event's time as written under IncludeRaw", func() {
 		env := acrossFallBack()
 		env.Events[1].OccurredRaw = new("2026-11-01T01:30:00-04:00")
@@ -308,6 +317,14 @@ var _ = Describe("WriteMarkdown", func() {
 		var b bytes.Buffer
 
 		Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).To(MatchError(ContainSubstring("e2")))
+		Expect(b.String()).To(BeEmpty())
+	})
+
+	It("fails, writing nothing, for a grouping it does not know", func() {
+		var b bytes.Buffer
+
+		Expect(export.WriteMarkdown(&b, checkoutSpike(), export.MarkdownOptions{GroupBy: "kind"})).
+			To(MatchError(ContainSubstring(`"kind"`)))
 		Expect(b.String()).To(BeEmpty())
 	})
 

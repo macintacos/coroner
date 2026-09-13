@@ -12,11 +12,26 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
+// GroupBy is how a Markdown export sections its events.
+type GroupBy string
+
+// Groupings. Every one puts a day's events in their own section.
+const (
+	// GroupByDay sections events by day alone.
+	GroupByDay GroupBy = ""
+	// GroupBySource sections events by source, in order of first appearance, then day.
+	GroupBySource GroupBy = "source"
+	// GroupByTag sections events under each of their tags, in order of first appearance, then
+	// day.
+	GroupByTag GroupBy = "tag"
+)
+
 // MarkdownOptions are how a Markdown export presents its timeline.
 type MarkdownOptions struct {
 	// Zone is where times and days are shown, each labelled with the zone's abbreviation at
 	// that instant; nil is UTC.
-	Zone *time.Location
+	Zone    *time.Location
+	GroupBy GroupBy
 	// IncludeRaw adds each event's time as it was written.
 	IncludeRaw bool
 }
@@ -29,6 +44,9 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("markdown export: want one timeline, got %d", len(env.Timelines))
 	}
+	if !slices.Contains([]GroupBy{GroupByDay, GroupBySource, GroupByTag}, opts.GroupBy) {
+		return fmt.Errorf("markdown export: unknown grouping %q", opts.GroupBy)
+	}
 	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
 	onTimeline, byEvent, err := groupAnnotations(env.Annotations, events)
 	if err != nil {
@@ -37,11 +55,12 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 
 	md := markdownWriter{
 		zone:       cmp.Or(opts.Zone, time.UTC),
+		groupBy:    opts.GroupBy,
 		includeRaw: opts.IncludeRaw,
 		byEvent:    byEvent,
 		escaper:    strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "|", `\|`, "&", `\&`),
 	}
-	blocks := slices.Concat(md.header(env, events), md.timelineAnnotations(onTimeline), md.daySections(events, "##"))
+	blocks := slices.Concat(md.header(env, events), md.timelineAnnotations(onTimeline), md.sections(events))
 
 	_, err = io.WriteString(w, strings.Join(blocks, "\n\n")+"\n")
 	return err
@@ -75,6 +94,7 @@ func groupAnnotations(annotations []Annotation, events []Event) ([]Annotation, m
 // or list without a trailing newline, and blocks are separated by a blank line.
 type markdownWriter struct {
 	zone       *time.Location
+	groupBy    GroupBy
 	includeRaw bool
 	byEvent    map[string][]Annotation
 	escaper    *strings.Replacer
@@ -166,15 +186,91 @@ func (md markdownWriter) timelineAnnotations(annotations []Annotation) []string 
 	return []string{"Annotations on the whole timeline:", strings.TrimSuffix(md.annotationList(annotations, ""), "\n")}
 }
 
+// sections returns the event sections md.groupBy asks for.
+func (md markdownWriter) sections(events []Event) []string {
+	var blocks []string
+	switch md.groupBy {
+	case GroupBySource:
+		for _, g := range groupEvents(events, sourceOf) {
+			heading := "(no source)"
+			if g.key != "" {
+				heading = codeSpan(g.key)
+			}
+			blocks = append(blocks, "## "+heading)
+			blocks = append(blocks, md.daySections(g.events, "###", "")...)
+		}
+	case GroupByTag:
+		for _, g := range groupEvents(events, tagsOf) {
+			heading := "(untagged)"
+			if g.key != "" {
+				heading = codeSpan("#" + g.key)
+			}
+			blocks = append(blocks, "## "+heading)
+			blocks = append(blocks, md.daySections(g.events, "###", g.key)...)
+		}
+	case GroupByDay:
+		blocks = md.daySections(events, "##", "")
+	}
+
+	return blocks
+}
+
+// eventGroup is the events that share a key, such as a source; the group whose events have
+// none has the key "".
+type eventGroup struct {
+	key    string
+	events []Event
+}
+
+// groupEvents returns events under each key keys gives them, in order of first appearance,
+// then the events keys gives none.
+func groupEvents(events []Event, keys func(Event) []string) []eventGroup {
+	var groups []eventGroup
+	var keyless []Event
+	index := map[string]int{}
+	for _, e := range events {
+		if len(keys(e)) == 0 {
+			keyless = append(keyless, e)
+		}
+		for _, key := range keys(e) {
+			i, ok := index[key]
+			if !ok {
+				i = len(groups)
+				index[key] = i
+				groups = append(groups, eventGroup{key: key})
+			}
+			groups[i].events = append(groups[i].events, e)
+		}
+	}
+	if len(keyless) > 0 {
+		groups = append(groups, eventGroup{events: keyless})
+	}
+
+	return groups
+}
+
+func sourceOf(e Event) []string {
+	if e.Source == nil {
+		return nil
+	}
+
+	return []string{*e.Source}
+}
+
+func tagsOf(e Event) []string {
+	return e.Tags
+}
+
 // daySections returns a heading at level, such as ##, and an event list for each day events
-// fall on, in date order.
-func (md markdownWriter) daySections(events []Event, level string) []string {
+// fall on, in date order. Events in the section of groupTag list their other tags instead of
+// all of them.
+func (md markdownWriter) daySections(events []Event, level, groupTag string) []string {
 	var blocks []string
 	for _, day := range md.days(events) {
 		label, offsets := md.dayZone(day)
 		items := make([]string, 0, len(day))
 		for _, e := range day {
-			items = append(items, md.eventItem(e, offsets))
+			items = append(items, md.eventItem(e, offsets, groupTag))
 		}
 		blocks = append(blocks,
 			level+" "+md.date(day[0])+" ("+label+")",
@@ -240,8 +336,9 @@ func (md markdownWriter) dayZone(day []Event) (string, bool) {
 }
 
 // eventItem returns e's list item: its time, source, text and tags, and under it e's
-// annotations. offsets adds the zone offset to every time.
-func (md markdownWriter) eventItem(e Event, offsets bool) string {
+// annotations. offsets adds the zone offset to every time. In the section of groupTag, the
+// item names only e's other tags, as (also: …).
+func (md markdownWriter) eventItem(e Event, offsets bool, groupTag string) string {
 	var parts []string
 	if when := md.when(e, offsets); when != "" {
 		parts = append(parts, "**"+when+"**")
@@ -250,8 +347,13 @@ func (md markdownWriter) eventItem(e Event, offsets bool) string {
 		parts = append(parts, codeSpan(*e.Source))
 	}
 	what := md.text(e.Text, "  ")
-	if len(e.Tags) > 0 {
-		what += " " + codeSpans(e.Tags, "#", " ")
+	otherTags := slices.DeleteFunc(slices.Clone(e.Tags), func(tag string) bool { return tag == groupTag })
+	switch {
+	case len(otherTags) == 0:
+	case groupTag == "":
+		what += " " + codeSpans(otherTags, "#", " ")
+	default:
+		what += " (also: " + codeSpans(otherTags, "#", " ") + ")"
 	}
 	parts = append(parts, what)
 	if md.includeRaw && e.OccurredRaw != nil {
