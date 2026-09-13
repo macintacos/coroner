@@ -191,24 +191,24 @@ func reencode(name string, data []byte) []byte {
 func envelopes(records []export.Record) []export.Envelope {
 	var envs []export.Envelope
 	for _, record := range records {
-		if h, ok := record.(export.Header); ok {
+		if header, ok := record.(export.Header); ok {
 			envs = append(envs, export.Envelope{
-				Format: h.Format, FormatVersion: h.FormatVersion, CoronerVersion: h.CoronerVersion, ExportedAt: h.ExportedAt, Query: h.Query,
+				Format: header.Format, FormatVersion: header.FormatVersion, CoronerVersion: header.CoronerVersion, ExportedAt: header.ExportedAt, Query: header.Query,
 			})
 			continue
 		}
 
 		Expect(envs).NotTo(BeEmpty(), "a record before any header")
 		env := &envs[len(envs)-1]
-		switch r := record.(type) {
+		switch record := record.(type) {
 		case export.Timeline:
-			env.Timelines = append(env.Timelines, r)
+			env.Timelines = append(env.Timelines, record)
 		case export.Source:
-			env.Sources = append(env.Sources, r)
+			env.Sources = append(env.Sources, record)
 		case export.Event:
-			env.Events = append(env.Events, r)
+			env.Events = append(env.Events, record)
 		case export.Annotation:
-			env.Annotations = append(env.Annotations, r)
+			env.Annotations = append(env.Annotations, record)
 		}
 	}
 

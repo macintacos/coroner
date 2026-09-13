@@ -48,13 +48,13 @@ func TestMain(m *testing.M) {
 
 func TestScripts(t *testing.T) {
 	update := flag.Lookup(updateFlag).Value.String() == "true"
-	fixtures := filepath.Join("..", "..", "testdata", "export", "v"+export.FormatVersion)
+	fixturesDir := filepath.Join("..", "..", "testdata", "export", "v"+export.FormatVersion)
 	params := testscript.Params{
 		UpdateScripts:      update,
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
-			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid, "exportfixture": exportFixture(fixtures, update),
+			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid, "exportfixture": exportFixture(fixturesDir, update),
 		},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
