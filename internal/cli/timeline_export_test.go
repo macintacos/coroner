@@ -174,11 +174,11 @@ var _ = Describe("timeline export", func() {
 	})
 
 	DescribeTable("exits 2, naming the flag, on a Markdown option it cannot apply",
-		func(ctx SpecContext, flag string, args ...string) {
+		func(ctx SpecContext, flagName string, args ...string) {
 			Expect(run(ctx, append([]string{"timeline", "export"}, args...)...)).To(Equal(2))
 
 			Expect(out.String()).To(BeEmpty())
-			Expect(errOut.String()).To(ContainSubstring(flag))
+			Expect(errOut.String()).To(ContainSubstring(flagName))
 		},
 		Entry("--group-by with json", "--group-by", "--format", "json", "--group-by", "source"),
 		Entry("--include-raw with jsonl", "--include-raw", "--format", "jsonl", "--include-raw"),

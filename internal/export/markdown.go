@@ -162,16 +162,16 @@ func (md markdownRenderer) window(events []Event) string {
 	start := time.Time(events[0].OccurredAt).In(md.zone)
 	end := slices.MaxFunc(instants, time.Time.Compare).In(md.zone)
 
-	text := start.Format(time.DateTime)
+	startText := start.Format(time.DateTime)
 	if zoneName(start) != zoneName(end) {
-		text += " " + zoneName(start)
+		startText += " " + zoneName(start)
 	}
 	endLayout := time.TimeOnly
 	if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
 		endLayout = time.DateTime
 	}
 
-	return text + " → " + end.Format(endLayout) + " " + zoneName(end)
+	return startText + " → " + end.Format(endLayout) + " " + zoneName(end)
 }
 
 // eventSummary returns the metadata bullet counting events, with the sources and tags they
@@ -289,10 +289,10 @@ func tagsOf(e Event) []string {
 func (md markdownRenderer) daySections(events []Event, level, groupTag string) []string {
 	var blocks []string
 	for _, day := range md.days(events) {
-		label, offsets := md.dayZone(day)
+		label, offset := md.dayZone(day)
 		items := make([]string, 0, len(day))
 		for _, e := range day {
-			items = append(items, md.eventItem(e, offsets, groupTag))
+			items = append(items, md.eventItem(e, offset, groupTag))
 		}
 		blocks = append(blocks,
 			level+" "+md.date(day[0])+" ("+label+")",
@@ -358,11 +358,11 @@ func (md markdownRenderer) dayZone(day []Event) (string, bool) {
 }
 
 // eventItem returns e's list item: its time, source, text and tags, and under it e's
-// annotations. offsets adds the zone offset to every time. In the section of groupTag, the
+// annotations. offset adds the zone offset to every time. In the section of groupTag, the
 // item names only e's other tags, as (also: …).
-func (md markdownRenderer) eventItem(e Event, offsets bool, groupTag string) string {
+func (md markdownRenderer) eventItem(e Event, offset bool, groupTag string) string {
 	var parts []string
-	if when := md.when(e, offsets); when != "" {
+	if when := md.when(e, offset); when != "" {
 		parts = append(parts, "**"+when+"**")
 	}
 	if e.Source != nil {
@@ -393,16 +393,16 @@ func (md markdownRenderer) eventItem(e Event, offsets bool, groupTag string) str
 // when returns e's time at its precision in the zone, its interval's end, and ~ when it is
 // approximate. The end carries its date when that differs from the start's. A day-precision
 // event has dayWhen's instead.
-func (md markdownRenderer) when(e Event, offsets bool) string {
+func (md markdownRenderer) when(e Event, offset bool) string {
 	if e.Precision == timeline.PrecisionDay {
 		return md.dayWhen(e)
 	}
 
 	start := time.Time(e.OccurredAt).In(md.zone)
-	when := clock(start, e.Precision, offsets)
+	when := clock(start, e.Precision, offset)
 	if e.EndedAt != nil {
 		end := time.Time(*e.EndedAt).In(md.zone)
-		endText := clock(end, e.Precision, offsets)
+		endText := clock(end, e.Precision, offset)
 		if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
 			endText = end.Format(time.DateOnly) + " " + endText
 		}
@@ -490,10 +490,10 @@ func (md markdownRenderer) oneLine(s string) string {
 func (md markdownRenderer) escape(s string) string {
 	var b strings.Builder
 	last := 0
-	for _, url := range md.urls.FindAllStringIndex(s, -1) {
-		b.WriteString(md.escaper.Replace(s[last:url[0]]))
-		b.WriteString(s[url[0]:url[1]])
-		last = url[1]
+	for _, match := range md.urls.FindAllStringIndex(s, -1) {
+		b.WriteString(md.escaper.Replace(s[last:match[0]]))
+		b.WriteString(s[match[0]:match[1]])
+		last = match[1]
 	}
 	b.WriteString(md.escaper.Replace(s[last:]))
 
@@ -575,12 +575,12 @@ func codeSpan(s string) string {
 	return fence + s + fence
 }
 
-// codeBlock returns lines as a fenced code block indented by indent. Blank lines stay empty, so
+// codeBlock returns body as a fenced code block indented by indent. Blank lines stay empty, so
 // no line ends in spaces.
-func codeBlock(lines []string, indent string) string {
-	fence := strings.Repeat("`", max(3, longestRun(strings.Join(lines, "\n"), '`')+1))
+func codeBlock(body []string, indent string) string {
+	fence := strings.Repeat("`", max(3, longestRun(strings.Join(body, "\n"), '`')+1))
 	block := []string{indent + fence + "text"}
-	for _, line := range lines {
+	for _, line := range body {
 		if line != "" {
 			line = indent + line
 		}
