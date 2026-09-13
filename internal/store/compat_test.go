@@ -36,6 +36,20 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 
 		expectCompatFixture(ctx, path)
 	})
+
+	It("upgrades a schema 1 database compatfixture filled, backing it up first", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		s, err := store.OpenWithMigrations(ctx, path, schemaOne())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(fixture.Fill(ctx, s)).To(Succeed())
+		Expect(s.Close()).To(Succeed())
+
+		expectCompatFixture(ctx, path)
+
+		backup := path + ".pre-v2.bak"
+		Expect(querySQLite(ctx, backup, "SELECT max(version_id) FROM goose_db_version")).To(Equal(int64(1)))
+		Expect(querySQLite(ctx, backup, "SELECT count(*) FROM event")).To(Equal(int64(len(fixture.Events()))))
+	})
 })
 
 // expectCompatFixture opens the compatfixture database at path, reads back every record
