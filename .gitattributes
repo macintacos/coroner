@@ -1,1 +1,2 @@
 *.db binary
+testdata/export/** -text

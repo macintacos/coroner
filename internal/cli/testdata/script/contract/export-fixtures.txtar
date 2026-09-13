@@ -1,0 +1,100 @@
+# The export fixtures in testdata/export/v<format_version>/, each written by a real timeline
+# export. `fixture` fails when an export differs from its fixture, and under -update writes
+# only a fixture that does not exist yet, so a frozen one is never rewritten. internal/export's
+# fixture suite validates, decodes and re-encodes every fixture.
+
+# minimal: one timeline with no title, refs or events.
+exits 0 coroner timeline create minimal
+exits 0 coroner timeline export -t minimal --format jsonl
+fixture minimal.jsonl stdout
+
+# full-model: every record type, and events with every precision, an approximate interval, a
+# null and a non-null offset, no source or author, several tags, a url, and a later edit.
+exits 0 coroner timeline create full-model --title 'Mongo primary election' --ref INC-4821 --ref https://tracker.example.com/INC-4821
+exits 0 coroner timeline use full-model
+exits 0 coroner event add 'Maintenance window opens' --at 2026-09-11 --tz UTC --source change-calendar --tag phase:context --author julian
+# Natural language is the only input with hour precision.
+exits 0 coroner event add 'Nightly backup starts' --at '2026-09-11 3am' --tz UTC --source cron --author julian
+exits 0 coroner event add 'Oplog window drops under an hour' --at 2026-09-11T03:10 --tz UTC --source grafana --author julian
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T05:14:07+02:00 --source mongod --tag election --tag phase:detect --tag severity:high --url https://logs.example.com/l/81723 --author julian
+exits 0 coroner event add 'Election timeout on db-3' --at 2026-09-11T03:14:07.412Z --source mongod --author julian
+exits 0 coroner event add 'Driver saw NotWritablePrimary' --at 2026-09-11T03:14:07.412123Z --source api --author julian
+exits 0 coroner event add 'db-2 elected primary' --at 1789096448123456789 --source mongod --author julian
+exits 0 coroner event add 'Replica set has no primary' --at '~2026-09-11T03:14:00Z' --ended 2026-09-11T03:16:30Z
+exits 0 coroner annotation add 'rs.status() showed no primary' -e 8 --kind evidence --source mongod --url https://logs.example.com/l/81730 --author julian
+exits 0 coroner annotation add 'Step-down follows the oplog alert by four minutes' -e 4 --kind comment --author julian
+env CORONER_TEST_NOW=2026-09-12T22:05:00-04:00
+exits 0 coroner event edit 4 --add-tag root-cause
+exits 0 coroner timeline export --format jsonl
+fixture full-model.jsonl stdout
+exits 0 coroner timeline export --format json
+fixture full-model.json stdout
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
+
+# annotations: evidence and comments on events, several on one event at different times, and
+# one on the whole timeline.
+exits 0 coroner timeline create annotations
+exits 0 coroner timeline use annotations
+exits 0 coroner event add 'Pager fires for db-2' --at 2026-09-11T03:15:00Z --source pagerduty --author julian
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z --source mongod --author julian
+exits 0 coroner annotation add 'Paged the on-call DBA' --kind comment --author julian
+exits 0 coroner annotation add 'replSetStepDown in the mongod log' -e 2 --kind evidence --source mongod --author julian
+env CORONER_TEST_NOW=2026-09-12T21:40:00-04:00
+exits 0 coroner annotation add 'Page acknowledged' -e 1 --kind comment --source pagerduty
+exits 0 coroner annotation add 'The step-down was not planned' -e 2 --kind comment --author julian
+env CORONER_TEST_NOW=2026-09-12T21:50:00-04:00
+exits 0 coroner annotation add 'Incident channel opened' --kind evidence --source slack --url https://slack.example.com/archives/C1/p1
+exits 0 coroner timeline export --format jsonl
+fixture annotations.jsonl stdout
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
+
+# ordering: events added out of time order, three at the same instant, so occurred at and then
+# seq order them. The minute-precision event sorts at the start of its minute.
+exits 0 coroner timeline create ordering
+exits 0 coroner timeline use ordering
+exits 0 coroner event add 'Pager fires' --at 2026-09-11T03:15:00Z --source pagerduty
+exits 0 coroner event add 'First of three at 03:14:07' --at 2026-09-11T03:14:07Z --source mongod
+exits 0 coroner event add 'Second of three at 03:14:07' --at 2026-09-11T03:14:07Z --source mongod
+exits 0 coroner event add 'Third of three at 03:14:07' --at 2026-09-11T03:14:07Z --source api
+exits 0 coroner event add 'Sometime in minute 03:14' --at 2026-09-11T03:14 --tz UTC --source grafana
+exits 0 coroner timeline export --format jsonl
+fixture ordering.jsonl stdout
+
+# hostile-text: multi-line text, backticks, </script>, <, > and &, non-ASCII, and a 10 KB
+# single log line kept verbatim as evidence.
+exits 0 coroner timeline create hostile-text --title 'Réplica caída — 東京 ✓'
+exits 0 coroner timeline use hostile-text
+stdin event-text.txt
+exits 0 coroner event add - --at 2026-09-11T03:14:07Z --source db-2/mongod --tag 'phase:detect'
+stdin comment.md
+exits 0 coroner annotation add - -e 1 --kind comment
+stdin mongod.log
+exits 0 coroner annotation add - -e 1 --kind evidence --source db-2/mongod
+exits 0 coroner timeline export --format jsonl
+fixture hostile-text.jsonl stdout
+
+# concatenated: two exports back to back, as cat a.jsonl b.jsonl makes, so header and source
+# records repeat.
+exits 0 coroner timeline create concat-db
+exits 0 coroner timeline create concat-api
+exits 0 coroner event add 'Pager fires for db-2' -t concat-db --at 2026-09-11T03:15:00Z --source pagerduty
+exits 0 coroner event add 'Pager fires for api' -t concat-api --at 2026-09-11T03:16:00Z --source pagerduty
+exits 0 coroner timeline export -t concat-db --format jsonl
+cp stdout concat-db.jsonl
+exits 0 coroner timeline export -t concat-api --format jsonl
+fixture concatenated.jsonl concat-db.jsonl stdout
+
+-- event-text.txt --
+Primary stepped down after `rs.stepDown()`:
+  the status page embedded </script><script>alert(1)</script> & <b>kept</b> rendering.
+Région eu-west → 東京 fallback, “quoted”, naïve café ✓
+-- comment.md --
+Check `db.getSiblingDB("local").oplog.rs.stats()` first:
+
+```js
+if (window < 3600 && lag > 10) { stepDown(); }
+```
+
+Owner: Zoë Ångström <zoe@example.com>
+-- mongod.log --
+{"t":{"$date":"2026-09-11T03:14:07.412+00:00"},"s":"I","c":"REPL","id":21358,"ctx":"ReplCoord-0","msg":"Replica set state transition","attr":{"newState":"SECONDARY","oldState":"PRIMARY","members":[{"_id":0,"name":"db-1.prod.example.com:27017","health":1,"state":1,"stateStr":"PRIMARY","uptime":86400,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":1}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":1,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86437,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":2}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":2,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86474,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":3}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":3,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86511,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":4}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":4,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86548,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":5}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":5,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86585,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":6}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":6,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86622,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":7}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":7,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86659,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":8}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":8,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86696,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":9}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":9,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86733,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":10}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":10,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86770,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":11}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":11,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86807,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":12}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":12,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86844,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":13}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":13,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86881,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":14}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":14,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86918,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":15}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":15,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86955,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":16}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":16,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":86992,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":17}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":17,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87029,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":18}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":18,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87066,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":19}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":19,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87103,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":20}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":20,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87140,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":21}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":21,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87177,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":22}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":22,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87214,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":23}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":23,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87251,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":24}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":24,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87288,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":25}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":25,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87325,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":26}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":26,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87362,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":27}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":27,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87399,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":28}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":28,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87436,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":29}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":29,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87473,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":30}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":30,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87510,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":31}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":31,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87547,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":32}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":32,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87584,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":33}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":33,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87621,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":34}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":34,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87658,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":35}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":35,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87695,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":36}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":36,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87732,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":37}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":37,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87769,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":38}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":38,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87806,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":39}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":39,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87843,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":40}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":40,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87880,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":41}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":41,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87917,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":42}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":42,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87954,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":43}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":43,"name":"db-2.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":87991,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":44}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":44,"name":"db-3.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":88028,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":45}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"},{"_id":45,"name":"db-1.prod.example.com:27017","health":1,"state":2,"stateStr":"SECONDARY","uptime":88065,"optime":{"ts":{"$timestamp":{"t":1789096447,"i":46}},"t":42},"lastHeartbeatMessage":"heartbeat > 10s; syncing from db-2"}]}}
