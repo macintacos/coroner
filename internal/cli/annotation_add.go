@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
@@ -18,6 +17,7 @@ const missingBodyHint = "Pass the body, or - to read it from stdin:\n" +
 	"Run 'coroner annotation add --help' for more."
 
 func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
+	def := annotationAddDefinition()
 	cmd := &cobra.Command{
 		Use:   "add {<body> | -} --kind {evidence | comment}",
 		Short: "Attach evidence or a comment to an event or the timeline",
@@ -31,75 +31,97 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +
 			"  $ coroner annotation add \"Step-down lands 5 s after the COLLSCAN burst\" -e 12 --kind comment\n" +
 			"  $ coroner annotation add \"Root cause: undersized oplog\" --kind comment --dry-run --json",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return addAnnotation(ctx, cmd, app, args)
-		},
+		RunE: writeRunE(ctx, app, def, addAnnotation),
 	}
 
-	flags := cmd.Flags()
-	addTimelineFlag(flags)
-	flags.StringP("event", "e", "", "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)")
-	flags.String("kind", "", "Annotation `kind`: {evidence | comment}")
-	flags.String("source", "", "System, service or person it came from, as a `source`, created on first use")
-	flags.String("url", "", "Permalink to the log line or message, as a `url`")
-	flags.String("author", "", "Who is adding it, as a `name` (default: config author, then USER)")
-	flags.Bool("dry-run", false, "Show the annotation as it would be added, and add nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func addAnnotation(ctx context.Context, cmd *cobra.Command, app App, args []string) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, err := resolveConfig(cmd, app)
-	if err != nil {
-		return err
-	}
-	ref, err := eventFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
-	draft, err := draftAnnotation(cmd.Flags(), app, cfg, args)
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
+func annotationAddDefinition() definition {
+	return definition{fields: []field{
+		timelineField(),
+		{name: "body", arg: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyValue)},
+		{
+			name: "event", shorthand: "e", check: withoutEnv(checkEventRef),
+			usage: "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)",
+		},
+		{name: "kind", usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkKind)},
+		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
+		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
+	}}
+}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
+// annotationAdded is the annotation add stored or, with --dry-run, would store, with the
+// timeline and the event, if any, it is attached to.
+type annotationAdded struct {
+	annotation timeline.Annotation
+	timeline   timeline.Timeline
+	event      *timeline.Event
+	dryRun     bool
+}
+
+func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationAdded, error) {
+	err := annotationAddDefinition().check(in, checkEnv{})
+	if err != nil {
+		return annotationAdded{}, err
+	}
+	var ref *eventRef
+	if value := in.value("event"); value != nil {
+		parsed, err := parseEventRef(*value)
+		if err != nil {
+			return annotationAdded{}, err
+		}
+		ref = &parsed
+	}
+	draft, err := draftAnnotation(in, app, cfg)
+	if err != nil {
+		return annotationAdded{}, err
+	}
+	dryRun, _ := in.boolean("dry-run")
+	selection := timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv}
+
+	added := annotationAdded{dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+		t, err := selectTimeline(ctx, s, selection.flag, selection.lookupEnv)
 		if err != nil {
 			return err
 		}
 		a := draft.annotation
 		a.TimelineID = t.ID
-		e, err := annotatedEvent(ctx, s, t, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		e, err := annotatedEvent(ctx, s, t, ref, selection)
 		if err != nil {
 			return err
 		}
 		if e != nil {
 			a.EventID = &e.ID
 		}
+		added.annotation, added.timeline, added.event = a, t, e
 		if dryRun {
-			return previewAnnotation(o, a, fmt.Sprintf("Would add %s annotation to %s", a.Kind, annotationTarget(t, e)))
+			return nil
 		}
 
-		err = s.AddAnnotation(ctx, a, draft.newSourceID)
-		if err != nil {
-			return err
-		}
-		err = printAnnotation(o, a)
-		if err != nil {
-			return err
-		}
-
-		return o.notify("Added %s annotation %s to %s", a.Kind, a.ID, annotationTarget(t, e))
+		return s.AddAnnotation(ctx, a, draft.newSourceID)
 	})
+
+	return added, err
+}
+
+func (a annotationAdded) render(o output) error {
+	target := annotationTarget(a.timeline, a.event)
+	if a.dryRun {
+		return previewAnnotation(o, a.annotation, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+	}
+
+	err := printAnnotation(o, a.annotation)
+	if err != nil {
+		return err
+	}
+
+	return o.notify("Added %s annotation %s to %s", a.annotation.Kind, a.annotation.ID, target)
 }
 
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.
@@ -118,34 +140,27 @@ func annotatedEvent(
 	return e, nil
 }
 
-// annotationDraft is an annotation read from the command line and checked, still without its
-// timeline and event.
+// annotationDraft is an annotation read from its fields and checked, still without its timeline
+// and event.
 type annotationDraft struct {
 	annotation timeline.Annotation
 	// newSourceID is the id annotation.Source gets when no source has that name yet.
 	newSourceID string
 }
 
-// draftAnnotation reads the annotation args and flags describe and gives it new ids. It reads
-// stdin last, so a bad flag never waits on it.
-func draftAnnotation(flags *pflag.FlagSet, app App, cfg config.Config, args []string) (annotationDraft, error) {
-	kind, err := requiredAnnotationKind(flags)
+// draftAnnotation reads the annotation in describes and gives it new ids. It reads stdin last,
+// so a bad field never waits on it.
+func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraft, error) {
+	kind, err := requiredAnnotationKind(in)
 	if err != nil {
 		return annotationDraft{}, err
 	}
-	fields, err := readAnnotationFields(flags)
-	if err != nil {
-		return annotationDraft{}, err
-	}
-	author := changedString(flags, "author")
-	err = checkNotBlank("--author", author)
-	if err != nil {
-		return annotationDraft{}, err
-	}
-	if len(args) == 0 {
+	fields := readAnnotationFields(in)
+	value := in.value("body")
+	if value == nil {
 		return annotationDraft{}, &Error{Kind: KindUsage, Message: "annotation add needs the annotation's body", Hint: missingBodyHint}
 	}
-	body, err := annotationBody(args[0], app.In, app.InIsTTY)
+	body, err := annotationBody(*value, app.In, app.InIsTTY)
 	if err != nil {
 		return annotationDraft{}, err
 	}
@@ -163,7 +178,7 @@ func draftAnnotation(flags *pflag.FlagSet, app App, cfg config.Config, args []st
 		ID:        id.String(),
 		Kind:      kind,
 		Body:      body,
-		Author:    eventAuthor(author, cfg.Author, app.LookupEnv),
+		Author:    eventAuthor(in.value("author"), cfg.Author, app.LookupEnv),
 		Source:    fields.source,
 		URL:       fields.url,
 		CreatedAt: now,
@@ -173,8 +188,8 @@ func draftAnnotation(flags *pflag.FlagSet, app App, cfg config.Config, args []st
 	return annotationDraft{annotation: a, newSourceID: sourceID}, nil
 }
 
-func requiredAnnotationKind(flags *pflag.FlagSet) (timeline.AnnotationKind, error) {
-	kind := changedString(flags, "kind")
+func requiredAnnotationKind(in fieldValues) (timeline.AnnotationKind, error) {
+	kind := in.value("kind")
 	if kind == nil {
 		return "", &Error{Kind: KindUsage, Message: "annotation add needs --kind", Hint: annotationKindHint}
 	}

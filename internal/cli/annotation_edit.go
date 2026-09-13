@@ -7,13 +7,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
+	def := annotationEditDefinition()
 	cmd := &cobra.Command{
 		Use:   "edit <id>",
 		Short: "Change an annotation's body, kind, source or URL",
@@ -24,37 +25,50 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation edit 0199a1b2-7c1e --kind comment\n" +
 			"  $ coroner annotation edit 0199a1b2-7c1e --body - --dry-run --json < stepdown.log",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return editAnnotation(ctx, cmd, app, args[0])
-		},
+		RunE: writeRunE(ctx, app, def, editAnnotation),
 	}
 
-	flags := cmd.Flags()
-	flags.String("body", "", "New `body`, or - to read it from stdin")
-	flags.String("kind", "", "New annotation `kind`: {evidence | comment}")
-	flags.String("source", "", "New `source`, created on first use")
-	flags.String("url", "", "New permalink, as a `url`")
-	flags.Bool("dry-run", false, "Show the edited annotation, and change nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func editAnnotation(ctx context.Context, cmd *cobra.Command, app App, ref string) error {
-	prefix, err := parseAnnotationRef(ref)
-	if err != nil {
-		return err
-	}
-	edit, err := readAnnotationEdit(cmd.Flags(), app)
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
+func annotationEditDefinition() definition {
+	return definition{fields: []field{
+		{name: "id", arg: true, usage: "Annotation to edit, as an `id` or unique id prefix", check: withoutEnv(checkAnnotationRef)},
+		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyValue)},
+		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkKind)},
+		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource)},
+		{name: "url", usage: "New permalink, as a `url`", check: notBlank("--url")},
+		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
+	}}
+}
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+// annotationEdited is the annotation as edit stored it or, with --dry-run, would store it, with
+// its timeline.
+type annotationEdited struct {
+	annotation timeline.Annotation
+	timeline   timeline.Timeline
+	dryRun     bool
+}
+
+func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationEdited, error) {
+	err := annotationEditDefinition().check(in, checkEnv{})
+	if err != nil {
+		return annotationEdited{}, err
+	}
+	prefix, err := parseAnnotationRef(in.values("id")[0])
+	if err != nil {
+		return annotationEdited{}, err
+	}
+	edit, err := readAnnotationEdit(in, app)
+	if err != nil {
+		return annotationEdited{}, err
+	}
+	dryRun, _ := in.boolean("dry-run")
+
+	edited := annotationEdited{dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// annotation is overwritten; apply the edit inside one store write if that matters.
 		a, err := findAnnotation(ctx, s, prefix)
@@ -66,8 +80,9 @@ func editAnnotation(ctx context.Context, cmd *cobra.Command, app App, ref string
 			return err
 		}
 		a = edit.apply(a, app.Now())
+		edited.annotation, edited.timeline = a, t
 		if dryRun {
-			return previewAnnotation(o, a, "Would edit annotation "+a.ID+" to")
+			return nil
 		}
 
 		// UpdateAnnotation resolves a.Source by name even when --source did not change it, so it
@@ -80,46 +95,49 @@ func editAnnotation(ctx context.Context, cmd *cobra.Command, app App, ref string
 		if errors.Is(err, store.ErrNotFound) {
 			return annotationNotFoundError("no annotation has an id starting "+a.ID, err)
 		}
-		if err != nil {
-			return err
-		}
-		err = printAnnotation(o, a)
-		if err != nil {
-			return err
-		}
 
-		return o.notify("Edited %s annotation %s in timeline `%s`", a.Kind, a.ID, t.Name)
+		return err
 	})
+
+	return edited, err
 }
 
-// annotationEdit is the change edit's flags ask for. Nil fields change nothing.
+func (e annotationEdited) render(o output) error {
+	if e.dryRun {
+		return previewAnnotation(o, e.annotation, "Would edit annotation "+e.annotation.ID+" to")
+	}
+
+	err := printAnnotation(o, e.annotation)
+	if err != nil {
+		return err
+	}
+
+	return o.notify("Edited %s annotation %s in timeline `%s`", e.annotation.Kind, e.annotation.ID, e.timeline.Name)
+}
+
+// annotationEdit is the change edit's fields ask for. Nil fields change nothing.
 type annotationEdit struct {
 	kind   *timeline.AnnotationKind
 	body   *string
 	fields annotationFields
 }
 
-// readAnnotationEdit returns the edit the flags ask for, rejecting one no annotation could
-// take. It reads stdin last, so a bad flag never waits on it.
-func readAnnotationEdit(flags *pflag.FlagSet, app App) (annotationEdit, error) {
-	var edit annotationEdit
-	if !slices.ContainsFunc([]string{"body", "kind", "source", "url"}, flags.Changed) {
-		return edit, &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass --body, --kind, --source or --url."}
+// readAnnotationEdit returns the edit in asks for. It reads stdin last, so a bad field never
+// waits on it.
+func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
+	if !slices.ContainsFunc([]string{"body", "kind", "source", "url"}, in.given) {
+		return annotationEdit{}, &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass --body, --kind, --source or --url."}
 	}
 
-	if kind := changedString(flags, "kind"); kind != nil {
+	edit := annotationEdit{fields: readAnnotationFields(in)}
+	if kind := in.value("kind"); kind != nil {
 		k, err := checkAnnotationKind(*kind)
 		if err != nil {
 			return edit, err
 		}
 		edit.kind = &k
 	}
-	fields, err := readAnnotationFields(flags)
-	if err != nil {
-		return edit, err
-	}
-	edit.fields = fields
-	if body := changedString(flags, "body"); body != nil {
+	if body := in.value("body"); body != nil {
 		b, err := annotationBody(*body, app.In, app.InIsTTY)
 		if err != nil {
 			return edit, err

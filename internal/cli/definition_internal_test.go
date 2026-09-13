@@ -30,6 +30,10 @@ func writeDefinitions() map[string]definition {
 		"event add":       eventAddDefinition(),
 		"event edit":      eventEditDefinition(),
 		"event delete":    eventDeleteDefinition(),
+
+		"annotation add":    annotationAddDefinition(),
+		"annotation edit":   annotationEditDefinition(),
+		"annotation delete": annotationDeleteDefinition(),
 	}
 }
 
@@ -82,6 +86,19 @@ var _ = Describe("write command definitions", func() {
 		Entry("event edit --add-tag", "event edit", "add-tag", "Bad Tag", "12"),
 		Entry("event edit --url", "event edit", "url", " ", "12"),
 		Entry("event delete <event>...", "event delete", "events", "Bad Ref!"),
+		Entry("annotation add <body>", "annotation add", "body", " ", "--kind", "comment"),
+		Entry("annotation add -t", "annotation add", "timeline", "", "--kind", "comment", "Election timeout"),
+		Entry("annotation add -e", "annotation add", "event", "Bad Ref!", "--kind", "comment", "Election timeout"),
+		Entry("annotation add --kind", "annotation add", "kind", "note", "Election timeout"),
+		Entry("annotation add --source", "annotation add", "source", "DB 2", "--kind", "comment", "Election timeout"),
+		Entry("annotation add --url", "annotation add", "url", " ", "--kind", "comment", "Election timeout"),
+		Entry("annotation add --author", "annotation add", "author", " ", "--kind", "comment", "Election timeout"),
+		Entry("annotation edit <id>", "annotation edit", "id", "Bad Ref!", "--kind", "comment"),
+		Entry("annotation edit --body", "annotation edit", "body", " ", "0199a1b2"),
+		Entry("annotation edit --kind", "annotation edit", "kind", "note", "0199a1b2"),
+		Entry("annotation edit --source", "annotation edit", "source", "DB 2", "0199a1b2"),
+		Entry("annotation edit --url", "annotation edit", "url", " ", "0199a1b2"),
+		Entry("annotation delete <id>...", "annotation delete", "ids", "Bad Ref!"),
 	)
 })
 
