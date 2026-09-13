@@ -93,6 +93,15 @@ digraph coroner_rules_router {
   output formats it supports in its `formats` annotation, and any other `--format` or
   `--json` exits 2 as `usage`. `cli.Run` prints every error once, adding the JSON error
   envelope under `--format json|jsonl`.
+- Write commands (`timeline create|edit|delete`, `event add|edit|delete`,
+  `annotation add|edit|delete`): each declares its flags, positional argument and their
+  checks once, in a `definition`
+  ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
+  and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). `RunE` reads the
+  definition's values, calls a plain run function that returns a result, and renders it. A
+  spec in [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fails
+  when a flag has no form field, a form field has no flag, or the two reject a bad value
+  differently.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
   the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract
