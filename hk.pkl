@@ -9,6 +9,7 @@ import "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Builtin
 //   mise run format -> the `fix` hook   -> `formatters` (write mode)
 //   mise run lint   -> the `check` hook -> `linters`, plus the CLI reference's drift check
 // The `pre-commit` hook runs BOTH, so every commit stays formatted and clean.
+// The `commit-msg` hook rejects a message that is not a Conventional Commit.
 //
 // Step keys use a uniform `Language(Action)  [[builtins.tool]]` scheme,
 // column-aligned on the bracket tag, so hk's per-run output reads consistently.
@@ -110,6 +111,22 @@ hooks {
     steps = new Mapping<String, Step> {
       ...preCommitFormatters
       ...linters
+    }
+  }
+
+  ["commit-msg"] {
+    steps = new Mapping<String, Step> {
+      // The util rejects the Merge and Revert subjects git writes itself, so those pass first.
+      ["Git(CommitMsg)    [[builtins.check_conventional_commit]]"] = (
+        Builtins.check_conventional_commit
+      ) {
+        check =
+          """
+          sed -n '/^[^#]/{p;q;}' {{commit_msg_file}} | grep -qE '^(Merge|Revert) ' ||
+            hk util check-conventional-commit {{commit_msg_file}} ||
+            { echo 'Expected a Conventional Commit: type(scope)!: summary' >&2; exit 1; }
+          """
+      }
     }
   }
 
