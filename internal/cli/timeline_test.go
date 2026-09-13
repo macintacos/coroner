@@ -185,9 +185,17 @@ var _ = Describe("timeline", func() {
 				Expect(run(ctx, "timeline", "view", "mongo-outage")).To(Equal(0))
 
 				Expect(out.String()).To(HaveSuffix("\n\n" +
-					"#2\t2026-09-11T03:14:00.000000000Z\t\tmongod\tPrimary stepped down\n" +
-					"#1\t2026-09-11T03:15:00.000000000Z\t+1m0s\tslack\tPager fires for db-2\n" +
-					"#3\t2026-09-11T04:20:30.000000000Z\t+1h5m30s\tmongod\tNew primary elected\n"))
+					"#2\t2026-09-11T03:14:00Z\t\tmongod\tPrimary stepped down\n" +
+					"#1\t2026-09-11T03:15:00Z\t+1m0s\tslack\tPager fires for db-2\n" +
+					"#3\t2026-09-11T04:20:30Z\t+1h5m30s\tmongod\tNew primary elected\n"))
+			})
+
+			It("shows times in the --tz zone, with its offset", func(ctx SpecContext) {
+				Expect(run(ctx, "timeline", "view", "mongo-outage", "--tz", "America/New_York")).To(Equal(0))
+
+				Expect(out.String()).To(MatchRegexp(
+					`(?m)^Events: +3, from 2026-09-10T23:14:00-04:00 to 2026-09-11T00:20:30-04:00$`))
+				Expect(out.String()).To(ContainSubstring("#2\t2026-09-10T23:14:00-04:00\t"))
 			})
 
 			It("summarizes the timeline before its events", func(ctx SpecContext) {
@@ -197,7 +205,7 @@ var _ = Describe("timeline", func() {
 				Expect(out.String()).To(MatchRegexp(`(?m)^Title: +Primary election storm$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Refs: +INC-4821$`))
 				Expect(out.String()).To(MatchRegexp(
-					`(?m)^Events: +3, from 2026-09-11T03:14:00\.000000000Z to 2026-09-11T04:20:30\.000000000Z$`))
+					`(?m)^Events: +3, from 2026-09-11T03:14:00Z to 2026-09-11T04:20:30Z$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Sources: +mongod 2, slack 1$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Tags: +election 2$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Annotations: +1$`))

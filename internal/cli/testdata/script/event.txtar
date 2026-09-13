@@ -25,11 +25,11 @@ stderr '^Added event #2 to timeline `mongo-outage`'
 exec coroner event add 'Deploy started' --at 2026-09-11T14:00:00Z --dry-run
 stdout '^Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z \(-04:00 local: 10:00:00\)$'
 
-# The timeline lists both events in time order.
+# The timeline lists both events in time order, at their local time.
 exec coroner timeline view
 stdout '^Events: +2,'
-stdout '^#1\t2026-09-11T03:14:07\.412000000Z\t\tmongod\tPrimary stepped down: replSetStepDown$'
-stdout '^#2\t2026-09-11T03:15:00\.000000000Z\t\+52\.588s\tslack\tPager fires for db-2$'
+stdout '^#1\t2026-09-10T23:14:07\.412-04:00\t\tmongod\tPrimary stepped down: replSetStepDown$'
+stdout '^#2\t2026-09-10T23:15:00-04:00\t\+52\.588s\tslack\tPager fires for db-2$'
 
 -- slack.txt --
 Pager fires for db-2

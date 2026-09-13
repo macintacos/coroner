@@ -51,8 +51,12 @@ func editTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID str
 	if err != nil {
 		return err
 	}
+	cfg, z, err := resolveZone(cmd, app)
+	if err != nil {
+		return err
+	}
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// timeline is overwritten; apply the edit inside one store write if that matters.
 		t, err := findTimeline(ctx, s, nameOrID)
@@ -65,7 +69,7 @@ func editTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID str
 			return err
 		}
 		if dryRun {
-			return previewEdit(ctx, s, o, t)
+			return previewEdit(ctx, s, o, z, t)
 		}
 
 		err = s.UpdateTimeline(ctx, t)
@@ -138,9 +142,9 @@ func (e timelineEdit) apply(t timeline.Timeline, now time.Time) timeline.Timelin
 	return t
 }
 
-// previewEdit prints t as the edit would store it, failing as the update would when another
-// timeline has t's name.
-func previewEdit(ctx context.Context, s *store.Store, o output, t timeline.Timeline) error {
+// previewEdit prints t as the edit would store it, with times in z, failing as the update
+// would when another timeline has t's name.
+func previewEdit(ctx context.Context, s *store.Store, o output, z zone, t timeline.Timeline) error {
 	holder, err := s.TimelineByName(ctx, t.Name)
 	switch {
 	case err == nil && holder.ID != t.ID:
@@ -153,6 +157,6 @@ func previewEdit(ctx context.Context, s *store.Store, o output, t timeline.Timel
 		return o.json(newTimelineJSON(t))
 	}
 
-	_, err = io.WriteString(o.out, timelineSummary(t))
+	_, err = io.WriteString(o.out, timelineSummary(t, z))
 	return err
 }

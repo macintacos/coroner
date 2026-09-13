@@ -63,8 +63,12 @@ func viewTimeline(
 	if err != nil {
 		return err
 	}
+	cfg, z, err := resolveZone(cmd, app)
+	if err != nil {
+		return err
+	}
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		t, err := lookup(ctx, s)
 		if err != nil {
 			return err
@@ -82,13 +86,13 @@ func viewTimeline(
 			return err
 		}
 
-		return writeTimelineView(o, t, events, len(annotations))
+		return writeTimelineView(o, z, t, events, len(annotations))
 	})
 }
 
 // writeTimelineView writes t's summary, including annotationCount, then events, which must
-// already be in timeline.CompareEvents order.
-func writeTimelineView(o output, t timeline.Timeline, events []timeline.Event, annotationCount int) error {
+// already be in timeline.CompareEvents order, with times in z.
+func writeTimelineView(o output, z zone, t timeline.Timeline, events []timeline.Event, annotationCount int) error {
 	sources, tags := map[string]int{}, map[string]int{}
 	for _, e := range events {
 		if e.Source != nil {
@@ -100,8 +104,8 @@ func writeTimelineView(o output, t timeline.Timeline, events []timeline.Event, a
 	}
 
 	var b strings.Builder
-	b.WriteString(timelineSummary(t))
-	writeField(&b, "Events:", eventSpan(events))
+	b.WriteString(timelineSummary(t, z))
+	writeField(&b, "Events:", eventSpan(events, z))
 	writeField(&b, "Sources:", countSummary(sources))
 	writeField(&b, "Tags:", countSummary(tags))
 	writeField(&b, "Annotations:", strconv.Itoa(annotationCount))
@@ -114,17 +118,17 @@ func writeTimelineView(o output, t timeline.Timeline, events []timeline.Event, a
 		return err
 	}
 
-	return o.rows(eventRows(events))
+	return o.rows(eventRows(events, z))
 }
 
-// timelineSummary describes t itself, one field per line under its name.
-func timelineSummary(t timeline.Timeline) string {
+// timelineSummary describes t itself, one field per line under its name, with times in z.
+func timelineSummary(t timeline.Timeline, z zone) string {
 	var b strings.Builder
 	b.WriteString(t.Name + "\n")
 	writeField(&b, "ID:", t.ID)
 	writeField(&b, "Title:", cmp.Or(t.Title, "-"))
 	writeField(&b, "Refs:", cmp.Or(strings.Join(t.Refs, ", "), "-"))
-	writeField(&b, "Created:", displayInstant(t.CreatedAt))
+	writeField(&b, "Created:", displayTime(t.CreatedAt, timeline.PrecisionSecond, z))
 
 	return b.String()
 }
@@ -133,13 +137,13 @@ func writeField(b *strings.Builder, label, value string) {
 	fmt.Fprintf(b, "%-13s%s\n", label, value)
 }
 
-func eventSpan(events []timeline.Event) string {
+func eventSpan(events []timeline.Event, z zone) string {
 	if len(events) == 0 {
 		return "0"
 	}
 
 	return fmt.Sprintf("%d, from %s to %s", len(events),
-		displayInstant(events[0].OccurredAt), displayInstant(events[len(events)-1].OccurredAt))
+		occurredText(events[0], z), occurredText(events[len(events)-1], z))
 }
 
 // countSummary renders counts as "name count" pairs in name order.
@@ -156,9 +160,9 @@ func countSummary(counts map[string]int) string {
 	return strings.Join(pairs, ", ")
 }
 
-// eventRows returns a row per event: seq, occurred at, the gap since the previous event,
-// source and text.
-func eventRows(events []timeline.Event) [][]string {
+// eventRows returns a row per event: seq, occurred at in z, the gap since the previous
+// event, source and text.
+func eventRows(events []timeline.Event, z zone) [][]string {
 	rows := make([][]string, 0, len(events))
 	for i, e := range events {
 		gap := ""
@@ -170,7 +174,7 @@ func eventRows(events []timeline.Event) [][]string {
 			source = *e.Source
 		}
 
-		rows = append(rows, []string{"#" + strconv.FormatInt(e.Seq, 10), displayInstant(e.OccurredAt), gap, source, e.Text})
+		rows = append(rows, []string{"#" + strconv.FormatInt(e.Seq, 10), occurredText(e, z), gap, source, e.Text})
 	}
 
 	return rows
