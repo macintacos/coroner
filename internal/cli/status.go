@@ -118,7 +118,7 @@ func writeStatus(o output, report statusJSON) error {
 		return o.json(report)
 	}
 
-	database, schema, current := report.DBPath, "-", "none"
+	database, schema, timelineText := report.DBPath, "-", "none"
 	if !report.DBExists {
 		database += " (does not exist)"
 	}
@@ -126,13 +126,13 @@ func writeStatus(o output, report statusJSON) error {
 		schema = strconv.FormatInt(*report.SchemaVersion, 10)
 	}
 	if report.Timeline != nil {
-		current = fmt.Sprintf("%s (selected by %s)", report.Timeline.Name, report.SelectedBy.setting())
+		timelineText = fmt.Sprintf("%s (selected by %s)", report.Timeline.Name, report.SelectedBy.setting())
 	}
 
 	var b strings.Builder
 	writeField(&b, "Database:", database)
 	writeField(&b, "Schema:", schema)
-	writeField(&b, "Timeline:", current)
+	writeField(&b, "Timeline:", timelineText)
 	_, err := io.WriteString(o.out, b.String())
 	return err
 }
