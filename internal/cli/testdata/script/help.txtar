@@ -15,4 +15,6 @@ Usage:
   coroner [flags]
 
 Flags:
-  -h, --help   help for coroner
+      --config string   path to the config file
+      --db string       path to the database file
+  -h, --help            help for coroner
