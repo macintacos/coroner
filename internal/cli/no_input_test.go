@@ -37,7 +37,7 @@ var _ = Describe("interactive commands off a terminal", func() {
 	})
 
 	DescribeTable("exit 2 at once, never waiting on a stdin that stays open, when the command line gives no input",
-		func(ctx SpecContext, names string, args ...string) {
+		func(ctx SpecContext, wantStderr string, args ...string) {
 			home := GinkgoT().TempDir()
 			stdin, typed := io.Pipe()
 			DeferCleanup(typed.Close)
@@ -59,7 +59,7 @@ var _ = Describe("interactive commands off a terminal", func() {
 			go func() { code <- cli.Run(ctx, app) }()
 
 			Eventually(code).Within(100 * time.Millisecond).Should(Receive(Equal(2)))
-			Expect(errOut.String()).To(ContainSubstring(names))
+			Expect(errOut.String()).To(ContainSubstring(wantStderr))
 		},
 		Entry("event add", "- to read it from stdin", "event", "add"),
 		Entry("annotation add", "--kind", "annotation", "add"),
