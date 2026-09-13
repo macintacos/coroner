@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing/fstest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -70,7 +71,42 @@ var _ = Describe("Open", func() {
 		},
 		Entry("with an unrelated table", "CREATE TABLE contact (name TEXT)"),
 		Entry("with another application id", "PRAGMA application_id = 42"),
+		Entry("with another program's goose_db_version table", `
+			CREATE TABLE goose_db_version (id INTEGER PRIMARY KEY AUTOINCREMENT, version_id INTEGER NOT NULL,
+				is_applied INTEGER NOT NULL, tstamp TIMESTAMP DEFAULT (datetime('now')));
+			INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, 1), (1, 1);
+			CREATE TABLE users (name TEXT);`),
 	)
+
+	It("finishes a first migration that failed after creating the version table", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		failing := fstest.MapFS{"00001_initial_schema.sql": {
+			Data: []byte("-- +goose Up\nPRAGMA application_id = 1668248174;\nSELECT * FROM missing;\n"),
+		}}
+		_, err := store.OpenWithMigrations(ctx, path, failing)
+		Expect(err).To(HaveOccurred())
+
+		s, err := store.Open(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+
+		Expect(querySQLite(ctx, path, "SELECT count(*) FROM timeline")).To(BeZero())
+	})
+
+	It("reports a database another connection holds locked as ErrBusy", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		db, err := sql.Open("sqlite", path)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(db.Close)
+		conn, err := db.Conn(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(conn.Close)
+		Expect(conn.ExecContext(ctx, "BEGIN EXCLUSIVE")).Error().NotTo(HaveOccurred())
+
+		_, err = store.Open(ctx, path)
+
+		Expect(err).To(MatchError(store.ErrBusy))
+	}, SpecTimeout(time.Minute))
 
 	It("takes no backup of a new database", func(ctx SpecContext) {
 		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
@@ -127,7 +163,7 @@ var _ = Describe("Open", func() {
 
 			_, err := store.OpenWithMigrations(ctx, path, v2)
 
-			Expect(err).To(MatchError(ContainSubstring(backup)))
+			Expect(err).To(And(MatchError(store.ErrBackupExists), MatchError(ContainSubstring(backup))))
 			Expect(os.ReadFile(filepath.Clean(backup))).To(Equal([]byte("an earlier backup")))
 			Expect(querySQLite(ctx, path, laterTables)).To(BeZero())
 		})

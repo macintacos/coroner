@@ -56,43 +56,39 @@ func (s *Store) AddEvent(ctx context.Context, e timeline.Event, newSourceID stri
 
 // Event returns the event with id.
 func (s *Store) Event(ctx context.Context, id string) (timeline.Event, error) {
-	return s.readEvent(ctx, func(q *sqlcgen.Queries) (sqlcgen.Event, error) {
-		return q.GetEvent(ctx, id)
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Event, error) {
+		row, err := q.GetEvent(ctx, id)
+		if err != nil {
+			return timeline.Event{}, err
+		}
+
+		return loadEvent(ctx, q, row)
 	})
 }
 
 // EventBySeq returns the event numbered seq in the timeline with timelineID.
 func (s *Store) EventBySeq(ctx context.Context, timelineID string, seq int64) (timeline.Event, error) {
-	return s.readEvent(ctx, func(q *sqlcgen.Queries) (sqlcgen.Event, error) {
-		return q.GetEventBySeq(ctx, sqlcgen.GetEventBySeqParams{TimelineID: timelineID, Seq: seq})
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Event, error) {
+		row, err := q.GetEventBySeq(ctx, sqlcgen.GetEventBySeqParams{TimelineID: timelineID, Seq: seq})
+		if err != nil {
+			return timeline.Event{}, err
+		}
+
+		return loadEvent(ctx, q, row)
 	})
 }
 
 // Events returns the events of the timeline with timelineID, ordered by occurred at, then
 // seq.
 func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event, error) {
-	var events []timeline.Event
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Event, error) {
 		rows, err := q.ListEvents(ctx, timelineID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		// ponytail: two queries per event, cheap on an in-process database; one joined or
-		// group_concat query if a large timeline reads slowly.
-		events = make([]timeline.Event, 0, len(rows))
-		for _, row := range rows {
-			e, err := loadEvent(ctx, q, row)
-			if err != nil {
-				return err
-			}
-			events = append(events, e)
-		}
-
-		return nil
+		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, q, r) })
 	})
-
-	return events, err
 }
 
 // UpdateEvent stores every field of e but its timeline, seq and created at, and replaces
@@ -149,21 +145,6 @@ func (s *Store) DeleteEvent(ctx context.Context, id string) error {
 
 		return q.DeleteEvent(ctx, id)
 	})
-}
-
-func (s *Store) readEvent(ctx context.Context, get func(*sqlcgen.Queries) (sqlcgen.Event, error)) (timeline.Event, error) {
-	var e timeline.Event
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
-		row, err := get(q)
-		if err != nil {
-			return err
-		}
-
-		e, err = loadEvent(ctx, q, row)
-		return err
-	})
-
-	return e, err
 }
 
 func loadEvent(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Event) (timeline.Event, error) {

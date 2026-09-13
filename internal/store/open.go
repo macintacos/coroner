@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
@@ -20,6 +21,10 @@ import (
 
 // applicationID is 'corn', stamped by the first migration.
 const applicationID = 0x636f726e
+
+// busyTimeout is how long SQLite waits for the write lock on each attempt, so a write
+// fails with ErrBusy after about writeAttempts × busyTimeout.
+const busyTimeout = 5 * time.Second
 
 //go:embed migrations/*.sql
 var migrations embed.FS
@@ -29,8 +34,11 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open opens the coroner database at path, creating it and its directory when missing,
-// and applies pending migrations after backing the database up.
+// Open opens the coroner database at path, creating it and its directory (mode 0700) when
+// missing, and applies pending migrations. Before migrating a database that already has a
+// schema, it copies it to <path>.pre-v<N>.bak, N being the schema it migrates to. It
+// returns ErrForeignDatabase for a SQLite file coroner did not create, ErrDatabaseTooNew
+// for one a newer coroner migrated, and ErrBackupExists when that backup is already there.
 func Open(ctx context.Context, path string) (*Store, error) {
 	fsys, err := fs.Sub(migrations, "migrations")
 	if err != nil {
@@ -58,70 +66,67 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 
 	err = prepare(ctx, db, path, fsys)
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("open %s: %w", path, err), db.Close())
+		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
 	}
 
 	return &Store{db: db}, nil
 }
 
 // dsn escapes path because SQLite reads a file: URI, where ?, # and % are syntax.
+// _txlock=immediate makes every write transaction BEGIN IMMEDIATE, while modernc begins a
+// ReadOnly one deferred, which keeps reads off the write lock.
 func dsn(path string) string {
-	return "file:" + url.PathEscape(path) +
-		"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
+	return fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(%d)&_txlock=immediate",
+		url.PathEscape(path), busyTimeout.Milliseconds())
 }
 
 func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
-	versioned, err := claim(ctx, db)
+	err := refuseForeign(ctx, db)
 	if err != nil {
 		return err
 	}
 
 	// Not a DSN pragma: that runs on connect and would rewrite a foreign file's header
-	// before claim could refuse it. WAL mode persists in the file, so once is enough.
+	// before refuseForeign could refuse it. WAL mode persists in the file, so once is enough.
 	_, err = db.ExecContext(ctx, "PRAGMA journal_mode = WAL")
 	if err != nil {
 		return fmt.Errorf("enable WAL: %w", err)
 	}
 
-	return migrate(ctx, db, path, fsys, versioned)
+	return migrate(ctx, db, path, fsys)
 }
 
-// claim refuses a database coroner did not create and reports whether goose has
-// versioned it.
-func claim(ctx context.Context, db *sql.DB) (bool, error) {
-	var id, objects, versioned int64
+// refuseForeign returns ErrForeignDatabase for a database coroner did not create.
+func refuseForeign(ctx context.Context, db *sql.DB) error {
+	var id, others int64
 	err := db.QueryRowContext(ctx, `SELECT
 		(SELECT application_id FROM pragma_application_id()),
-		(SELECT count(*) FROM sqlite_schema),
-		(SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?)`,
+		(SELECT count(*) FROM sqlite_schema WHERE name NOT IN (?, 'sqlite_sequence'))`,
 		goose.DefaultTablename,
-	).Scan(&id, &objects, &versioned)
+	).Scan(&id, &others)
 	if err != nil {
-		return false, fmt.Errorf("read database identity: %w", err)
+		return fmt.Errorf("read database identity: %w", err)
 	}
 
-	if (id != applicationID && id != 0) || (id == 0 && objects > 0 && versioned == 0) {
-		return false, ErrForeignDatabase
+	// Id 0 with only goose's own objects is coroner's first migration that failed after
+	// goose created its table: the application id rolled back with the migration.
+	if (id != applicationID && id != 0) || (id == 0 && others > 0) {
+		return ErrForeignDatabase
 	}
 
-	return versioned > 0, nil
+	return nil
 }
 
-func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS, versioned bool) error {
+func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)
 	}
 
-	var current int64
-	if versioned {
-		current, err = provider.GetDBVersion(ctx)
-		if err != nil {
-			return fmt.Errorf("read schema version: %w", err)
-		}
+	current, target, err := provider.GetVersions(ctx)
+	if err != nil {
+		return fmt.Errorf("read schema version: %w", err)
 	}
-	sources := provider.ListSources()
-	target := sources[len(sources)-1].Version
 
 	if current > target {
 		return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
@@ -145,7 +150,7 @@ func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS, versioned
 func backUp(ctx context.Context, db *sql.DB, backup string) error {
 	_, err := os.Lstat(backup)
 	if err == nil {
-		return fmt.Errorf("back up before migrating: %s already exists; move it aside and retry", backup)
+		return fmt.Errorf("back up before migrating: %w: %s; move it aside and retry", ErrBackupExists, backup)
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("back up before migrating: %w", err)

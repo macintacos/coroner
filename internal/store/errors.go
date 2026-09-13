@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	// ErrNotFound means no record has the given id, name or seq.
+	// ErrNotFound means no record has the given id, name or seq, or no timeline is current.
 	ErrNotFound = errors.New("not found")
 	// ErrConflict means a record with the same id or unique name already exists.
 	ErrConflict = errors.New("already exists")
@@ -20,6 +20,9 @@ var (
 	// ErrDatabaseTooNew means a newer coroner migrated the database past the schemas this
 	// build knows.
 	ErrDatabaseTooNew = errors.New("this database was written by a newer coroner")
+	// ErrBackupExists means the file Open backs the database up to before migrating is
+	// already there.
+	ErrBackupExists = errors.New("backup already exists")
 )
 
 // translate wraps a driver error in the store error a caller can branch on, and returns

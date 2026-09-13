@@ -110,5 +110,19 @@ var _ = Describe("Annotations", func() {
 		Entry("DeleteAnnotation", func(s *store.Store, ctx SpecContext) error {
 			return s.DeleteAnnotation(ctx, uuid(99))
 		}),
+		Entry("AddAnnotation to an unknown timeline", func(s *store.Store, ctx SpecContext) error {
+			rootCause.TimelineID = uuid(99)
+			return s.AddAnnotation(ctx, rootCause, uuid(20))
+		}),
+		Entry("AddAnnotation on an unknown event", func(s *store.Store, ctx SpecContext) error {
+			evidence.EventID = new(uuid(99))
+			return s.AddAnnotation(ctx, evidence, uuid(20))
+		}),
+		Entry("AddAnnotation on an event in another timeline", func(s *store.Store, ctx SpecContext) error {
+			other := timeline.Timeline{ID: uuid(3), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+			Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+			evidence.TimelineID = other.ID
+			return s.AddAnnotation(ctx, evidence, uuid(20))
+		}),
 	)
 })
