@@ -15,7 +15,7 @@ import (
 func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List timelines, marking the current one",
+		Short: "List every timeline, marking the current one",
 		Long: "List every timeline, oldest first. Each row is a marker, the name and the title; a '*'\n" +
 			"marks the current timeline, the one 'coroner timeline use' selected. Piped, the fields\n" +
 			"are tab-separated.",
