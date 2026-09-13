@@ -95,7 +95,7 @@ digraph coroner_rules_router {
   [`contract/`](internal/cli/testdata/script/contract/README.md).
 - Examples: [`internal/cli/examples_test.go`](internal/cli/examples_test.go) parses every
   `coroner` line in every command's `Example` against the command tree, without running
-  it, and fails on an unknown command or flag or a wrong number of arguments.
+  it.
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not

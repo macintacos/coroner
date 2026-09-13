@@ -30,8 +30,8 @@ never renumber a rule, only retire it.
 - **H-3** A command missing required arguments prints concise help: a description, one or
   two examples, and a pointer to `--help`. ([clig.dev](https://clig.dev/#help))
 - **H-4** Lead with examples. Every command sets cobra's `Example` field with realistic
-  incident data. A spec parses each `coroner` line in it against the command tree, and
-  skips lines with `$(…)` or backticks, so avoid both.
+  incident data. `internal/cli/examples_test.go` parses each `coroner` line in it against
+  the command tree and skips lines with `$(…)` or backticks, so avoid both.
   ([clig.dev](https://clig.dev/#help))
 - **H-5** Show the most common commands and flags first, and group root help (`event add`
   and `event list` before `timeline delete`). ([clig.dev](https://clig.dev/#help))
