@@ -260,4 +260,56 @@ var _ = Describe("event view, edit and delete", func() {
 			Entry("a time it cannot read", "invalid_time", "--at", "the day before"),
 		)
 	})
+
+	Describe("delete", func() {
+		const outageID = "0199a1b3-0000-7000-8000-000000000000"
+		events := func(ctx SpecContext, timelineID string) []timeline.Event {
+			GinkgoHelper()
+			e, err := withStore(ctx).Events(ctx, timelineID)
+			Expect(err).NotTo(HaveOccurred())
+			return e
+		}
+
+		It("deletes every event given, with its annotations, printing each as it was", func(ctx SpecContext) {
+			eventID := steppedDown
+			Expect(withStore(ctx).AddAnnotation(ctx, timeline.Annotation{
+				ID: "0199a1c0-0000-7000-8000-000000000000", TimelineID: outageID,
+				EventID: &eventID, Kind: timeline.AnnotationComment, Body: "Root cause", CreatedAt: now, UpdatedAt: now,
+			}, "0199a1c1-0000-7000-8000-000000000000")).To(Succeed())
+
+			Expect(run(ctx, "event", "delete", "1", pagerFires, "--json")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(MatchRegexp(
+				`^\{"events":\[\{"id":"` + steppedDown + `",[^{}]*"text":"Primary stepped down",[^{}]*\},\{"id":"` +
+					pagerFires + `",[^{}]*\}\],"truncated":false,"total":2\}\n$`))
+			Expect(errOut.String()).To(ContainSubstring("Deleted 2 events from timeline `mongo-outage`"))
+			Expect(events(ctx, outageID)).To(BeEmpty())
+			Expect(withStore(ctx).Annotations(ctx, outageID)).To(BeEmpty())
+		})
+
+		It("deletes nothing and exits 3 with kind event_not_found when any event does not exist", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "delete", "1", "9", "--json")).To(Equal(3))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"event_not_found"`))
+			Expect(events(ctx, outageID)).To(HaveLen(2))
+		})
+
+		It("describes what it would delete under --dry-run, and deletes nothing", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "delete", "1", "--dry-run")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(HavePrefix("Event #1 in timeline `mongo-outage`\n"))
+			Expect(out.String()).To(MatchRegexp(`(?m)^Text: +Primary stepped down$`))
+			Expect(errOut.String()).To(ContainSubstring("Would delete 1 event from timeline `mongo-outage`"))
+			Expect(events(ctx, outageID)).To(HaveLen(2))
+		})
+
+		It("deletes an event named twice once, and events in several timelines", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "delete", "1", steppedDown, "mongo-failover#1", "--json")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(HaveSuffix(`"total":2}` + "\n"))
+			Expect(errOut.String()).To(ContainSubstring("Deleted 1 event from timeline `mongo-outage`"))
+			Expect(errOut.String()).To(ContainSubstring("Deleted 1 event from timeline `mongo-failover`"))
+			Expect(events(ctx, outageID)).To(HaveLen(1))
+		})
+	})
 })
