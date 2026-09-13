@@ -37,11 +37,11 @@ var _ = Describe("Open", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(s.Close()).To(Succeed())
 
-		conn, err := sql.Open("sqlite", path)
+		db, err := sql.Open("sqlite", path)
 		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(conn.Close)
+		DeferCleanup(db.Close)
 		var mode string
-		Expect(conn.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode)).To(Succeed())
+		Expect(db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode)).To(Succeed())
 		Expect(mode).To(Equal("wal"))
 	})
 
@@ -173,22 +173,22 @@ var _ = Describe("Open", func() {
 // execSQLite runs statement on the SQLite file at path without going through the store.
 func execSQLite(ctx context.Context, path, statement string) {
 	GinkgoHelper()
-	conn, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", path)
 	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(conn.Close)
-	Expect(conn.ExecContext(ctx, statement)).Error().NotTo(HaveOccurred())
-	Expect(conn.Close()).To(Succeed())
+	DeferCleanup(db.Close)
+	Expect(db.ExecContext(ctx, statement)).Error().NotTo(HaveOccurred())
+	Expect(db.Close()).To(Succeed())
 }
 
 // querySQLite returns the single integer query selects from the SQLite file at path,
 // without going through the store.
 func querySQLite(ctx context.Context, path, query string) int64 {
 	GinkgoHelper()
-	conn, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", path)
 	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(conn.Close)
+	DeferCleanup(db.Close)
 
 	var n int64
-	Expect(conn.QueryRowContext(ctx, query).Scan(&n)).To(Succeed())
+	Expect(db.QueryRowContext(ctx, query).Scan(&n)).To(Succeed())
 	return n
 }
