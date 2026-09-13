@@ -153,4 +153,111 @@ var _ = Describe("event view, edit and delete", func() {
 				Expect(out.String()).To(MatchRegexp(`(?m)^evidence\t2026-09-12T21:30:00-04:00\t-\t-\treplSetStepDown$`))
 			})
 	})
+
+	Describe("edit", func() {
+		stored := func(ctx SpecContext, id string) timeline.Event {
+			GinkgoHelper()
+			e, err := withStore(ctx).Event(ctx, id)
+			Expect(err).NotTo(HaveOccurred())
+			return e
+		}
+
+		It("removes tags, adds tags, bumps updated at and keeps created at", func(ctx SpecContext) {
+			now = now.Add(time.Hour)
+
+			Expect(run(ctx, "event", "edit", "1", "--add-tag", "root-cause", "--add-tag", "phase:detect",
+				"--remove-tag", "election", "--json")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring(`"tags":["phase:detect","root-cause"]`))
+			Expect(out.String()).To(ContainSubstring(
+				`"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T02:30:00.000000000Z"`))
+			Expect(stored(ctx, steppedDown)).To(SatisfyAll(
+				HaveField("Tags", Equal([]string{"phase:detect", "root-cause"})),
+				HaveField("CreatedAt", BeTemporally("==", now.Add(-time.Hour))),
+				HaveField("UpdatedAt", BeTemporally("==", now))))
+			Expect(errOut.String()).To(ContainSubstring("Edited event #1 in timeline `mongo-outage`"))
+		})
+
+		It("prints the edited event under --dry-run and changes nothing", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", "1", "--add-tag", "root-cause", "--remove-tag", "election", "--dry-run",
+				"--json")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring(`"tags":["root-cause"]`))
+			Expect(stored(ctx, steppedDown).Tags).To(Equal([]string{"election"}))
+		})
+
+		It("reads --at as event add does, replacing the typed time, precision and offset, and says what it resolved to",
+			func(ctx SpecContext) {
+				Expect(run(ctx, "event", "edit", "1", "--at", "2026-09-11 03:20", "--tz", "Asia/Tokyo", "--json")).
+					To(Equal(0), errOut.String())
+
+				Expect(out.String()).To(ContainSubstring(`"occurred_at":"2026-09-10T18:20:00.000000000Z","occurred_offset":32400,` +
+					`"precision":"minute","approximate":false,"occurred_raw":"2026-09-11 03:20"`))
+				Expect(errOut.String()).To(ContainSubstring("at 2026-09-10T18:20:00Z (+09:00 Asia/Tokyo: 03:20:00)"))
+			})
+
+		It("sets the text, URL, author, end and approximate mark", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", pagerFires, "--text", "Pager fires for db-2 and db-3",
+				"--url", "https://pagerduty.example.com/i/1", "--author", "julian", "--ended", "2026-09-11T03:20:00Z",
+				"--approximate", "--json")).To(Equal(0), errOut.String())
+
+			Expect(stored(ctx, pagerFires)).To(SatisfyAll(
+				HaveField("Text", "Pager fires for db-2 and db-3"),
+				HaveField("URL", HaveValue(Equal("https://pagerduty.example.com/i/1"))),
+				HaveField("Author", HaveValue(Equal("julian"))),
+				HaveField("EndedAt", HaveValue(BeTemporally("==", time.Date(2026, 9, 11, 3, 20, 0, 0, time.UTC)))),
+				HaveField("Approximate", BeTrue())))
+		})
+
+		It("clears the source, URL, author and end given none", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", "1", "--url", "https://logs.example.com/l/1", "--author", "julian",
+				"--ended", "2026-09-11T03:20:00Z")).To(Equal(0), errOut.String())
+
+			Expect(run(ctx, "event", "edit", "1", "--source", "none", "--url", "none", "--author", "none",
+				"--ended", "none")).To(Equal(0), errOut.String())
+
+			Expect(stored(ctx, steppedDown)).To(SatisfyAll(
+				HaveField("Source", BeNil()), HaveField("URL", BeNil()), HaveField("Author", BeNil()),
+				HaveField("EndedAt", BeNil())))
+		})
+
+		It("moves the event to a source, creating it on first use", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", "2", "--source", "pagerduty")).To(Equal(0), errOut.String())
+
+			Expect(stored(ctx, pagerFires).Source).To(HaveValue(Equal("pagerduty")))
+		})
+
+		It("clears the approximate mark given --approximate=false", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "edit", "1", "--approximate")).To(Equal(0), errOut.String())
+
+			Expect(run(ctx, "event", "edit", "1", "--approximate=false")).To(Equal(0), errOut.String())
+
+			Expect(stored(ctx, steppedDown).Approximate).To(BeFalse())
+		})
+
+		It("reads the text from stdin given --text -", func(ctx SpecContext) {
+			in = strings.NewReader("Primary stepped down: replSetStepDown\n")
+
+			Expect(run(ctx, "event", "edit", "1", "--text", "-")).To(Equal(0), errOut.String())
+
+			Expect(stored(ctx, steppedDown).Text).To(Equal("Primary stepped down: replSetStepDown"))
+		})
+
+		DescribeTable("exits 2 and changes nothing on an edit no event could take",
+			func(ctx SpecContext, kind string, args ...string) {
+				Expect(run(ctx, append([]string{"event", "edit", "1", "--json"}, args...)...)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"` + kind + `"`))
+				Expect(stored(ctx, steppedDown).UpdatedAt).To(BeTemporally("==", now))
+			},
+			Entry("no field to change", "usage"),
+			Entry("blank text", "usage", "--text", " "),
+			Entry("a blank URL", "usage", "--url", ""),
+			Entry("an invalid source", "invalid_name", "--source", "DB 2"),
+			Entry("an invalid tag to add", "invalid_name", "--add-tag", "Root Cause"),
+			Entry("an end before the event", "invalid_time", "--ended", "2026-09-11T03:00:00Z"),
+			Entry("an approximate end", "invalid_time", "--ended", "~2026-09-11T03:20:00Z"),
+			Entry("a time it cannot read", "invalid_time", "--at", "the day before"),
+		)
+	})
 })
