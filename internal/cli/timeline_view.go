@@ -23,8 +23,9 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Show a timeline: a summary, then its events in the order they happened, each with the\n" +
 			"time since the event before it. Without a name, id or -t, show the timeline\n" +
 			"CORONER_TIMELINE or 'coroner timeline use' selects.",
-		Args:        cobra.MaximumNArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeTimelineArg(ctx, app),
+		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline view mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline view --json",
 		RunE: func(cmd *cobra.Command, args []string) error {

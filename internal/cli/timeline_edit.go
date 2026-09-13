@@ -22,8 +22,9 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Change a timeline's name, title or refs. Its id never changes, so its events, and\n" +
 			"anything naming it by id, still resolve after a rename. Refs are removed before they are\n" +
 			"added; adding a ref it has, or removing one it lacks, changes nothing.",
-		Args:        cobra.ExactArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeTimelineArg(ctx, app),
+		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822\n" +
 			"  $ coroner timeline edit mongo-failover --title \"\" --dry-run --json",
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -18,7 +18,8 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Delete a timeline with its events, tags and annotations. This cannot be undone, so it\n" +
 			"needs --yes; --dry-run shows what would be deleted instead. Deleting the current\n" +
 			"timeline leaves none current.",
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Example: "  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run\n" +
 			"  $ coroner timeline delete mongo-outage-2026-09-11 --yes",
 		RunE: func(cmd *cobra.Command, args []string) error {

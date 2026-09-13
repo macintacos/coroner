@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"fmt"
@@ -41,7 +42,9 @@ func TestScripts(t *testing.T) {
 		UpdateScripts:      flag.Lookup(updateFlag).Value.String() == "true",
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
-		Cmds:               map[string]func(*testscript.TestScript, bool, []string){"exits": exits},
+		Cmds: map[string]func(*testscript.TestScript, bool, []string){
+			"exits": exits, "bumpschema": bumpSchema,
+		},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -86,6 +89,20 @@ func exits(ts *testscript.TestScript, neg bool, args []string) {
 	if got != want {
 		ts.Fatalf("%s exited %d, want %d", args[1], got, want)
 	}
+}
+
+// bumpSchema is `bumpschema <db>`: it records a migration past the latest, as a newer coroner
+// would.
+func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) != 1 {
+		ts.Fatalf("usage: bumpschema <db>")
+	}
+
+	db, err := sql.Open("sqlite", ts.MkAbs(args[0]))
+	ts.Check(err)
+	_, err = db.ExecContext(context.Background(),
+		"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
+	ts.Check(errors.Join(err, db.Close()))
 }
 
 // runCoroner is coroner as scripts run it: main.go's App with the clock pinned.
