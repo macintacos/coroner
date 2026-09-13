@@ -105,7 +105,8 @@ func (f field) formField(value *string, bindings []*string, form fieldForm) huh.
 	if f.required {
 		title += " (required)"
 	}
-	// An empty value is a field not given, which the flag side never checks either.
+	// An empty value is a field not given, which the flag side never checks either, except a
+	// required field's: the form flags that here so it need not wait for submission.
 	check := func(value string) error {
 		switch {
 		case value == "" && f.required:

@@ -104,7 +104,8 @@ func resolveTime(flag string, input *string, now time.Time, loc *time.Location) 
 	return r, err
 }
 
-// timePreview renders a resolved time as the echo prints it, with its precision; or err and its hint.
+// timePreview renders a resolved time as the echo prints it, with its precision, or a rejected
+// input's message and hint; another error renders as its own text.
 func timePreview(r timeparse.Resolved, err error, z zone) string {
 	if rejected, ok := errors.AsType[*Error](err); ok {
 		return rejected.Message + "\n" + rejected.Hint

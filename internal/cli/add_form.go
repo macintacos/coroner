@@ -318,12 +318,10 @@ func carryForward(values fieldValues, cleared []string) fieldValues {
 	return next
 }
 
-// withoutField returns d without the field called name.
 func withoutField(d definition, name string) definition {
 	return definition{fields: slices.DeleteFunc(slices.Clone(d.fields), func(f field) bool { return f.name == name })}
 }
 
-// onlyField returns d with only the field called name.
 func onlyField(d definition, name string) definition {
 	return definition{fields: slices.DeleteFunc(slices.Clone(d.fields), func(f field) bool { return f.name != name })}
 }
