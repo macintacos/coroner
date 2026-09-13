@@ -2,12 +2,15 @@ package cli_test
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -37,6 +40,7 @@ func TestScripts(t *testing.T) {
 		UpdateScripts:      flag.Lookup(updateFlag).Value.String() == "true",
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
+		Cmds:               map[string]func(*testscript.TestScript, bool, []string){"exits": exits},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -58,6 +62,29 @@ func hermeticEnv(env *testscript.Env) error {
 	env.Setenv("TZ", "America/New_York")
 	env.Setenv("CORONER_TEST_NOW", "2026-09-12T21:30:00-04:00")
 	return nil
+}
+
+// exits is `exits <code> <program> [args...]`: exec that also asserts the exact exit code,
+// which `! exec` cannot. stdout and stderr stay available to the next assertions.
+func exits(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) < 2 {
+		ts.Fatalf("usage: exits <code> <program> [args...]")
+	}
+
+	want, err := strconv.Atoi(args[0])
+	ts.Check(err)
+
+	got := 0
+	err = ts.Exec(args[1], args[2:]...)
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		got = exitErr.ExitCode()
+	} else {
+		ts.Check(err)
+	}
+
+	if got != want {
+		ts.Fatalf("%s exited %d, want %d", args[1], got, want)
+	}
 }
 
 // runCoroner is coroner as scripts run it: main.go's App with the clock pinned.
