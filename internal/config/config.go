@@ -75,6 +75,18 @@ func Resolve(
 	}, nil
 }
 
+// BlobDir returns the directory the database at dbPath keeps attachment blobs in: blobs
+// beside a database named coroner.db, as the default is, and <dbPath>.blobs for any other.
+// No two database paths share one, so collecting one database's garbage never deletes
+// another's blobs.
+func BlobDir(dbPath string) string {
+	if filepath.Base(dbPath) == "coroner.db" {
+		return filepath.Join(filepath.Dir(dbPath), "blobs")
+	}
+
+	return dbPath + ".blobs"
+}
+
 func rejectEmpty(flags Flags) error {
 	if flags.ConfigPath != nil && *flags.ConfigPath == "" {
 		return errors.New("--config must not be empty")
