@@ -8,7 +8,7 @@ cmp stdout mo.txt
 exec coroner __complete status -t mo
 cmp stdout mo.txt
 
-# A timeline positional completes every name, and nothing once it is given.
+# A timeline positional completes every name, and nothing once it or -t is given.
 exec coroner __complete timeline use ''
 cmp stdout all.txt
 exec coroner __complete timeline view ''
@@ -18,6 +18,8 @@ cmp stdout all.txt
 exec coroner __complete timeline edit ''
 cmp stdout all.txt
 exec coroner __complete timeline edit mongo-failover ''
+cmp stdout none.txt
+exec coroner __complete timeline view -t mongo-failover ''
 cmp stdout none.txt
 
 # --db on the command line picks the database completion reads.
@@ -30,7 +32,7 @@ exec coroner __complete timeline use --db $WORK/missing/none.db ''
 cmp stdout none.txt
 ! exists $WORK/missing
 
-# A database below the latest schema offers nothing and is not migrated.
+# An empty file (schema 0), below the latest schema, offers nothing and is not migrated.
 exec coroner __complete timeline use --db $WORK/empty.db ''
 cmp stdout none.txt
 cmp $WORK/empty.db $WORK/empty-before.db
@@ -41,11 +43,13 @@ bumpschema $WORK/new.db
 cp $WORK/new.db $WORK/new-before.db
 exec coroner __complete timeline use --db $WORK/new.db ''
 cmp stdout error.txt
+stderr '^Error: completing timeline names: .*written by a newer coroner'
 cmp $WORK/new.db $WORK/new-before.db
 
-# A broken config file still completes, with nothing.
+# A broken config file offers nothing and names the file.
 exec coroner __complete timeline use --config $WORK/broken.toml ''
 cmp stdout error.txt
+stderr '^Error: completing timeline names: config file .*broken\.toml'
 
 -- mo.txt --
 mongo-failover

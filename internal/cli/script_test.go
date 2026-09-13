@@ -91,8 +91,8 @@ func exits(ts *testscript.TestScript, neg bool, args []string) {
 	}
 }
 
-// bumpSchema is `bumpschema <db>`: it records a migration past the latest, as a newer coroner
-// would.
+// bumpSchema is `bumpschema <db>`: it records one migration past the highest db applied, as a
+// newer coroner would. On a database coroner just wrote, that is past every embedded one.
 func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
 	if neg || len(args) != 1 {
 		ts.Fatalf("usage: bumpschema <db>")
