@@ -21,6 +21,7 @@ const (
 	// formatMarkdown and formatMermaid are not machine(), so errors under them print as text.
 	formatMarkdown format = "md"
 	formatMermaid  format = "mermaid"
+	formatHTML     format = "html"
 )
 
 // formatsAnnotation is the cmd.Annotations key listing the formats a command prints,

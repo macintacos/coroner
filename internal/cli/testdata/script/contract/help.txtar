@@ -1025,7 +1025,7 @@ COMMANDS
   create       Create a timeline
   delete       Delete a timeline and everything in it
   edit         Rename a timeline or change its title and refs
-  export       Export a timeline as JSON, JSONL or Markdown
+  export       Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML
   list         List timelines, marking the current one
   use          Set the current timeline
   view         Show a timeline and its events
@@ -1171,14 +1171,17 @@ a zone.
 --format mermaid writes a Mermaid gantt diagram of the events, one section per source, in
 the same zone as md; --diagram appends that diagram to --format md.
 
+--format html writes one self-contained page that shows the events on a timeline in a
+browser, in the same zone as md, and needs -o.
+
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
-events are always in the order they happened. Redirect stdout to write a file.
+events are always in the order they happened. -o writes a file instead of stdout.
 
 --group-by is experimental and may change before 1.0.
 
 USAGE
-  coroner timeline export --format {json | jsonl | md | mermaid} [flags]
+  coroner timeline export --format {json | jsonl | md | mermaid | html} [-o <file>] [flags]
 
 EXAMPLES
   $ coroner timeline export -t mongo-outage --format json > rca.json
@@ -1186,6 +1189,7 @@ EXAMPLES
   $ coroner timeline export --format md --tz America/New_York > rca.md
   $ coroner timeline export --format mermaid --source mongod > timeline.mmd
   $ coroner timeline export --format md --diagram > rca.md
+  $ coroner timeline export --format html -o inc-4821.html
 
 FLAGS
       --contains text      Keep events whose text contains this text, ignoring case
@@ -1194,6 +1198,7 @@ FLAGS
       --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
+  -o, --output file        Write the export to this file, or to stdout when it is - (default "-")
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them

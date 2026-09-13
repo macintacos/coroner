@@ -40,6 +40,7 @@ func main() {
 		Version:           version,
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
+		WriteFile:         os.WriteFile,
 		Now:               time.Now,
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
