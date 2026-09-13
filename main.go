@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	// Embeds the zone database so --tz and default_timezone resolve on hosts without one.
+	_ "time/tzdata"
+
 	"github.com/google/uuid"
 	"github.com/mattn/go-isatty"
 
