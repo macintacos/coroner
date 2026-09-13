@@ -1,2 +1,3 @@
 *.db binary
 testdata/export/** -text
+internal/cli/testdata/script/contract/export-fixtures.txtar -text

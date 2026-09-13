@@ -54,7 +54,7 @@ func TestScripts(t *testing.T) {
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
-			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid, "fixture": exportFixture(fixtures, update),
+			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid, "exportfixture": exportFixture(fixtures, update),
 		},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
@@ -134,12 +134,13 @@ func onlyJSON(data string) error {
 	}
 }
 
-// exportFixture returns `fixture <name> <file>...`, which passes when the files, such as stdout,
-// joined in order, equal the export fixture name in dir. Under -update it writes a missing one.
+// exportFixture returns `exportfixture <name> <file>...`, which passes when the files, such as
+// stdout, joined in order, equal the fixture dir/name. Under -update it writes that fixture when
+// it does not exist.
 func exportFixture(dir string, update bool) func(*testscript.TestScript, bool, []string) {
 	return func(ts *testscript.TestScript, neg bool, args []string) {
 		if neg || len(args) < 2 {
-			ts.Fatalf("usage: fixture <name> <file>...")
+			ts.Fatalf("usage: exportfixture <name> <file>...")
 		}
 
 		var got []byte
@@ -156,13 +157,20 @@ func checkFixture(path string, got []byte, update bool) error {
 	want, err := os.ReadFile(filepath.Clean(path))
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && update:
-		return errors.Join(os.MkdirAll(filepath.Dir(path), 0o750), os.WriteFile(path, got, 0o600))
+		err = os.MkdirAll(filepath.Dir(path), 0o750)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(path, got, 0o600)
 	case errors.Is(err, fs.ErrNotExist):
 		return fmt.Errorf("%w; run go test ./internal/cli -run 'TestScripts/contract$' -update to write it", err)
 	case err != nil:
 		return err
 	case !bytes.Equal(want, got):
-		return fmt.Errorf("the export differs from %s, which is never edited:\n%s", path, diff.Diff(path, want, "export", got))
+		return fmt.Errorf("the export differs from %s, a frozen fixture: fix the change that altered the export, "+
+			"or the script when the format did not change, such as renumbered IDs, never the fixture; before the "+
+			"first release that ships export, delete the fixture and rerun -update instead:\n%s",
+			path, diff.Diff(path, want, "export", got))
 	}
 
 	return nil

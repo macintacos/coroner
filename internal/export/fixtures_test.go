@@ -5,7 +5,8 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
-	"regexp"
+	"slices"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -17,7 +18,7 @@ import (
 const fixturesDir = "../../testdata/export"
 
 var _ = Describe("Frozen export fixtures", func() {
-	// Every released fixture, never edited or removed: a format change adds a v<MAJOR.MINOR>/ directory.
+	// Every file under v*/: the first spec fails when a fixture is added or removed without this list.
 	frozen := []string{
 		"v1.0/annotations.jsonl",
 		"v1.0/concatenated.jsonl",
@@ -28,12 +29,18 @@ var _ = Describe("Frozen export fixtures", func() {
 		"v1.0/ordering.jsonl",
 	}
 	entries := make([]TableEntry, 0, len(frozen))
+	var currentEntries []TableEntry
 	for _, name := range frozen {
-		entries = append(entries, Entry(name, name))
+		entry := Entry(name, name)
+		entries = append(entries, entry)
+		if strings.HasPrefix(name, "v"+export.FormatVersion+"/") {
+			currentEntries = append(currentEntries, entry)
+		}
 	}
 
 	It("lists every file in a version directory", func() {
 		paths, err := filepath.Glob(filepath.Join(fixturesDir, "v*", "*"))
+		paths = slices.DeleteFunc(paths, func(path string) bool { return strings.HasPrefix(filepath.Base(path), ".") })
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(paths).To(ConsistOf(fixturePaths(frozen)))
@@ -47,7 +54,7 @@ var _ = Describe("Frozen export fixtures", func() {
 				return
 			}
 
-			for i, line := range bytes.SplitAfter(bytes.TrimSuffix(readFixture(name), []byte("\n")), []byte("\n")) {
+			for i, line := range slices.Collect(bytes.Lines(readFixture(name))) {
 				record, ok := schemaValue(line).(map[string]any)
 				Expect(ok).To(BeTrue(), "line %d is an object", i+1)
 				typ, _ := record["type"].(string)
@@ -70,7 +77,7 @@ var _ = Describe("Frozen export fixtures", func() {
 			data := readFixture(name)
 			if filepath.Ext(name) == ".json" {
 				var env export.Envelope
-				Expect(json.Unmarshal(data, &env)).To(Succeed())
+				Expect(json.Unmarshal(data, &env, json.RejectUnknownMembers(true))).To(Succeed())
 				return
 			}
 
@@ -82,22 +89,21 @@ var _ = Describe("Frozen export fixtures", func() {
 		entries,
 	)
 
-	DescribeTable("re-encodes byte-identically apart from exported_at",
+	DescribeTable("re-encodes byte-identically",
 		func(name string) {
 			data := readFixture(name)
 
-			Expect(string(withoutExportedAt(reencode(name, data)))).To(Equal(string(withoutExportedAt(data))))
+			Expect(string(reencode(name, data))).To(Equal(string(data)))
 		},
-		entries,
+		currentEntries,
 	)
 
-	// TODO: EXC-1284 replaces this with a property test that imports each fixture into an empty
-	// store, exports it again and compares the bytes apart from exported_at.
+	// TODO: EXC-1284 makes this a store-backed property test.
 	PIt("round-trips each fixture through import into an empty store and export again (EXC-1284)")
 })
 
 var _ = Describe("Compatibility fixtures", func() {
-	It("decodes a later minor version, ignoring the keys and record types it adds", func() {
+	It("decodes a later minor version, ignoring the keys, record types and enum values it adds", func() {
 		records, err := export.Decode(bytes.NewReader(readFixture("compat/v1.1-unknown-keys-and-types.jsonl")))
 
 		Expect(err).NotTo(HaveOccurred())
@@ -192,6 +198,7 @@ func envelopes(records []export.Record) []export.Envelope {
 			continue
 		}
 
+		Expect(envs).NotTo(BeEmpty(), "a record before any header")
 		env := &envs[len(envs)-1]
 		switch r := record.(type) {
 		case export.Timeline:
@@ -206,9 +213,4 @@ func envelopes(records []export.Record) []export.Envelope {
 	}
 
 	return envs
-}
-
-// withoutExportedAt blanks every exported_at, the one key a later export of the same data changes.
-func withoutExportedAt(data []byte) []byte {
-	return regexp.MustCompile(`"exported_at":"[^"]*"`).ReplaceAll(data, []byte(`"exported_at":""`))
 }

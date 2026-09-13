@@ -40,8 +40,12 @@ outside `contract/`. `go test ./internal/cli -run 'TestScripts/contract$' -updat
 rewrites the files `cmp` compares against here, never a `cmpenv` file or a pattern; review
 `git diff -- internal/cli/testdata/script/contract` before committing.
 
-`export-fixtures.txtar` writes the export fixtures. `fixture <name> <file>...` joins the
-files, such as `stdout`, and compares them with `testdata/export/v<format_version>/<name>`
-at the module root. Under `-update` it writes only a fixture that does not exist yet and
-never rewrites one, so a changed export fails against a frozen fixture instead of
-replacing it.
+`export-fixtures.txtar` writes the export fixtures. `exportfixture <name> <file>...` joins
+the files, such as `stdout`, and compares them with
+`testdata/export/v<format_version>/<name>` at the module root. Under `-update` it writes
+only a fixture that does not exist yet and never rewrites one, so a changed export fails
+against a frozen fixture instead of replacing it. Each section of the script starts its
+own database, ID counter and clock, so a fixture's bytes never depend on another section.
+A fixture failure that is not an export format change, such as renumbered IDs, is fixed in
+the script, for example by giving the new command its own section or pre-seeding that
+section's counter file, never in the fixture.

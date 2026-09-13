@@ -1,15 +1,21 @@
 # The export fixtures in testdata/export/v<format_version>/, each written by a real timeline
-# export. `fixture` fails when an export differs from its fixture, and under -update writes
-# only a fixture that does not exist yet, so a frozen one is never rewritten. internal/export's
-# fixture suite validates, decodes and re-encodes every fixture.
+# export. internal/export's fixture suite validates, decodes and re-encodes every fixture.
+# Each section starts its own database, ID counter and clock, so no fixture's bytes depend on
+# another section.
 
 # minimal: one timeline with no title, refs or events.
+env CORONER_DB=$WORK/minimal.db
+env CORONER_TEST_IDS=$WORK/minimal.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create minimal
 exits 0 coroner timeline export -t minimal --format jsonl
-fixture minimal.jsonl stdout
+exportfixture minimal.jsonl stdout
 
 # full-model: every record type, and events with every precision, an approximate interval, a
 # null and a non-null offset, no source or author, several tags, a url, and a later edit.
+env CORONER_DB=$WORK/full-model.db
+env CORONER_TEST_IDS=$WORK/full-model.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create full-model --title 'Mongo primary election' --ref INC-4821 --ref https://tracker.example.com/INC-4821
 exits 0 coroner timeline use full-model
 exits 0 coroner event add 'Maintenance window opens' --at 2026-09-11 --tz UTC --source change-calendar --tag phase:context --author julian
@@ -26,13 +32,15 @@ exits 0 coroner annotation add 'Step-down follows the oplog alert by four minute
 env CORONER_TEST_NOW=2026-09-12T22:05:00-04:00
 exits 0 coroner event edit 4 --add-tag root-cause
 exits 0 coroner timeline export --format jsonl
-fixture full-model.jsonl stdout
+exportfixture full-model.jsonl stdout
 exits 0 coroner timeline export --format json
-fixture full-model.json stdout
-env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
+exportfixture full-model.json stdout
 
 # annotations: evidence and comments on events, several on one event at different times, and
 # one on the whole timeline.
+env CORONER_DB=$WORK/annotations.db
+env CORONER_TEST_IDS=$WORK/annotations.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create annotations
 exits 0 coroner timeline use annotations
 exits 0 coroner event add 'Pager fires for db-2' --at 2026-09-11T03:15:00Z --source pagerduty --author julian
@@ -45,23 +53,32 @@ exits 0 coroner annotation add 'The step-down was not planned' -e 2 --kind comme
 env CORONER_TEST_NOW=2026-09-12T21:50:00-04:00
 exits 0 coroner annotation add 'Incident channel opened' --kind evidence --source slack --url https://slack.example.com/archives/C1/p1
 exits 0 coroner timeline export --format jsonl
-fixture annotations.jsonl stdout
-env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
+exportfixture annotations.jsonl stdout
 
 # ordering: events added out of time order, three at the same instant, so occurred at and then
-# seq order them. The minute-precision event sorts at the start of its minute.
+# seq order them. The second of the three is added under an earlier clock, so its id sorts
+# before the first's while its seq is higher. The minute-precision event sorts at the start of
+# its minute.
+env CORONER_DB=$WORK/ordering.db
+env CORONER_TEST_IDS=$WORK/ordering.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create ordering
 exits 0 coroner timeline use ordering
 exits 0 coroner event add 'Pager fires' --at 2026-09-11T03:15:00Z --source pagerduty
 exits 0 coroner event add 'First of three at 03:14:07' --at 2026-09-11T03:14:07Z --source mongod
+env CORONER_TEST_NOW=2026-09-12T21:20:00-04:00
 exits 0 coroner event add 'Second of three at 03:14:07' --at 2026-09-11T03:14:07Z --source mongod
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner event add 'Third of three at 03:14:07' --at 2026-09-11T03:14:07Z --source api
 exits 0 coroner event add 'Sometime in minute 03:14' --at 2026-09-11T03:14 --tz UTC --source grafana
 exits 0 coroner timeline export --format jsonl
-fixture ordering.jsonl stdout
+exportfixture ordering.jsonl stdout
 
 # hostile-text: multi-line text, backticks, </script>, <, > and &, non-ASCII, and a 10 KB
 # single log line kept verbatim as evidence.
+env CORONER_DB=$WORK/hostile-text.db
+env CORONER_TEST_IDS=$WORK/hostile-text.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create hostile-text --title 'Réplica caída — 東京 ✓'
 exits 0 coroner timeline use hostile-text
 stdin event-text.txt
@@ -71,10 +88,13 @@ exits 0 coroner annotation add - -e 1 --kind comment
 stdin mongod.log
 exits 0 coroner annotation add - -e 1 --kind evidence --source db-2/mongod
 exits 0 coroner timeline export --format jsonl
-fixture hostile-text.jsonl stdout
+exportfixture hostile-text.jsonl stdout
 
 # concatenated: two exports back to back, as cat a.jsonl b.jsonl makes, so header and source
 # records repeat.
+env CORONER_DB=$WORK/concatenated.db
+env CORONER_TEST_IDS=$WORK/concatenated.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create concat-db
 exits 0 coroner timeline create concat-api
 exits 0 coroner event add 'Pager fires for db-2' -t concat-db --at 2026-09-11T03:15:00Z --source pagerduty
@@ -82,7 +102,7 @@ exits 0 coroner event add 'Pager fires for api' -t concat-api --at 2026-09-11T03
 exits 0 coroner timeline export -t concat-db --format jsonl
 cp stdout concat-db.jsonl
 exits 0 coroner timeline export -t concat-api --format jsonl
-fixture concatenated.jsonl concat-db.jsonl stdout
+exportfixture concatenated.jsonl concat-db.jsonl stdout
 
 -- event-text.txt --
 Primary stepped down after `rs.stepDown()`:

@@ -71,7 +71,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
-    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, or code that encodes the export types or reads export JSONL"];
+    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types or reads export JSONL"];
     "What does the change touch?" -> "Load docs/agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
 }
 ```
