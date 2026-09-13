@@ -5,6 +5,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -119,6 +120,29 @@ var _ = Describe("time input", func() {
 		Entry("an approximate time, marked with ~",
 			resolved(0, timeline.PrecisionSecond, true), "local",
 			"~2026-09-11T03:14:07Z (-03:00 local: 00:14:07)"),
+	)
+
+	DescribeTable("timePreview shows what a time resolves to in the zone, or why it is rejected",
+		func(flag, input string, want types.GomegaMatcher) {
+			z, err := timeZone(new("America/New_York"), "local", local)
+			Expect(err).NotTo(HaveOccurred())
+
+			// testNow is 2026-09-12T17:30:00-04:00.
+			Expect(timePreview(flag, input, checkEnv{now: testNow(), zone: z})).To(want)
+		},
+		Entry("RFC 3339", "--at", "2026-09-11T03:14:07Z",
+			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),
+		Entry("a naive wall clock, read in the zone", "--at", "2026-09-11 03:14",
+			Equal("2026-09-11T07:14:00Z (-04:00 America/New_York: 03:14:00), minute precision")),
+		Entry("an approximate relative time", "--at", "~ yesterday 23:02",
+			Equal("~2026-09-12T03:02:00Z (-04:00 America/New_York: 23:02:00), minute precision, approximate")),
+		Entry("epoch seconds", "--at", "1789096447",
+			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),
+		Entry("no --at, as now", "--at", "",
+			Equal("2026-09-12T21:30:00Z (-04:00 America/New_York: 17:30:00), second precision")),
+		Entry("nothing for no --ended", "--ended", "", BeEmpty()),
+		Entry("a DST gap's rejection, then its hint naming the offsets", "--ended", "2026-03-08 02:30",
+			MatchRegexp(`^--ended: .+\n.*-05:00`)),
 	)
 
 	DescribeTable("displayTime shows an instant's wall clock in the zone, to its precision, with the zone's offset",

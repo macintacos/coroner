@@ -57,13 +57,16 @@ var _ = Describe("write command definitions", func() {
 		Expect(problems).To(BeEmpty())
 	})
 
-	It("accept every form field's zero value, which a form reads as not given", func() {
+	It("accept every optional form field's zero value, which a form reads as not given, and reject a required one's", func() {
 		var problems []string
 		for path, def := range writeDefinitions() {
-			for _, formField := range def.formFields(formCheckEnv()) {
+			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
 				formField.Blur()
 				err := formField.Error()
-				if err != nil {
+				switch required := def.fields[i].required; {
+				case required && err == nil:
+					problems = append(problems, fmt.Sprintf("coroner %s: required form field %s accepts its zero value", path, formField.GetKey()))
+				case !required && err != nil:
 					problems = append(problems, fmt.Sprintf("coroner %s: form field %s rejects its zero value: %v", path, formField.GetKey(), err))
 				}
 			}
@@ -201,7 +204,7 @@ func parityProblems(root *cobra.Command, path string, def definition) []string {
 	problems := duplicateFieldProblems(path, def)
 	form := map[string]huh.Field{}
 	declared := map[string]field{}
-	for i, formField := range def.formFields(checkEnv{}) {
+	for i, formField := range def.formFields(checkEnv{}, fieldValues{}, formChoices{}) {
 		// A positional argument's form field never stands for a flag.
 		if !def.fields[i].arg {
 			form[formField.GetKey()] = formField
@@ -383,7 +386,7 @@ func flagError(ctx context.Context, args []string) *Error {
 // formError returns the error def's form field called name shows once it holds value and loses
 // focus, with times read as the flag side reads them.
 func formError(def definition, name, value string) error {
-	for _, formField := range def.formFields(formCheckEnv()) {
+	for _, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
 		if formField.GetKey() != name {
 			continue
 		}

@@ -33,6 +33,10 @@ type field struct {
 	inherited bool
 	// check rejects a value no command could take; nil accepts any.
 	check func(value string, env checkEnv) error
+	// required marks the input the command cannot run without; its form field refuses a blank value.
+	required bool
+	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
+	preview func(value string, env checkEnv) string
 }
 
 // checkEnv is what a check reads time input against.

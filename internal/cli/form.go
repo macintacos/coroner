@@ -1,45 +1,159 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"charm.land/huh/v2"
 )
 
-// formFields returns a form field for each of d's fields, keyed by field name, showing its usage
-// and running its check against env.
-func (d definition) formFields(env checkEnv) []huh.Field {
-	fields := make([]huh.Field, 0, len(d.fields))
-	for _, f := range d.fields {
-		fields = append(fields, f.formField(env))
+// formChoices are what a form's text fields pick from or suggest, by field name.
+type formChoices struct {
+	// options makes the field a Select instead of an Input.
+	options     map[string][]huh.Option[string]
+	suggestions map[string][]string
+}
+
+// formValues is the submit adapter: the fieldValues a form's fields hold, where an empty value,
+// a false confirm and a blank line are not given.
+func (d definition) formValues(fields []huh.Field) fieldValues {
+	values := fieldValues{}
+	for _, formField := range fields {
+		i := slices.IndexFunc(d.fields, func(f field) bool { return f.name == formField.GetKey() })
+		given := d.fields[i].formValue(formField.GetValue())
+		if len(given) > 0 {
+			values[formField.GetKey()] = given
+		}
+	}
+
+	return values
+}
+
+// formValue returns the values a form field holding value gives f.
+func (f field) formValue(value any) []string {
+	switch value := value.(type) {
+	case bool:
+		if value {
+			return []string{"true"}
+		}
+	case string:
+		if f.typ == stringsField {
+			return slices.DeleteFunc(strings.Split(value, "\n"), func(line string) bool { return strings.TrimSpace(line) == "" })
+		}
+		if value != "" {
+			return []string{value}
+		}
+	}
+
+	return nil
+}
+
+// formFields returns a form field for each of d's fields, keyed by field name, opening with in's
+// values, picking from or suggesting choices, showing its usage and running its check.
+func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices) []huh.Field {
+	bound := make([]*string, len(d.fields))
+	for i, f := range d.fields {
+		bound[i] = new(strings.Join(in.values(f.name), "\n"))
+	}
+	fields := make([]huh.Field, len(d.fields))
+	form := fieldForm{
+		// Read when a check or preview runs, so a zone typed into the form applies to its times.
+		env:      func() checkEnv { return typedZone(env, d, fields) },
+		bindings: bound,
+		choices:  choices,
+	}
+	for i, f := range d.fields {
+		fields[i] = f.formField(bound[i], form)
 	}
 
 	return fields
 }
 
-func (f field) formField(env checkEnv) huh.Field {
+// fieldForm is what each field of a form reads beyond its own value.
+type fieldForm struct {
+	env func() checkEnv
+	// bindings are every field's value, whose change re-renders a description.
+	bindings []*string
+	choices  formChoices
+}
+
+// typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
+func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
+	i := slices.IndexFunc(d.fields, func(f field) bool { return f.name == "tz" })
+	if i == -1 {
+		return env
+	}
+	tz := fmt.Sprint(fields[i].GetValue())
+	z, err := timeZone(&tz, "", env.now.Location())
+	if err == nil {
+		env.zone = z
+	}
+
+	return env
+}
+
+func (f field) formField(value *string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
+	title := f.name
+	if f.required {
+		title += " (required)"
+	}
 	// An empty value is a field not given, which the flag side never checks either.
 	check := func(value string) error {
-		if f.check == nil || value == "" {
+		switch {
+		case value == "" && f.required:
+			return &Error{Kind: KindUsage, Message: f.name + " is required"}
+		case f.check == nil || value == "":
 			return nil
 		}
 
-		return f.check(value, env)
+		return f.check(value, form.env())
 	}
 
-	switch f.typ {
-	case boolField:
-		return huh.NewConfirm().Key(f.name).Title(f.name).Description(help).Value(new(false))
-	case stringsField:
-		return huh.NewText().Key(f.name).Title(f.name).Description(help).Value(new("")).Validate(func(text string) error {
+	switch {
+	case f.typ == boolField:
+		b, _ := strconv.ParseBool(*value)
+		return huh.NewConfirm().Key(f.name).Title(title).Description(help).Value(&b)
+	case f.typ == stringsField:
+		return huh.NewText().Key(f.name).Title(title).Description(help).Value(value).Validate(func(text string) error {
 			return checkLines(text, check)
 		})
-	case stringField:
+	case form.choices.options[f.name] != nil:
+		selectField := huh.NewSelect[string]().Key(f.name).Title(title).Description(help).Value(value).
+			Options(form.choices.options[f.name]...).Validate(check)
+		return selectField.DescriptionFunc(func() string {
+			return f.description(help, fmt.Sprint(selectField.GetValue()), form.env())
+		}, form.bindings)
 	}
 
-	return huh.NewInput().Key(f.name).Title(f.name).Description(help).Value(new("")).Validate(check)
+	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(value).
+		Suggestions(form.choices.suggestions[f.name]).Validate(check)
+	return input.DescriptionFunc(func() string {
+		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
+	}, form.bindings)
+}
+
+// description returns help, then what value previews as or, with no preview, the hint of the
+// check value fails; huh's own error line shows only the message.
+func (f field) description(help, value string, env checkEnv) string {
+	line := ""
+	switch {
+	case f.preview != nil:
+		line = f.preview(value, env)
+	case f.check != nil && value != "":
+		if failure, ok := errors.AsType[*Error](f.check(value, env)); ok {
+			line = failure.Hint
+		}
+	}
+	if line == "" {
+		return help
+	}
+
+	return help + "\n" + line
 }
 
 // checkLines runs check on each line of text, where an empty text holds no values.

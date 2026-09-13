@@ -51,14 +51,20 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 func eventAddDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
-		{name: "text", arg: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
-		{name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt},
+		{name: "text", arg: true, required: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
+		// Before at, so a form asks for the zone before the times read in it.
+		tzField(),
+		{
+			name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt,
+			preview: func(at string, env checkEnv) string { return timePreview("--at", at, env) },
+		},
 		{
 			name: "ended", usage: "When it ended, as a `time`, for an event that lasted",
 			check: func(ended string, env checkEnv) error {
 				_, err := resolveEnded(ended, env, addedEndedHint)
 				return err
 			},
+			preview: func(ended string, env checkEnv) string { return timePreview("--ended", ended, env) },
 		},
 		{name: "approximate", typ: boolField, usage: "Mark the time as a guess, as a ~ or around prefix does"},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
@@ -66,7 +72,6 @@ func eventAddDefinition() definition {
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
 		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
-		tzField(),
 	}}
 }
 
