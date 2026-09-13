@@ -124,13 +124,13 @@ func errorStyleFor(app App) (errorStyle, bool) {
 	_ = flags.Parse(app.Args)
 
 	chosen, _ := flags.GetString("format")
-	json, _ := flags.GetBool("json")
+	asJSON, _ := flags.GetBool("json")
 	debug, _ := flags.GetBool("debug")
 	noColor, _ := flags.GetBool("no-color")
 
 	style := errorStyle{
 		color:   colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv),
-		machine: json || format(chosen).machine(),
+		machine: asJSON || format(chosen).machine(),
 	}
 
 	return style, debug || envTrue(app.LookupEnv, "CORONER_DEBUG")
