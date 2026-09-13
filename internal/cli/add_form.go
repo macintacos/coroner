@@ -74,15 +74,22 @@ type formCommand struct {
 func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		interactive, _ := cmd.Flags().GetBool("interactive")
-		terminal := interactiveTerminal(app)
+		terminal := interactiveTerminal(cmd, app)
 		if interactive && !terminal {
+			message := "--interactive needs a terminal"
+			if noInput(cmd, app) {
+				message = "--interactive needs input, which --no-input or CORONER_NO_INPUT turns off"
+			}
 			return &Error{
-				Kind: KindUsage, Message: "--interactive needs a terminal",
+				Kind: KindUsage, Message: message,
 				Hint: "Run '" + cmd.CommandPath() + " --help' for the flags it takes.",
 			}
 		}
 		in := c.def.read(cmd.Flags(), args)
-		if !formMode(interactive, c.ready(in), terminal) {
+		// wrapRunErrors has already rejected a bad format. Under a machine format only --interactive
+		// opens the form.
+		chosen, _ := outputFormat(cmd)
+		if !formMode(interactive, c.ready(in) || chosen.machine(), terminal) {
 			return c.flagsOnly(cmd, args)
 		}
 
@@ -139,11 +146,17 @@ func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc)
 	}, nil
 }
 
-// interactiveTerminal reports whether a command may take over the terminal: keys can arrive, and
-// the screen is a terminal that can draw (I-1).
-func interactiveTerminal(app App) bool {
+// interactiveTerminal reports whether cmd may take over the terminal: input is not turned off, keys
+// can arrive, and the screen is a terminal that can draw (I-1, I-2).
+func interactiveTerminal(cmd *cobra.Command, app App) bool {
 	term, _ := app.LookupEnv("TERM")
-	return app.InIsTTY && app.OutIsTTY && term != "dumb"
+	return !noInput(cmd, app) && app.InIsTTY && app.OutIsTTY && term != "dumb"
+}
+
+// noInput reports whether --no-input or CORONER_NO_INPUT turns every form, picker and viewer off.
+func noInput(cmd *cobra.Command, app App) bool {
+	flag, _ := cmd.Flags().GetBool("no-input")
+	return flag || envTrue(app.LookupEnv, "CORONER_NO_INPUT")
 }
 
 // formMode reports whether a write command opens its form: on a terminal, when --interactive asks

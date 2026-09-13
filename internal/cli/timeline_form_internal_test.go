@@ -151,7 +151,7 @@ var _ = Describe("timeline forms", func() {
 		It("write the name, title and refs submitted, as its echoed command does", func(ctx SpecContext) {
 			command := create(ctx, answers(named("mongo-failover", "Primary election storm", "INC-4821", "INC-4822", "INC-4823")))
 
-			Expect(runForm(ctx, command, "timeline", "create", "--json")).To(Succeed())
+			Expect(runForm(ctx, command, "timeline", "create", "--interactive", "--json")).To(Succeed())
 			written := withoutRecordKeys(out.Bytes())
 
 			Expect(written).To(HaveKeyWithValue("refs", []any{"INC-4821", "INC-4822", "INC-4823"}))
@@ -181,7 +181,7 @@ var _ = Describe("timeline forms", func() {
 			existing(ctx, db)
 			command := create(ctx, answers(named("mongo-outage", "Other title")))
 
-			Expect(runForm(ctx, command, "timeline", "create", "--if-not-exists", "--json")).To(Succeed())
+			Expect(runForm(ctx, command, "timeline", "create", "--if-not-exists", "--interactive", "--json")).To(Succeed())
 
 			Expect(asked).To(HaveLen(1))
 			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("title", "Primary election storm"))
@@ -192,7 +192,7 @@ var _ = Describe("timeline forms", func() {
 			existing(ctx, db)
 			command := create(ctx, answers(named("mongo-outage", "Other title"), accept))
 
-			Expect(runForm(ctx, command, "timeline", "create", "--json")).To(Succeed())
+			Expect(runForm(ctx, command, "timeline", "create", "--interactive", "--json")).To(Succeed())
 			used := bytes.Clone(out.Bytes())
 
 			Expect(echoedArgs(ctx, errOut.String())).To(ContainElement("--if-not-exists"))
@@ -262,7 +262,7 @@ var _ = Describe("timeline forms", func() {
 				return true, nil
 			}))
 
-			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--json")).To(Succeed())
+			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--interactive", "--json")).To(Succeed())
 			written := withoutRecordKeys(out.Bytes())
 
 			Expect(written).To(HaveKeyWithValue("refs", []any{"INC-4822", "INC-1", "INC-2", "INC-3"}))
@@ -273,7 +273,7 @@ var _ = Describe("timeline forms", func() {
 			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
 			command := edit(ctx, answers(renamed("mongo-failover")))
 
-			Expect(runForm(ctx, command, "timeline", "edit", "--json")).To(Succeed())
+			Expect(runForm(ctx, command, "timeline", "edit", "--interactive", "--json")).To(Succeed())
 			written := withoutRecordKeys(out.Bytes())
 
 			Expect(errOut.String()).To(ContainSubstring("`mongo-outage` no longer selects"))

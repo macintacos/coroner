@@ -117,7 +117,7 @@ func viewTimeline(
 
 // interactive is interactiveTerminal, unless --format asked for plain output (I-1).
 func interactive(cmd *cobra.Command, app App) bool {
-	return interactiveTerminal(app) && !cmd.Flags().Changed("format")
+	return interactiveTerminal(cmd, app) && !cmd.Flags().Changed("format")
 }
 
 // timelineLoader returns the viewer's Load for the timeline with timelineID in the database at

@@ -306,6 +306,19 @@ var _ = Describe("timeline", func() {
 					Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
 				})
 
+				DescribeTable("prints plain text when input is turned off",
+					func(ctx SpecContext, noInputEnv string, args ...string) {
+						env["CORONER_NO_INPUT"] = noInputEnv
+						var screen bytes.Buffer
+						_, code := viewOn(ctx, &screen, args...)
+
+						Eventually(code).Should(Receive(Equal(0)))
+						Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
+					},
+					Entry("--no-input", "", "--no-input"),
+					Entry("CORONER_NO_INPUT", "1"),
+				)
+
 				It("prints plain text when stdin is not a terminal", func(ctx SpecContext) {
 					var screen bytes.Buffer
 					app := newApp("timeline", "view", "mongo-outage")

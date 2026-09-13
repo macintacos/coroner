@@ -163,6 +163,20 @@ var _ = Describe("timeline list on a terminal", func() {
 		Entry("--format text", "--format", "text"),
 	)
 
+	DescribeTable("prints the plain list without reading keys when input is turned off",
+		func(ctx SpecContext, noInputEnv string, args ...string) {
+			env["CORONER_NO_INPUT"] = noInputEnv
+			a := app
+			a.InIsTTY, a.OutIsTTY = true, true
+
+			Expect(run(ctx, a, append([]string{"timeline", "list"}, args...)...)).To(Equal(0), errOut.String())
+			Expect(out.String()).To(ContainSubstring("db-2-disk-full"))
+			Expect(terminal.read.Load()).To(BeFalse())
+		},
+		Entry("--no-input", "", "--no-input"),
+		Entry("CORONER_NO_INPUT", "1"),
+	)
+
 	It("prints the plain hint without reading keys when there are no timelines", func(ctx SpecContext) {
 		env["CORONER_DB"] = filepath.Join(GinkgoT().TempDir(), "empty.db")
 		a := app

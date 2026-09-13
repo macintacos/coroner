@@ -103,6 +103,7 @@ func globalFlags() *pflag.FlagSet {
 	flags.Bool("json", false, "Short for --format json")
 	flags.BoolP("quiet", "q", false, "Print only essential output")
 	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
+	flags.Bool("no-input", false, "Never open a form, picker or viewer (env: CORONER_NO_INPUT)")
 	flags.String("tz", "", tzUsage)
 	flags.Bool("debug", false, "Print debug detail on stderr (env: CORONER_DEBUG)")
 	flags.BoolP("help", "h", false, "Show help for a command")

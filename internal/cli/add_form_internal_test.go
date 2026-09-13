@@ -58,18 +58,25 @@ var _ = Describe("add forms", func() {
 		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
 
-	DescribeTable("find a terminal only when stdin and stdout are one and TERM can draw",
-		func(inTTY, outTTY bool, term string, want bool) {
+	DescribeTable("find a terminal only when stdin and stdout are one, TERM can draw and input is not turned off",
+		func(inTTY, outTTY bool, env map[string]string, args []string, want bool) {
 			app := App{InIsTTY: inTTY, OutIsTTY: outTTY, LookupEnv: func(key string) (string, bool) {
-				return term, key == "TERM"
+				value, ok := env[key]
+				return value, ok
 			}}
+			cmd := &cobra.Command{}
+			cmd.Flags().AddFlagSet(globalFlags())
+			Expect(cmd.ParseFlags(args)).To(Succeed())
 
-			Expect(interactiveTerminal(app)).To(Equal(want))
+			Expect(interactiveTerminal(cmd, app)).To(Equal(want))
 		},
-		Entry("both terminals", true, true, "xterm-256color", true),
-		Entry("stdin piped", false, true, "xterm-256color", false),
-		Entry("stdout piped", true, false, "xterm-256color", false),
-		Entry("a dumb terminal", true, true, "dumb", false),
+		Entry("both terminals", true, true, map[string]string{"TERM": "xterm-256color"}, nil, true),
+		Entry("stdin piped", false, true, map[string]string{"TERM": "xterm-256color"}, nil, false),
+		Entry("stdout piped", true, false, map[string]string{"TERM": "xterm-256color"}, nil, false),
+		Entry("a dumb terminal", true, true, map[string]string{"TERM": "dumb"}, nil, false),
+		Entry("--no-input", true, true, map[string]string{"TERM": "xterm-256color"}, []string{"--no-input"}, false),
+		Entry("CORONER_NO_INPUT set", true, true, map[string]string{"TERM": "xterm-256color", "CORONER_NO_INPUT": "1"}, nil, false),
+		Entry("CORONER_NO_INPUT false", true, true, map[string]string{"TERM": "xterm-256color", "CORONER_NO_INPUT": "false"}, nil, true),
 	)
 
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
@@ -228,7 +235,7 @@ var _ = Describe("add forms", func() {
 					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
 				}), decline))
 
-				Expect(runForm(ctx, command, "event", "add", "--json")).To(Succeed())
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
 
 				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
@@ -279,7 +286,7 @@ var _ = Describe("add forms", func() {
 					return submit(map[string]string{"body": "replSetStepDown", "event": "1", "kind": "evidence"})(fields)
 				}, decline))
 
-				Expect(runForm(ctx, command, "annotation", "add", "--json")).To(Succeed())
+				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
 
 				Expect(offered).To(Equal([]string{"", "1"}))
@@ -344,7 +351,7 @@ var _ = Describe("add forms", func() {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
 				command := eventAdd(ctx, answers(submit(entry), cancel, decline))
 
-				Expect(runForm(ctx, command, "event", "add", "--json")).To(Succeed())
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
 				Expect(errOut.String()).To(ContainSubstring("--ended"))
 				Expect(errOut.String()).NotTo(ContainSubstring(`"kind"`))
@@ -403,6 +410,33 @@ var _ = Describe("add forms", func() {
 
 			Expect(run(ctx, "event", "add", "Pager fires", "--interactive")).To(Equal(2))
 			Expect(errOut.String()).To(ContainSubstring("--interactive needs a terminal"))
+		})
+
+		DescribeTable("run the command line as given on a terminal, asking nothing, when input is turned off or a machine format is asked for",
+			func(ctx SpecContext, env map[string]string, args ...string) {
+				lookupEnv := app.LookupEnv
+				app.LookupEnv = func(key string) (string, bool) {
+					if value, ok := env[key]; ok {
+						return value, true
+					}
+					return lookupEnv(key)
+				}
+
+				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add"}, args...)...)
+
+				Expect(err).To(HaveField("Kind", KindUsage))
+				Expect(err).To(HaveField("Message", "event add needs the event's text"))
+			},
+			Entry("--no-input", nil, "--no-input"),
+			Entry("CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}),
+			Entry("--json", nil, "--json"),
+		)
+
+		It("refuse --interactive when input is turned off, before opening anything", func(ctx SpecContext) {
+			err := runForm(ctx, eventAdd(ctx, answers()), "event", "add", "Pager fires", "--interactive", "--no-input")
+
+			Expect(err).To(HaveField("Kind", KindUsage))
+			Expect(err).To(HaveField("Message", ContainSubstring("--no-input")))
 		})
 	})
 
