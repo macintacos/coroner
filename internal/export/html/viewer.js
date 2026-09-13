@@ -155,11 +155,17 @@
     return item;
   });
 
-  const timeline = new vis.Timeline(document.getElementById("timeline"), items, groups, {
-    moment: inZone,
-    groupOrder: "order",
-    showTooltips: false,
-  });
+  const options = { moment: inZone, groupOrder: "order", showTooltips: false };
+  if (items.length) {
+    // A point's label runs right of its dot, so the last one needs room past its instant.
+    const times = items.flatMap((item) => [item.start, item.end ?? item.start]).map(Number);
+    const first = Math.min(...times);
+    const last = Math.max(...times);
+    const span = Math.max(last - first, 60 * 1000);
+    options.start = first - span * 0.05;
+    options.end = last + span * 0.3;
+  }
+  const timeline = new vis.Timeline(document.getElementById("timeline"), items, groups, options);
   timeline.on("select", ({ items: selected }) => show(selected.length ? data.events[selected[0] - 1] : null));
   show(null);
 }

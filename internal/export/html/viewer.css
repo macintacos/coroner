@@ -67,34 +67,35 @@ header p {
   border-top: 1px solid var(--rule);
 }
 
-.vis-timeline {
+/* #timeline outranks vis-timeline's own rules, which it injects after this sheet. */
+#timeline .vis-timeline {
   border-color: var(--rule);
   font: inherit;
 }
 
-.vis-labelset .vis-label,
-.vis-time-axis .vis-text {
+#timeline .vis-labelset .vis-label,
+#timeline .vis-time-axis .vis-text {
   color: var(--ink);
 }
 
-.vis-item {
+#timeline .vis-item {
   border-color: var(--accent);
   background: var(--paper);
   color: var(--ink);
 }
 
-.vis-item.vis-dot {
+#timeline .vis-item.vis-dot {
   border-color: var(--accent);
 }
 
-.vis-item .vis-item-content {
+#timeline .vis-item .vis-item-content {
   max-width: 24em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vis-item.vis-selected {
+#timeline .vis-item.vis-selected {
   border-color: var(--accent);
   background: var(--well);
   box-shadow: 0 0 0 2px var(--accent);
