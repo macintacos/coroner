@@ -73,14 +73,14 @@ func newTimelineJSON(t timeline.Timeline) timelineJSON {
 // findTimeline returns the timeline called nameOrID, or else the one with that id. A name
 // that is another timeline's id is ambiguous.
 func findTimeline(ctx context.Context, s *store.Store, nameOrID string) (timeline.Timeline, error) {
-	named, err := s.TimelineByName(ctx, nameOrID)
+	t, err := s.TimelineByName(ctx, nameOrID)
 	if errors.Is(err, store.ErrNotFound) {
-		named, err = s.Timeline(ctx, nameOrID)
+		t, err = s.Timeline(ctx, nameOrID)
 	} else if err == nil {
-		err = checkUnambiguous(ctx, s, named, nameOrID)
+		err = checkUnambiguous(ctx, s, t, nameOrID)
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		return named, &Error{
+		return t, &Error{
 			Kind:    KindTimelineNotFound,
 			Message: fmt.Sprintf("no timeline is named %q or has that id", nameOrID),
 			Hint:    "Run 'coroner timeline list' to see the timelines.",
@@ -88,7 +88,7 @@ func findTimeline(ctx context.Context, s *store.Store, nameOrID string) (timelin
 		}
 	}
 
-	return named, err
+	return t, err
 }
 
 // checkUnambiguous returns ambiguous_id when a timeline other than named has nameOrID as its
