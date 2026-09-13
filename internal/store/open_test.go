@@ -32,13 +32,7 @@ var _ = Describe("Open", func() {
 		})
 
 	It("puts the database in WAL mode, so a reader never waits for a writer", func(ctx SpecContext) {
-		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-
-		s, err := store.Open(ctx, path)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(s.Close()).To(Succeed())
-
-		db, err := sql.Open("sqlite", path)
+		db, err := sql.Open("sqlite", migratedDatabase(ctx))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(db.Close)
 		var mode string
@@ -81,13 +75,8 @@ var _ = Describe("Open", func() {
 
 	It("refuses a database a newer coroner migrated, leaving it byte-identical with nothing beside it",
 		func(ctx SpecContext) {
-			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-			s, err := store.Open(ctx, path)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Close()).To(Succeed())
-			// After Open the highest recorded version is the highest embedded one.
-			execSQLite(ctx, path,
-				"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
+			path := migratedDatabase(ctx)
+			bumpSchemaVersion(ctx, path)
 			before, err := os.ReadFile(filepath.Clean(path))
 			Expect(err).NotTo(HaveOccurred())
 
@@ -200,33 +189,24 @@ var _ = Describe("OpenReadOnly", func() {
 		Expect(filepath.Dir(path)).NotTo(BeAnExistingFile())
 	})
 
-	It("opens a coroner database at its migrated schema version, leaving it byte-identical",
-		func(ctx SpecContext) {
-			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-			s, err := store.Open(ctx, path)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Close()).To(Succeed())
-			migrated := querySQLite(ctx, path, "SELECT max(version_id) FROM goose_db_version")
-			before, err := os.ReadFile(filepath.Clean(path))
-			Expect(err).NotTo(HaveOccurred())
+	It("opens a coroner database at the latest schema, leaving it byte-identical", func(ctx SpecContext) {
+		path := migratedDatabase(ctx)
+		migrated := querySQLite(ctx, path, "SELECT max(version_id) FROM goose_db_version")
+		before, err := os.ReadFile(filepath.Clean(path))
+		Expect(err).NotTo(HaveOccurred())
 
-			s, err = store.OpenReadOnly(ctx, path)
-			Expect(err).NotTo(HaveOccurred())
-			version, err := s.SchemaVersion(ctx)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(s.Close()).To(Succeed())
-
-			Expect(version).To(Equal(migrated))
-			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
-		})
-
-	It("gives a connection that refuses writes", func(ctx SpecContext) {
-		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-		s, err := store.Open(ctx, path)
+		s, err := store.OpenReadOnly(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		schema, err := s.Schema(ctx)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(s.Close()).To(Succeed())
 
-		s, err = store.OpenReadOnly(ctx, path)
+		Expect(schema).To(Equal(store.Schema{Version: migrated, Latest: migrated}))
+		Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
+	})
+
+	It("gives a connection that refuses writes", func(ctx SpecContext) {
+		s, err := store.OpenReadOnly(ctx, migratedDatabase(ctx))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)
 
@@ -235,13 +215,8 @@ var _ = Describe("OpenReadOnly", func() {
 	})
 
 	It("refuses a database a newer coroner migrated, leaving it byte-identical", func(ctx SpecContext) {
-		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-		s, err := store.Open(ctx, path)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(s.Close()).To(Succeed())
-		// After Open the highest recorded version is the highest embedded one.
-		execSQLite(ctx, path,
-			"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
+		path := migratedDatabase(ctx)
+		bumpSchemaVersion(ctx, path)
 		before, err := os.ReadFile(filepath.Clean(path))
 		Expect(err).NotTo(HaveOccurred())
 
@@ -260,17 +235,36 @@ var _ = Describe("OpenReadOnly", func() {
 		Expect(err).To(MatchError(store.ErrForeignDatabase))
 	})
 
-	It("opens an empty file at schema version 0", func(ctx SpecContext) {
-		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+	It("opens an empty file at schema version 0, below the latest", func(ctx SpecContext) {
+		latest := querySQLite(ctx, migratedDatabase(ctx), "SELECT max(version_id) FROM goose_db_version")
+		path := filepath.Join(GinkgoT().TempDir(), "empty.db")
 		Expect(os.WriteFile(path, nil, 0o600)).To(Succeed())
 
 		s, err := store.OpenReadOnly(ctx, path)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)
 
-		Expect(s.SchemaVersion(ctx)).To(BeZero())
+		Expect(s.Schema(ctx)).To(Equal(store.Schema{Version: 0, Latest: latest}))
 	})
 })
+
+// migratedDatabase returns the path of a new database Open migrated to the latest schema.
+func migratedDatabase(ctx SpecContext) string {
+	GinkgoHelper()
+	path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+	s, err := store.Open(ctx, path)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(s.Close()).To(Succeed())
+	return path
+}
+
+// bumpSchemaVersion records a migration one past the highest the database at path has
+// applied, which for a migratedDatabase is past every embedded one, as a newer coroner would.
+func bumpSchemaVersion(ctx context.Context, path string) {
+	GinkgoHelper()
+	execSQLite(ctx, path,
+		"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
+}
 
 // execSQLite runs statement on the SQLite file at path without going through the store.
 func execSQLite(ctx context.Context, path, statement string) {

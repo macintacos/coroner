@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -82,6 +83,20 @@ var _ = Describe("status", func() {
 		Expect(filepath.Dir(dbPath)).NotTo(BeAnExistingFile())
 	})
 
+	It("exits 2 when -t is empty, before it looks for a database", func(ctx SpecContext) {
+		Expect(run(ctx, "status", "-t", "")).To(Equal(2))
+	})
+
+	It("reports schema 0 and no timeline for a database behind the latest schema", func(ctx SpecContext) {
+		Expect(os.WriteFile(dbPath, nil, 0o600)).To(Succeed())
+		env["CORONER_TIMELINE"] = "first"
+
+		Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
+
+		Expect(out.String()).To(MatchJSON(fmt.Sprintf(
+			`{"db_path": %q, "db_exists": true, "schema_version": 0, "timeline": null, "selected_by": null}`, dbPath)))
+	})
+
 	Describe("with timelines", func() {
 		BeforeEach(func(ctx SpecContext) {
 			for _, name := range []string{"first", "second", "third"} {
@@ -125,7 +140,11 @@ var _ = Describe("status", func() {
 
 			Expect(run(ctx, "status")).To(Equal(3))
 
-			Expect(errOut.String()).To(ContainSubstring("CORONER_TIMELINE=missing"))
+			Expect(errOut.String()).To(ContainSubstring(`CORONER_TIMELINE="missing"`))
+		})
+
+		It("exits 3 when -t names a timeline that does not exist", func(ctx SpecContext) {
+			Expect(run(ctx, "status", "-t", "missing")).To(Equal(3))
 		})
 
 		It("prints the database, schema and selected timeline as text", func(ctx SpecContext) {

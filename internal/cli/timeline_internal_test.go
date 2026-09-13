@@ -21,19 +21,19 @@ var _ = DescribeTable("suggestName",
 )
 
 var _ = DescribeTable("resolveTimeline",
-	func(flag *string, env map[string]string, stored, wantRef string, wantSelector selector) {
+	func(flag *string, env map[string]string, stored, wantNameOrID string, wantBy selectedBy) {
 		lookupEnv := func(key string) (string, bool) {
 			value, ok := env[key]
 			return value, ok
 		}
 
-		ref, by := resolveTimeline(flag, lookupEnv, stored)
+		nameOrID, by := resolveTimeline(flag, lookupEnv, stored)
 
-		Expect(ref).To(Equal(wantRef))
-		Expect(by).To(Equal(wantSelector))
+		Expect(nameOrID).To(Equal(wantNameOrID))
+		Expect(by).To(Equal(wantBy))
 	},
-	Entry("selects nothing without a flag, variable or stored timeline", nil, nil, "", "", selector("")),
-	Entry("selects nothing with only an empty variable", nil, map[string]string{"CORONER_TIMELINE": ""}, "", "", selector("")),
+	Entry("selects nothing without a flag, variable or stored timeline", nil, nil, "", "", selectedBy("")),
+	Entry("selects nothing with only an empty variable", nil, map[string]string{"CORONER_TIMELINE": ""}, "", "", selectedBy("")),
 	Entry("selects the variable's timeline", nil, map[string]string{"CORONER_TIMELINE": "b"}, "", "b", selectedByEnv),
 	Entry("selects the stored timeline alone", nil, nil, "id-c", "id-c", selectedByUse),
 	Entry("selects the stored timeline over an empty variable",

@@ -39,7 +39,7 @@ coroner <command> [flags]
 ### SEE ALSO
 
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
-* [coroner status](coroner_status.md)	 - Show the database and the current timeline
+* [coroner status](coroner_status.md)	 - Show the database and the timeline commands act on
 * [coroner timeline](coroner_timeline.md)	 - Create, list and switch between timelines
 * [coroner version](coroner_version.md)	 - Show coroner's version
 

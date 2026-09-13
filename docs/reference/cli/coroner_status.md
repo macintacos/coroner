@@ -4,13 +4,13 @@ title: coroner status
 
 ## coroner status
 
-Show the database and the current timeline
+Show the database and the timeline commands act on
 
 ### Synopsis
 
-Show the database coroner uses, its schema version, and the timeline commands act on
-with what selected it: -t, CORONER_TIMELINE or 'coroner timeline use'. status never
-creates or migrates the database. Its JSON fields are experimental until 1.0.
+Show the database coroner uses, its schema version, the timeline commands act on, and
+whether -t, CORONER_TIMELINE or 'coroner timeline use' selected it. status never
+migrates the database or creates it. Its JSON fields are experimental until 1.0.
 
 ```
 coroner status [flags]

@@ -33,9 +33,6 @@ var _ = Describe("timeline", func() {
 			Out:  &out,
 			Err:  &errOut,
 			LookupEnv: func(key string) (string, bool) {
-				if key == "HOME" {
-					return home, true
-				}
 				value, ok := env[key]
 				return value, ok
 			},
@@ -51,7 +48,7 @@ var _ = Describe("timeline", func() {
 
 	BeforeEach(func() {
 		home = GinkgoT().TempDir()
-		env = map[string]string{}
+		env = map[string]string{"HOME": home}
 		now = time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC)
 		ids = 0
 	})
@@ -329,7 +326,7 @@ var _ = Describe("timeline", func() {
 		It("exits 3 naming -t when -t names no timeline, even with one in use", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "view", "-t", "missing")).To(Equal(3))
 
-			Expect(errOut.String()).To(ContainSubstring("-t missing"))
+			Expect(errOut.String()).To(ContainSubstring(`-t "missing": no such timeline`))
 		})
 
 		It("exits 3 naming CORONER_TIMELINE when it names no timeline, even with one in use", func(ctx SpecContext) {
@@ -337,11 +334,7 @@ var _ = Describe("timeline", func() {
 
 			Expect(run(ctx, "timeline", "view")).To(Equal(3))
 
-			Expect(errOut.String()).To(ContainSubstring("CORONER_TIMELINE=missing"))
-		})
-
-		It("rejects an empty -t with exit 2", func(ctx SpecContext) {
-			Expect(run(ctx, "timeline", "view", "-t", "")).To(Equal(2))
+			Expect(errOut.String()).To(ContainSubstring(`CORONER_TIMELINE="missing": no such timeline`))
 		})
 
 		It("rejects a timeline named both as an argument and with -t with exit 2", func(ctx SpecContext) {
@@ -359,6 +352,23 @@ var _ = Describe("timeline", func() {
 				Expect(errOut.String()).To(ContainSubstring("CORONER_TIMELINE"))
 				Expect(errOut.String()).To(ContainSubstring("coroner timeline use"))
 			})
+
+		It("lists only the first 10 timelines when nothing selects one", func(ctx SpecContext) {
+			run(ctx, "timeline", "use", "--clear")
+			for i := range 9 {
+				run(ctx, "timeline", "create", fmt.Sprintf("d%d", i))
+			}
+
+			Expect(run(ctx, "timeline", "view")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring("Timelines: a, b, c, d0, d1, d2, d3, d4, d5, d6, and 2 more\n"))
+		})
+	})
+
+	It("rejects an empty -t with exit 2 before creating the database", func(ctx SpecContext) {
+		Expect(run(ctx, "timeline", "view", "-t", "")).To(Equal(2))
+
+		Expect(filepath.Join(home, "coroner.db")).NotTo(BeAnExistingFile())
 	})
 
 	Describe("a command that changes a timeline", func() {

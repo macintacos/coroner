@@ -73,7 +73,8 @@ _Avoid_: fuzzy, uncertain
 `#12`. It is never reused.\
 _Avoid_: index, number, ID
 
-**Current timeline**: The timeline a command acts on when none is named.\
+**Current timeline**: The timeline `coroner timeline use` stores; a command acts on it
+when neither `-t` nor `CORONER_TIMELINE` names one.\
 _Avoid_: active timeline, context
 
 **Overlay**: Several timelines read together as one chronology, without changing any of

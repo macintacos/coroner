@@ -28,8 +28,10 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner timeline view mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline view --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flag := changedString(cmd.Flags(), "timeline")
+			flag, err := timelineFlag(cmd.Flags())
 			switch {
+			case err != nil:
+				return err
 			case len(args) == 1 && flag != nil:
 				return &Error{
 					Kind:    KindUsage,

@@ -17,10 +17,10 @@ import (
 func newStatusCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the database and the current timeline",
-		Long: "Show the database coroner uses, its schema version, and the timeline commands act on\n" +
-			"with what selected it: -t, CORONER_TIMELINE or 'coroner timeline use'. status never\n" +
-			"creates or migrates the database. Its JSON fields are experimental until 1.0.",
+		Short: "Show the database and the timeline commands act on",
+		Long: "Show the database coroner uses, its schema version, the timeline commands act on, and\n" +
+			"whether -t, CORONER_TIMELINE or 'coroner timeline use' selected it. status never\n" +
+			"migrates the database or creates it. Its JSON fields are experimental until 1.0.",
 		GroupID:     additionalCommands,
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
@@ -36,21 +36,27 @@ func newStatusCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
+// statusJSON is status's JSON object. A nil pointer encodes as null: no database, or no
+// timeline selected.
 type statusJSON struct {
-	DBPath   string `json:"db_path"`
-	DBExists bool   `json:"db_exists"`
-	// The pointers encode as null when there is no database or no timeline is selected.
-	SchemaVersion *int64           `json:"schema_version"`
-	Timeline      *timelineRefJSON `json:"timeline"`
-	SelectedBy    *selector        `json:"selected_by"`
+	DBPath        string                `json:"db_path"`
+	DBExists      bool                  `json:"db_exists"`
+	SchemaVersion *int64                `json:"schema_version"`
+	Timeline      *selectedTimelineJSON `json:"timeline"`
+	SelectedBy    *selectedBy           `json:"selected_by"`
 }
 
-type timelineRefJSON struct {
+// selectedTimelineJSON names the timeline status reports as selected.
+type selectedTimelineJSON struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
 func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
+	flag, err := timelineFlag(cmd.Flags())
+	if err != nil {
+		return err
+	}
 	o, err := newOutput(cmd, app)
 	if err != nil {
 		return err
@@ -68,11 +74,14 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 		return storeError(err, resolved.DBPath)
 	}
 
-	report, err := readStatus(ctx, s, changedString(cmd.Flags(), "timeline"), app.LookupEnv)
+	report, err := readStatus(ctx, s, flag, app.LookupEnv)
 	err = storeError(err, resolved.DBPath)
 	closeErr := s.Close()
-	if err != nil || closeErr != nil {
+	if closeErr != nil {
 		return errors.Join(err, closeErr)
+	}
+	if err != nil {
+		return err
 	}
 
 	report.DBPath = resolved.DBPath
@@ -84,26 +93,22 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 func readStatus(
 	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
 ) (statusJSON, error) {
-	version, err := s.SchemaVersion(ctx)
+	schema, err := s.Schema(ctx)
 	if err != nil {
 		return statusJSON{}, err
 	}
-	report := statusJSON{DBExists: true, SchemaVersion: &version}
-	// A file without a schema has no tables to select a timeline from.
-	if version == 0 {
+	report := statusJSON{DBExists: true, SchemaVersion: &schema.Version}
+	// Selection reads expect the latest schema, which a read-only open never migrates to.
+	if schema.Version < schema.Latest {
 		return report, nil
 	}
 
-	t, by, err := selectTimeline(ctx, s, flag, lookupEnv)
-	failure, ok := errors.AsType[*Error](err)
-	if ok && failure.Kind == KindTimelineRequired {
-		return report, nil
-	}
-	if err != nil {
+	t, by, err := lookupTimeline(ctx, s, flag, lookupEnv)
+	if err != nil || by == "" {
 		return report, err
 	}
 
-	report.Timeline = &timelineRefJSON{ID: t.ID, Name: t.Name}
+	report.Timeline = &selectedTimelineJSON{ID: t.ID, Name: t.Name}
 	report.SelectedBy = &by
 	return report, nil
 }
@@ -121,7 +126,7 @@ func writeStatus(o output, report statusJSON) error {
 		schema = strconv.FormatInt(*report.SchemaVersion, 10)
 	}
 	if report.Timeline != nil {
-		current = fmt.Sprintf("%s (selected by %s)", report.Timeline.Name, report.SelectedBy.source())
+		current = fmt.Sprintf("%s (selected by %s)", report.Timeline.Name, report.SelectedBy.setting())
 	}
 
 	var b strings.Builder
@@ -130,18 +135,4 @@ func writeStatus(o output, report statusJSON) error {
 	writeField(&b, "Timeline:", current)
 	_, err := io.WriteString(o.out, b.String())
 	return err
-}
-
-// source names what the user set to make by select the timeline.
-func (by selector) source() string {
-	switch by {
-	case selectedByFlag:
-		return "-t"
-	case selectedByEnv:
-		return "CORONER_TIMELINE"
-	case selectedByUse:
-		return "'coroner timeline use'"
-	}
-
-	return string(by)
 }

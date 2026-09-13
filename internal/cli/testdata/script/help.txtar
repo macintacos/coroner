@@ -16,7 +16,7 @@ CORE COMMANDS
 ADDITIONAL COMMANDS
   completion   Generate the autocompletion script for the specified shell
   help         Help about any command or topic
-  status       Show the database and the current timeline
+  status       Show the database and the timeline commands act on
   version      Show coroner's version
 
 HELP TOPICS

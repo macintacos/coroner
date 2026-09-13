@@ -34,8 +34,8 @@ type App struct {
 	// OpenStore creates the database at path, so only commands that use it may call it, and
 	// never from PersistentPreRunE.
 	OpenStore func(ctx context.Context, path string) (*store.Store, error)
-	// OpenStoreReadOnly opens the database at path without creating, migrating or writing it,
-	// and must report a missing file as fs.ErrNotExist.
+	// OpenStoreReadOnly opens the database at path without creating the database, migrating or
+	// writing it, and must report a missing file as fs.ErrNotExist.
 	OpenStoreReadOnly func(ctx context.Context, path string) (*store.Store, error)
 }
 

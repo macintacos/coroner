@@ -55,14 +55,14 @@
    `sqlcgen.Queries` cannot run SQL it did not generate. A store method's writes share one
    immediate transaction, which `write` retries whole while another writer holds the
    database; `read` and `readTx` begin deferred and never take the write lock. Only `Open`
-   and `OpenReadOnly` use the pool directly: `Open` for its identity check, WAL pragma and
-   backup, `OpenReadOnly` for its identity and version checks. Never use
-   `SetMaxOpenConns(1)` or `:memory:`: a query on the pool then waits forever while a
-   transaction holds the only connection, and every pooled `:memory:` connection is a
-   separate empty database.
+   and `OpenReadOnly` use the pool directly, for their identity and version checks, and
+   `Open` also for its WAL pragma and backup. Never use `SetMaxOpenConns(1)` or
+   `:memory:`: a query on the pool then waits forever while a transaction holds the only
+   connection, and every pooled `:memory:` connection is a separate empty database.
 7. **The store takes every ID and instant it stores from its caller:** callers pass every
    ID and instant, including the id a source gets when an event or annotation names it
    first. Only seq comes from the database.
 8. **`Open` checks the file before it changes it:** `journal_mode = WAL` is set after the
    application-id check, never as a DSN pragma, which would rewrite a foreign file's
-   header on connect. `OpenReadOnly` never sets it.
+   header on connect. `OpenReadOnly` never sets it, and reads the schema version by hand,
+   never through goose's `GetVersions`, which creates goose's table.
