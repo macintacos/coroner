@@ -16,14 +16,43 @@ const (
 	firstBackoff  = 20 * time.Millisecond
 )
 
-// read runs fn in a read-only transaction, which never takes the write lock.
-func (s *Store) read(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
-	return translate(s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, fn))
+// read runs fn in a transaction modernc begins deferred, so it waits on no writer, and
+// returns what fn produced. Nothing stops fn from writing; use write for that. fn must only
+// use q: another Store method would run outside this transaction.
+func read[T any](ctx context.Context, s *Store, fn func(*sqlcgen.Queries) (T, error)) (T, error) {
+	var result T
+	err := s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, func(q *sqlcgen.Queries) error {
+		var err error
+		result, err = fn(q)
+		return err
+	})
+	if err != nil {
+		var zero T
+		return zero, translate(err)
+	}
+
+	return result, nil
+}
+
+// loadAll maps rows with load, stopping at the first error.
+// ponytail: per-row queries are cheap in-process; a joined or group_concat query if a
+// large timeline reads slowly.
+func loadAll[R, T any](rows []R, load func(R) (T, error)) ([]T, error) {
+	loaded := make([]T, 0, len(rows))
+	for _, row := range rows {
+		t, err := load(row)
+		if err != nil {
+			return nil, err
+		}
+		loaded = append(loaded, t)
+	}
+
+	return loaded, nil
 }
 
 // write runs fn in one immediate transaction, retried whole while another writer holds the
-// database. fn may therefore run more than once, so it must change nothing outside the
-// transaction.
+// database, so fn may run more than once and must only use q: calling another Store method
+// from fn waits on this transaction's own lock until ErrBusy.
 func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
 	return translate(retryBusy(ctx, writeAttempts, func() error {
 		return s.inTx(ctx, nil, fn)

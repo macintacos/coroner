@@ -27,53 +27,55 @@ func (s *Store) CreateTimeline(ctx context.Context, t timeline.Timeline) error {
 
 // Timeline returns the timeline with id.
 func (s *Store) Timeline(ctx context.Context, id string) (timeline.Timeline, error) {
-	return s.readTimeline(ctx, func(q *sqlcgen.Queries) (sqlcgen.Timeline, error) {
-		return q.GetTimeline(ctx, id)
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Timeline, error) {
+		row, err := q.GetTimeline(ctx, id)
+		if err != nil {
+			return timeline.Timeline{}, err
+		}
+
+		return loadTimeline(ctx, q, row)
 	})
 }
 
 // TimelineByName returns the timeline called name.
 func (s *Store) TimelineByName(ctx context.Context, name string) (timeline.Timeline, error) {
-	return s.readTimeline(ctx, func(q *sqlcgen.Queries) (sqlcgen.Timeline, error) {
-		return q.GetTimelineByName(ctx, name)
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Timeline, error) {
+		row, err := q.GetTimelineByName(ctx, name)
+		if err != nil {
+			return timeline.Timeline{}, err
+		}
+
+		return loadTimeline(ctx, q, row)
 	})
 }
 
 // CurrentTimeline returns the timeline commands act on when none is named, or ErrNotFound
 // when none is set.
 func (s *Store) CurrentTimeline(ctx context.Context) (timeline.Timeline, error) {
-	return s.readTimeline(ctx, func(q *sqlcgen.Queries) (sqlcgen.Timeline, error) {
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Timeline, error) {
 		id, err := q.GetCurrentTimeline(ctx)
 		if err != nil {
-			return sqlcgen.Timeline{}, err
+			return timeline.Timeline{}, err
+		}
+		row, err := q.GetTimeline(ctx, id)
+		if err != nil {
+			return timeline.Timeline{}, err
 		}
 
-		return q.GetTimeline(ctx, id)
+		return loadTimeline(ctx, q, row)
 	})
 }
 
 // Timelines returns every timeline, ordered by name.
 func (s *Store) Timelines(ctx context.Context) ([]timeline.Timeline, error) {
-	var timelines []timeline.Timeline
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Timeline, error) {
 		rows, err := q.ListTimelines(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		timelines = make([]timeline.Timeline, 0, len(rows))
-		for _, row := range rows {
-			t, err := loadTimeline(ctx, q, row)
-			if err != nil {
-				return err
-			}
-			timelines = append(timelines, t)
-		}
-
-		return nil
+		return loadAll(rows, func(r sqlcgen.Timeline) (timeline.Timeline, error) { return loadTimeline(ctx, q, r) })
 	})
-
-	return timelines, err
 }
 
 // UpdateTimeline stores t's name, title and updated at, and replaces its refs with t.Refs
@@ -134,23 +136,6 @@ func (s *Store) ClearCurrentTimeline(ctx context.Context) error {
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		return q.ClearCurrentTimeline(ctx)
 	})
-}
-
-func (s *Store) readTimeline(
-	ctx context.Context, get func(*sqlcgen.Queries) (sqlcgen.Timeline, error),
-) (timeline.Timeline, error) {
-	var t timeline.Timeline
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
-		row, err := get(q)
-		if err != nil {
-			return err
-		}
-
-		t, err = loadTimeline(ctx, q, row)
-		return err
-	})
-
-	return t, err
 }
 
 func loadTimeline(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Timeline) (timeline.Timeline, error) {

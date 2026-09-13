@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -11,6 +12,10 @@ import (
 // newSourceID.
 func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string) error {
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
+		err := checkTarget(ctx, q, a.TimelineID, a.EventID)
+		if err != nil {
+			return err
+		}
 		source, err := sourceID(ctx, q, a.Source, newSourceID, a.CreatedAt)
 		if err != nil {
 			return err
@@ -34,32 +39,38 @@ func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSou
 
 // Annotation returns the annotation with id.
 func (s *Store) Annotation(ctx context.Context, id string) (timeline.Annotation, error) {
-	var a timeline.Annotation
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Annotation, error) {
 		row, err := q.GetAnnotation(ctx, id)
 		if err != nil {
-			return err
+			return timeline.Annotation{}, err
 		}
 
-		a, err = loadAnnotation(ctx, q, row)
-		return err
+		return loadAnnotation(ctx, q, row)
 	})
-
-	return a, err
 }
 
 // Annotations returns every annotation in the timeline with timelineID, on its events or
 // on the timeline itself, oldest first.
 func (s *Store) Annotations(ctx context.Context, timelineID string) ([]timeline.Annotation, error) {
-	return s.readAnnotations(ctx, func(q *sqlcgen.Queries) ([]sqlcgen.Annotation, error) {
-		return q.ListAnnotations(ctx, timelineID)
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Annotation, error) {
+		rows, err := q.ListAnnotations(ctx, timelineID)
+		if err != nil {
+			return nil, err
+		}
+
+		return loadAll(rows, func(r sqlcgen.Annotation) (timeline.Annotation, error) { return loadAnnotation(ctx, q, r) })
 	})
 }
 
 // EventAnnotations returns the annotations on the event with eventID, oldest first.
 func (s *Store) EventAnnotations(ctx context.Context, eventID string) ([]timeline.Annotation, error) {
-	return s.readAnnotations(ctx, func(q *sqlcgen.Queries) ([]sqlcgen.Annotation, error) {
-		return q.ListEventAnnotations(ctx, &eventID)
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Annotation, error) {
+		rows, err := q.ListEventAnnotations(ctx, &eventID)
+		if err != nil {
+			return nil, err
+		}
+
+		return loadAll(rows, func(r sqlcgen.Annotation) (timeline.Annotation, error) { return loadAnnotation(ctx, q, r) })
 	})
 }
 
@@ -97,29 +108,23 @@ func (s *Store) DeleteAnnotation(ctx context.Context, id string) error {
 	})
 }
 
-func (s *Store) readAnnotations(
-	ctx context.Context, list func(*sqlcgen.Queries) ([]sqlcgen.Annotation, error),
-) ([]timeline.Annotation, error) {
-	var annotations []timeline.Annotation
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
-		rows, err := list(q)
-		if err != nil {
-			return err
-		}
+// checkTarget returns an error wrapping ErrNotFound unless the timeline with timelineID
+// exists and eventID, when set, names an event in it.
+func checkTarget(ctx context.Context, q *sqlcgen.Queries, timelineID string, eventID *string) error {
+	_, err := q.GetTimeline(ctx, timelineID)
+	if err != nil || eventID == nil {
+		return err
+	}
 
-		annotations = make([]timeline.Annotation, 0, len(rows))
-		for _, row := range rows {
-			a, err := loadAnnotation(ctx, q, row)
-			if err != nil {
-				return err
-			}
-			annotations = append(annotations, a)
-		}
+	event, err := q.GetEvent(ctx, *eventID)
+	if err != nil {
+		return err
+	}
+	if event.TimelineID != timelineID {
+		return fmt.Errorf("event %s is not in timeline %s: %w", *eventID, timelineID, ErrNotFound)
+	}
 
-		return nil
-	})
-
-	return annotations, err
+	return nil
 }
 
 func loadAnnotation(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Annotation) (timeline.Annotation, error) {

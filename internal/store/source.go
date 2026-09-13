@@ -10,30 +10,25 @@ import (
 
 // Sources returns every source, ordered by name.
 func (s *Store) Sources(ctx context.Context) ([]timeline.Source, error) {
-	var sources []timeline.Source
-	err := s.read(ctx, func(q *sqlcgen.Queries) error {
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Source, error) {
 		rows, err := q.ListSources(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		sources = make([]timeline.Source, 0, len(rows))
-		for _, row := range rows {
-			var p instants
-			sources = append(sources, timeline.Source{ID: row.ID, Name: row.Name, CreatedAt: p.parse(row.CreatedAt)})
-			if p.err != nil {
-				return p.err
-			}
-		}
-
-		return nil
+		return loadAll(rows, loadSource)
 	})
+}
 
-	return sources, err
+func loadSource(row sqlcgen.Source) (timeline.Source, error) {
+	var p instants
+	source := timeline.Source{ID: row.ID, Name: row.Name, CreatedAt: p.parse(row.CreatedAt)}
+
+	return source, p.err
 }
 
 // sourceID returns the id of the source called name, first creating it with newID and
-// createdAt when no source has that name. A record without a source has neither.
+// createdAt when no source has that name. A nil name gives a nil id.
 func sourceID(
 	ctx context.Context, q *sqlcgen.Queries, name *string, newID string, createdAt time.Time,
 ) (*string, error) {
@@ -53,8 +48,7 @@ func sourceID(
 	return &source.ID, nil
 }
 
-// sourceName returns the name of the source with id. A record without a source has
-// neither.
+// sourceName returns the name of the source with id. A nil id gives a nil name.
 func sourceName(ctx context.Context, q *sqlcgen.Queries, id *string) (*string, error) {
 	if id == nil {
 		return id, nil
