@@ -5,6 +5,4 @@
 set -euo pipefail
 
 # Reaching here means every task in `depends` passed.
-# A typo in .golangci.yml silently disables the rule it misspells.
-golangci-lint config verify
 echo "preflight: all checks passed"

@@ -15,7 +15,7 @@ go install github.com/macintacos/coroner@latest
 
 ```sh
 mise run setup      # install pinned tools and Go modules, register git hooks
-mise run preflight  # lint, test, build, and verify the lint config: run before pushing
+mise run preflight  # lint, test, and build: run before pushing
 ```
 
 ## Status

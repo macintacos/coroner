@@ -21,8 +21,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run test` runs the Ginkgo suites, and through them the testscript end-to-end
   scripts and the rapid properties; a package pattern narrows it, and `--focus <regexp>`
   narrows Ginkgo specs only, so plain `Test*` functions such as `TestScripts` still run.
-- `mise run preflight` runs lint, test and build, then `golangci-lint config verify`. It
-  is the gate before declaring work done (Rule 7).
+- `mise run preflight` runs lint, test and build. It is the gate before declaring work
+  done (Rule 7).
 
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, and `pre-push` runs `mise run test` when Go files, `go.mod` or
@@ -112,5 +112,5 @@ digraph coroner_rules_router {
    listed under a **Breaking** changelog heading.
 6. **Keep the agent skill in sync:** when a command used in `skills/coroner/SKILL.md` (not
    in the repo yet) changes, update the skill in the same PR, or its examples test fails.
-7. **Run `mise run preflight` before declaring work done:** it runs lint, test, build and
-   `golangci-lint config verify` ([`.mise/tasks/preflight`](.mise/tasks/preflight)).
+7. **Run `mise run preflight` before declaring work done:** it runs lint, test and build
+   ([`.mise/tasks/preflight`](.mise/tasks/preflight)).
