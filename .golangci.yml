@@ -1,0 +1,94 @@
+# golangci-lint v2 config. https://golangci-lint.run/
+version: "2"
+linters:
+  enable:
+    # Bugs
+    - asasalint
+    - bidichk
+    - copyloopvar
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - makezero
+    - musttag
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - reassign
+    - recvcheck
+    - wastedassign
+    # Database and context
+    - containedctx
+    - contextcheck
+    - fatcontext
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    # Tests
+    - ginkgolinter
+    # Modern and simple
+    - dupword
+    - exptostd
+    - mirror
+    - modernize
+    - nolintlint
+    - perfsprint
+    - predeclared
+    - unconvert
+    - unparam
+    - usestdlibvars
+    # Design: dependencies arrive as parameters, output goes to an injected writer
+    - forbidigo
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - iface
+    - sloglint
+    # Style and security
+    - errname
+    - exhaustive
+    - gocritic
+    - gosec
+    - misspell
+    - noinlineerr
+    - nonamedreturns
+    - revive
+    - tagalign
+    # Defaults (https://golangci-lint.run/usage/linters/#enabled-by-default)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    revive:
+      enable-default-rules: true
+      rules:
+        - name: dot-imports
+          arguments:
+            - allowed-packages:
+                - github.com/onsi/ginkgo/v2
+                - github.com/onsi/gomega
+    staticcheck:
+      dot-import-whitelist:
+        - github.com/onsi/ginkgo/v2
+        - github.com/onsi/gomega
+formatters:
+  # No golines: it splits every argument of an over-long call onto its own line,
+  # which tears `"key", value` pairs apart in slog/testify-style calls.
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      module-path: github.com/macintacos/coroner
+      extra:
+        group-params: true
+    goimports:
+      local-prefixes:
+        - github.com/macintacos/coroner

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Build the coroner binary into bin/"
+
+set -euo pipefail
+
+go build -o bin/coroner .

@@ -1,0 +1,39 @@
+# rumdl config — scaffolded with `rumdl init`, then customized. rumdl lints AND
+# formats Markdown (one tool): `rumdl check` lints, `rumdl fmt` formats; hk drives
+# both via Builtins.rumdl. This is a per-project file — deploy it into the repo as
+# `.rumdl.toml` (leading dot). Reference: https://rumdl.dev
+[global]
+# Baseline disables: MD033 (inline HTML), MD034 (bare URLs). MD013 (line length)
+# is kept ON with reflow — see [MD013]. Opt-in rules (MD060, …) stay off unless
+# added to extend-enable. When migrating, port the old .markdownlint.json: disabled
+# rules go here, per-rule options into [MDxxx] sections below.
+disable = ["MD033", "MD034"]
+
+# Respect .gitignore when scanning directories (rumdl init default).
+respect-gitignore = true
+
+# Patterns rumdl skips (rumdl init defaults).
+exclude = [
+  ".git",
+  ".github",
+  "node_modules",
+  "vendor",
+  "dist",
+  "build",
+  "CHANGELOG.md",
+  "LICENSE.md",
+]
+
+[MD024]
+# Only flag duplicate headings that are siblings (share a parent), not across the
+# whole document. (This is also rumdl's default; kept explicit.)
+siblings-only = true
+
+[MD013]
+# Reflow holds prose to the line length, but code/digraph blocks can't be wrapped
+# to fit — exempt them so they don't fail an otherwise-clean file.
+line-length = 90
+reflow      = true
+reflow-mode = "normalize"
+code-spans  = false
+code-blocks = false

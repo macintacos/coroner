@@ -1,0 +1,104 @@
+amends "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Config.pkl"
+
+import "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Builtins.pkl"
+
+// Keep the amends/import version in lockstep with the `hk` version in mise.toml,
+// and only pin a version mise can actually install (`mise ls-remote hk`).
+//
+// Two mappings keep the mise tasks single-purpose:
+//   mise run format -> the `fix` hook   -> `formatters` (write mode)
+//   mise run lint   -> the `check` hook -> `linters` (read-only rule checks)
+// The `pre-commit` hook runs BOTH, so every commit stays formatted and clean.
+//
+// Step keys use a uniform `Language(Action)  [[builtins.tool]]` scheme,
+// column-aligned on the bracket tag, so hk's per-run output reads consistently.
+
+// Formatters — rewrite files into canonical form.
+local formatters = new Mapping<String, Step> {
+  // rumdl owns Markdown — one tool for both lint and format. The format step runs
+  // `rumdl fmt` (applies fixes, formatter exit codes — won't fail the commit on
+  // leftover lint). yamlfmt owns YAML, taplo TOML.
+  // `check_diff = null` on rumdl and taplo_format: hk applies a builtin's check_diff
+  // patch instead of running `fix`, and their diffs don't apply cleanly. Builtins.rumdl
+  // also sets `check_after_diff`, which hk rejects without a check_diff.
+  ["Markdown(Format)  [[builtins.rumdl]]"] = (Builtins.rumdl) {
+    check = "rumdl fmt --check {{ files }}"
+    check_diff = null
+    check_after_diff = false
+    fix = "rumdl fmt {{ files }}"
+  }
+
+  ["YAML(Format)      [[builtins.yamlfmt]]"] = Builtins.yamlfmt
+
+  ["TOML(Format)      [[builtins.taplo_format]]"] = (Builtins.taplo_format) {
+    check_diff = null
+  }
+
+  ["Pkl(Format)       [[builtins.pkl_format]]"] = Builtins.pkl_format
+
+  ["Shell(Format)     [[builtins.shfmt]]"] = Builtins.shfmt
+
+  ["Go(Format)        [[builtins.golangci_lint_fmt]]"] = Builtins.golangci_lint_fmt
+
+  ["Go(Tidy)          [[builtins.gomod_tidy]]"] = Builtins.gomod_tidy
+
+  // `sqlc generate` writes Go files outside the glob, so stage them explicitly.
+  ["SQL(Generate)     [[sqlc]]"] = new Step {
+    glob = List("sqlc.yaml", "internal/db/migrations/*.sql", "internal/db/queries/*.sql")
+    check = "sqlc diff"
+    fix = "sqlc generate"
+    stage = List("internal/db/*.go")
+  }
+}
+
+// Linters — check rules without rewriting.
+local linters = new Mapping<String, Step> {
+  ["Shell(Lint)       [[builtins.shellcheck]]"] = Builtins.shellcheck
+
+  // Same tool, read-only lint: `rumdl check` reports violations (exit 1);
+  // pre-commit autofixes via the builtin's `rumdl check --fix`. Config: .rumdl.toml.
+  ["Markdown(Lint)    [[builtins.rumdl]]"] = (Builtins.rumdl) {
+    check = "rumdl check {{ files }}"
+    check_diff = null
+    check_after_diff = false
+  }
+
+  ["TOML(Lint)        [[builtins.taplo]]"] = Builtins.taplo
+
+  // pkl lints by evaluating the file (`pkl eval`), which resolves the remote
+  // amends/import package (cached after first run).
+  ["Pkl(Lint)         [[builtins.pkl]]"] = Builtins.pkl
+
+  ["Go(Lint)          [[builtins.golangci_lint]]"] = Builtins.golangci_lint
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps = new Mapping<String, Step> {
+      ...formatters
+      ...linters
+    }
+  }
+
+  ["pre-push"] {
+    steps = new Mapping<String, Step> {
+      ["Go(Test)          [[mise run test]]"] = new Step {
+        glob = List("**/*.go", "go.mod", "go.sum")
+        check = "mise run test"
+      }
+    }
+  }
+
+  // `mise run format` — formatters only, in write mode.
+  ["fix"] {
+    fix = true
+    steps = formatters
+  }
+
+  // `mise run lint` — linters only (rule checks); read-only.
+  ["check"] {
+    steps = linters
+  }
+}
