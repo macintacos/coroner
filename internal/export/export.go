@@ -1,7 +1,7 @@
 // Package export is coroner's public machine representation: the canonical JSON object for
 // each timeline, source, event and annotation, the versioned export envelope that carries
 // them, and the one encoder that writes them. Every key is always present, so no field here
-// uses omitempty or omitzero; a key that may be missing is a pointer, which encodes as null.
+// uses omitempty or omitzero; a value that may be absent is a pointer, which encodes as null.
 package export
 
 import (
@@ -31,10 +31,14 @@ type Envelope struct {
 	// ExportedAt is when the export was written.
 	ExportedAt Instant `json:"exported_at"`
 	// Query is the selection the export was made with.
-	Query       Query        `json:"query"`
-	Timelines   []Timeline   `json:"timelines"`
-	Sources     []Source     `json:"sources"`
-	Events      []Event      `json:"events"`
+	Query Query `json:"query"`
+	// Timelines are the exported timelines.
+	Timelines []Timeline `json:"timelines"`
+	// Sources are the sources the exported events and annotations name.
+	Sources []Source `json:"sources"`
+	// Events are the exported events, from every exported timeline.
+	Events []Event `json:"events"`
+	// Annotations are the exported annotations.
 	Annotations []Annotation `json:"annotations"`
 }
 
@@ -59,26 +63,33 @@ type Query struct {
 
 // Timeline is the named chronology of one investigation.
 type Timeline struct {
+	// ID is the timeline's ID.
 	ID string `json:"id"`
 	// Name is the timeline's unique name, such as mongo-outage.
 	Name string `json:"name"`
 	// Title is a free-text heading; it may be empty.
 	Title string `json:"title"`
 	// Refs are issue-tracker keys or URLs the timeline belongs to, kept as written.
-	Refs      []string `json:"refs"`
-	CreatedAt Instant  `json:"created_at"`
+	Refs []string `json:"refs"`
+	// CreatedAt is when the timeline was created in coroner.
+	CreatedAt Instant `json:"created_at"`
 }
 
 // Source is the system, service or person an event or annotation came from.
 type Source struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
+	// ID is the source's ID.
+	ID string `json:"id"`
+	// Name is the source's name, such as slack or db-2/mongod.
+	Name string `json:"name"`
+	// CreatedAt is when the source was first recorded in coroner.
 	CreatedAt Instant `json:"created_at"`
 }
 
 // Event is something that happened at a moment, or over an interval, as a source reported it.
 type Event struct {
-	ID         string `json:"id"`
+	// ID is the event's ID.
+	ID string `json:"id"`
+	// TimelineID is the ID of the event's timeline.
 	TimelineID string `json:"timeline_id"`
 	// Seq is the event's permanent per-timeline counter value; null only in a preview of an
 	// event not yet added.
@@ -99,33 +110,42 @@ type Event struct {
 	// EndedAt is when the interval ended; null for an event at a single moment.
 	EndedAt *Instant `json:"ended_at" jsonschema:"nullable"`
 	// Source is the name of the source the event came from.
-	Source *string  `json:"source" jsonschema:"nullable"`
-	Tags   []string `json:"tags"`
-	Text   string   `json:"text"`
+	Source *string `json:"source" jsonschema:"nullable"`
+	// Tags are lowercase keywords, such as phase:detect.
+	Tags []string `json:"tags"`
+	// Text is what happened.
+	Text string `json:"text"`
 	// URL is a permalink to the thing itself, such as the log line or chat message.
 	URL *string `json:"url" jsonschema:"nullable"`
 	// Author is the person who added the event, not necessarily its source.
-	Author    *string `json:"author"     jsonschema:"nullable"`
+	Author *string `json:"author" jsonschema:"nullable"`
+	// CreatedAt is when the event was added to coroner.
 	CreatedAt Instant `json:"created_at"`
+	// UpdatedAt is when the event was last changed in coroner.
 	UpdatedAt Instant `json:"updated_at"`
 }
 
 // Annotation is evidence or commentary attached to an event, or to its whole timeline.
 type Annotation struct {
-	ID         string `json:"id"`
+	// ID is the annotation's ID.
+	ID string `json:"id"`
+	// TimelineID is the ID of the annotation's timeline.
 	TimelineID string `json:"timeline_id"`
 	// EventID is the event annotated; null for an annotation on the whole timeline.
 	EventID *string `json:"event_id" jsonschema:"nullable"`
 	// Kind is evidence or comment. Consumers must accept values they do not know.
 	Kind timeline.AnnotationKind `json:"kind"`
-	Body string                  `json:"body"`
+	// Body is the annotation's content.
+	Body string `json:"body"`
 	// Author is the person who added the annotation, not necessarily its source.
 	Author *string `json:"author" jsonschema:"nullable"`
 	// Source is the name of the source the annotation came from.
 	Source *string `json:"source" jsonschema:"nullable"`
 	// URL is a permalink to the thing itself, such as the log line or chat message.
-	URL       *string `json:"url"        jsonschema:"nullable"`
+	URL *string `json:"url" jsonschema:"nullable"`
+	// CreatedAt is when the annotation was added to coroner.
 	CreatedAt Instant `json:"created_at"`
+	// UpdatedAt is when the annotation was last changed in coroner.
 	UpdatedAt Instant `json:"updated_at"`
 }
 
@@ -141,13 +161,14 @@ func NewEnvelope(coronerVersion string, exportedAt time.Time) Envelope {
 }
 
 // Write encodes v and a newline to w: struct keys in declaration order, map keys sorted, and
-// <, > and & escaped so the JSON can be embedded in HTML. It fails on invalid UTF-8.
+// <, > and & escaped so the JSON can be embedded in HTML. It fails on invalid UTF-8, and
+// writes nothing to w when encoding fails.
 func Write(w io.Writer, v any) error {
-	err := json.MarshalWrite(w, v, json.Deterministic(true), jsontext.EscapeForHTML(true))
+	b, err := json.Marshal(v, json.Deterministic(true), jsontext.EscapeForHTML(true))
 	if err != nil {
 		return err
 	}
 
-	_, err = io.WriteString(w, "\n")
+	_, err = w.Write(append(b, '\n'))
 	return err
 }

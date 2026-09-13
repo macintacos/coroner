@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/invopop/jsonschema"
 
@@ -58,28 +59,34 @@ func main() {
 func generate() ([]byte, error) {
 	reflector := &jsonschema.Reflector{AllowAdditionalProperties: true, ExpandedStruct: true, Mapper: instantSchema}
 
-	err := reflector.AddGoComments(modulePath, exportDir)
+	err := reflector.AddGoComments(modulePath, exportDir, jsonschema.WithFullComment())
 	if err != nil {
 		return nil, err
 	}
 
 	schema := reflector.Reflect(export.Envelope{})
 	schema.ID = jsonschema.ID("https://raw.githubusercontent.com/macintacos/coroner/main/" + outPath)
-	liftNullableDescriptions(schema)
+	tidyDescriptions(schema)
 	for _, def := range schema.Definitions {
-		liftNullableDescriptions(def)
+		tidyDescriptions(def)
 	}
 
 	var b bytes.Buffer
 	err = json.MarshalWrite(&b, schema, json.Deterministic(true), jsontext.Multiline(true), jsontext.WithIndent("  "))
+	if err != nil {
+		return nil, err
+	}
+
 	b.WriteByte('\n')
 
-	return b.Bytes(), err
+	return b.Bytes(), nil
 }
 
-// liftNullableDescriptions moves each nullable property's description from inside its oneOf,
-// where the nullable tag leaves it, onto the property.
-func liftNullableDescriptions(object *jsonschema.Schema) {
+// tidyDescriptions joins the wrapped lines of object's description and of each property's, and
+// moves a nullable property's description from inside its oneOf, where the nullable tag leaves
+// it, onto the property.
+func tidyDescriptions(object *jsonschema.Schema) {
+	object.Description = strings.Join(strings.Fields(object.Description), " ")
 	if object.Properties == nil {
 		return
 	}
@@ -88,6 +95,7 @@ func liftNullableDescriptions(object *jsonschema.Schema) {
 		if len(property.OneOf) > 0 && property.Description == "" {
 			property.Description, property.OneOf[0].Description = property.OneOf[0].Description, ""
 		}
+		property.Description = strings.Join(strings.Fields(property.Description), " ")
 	}
 }
 

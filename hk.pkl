@@ -66,7 +66,7 @@ local formatters = new Mapping<String, Step> {
     stage = List("docs/reference/cli/*.md")
   }
 
-  // schemagen writes the export schema outside the Go globs, so stage it explicitly.
+  // schemagen rewrites the schema when only the Go types change, so stage it explicitly.
   ["Schema(Generate)  [[schemagen]]"] = new Step {
     glob =
       List(
@@ -163,7 +163,7 @@ hooks {
     steps = formatters
   }
 
-  // `mise run lint` — linters, plus the generated CLI reference's and export schema's drift checks; read-only.
+  // `mise run lint` — linters, plus the generators' drift checks; read-only.
   ["check"] {
     steps = (linters) {
       ["Docs(Generate)    [[docgen]]"] = formatters["Docs(Generate)    [[docgen]]"]

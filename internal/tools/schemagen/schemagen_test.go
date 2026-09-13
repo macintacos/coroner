@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json/v2"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -27,6 +28,10 @@ func definitions(schema []byte) map[reflect.Type]object {
 	defs, ok := root["$defs"].(object)
 	Expect(ok).To(BeTrue(), "$defs")
 
+	// Listing $defs exactly makes a new definition fail here until it joins byType, so every
+	// spec that ranges over definitions covers it.
+	Expect(slices.Sorted(maps.Keys(defs))).To(Equal([]string{"Annotation", "Event", "Query", "Source", "Timeline"}))
+
 	byType := map[reflect.Type]object{reflect.TypeFor[export.Envelope](): root}
 	for _, t := range []reflect.Type{
 		reflect.TypeFor[export.Query](), reflect.TypeFor[export.Timeline](), reflect.TypeFor[export.Source](),
@@ -38,6 +43,45 @@ func definitions(schema []byte) map[reflect.Type]object {
 	}
 
 	return byType
+}
+
+// objects returns every JSON object in the decoded schema node, at any depth.
+func objects(node any) []object {
+	var found []object
+	switch v := node.(type) {
+	case object:
+		found = append(found, v)
+		for _, child := range v {
+			found = append(found, objects(child)...)
+		}
+	case []any:
+		for _, child := range v {
+			found = append(found, objects(child)...)
+		}
+	}
+
+	return found
+}
+
+func jsonName(field reflect.StructField) string {
+	name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+	return name
+}
+
+// docKeys returns the keys the reference doc's table lists under heading, in order.
+func docKeys(doc, heading string) []string {
+	_, section, found := strings.Cut(doc, "\n"+heading+"\n")
+	Expect(found).To(BeTrue(), heading)
+	if end := regexp.MustCompile(`(?m)^#`).FindStringIndex(section); end != nil {
+		section = section[:end[0]]
+	}
+
+	var keys []string
+	for _, match := range regexp.MustCompile("(?m)^\\| `([a-z_]+)` \\|").FindAllStringSubmatch(section, -1) {
+		keys = append(keys, match[1])
+	}
+
+	return keys
 }
 
 func property(def object, name string) object {
@@ -83,7 +127,12 @@ var _ = Describe("schemagen", func() {
 	})
 
 	It("lets every object carry properties it does not list", func() {
-		Expect(string(schema)).NotTo(ContainSubstring(`"additionalProperties": false`))
+		var root any
+		Expect(json.Unmarshal(schema, &root)).To(Succeed())
+
+		for _, obj := range objects(root) {
+			Expect(obj).NotTo(HaveKeyWithValue("additionalProperties", false))
+		}
 	})
 
 	It("requires every property of every object", func() {
@@ -101,7 +150,7 @@ var _ = Describe("schemagen", func() {
 	It("allows null for exactly the fields that are pointers", func() {
 		for t, def := range definitions(schema) {
 			for field := range t.Fields() {
-				name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+				name := jsonName(field)
 				Expect(allowsNull(property(def, name))).To(Equal(field.Type.Kind() == reflect.Pointer), t.Name()+"."+name)
 			}
 		}
@@ -116,11 +165,47 @@ var _ = Describe("schemagen", func() {
 		Expect(regexp.MustCompile(pattern).MatchString(at.Format(time.RFC3339Nano))).To(BeFalse())
 	})
 
-	It("describes objects and fields with their Go doc comments", func() {
-		event := definitions(schema)[reflect.TypeFor[export.Event]()]
+	It("describes objects with their whole Go doc comment, unwrapped", func() {
+		byType := definitions(schema)
+		var root any
+		Expect(json.Unmarshal(schema, &root)).To(Succeed())
 
-		Expect(event["description"]).To(HavePrefix("Event is something that happened"))
-		Expect(property(event, "occurred_offset")["description"]).NotTo(BeEmpty())
+		Expect(byType[reflect.TypeFor[export.Event]()]["description"]).To(HavePrefix("Event is something that happened"))
+		Expect(byType[reflect.TypeFor[export.Query]()]["description"]).To(ContainSubstring("null or an empty list"))
+		for _, obj := range objects(root) {
+			if description, ok := obj["description"].(string); ok {
+				Expect(description).NotTo(ContainSubstring("\n"))
+			}
+		}
+	})
+
+	It("describes every property with its Go doc comment", func() {
+		for t, def := range definitions(schema) {
+			properties, _ := def["properties"].(object)
+			for name, prop := range properties {
+				Expect(prop).To(HaveKeyWithValue("description", Not(BeEmpty())), t.Name()+"."+name)
+			}
+		}
+	})
+
+	It("lists each object's keys in the export format reference, in field order", func() {
+		doc, err := os.ReadFile("docs/reference/export-format.md")
+		Expect(err).NotTo(HaveOccurred())
+		headings := map[reflect.Type]string{
+			reflect.TypeFor[export.Envelope](): "## The envelope", reflect.TypeFor[export.Query](): "### query",
+			reflect.TypeFor[export.Timeline](): "### Timeline", reflect.TypeFor[export.Source](): "### Source",
+			reflect.TypeFor[export.Event](): "### Event", reflect.TypeFor[export.Annotation](): "### Annotation",
+		}
+
+		for t := range definitions(schema) {
+			Expect(headings).To(HaveKey(t), t.Name())
+			var names []string
+			for field := range t.Fields() {
+				names = append(names, jsonName(field))
+			}
+
+			Expect(docKeys(string(doc), headings[t])).To(Equal(names), t.Name())
+		}
 	})
 
 	Describe("check", func() {

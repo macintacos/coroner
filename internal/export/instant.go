@@ -1,6 +1,7 @@
 package export
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/macintacos/coroner/internal/timeline"
@@ -10,7 +11,12 @@ import (
 // RFC 3339 in UTC with nine fractional digits, so lexical order is chronological order.
 type Instant time.Time
 
-// MarshalText renders i with timeline.FormatInstant.
+// MarshalText renders i with timeline.FormatInstant, and fails for a year outside 0000–9999,
+// which the fixed width cannot hold.
 func (i Instant) MarshalText() ([]byte, error) {
+	if year := time.Time(i).UTC().Year(); year < 0 || year > 9999 {
+		return nil, fmt.Errorf("instant: year %d is outside 0000–9999", year)
+	}
+
 	return []byte(timeline.FormatInstant(time.Time(i))), nil
 }

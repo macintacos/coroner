@@ -4,11 +4,16 @@
 importers.*
 
 An export is coroner's only sharing contract. The SQLite database stays on the machine
-that wrote it and its schema can change in any release; an export is what leaves. Every
-JSON object coroner prints follows this page: `--json` command output,
-`export --format json`, and JSONL records all use the same object for a timeline, source,
-event, or annotation. The only difference is a command's output-only keys, which this page
-names beside the object they extend and which an export never holds.
+that wrote it and its schema can change in any release; an export is what leaves. This
+page describes the export format: its envelope, its objects, how they are encoded, and how
+the format evolves. The commands that write exports are not in coroner yet (EXC-1316).
+
+Command `--json` and JSONL output uses the same keys for a timeline, source, event, or
+annotation today. A command may wrap them, as `event list`, `source list`, and `tag list`
+do with `total` and `truncated`, or extend them with output-only keys, which this page
+names beside the object they extend and which an export never holds. That output is
+encoded as `coroner help formatting` describes; the [§ Encoding rules](#encoding-rules)
+are what an export guarantees.
 
 An *instant*, in the tables below, is a string in coroner's canonical time format: RFC
 3339 in UTC with nine fractional digits, such as `2026-09-10T14:54:03.180000000Z`
@@ -81,8 +86,11 @@ sort them yourself if you need one.
 
 ## Records
 
-These objects appear in an envelope's lists, as JSONL records, and as command `--json`
-output. The vocabulary is coroner's glossary, `CONTEXT.md`.
+These objects appear in an envelope's lists and as JSONL records. The vocabulary is
+coroner's glossary, `CONTEXT.md`.
+
+An event or annotation names its source by `name`, not by ID: to find its record in
+`sources`, match its `source` to a source's `name`.
 
 ### Timeline
 
@@ -94,9 +102,9 @@ output. The vocabulary is coroner's glossary, `CONTEXT.md`.
 | `refs` | array of string | Issue-tracker keys or URLs the timeline belongs to, as written. |
 | `created_at` | instant | When the timeline was created in coroner. |
 
-`coroner timeline list` and `timeline view` also print a `current` key, which says whether
-the timeline is the database's current timeline. That is state of one machine, so it is
-output only: it is never part of an exported timeline.
+`coroner timeline list` also prints a `current` key, which says whether the timeline is
+the database's current timeline. That is state of one machine, so it is output only: it is
+never part of an exported timeline.
 
 ### Source
 
@@ -106,18 +114,22 @@ output only: it is never part of an exported timeline.
 | `name` | string | Name, such as `slack` or `db-2/mongod`. |
 | `created_at` | instant | When the source was first recorded in coroner. |
 
+`coroner source list` and `source edit` also print `event_count`, `annotation_count`,
+`first_occurred_at`, and `last_occurred_at`, which describe the source's use in one
+database. They are output only: never part of an exported source.
+
 ### Event
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `id` | string | The event's ID. |
 | `timeline_id` | string | ID of the event's timeline. |
-| `seq` | integer or null | Permanent per-timeline counter, shown as `#12`; see below. |
+| `seq` | integer or null | Permanent per-timeline counter, shown as `#12`; null only in a preview, see below. |
 | `occurred_at` | instant | When it happened or its interval started: the start of its precision window. |
 | `occurred_offset` | integer or null | The input's offset from UTC in seconds, positive east; null when the input was `Z` or an epoch, which say nothing about a local offset. |
 | `precision` | string | How exact `occurred_at` is; see below. |
 | `approximate` | boolean | Whether `occurred_at` is a guess. |
-| `occurred_raw` | string or null | The time exactly as it was given. |
+| `occurred_raw` | string or null | The time exactly as it was given; null when none was given and the event took the time it was added. |
 | `ended_at` | instant or null | When the interval ended; null for a single moment. |
 | `source` | string or null | Name of the source the event came from. |
 | `tags` | array of string | Lowercase keywords, such as `phase:detect`. |
@@ -134,7 +146,7 @@ In format 1.0, `precision` is one of `day`, `hour`, `minute`, `second`, `millise
 `microsecond`, or `nanosecond`. It is an open enum ([§ Encoding rules](#encoding-rules)):
 the schema does not restrict its values, and a consumer accepts one it does not know. A
 coarse event stands for the start of its window, so an event at `10:15` with precision
-`minute` sorts before every event at `10:15` and some seconds.
+`minute` sorts before one at `10:15:30`.
 
 ### Annotation
 
@@ -143,7 +155,7 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 | `id` | string | The annotation's ID. |
 | `timeline_id` | string | ID of the annotation's timeline. |
 | `event_id` | string or null | ID of the annotated event; null for the whole timeline. |
-| `kind` | string | `evidence` for raw material, `comment` for commentary. |
+| `kind` | string | `evidence` for raw material, `comment` for commentary; an open enum. |
 | `body` | string | The annotation's content. |
 | `author` | string or null | Who added the annotation, not necessarily its source. |
 | `source` | string or null | Name of the source the annotation came from. |
@@ -153,7 +165,7 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 
 ### JSONL records
 
-JSONL output writes one record per line. A record is the object above with one extra key
+A JSONL export writes one record per line. A record is the object above with one extra key
 first, `type`, naming the object: `timeline`, `source`, `event`, or `annotation`.
 
 ```json
@@ -162,7 +174,9 @@ first, `type`, naming the object: `timeline`, `source`, `event`, or `annotation`
 
 ## Encoding rules
 
-- **Keys are snake_case**, in the order the tables above list them.
+- **Keys are snake_case**, and appear in the order the tables above list them. Key order
+  is not part of the contract: a consumer never depends on it, and a minor version may add
+  a key at any position.
 - **Every key is always present.** A missing scalar is `null`, and an empty collection is
   `[]` or `{}`; a key is never left out. A consumer can tell "unknown" from "not in this
   version" by the key's presence.
@@ -175,9 +189,8 @@ first, `type`, naming the object: `timeline`, `source`, `event`, or `annotation`
 - **`source` is a name**, not an ID, so records match across databases by name.
 - **`<`, `>`, and `&` are escaped** as `\u003c`, `\u003e`, and `\u0026`, so the JSON can
   sit inside an HTML `<script>` element. Every JSON parser decodes them back.
-- **Output is deterministic.** The same data encodes to the same bytes, and object keys in
-  maps are sorted.
-- **Text is valid UTF-8.** coroner rejects invalid UTF-8 when it is written.
+- **Output is deterministic:** the same values encode to the same bytes.
+- **Strings are valid UTF-8.**
 
 jq's `fromdateiso8601` rejects fractional seconds
 ([jqlang/jq#2224](https://github.com/jqlang/jq/issues/2224)). Strip them first; the result
@@ -214,9 +227,6 @@ Further rules:
 - A deprecated key stays for at least one major version, and the schema marks it
   `"deprecated": true`.
 - A `--format-version` flag, to write an older format version, waits until 2.0.
-
-Changing a command's flags follows coroner's CLI deprecation policy instead: six months
-and one minor release.
 
 ## The schema
 

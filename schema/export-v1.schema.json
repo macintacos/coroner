@@ -5,10 +5,12 @@
     "Annotation": {
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "description": "ID is the annotation's ID."
         },
         "timeline_id": {
-          "type": "string"
+          "type": "string",
+          "description": "TimelineID is the ID of the annotation's timeline."
         },
         "event_id": {
           "oneOf": [
@@ -26,7 +28,8 @@
           "description": "Kind is evidence or comment. Consumers must accept values they do not know."
         },
         "body": {
-          "type": "string"
+          "type": "string",
+          "description": "Body is the annotation's content."
         },
         "author": {
           "oneOf": [
@@ -64,12 +67,14 @@
         "created_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "CreatedAt is when the annotation was added to coroner."
         },
         "updated_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "UpdatedAt is when the annotation was last changed in coroner."
         }
       },
       "type": "object",
@@ -90,10 +95,12 @@
     "Event": {
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "description": "ID is the event's ID."
         },
         "timeline_id": {
-          "type": "string"
+          "type": "string",
+          "description": "TimelineID is the ID of the event's timeline."
         },
         "seq": {
           "oneOf": [
@@ -104,13 +111,13 @@
               "type": "null"
             }
           ],
-          "description": "Seq is the event's permanent per-timeline counter value; null only in a preview of an\nevent not yet added."
+          "description": "Seq is the event's permanent per-timeline counter value; null only in a preview of an event not yet added."
         },
         "occurred_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
           "format": "date-time",
-          "description": "OccurredAt is when the event happened, or its interval started: the start of its\nprecision window."
+          "description": "OccurredAt is when the event happened, or its interval started: the start of its precision window."
         },
         "occurred_offset": {
           "oneOf": [
@@ -121,11 +128,11 @@
               "type": "null"
             }
           ],
-          "description": "OccurredOffset is the input's offset from UTC in seconds, positive east; null when the\ninput was Z or an epoch, which say nothing about a local offset."
+          "description": "OccurredOffset is the input's offset from UTC in seconds, positive east; null when the input was Z or an epoch, which say nothing about a local offset."
         },
         "precision": {
           "type": "string",
-          "description": "Precision is how exact occurred_at is, from day to nanosecond. Consumers must accept\nvalues they do not know."
+          "description": "Precision is how exact occurred_at is, from day to nanosecond. Consumers must accept values they do not know."
         },
         "approximate": {
           "type": "boolean",
@@ -170,10 +177,12 @@
           "items": {
             "type": "string"
           },
-          "type": "array"
+          "type": "array",
+          "description": "Tags are lowercase keywords, such as phase:detect."
         },
         "text": {
-          "type": "string"
+          "type": "string",
+          "description": "Text is what happened."
         },
         "url": {
           "oneOf": [
@@ -200,12 +209,14 @@
         "created_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "CreatedAt is when the event was added to coroner."
         },
         "updated_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "UpdatedAt is when the event was last changed in coroner."
         }
       },
       "type": "object",
@@ -311,20 +322,23 @@
         "contains",
         "limit"
       ],
-      "description": "Query is the selection an export was made with."
+      "description": "Query is the selection an export was made with. Every field but Timelines filters events, and null or an empty list means that filter was not applied."
     },
     "Source": {
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "description": "ID is the source's ID."
         },
         "name": {
-          "type": "string"
+          "type": "string",
+          "description": "Name is the source's name, such as slack or db-2/mongod."
         },
         "created_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "CreatedAt is when the source was first recorded in coroner."
         }
       },
       "type": "object",
@@ -338,7 +352,8 @@
     "Timeline": {
       "properties": {
         "id": {
-          "type": "string"
+          "type": "string",
+          "description": "ID is the timeline's ID."
         },
         "name": {
           "type": "string",
@@ -358,7 +373,8 @@
         "created_at": {
           "type": "string",
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
-          "format": "date-time"
+          "format": "date-time",
+          "description": "CreatedAt is when the timeline was created in coroner."
         }
       },
       "type": "object",
@@ -399,25 +415,29 @@
       "items": {
         "$ref": "#/$defs/Timeline"
       },
-      "type": "array"
+      "type": "array",
+      "description": "Timelines are the exported timelines."
     },
     "sources": {
       "items": {
         "$ref": "#/$defs/Source"
       },
-      "type": "array"
+      "type": "array",
+      "description": "Sources are the sources the exported events and annotations name."
     },
     "events": {
       "items": {
         "$ref": "#/$defs/Event"
       },
-      "type": "array"
+      "type": "array",
+      "description": "Events are the exported events, from every exported timeline."
     },
     "annotations": {
       "items": {
         "$ref": "#/$defs/Annotation"
       },
-      "type": "array"
+      "type": "array",
+      "description": "Annotations are the exported annotations."
     }
   },
   "type": "object",

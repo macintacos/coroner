@@ -2,13 +2,14 @@ package export_test
 
 import (
 	"bytes"
+	"fmt"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/export"
-	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func encode(v any) (string, error) {
@@ -45,28 +46,28 @@ var _ = Describe("Write", func() {
 				`"timelines":[],"sources":[],"events":[],"annotations":[]}` + "\n"))
 	})
 
-	It("encodes the same values to identical bytes every time", func() {
-		envelope := export.NewEnvelope("0.1.0", time.Date(2026, 9, 13, 1, 30, 0, 0, time.UTC))
-		envelope.Events = []export.Event{{ID: "e1", Tags: []string{"b", "a"}, Precision: timeline.PrecisionSecond}}
-		envelope.Annotations = []export.Annotation{{ID: "a1", Kind: timeline.AnnotationComment, EventID: new("e1")}}
-
-		first, err := encode(envelope)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(encode(envelope)).To(Equal(first))
-	})
-
 	It("sorts map keys", func() {
-		Expect(encode(map[string]int{"b": 1, "c": 2, "a": 3})).To(Equal(`{"a":3,"b":1,"c":2}` + "\n"))
+		m := map[string]int{}
+		pairs := make([]string, 26)
+		for i := range pairs {
+			key := string(rune('a' + i))
+			m[key] = i
+			pairs[i] = fmt.Sprintf("%q:%d", key, i)
+		}
+
+		Expect(encode(m)).To(Equal("{" + strings.Join(pairs, ",") + "}\n"))
 	})
 
 	It("escapes <, > and & so the output can sit inside an HTML script element", func() {
 		Expect(encode(export.Source{Name: "</script>&"})).To(ContainSubstring(`"name":"\u003c/script\u003e\u0026"`))
 	})
 
-	It("fails on invalid UTF-8 rather than replacing it", func() {
-		_, err := encode(export.Source{Name: "\xff"})
+	It("fails on invalid UTF-8 rather than replacing it, and writes nothing", func() {
+		// The long name makes a streaming encoder flush before it reaches the invalid title.
+		out, err := encode(export.Timeline{Name: strings.Repeat("a", 1<<16), Title: "\xff"})
 
 		Expect(err).To(MatchError(ContainSubstring("invalid UTF-8")))
+		Expect(out).To(BeEmpty())
 	})
 })
 
@@ -79,5 +80,15 @@ var _ = Describe("Instant", func() {
 		Entry("a millisecond in +05:30", time.Date(2026, 9, 12, 19, 35, 3, 180_000_000, time.FixedZone("IST", 19800)),
 			"2026-09-12T14:05:03.180000000Z"),
 		Entry("the zero value", time.Time{}, "0001-01-01T00:00:00.000000000Z"),
+	)
+
+	DescribeTable("fails for a year the fixed width cannot hold",
+		func(t time.Time, year string) {
+			_, err := encode(export.Instant(t))
+
+			Expect(err).To(MatchError(ContainSubstring("year " + year)))
+		},
+		Entry("after 9999", time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), "10000"),
+		Entry("before 0000", time.Date(-1, 12, 31, 23, 59, 59, 0, time.UTC), "-1"),
 	)
 })
