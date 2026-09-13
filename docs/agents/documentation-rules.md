@@ -26,7 +26,7 @@ digraph coroner_docs_router {
     "Edit CONTEXT.md" [shape=box];
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
-    "Regenerate the CLI reference (not in the repo yet — EXC-1331)" [shape=box];
+    "Regenerate docs/reference/cli/" [shape=box];
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
@@ -39,7 +39,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
-    "Which doc does the change affect?" -> "Regenerate the CLI reference (not in the repo yet — EXC-1331)" [label="a command or flag changed: regenerate, never hand-edit"];
+    "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command or flag changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
 }
 ```
@@ -69,8 +69,9 @@ digraph coroner_docs_router {
   deprecation mechanics.
 - **The docs site pages** (not in the repo yet) — the site itself (EXC-1300), the tutorial
   and how-to guides (EXC-1301), and the reference and explanation pages (EXC-1302).
-- **The CLI reference** (not in the repo yet — EXC-1331) — generated from the commands,
-  with a drift check. Never hand-edited.
+- **[`docs/reference/cli/`](../reference/cli/)** (human-facing) — the CLI reference, one
+  page per command, generated from the commands by `go run ./internal/tools/docgen` and
+  checked for drift by `mise run lint`. Never hand-edited.
 - **`skills/coroner/SKILL.md`** (not in the repo yet — EXC-1277) — the agent skill that
   ships with coroner, with its references.
 
