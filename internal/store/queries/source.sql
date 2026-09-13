@@ -7,6 +7,7 @@ INSERT INTO source (
 RETURNING *;
 
 -- name: UpsertSource :one
+-- UpsertSource returns the existing source when name is taken, ignoring id and created_at; the no-op DO UPDATE is what makes RETURNING yield that row.
 INSERT INTO source (
   id, name, created_at
 ) VALUES (

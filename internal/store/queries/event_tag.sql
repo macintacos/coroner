@@ -1,4 +1,5 @@
 -- name: AddEventTag :exec
+-- An existing tag is left as is.
 INSERT INTO event_tag (
   event_id, tag
 ) VALUES (

@@ -35,12 +35,12 @@ const setCurrentTimeline = `-- name: SetCurrentTimeline :exec
 INSERT INTO setting (
   key, value
 ) VALUES (
-  'current_timeline', ?
+  'current_timeline', ?1
 )
 ON CONFLICT (key) DO UPDATE SET value = excluded.value
 `
 
-func (q *Queries) SetCurrentTimeline(ctx context.Context, value string) error {
-	_, err := q.db.ExecContext(ctx, setCurrentTimeline, value)
+func (q *Queries) SetCurrentTimeline(ctx context.Context, timelineID string) error {
+	_, err := q.db.ExecContext(ctx, setCurrentTimeline, timelineID)
 	return err
 }

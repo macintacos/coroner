@@ -23,6 +23,7 @@ type AddTimelineRefParams struct {
 	Ref        string
 }
 
+// An existing ref is left as is.
 func (q *Queries) AddTimelineRef(ctx context.Context, arg AddTimelineRefParams) error {
 	_, err := q.db.ExecContext(ctx, addTimelineRef, arg.TimelineID, arg.Ref)
 	return err
@@ -46,9 +47,10 @@ func (q *Queries) DeleteTimelineRef(ctx context.Context, arg DeleteTimelineRefPa
 const listTimelineRefs = `-- name: ListTimelineRefs :many
 SELECT ref FROM timeline_ref
 WHERE timeline_id = ?
-ORDER BY rowid
+ORDER BY position
 `
 
+// ListTimelineRefs returns refs in the order they were added.
 func (q *Queries) ListTimelineRefs(ctx context.Context, timelineID string) ([]string, error) {
 	rows, err := q.db.QueryContext(ctx, listTimelineRefs, timelineID)
 	if err != nil {

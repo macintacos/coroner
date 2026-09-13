@@ -23,6 +23,7 @@ type AddEventTagParams struct {
 	Tag     string
 }
 
+// An existing tag is left as is.
 func (q *Queries) AddEventTag(ctx context.Context, arg AddEventTagParams) error {
 	_, err := q.db.ExecContext(ctx, addEventTag, arg.EventID, arg.Tag)
 	return err
