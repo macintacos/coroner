@@ -19,3 +19,7 @@
 5. **The package imports no command or storage code:** the `export-contract` depguard rule
    in [`.golangci.yml`](../../.golangci.yml) fails an import of `internal/store`,
    `internal/cli` or cobra.
+6. **Export JSONL has one reader and one writer:** read it only through `export.Decode`,
+   and write it only through `export.Records` and `export.WriteRecords`. A command that
+   takes JSONL input, such as bulk add or import, never parses, validates or orders
+   records itself, so the commands cannot drift apart.
