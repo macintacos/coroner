@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing/fstest"
@@ -186,6 +187,88 @@ var _ = Describe("Open", func() {
 			Expect(os.ReadFile(filepath.Clean(backup))).To(Equal([]byte("an earlier backup")))
 			Expect(querySQLite(ctx, path, laterTables)).To(BeZero())
 		})
+	})
+})
+
+var _ = Describe("OpenReadOnly", func() {
+	It("reports a missing path as not existing, creating neither it nor its directory", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "missing", "coroner.db")
+
+		_, err := store.OpenReadOnly(ctx, path)
+
+		Expect(err).To(MatchError(fs.ErrNotExist))
+		Expect(filepath.Dir(path)).NotTo(BeAnExistingFile())
+	})
+
+	It("opens a coroner database at its migrated schema version, leaving it byte-identical",
+		func(ctx SpecContext) {
+			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+			s, err := store.Open(ctx, path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Close()).To(Succeed())
+			migrated := querySQLite(ctx, path, "SELECT max(version_id) FROM goose_db_version")
+			before, err := os.ReadFile(filepath.Clean(path))
+			Expect(err).NotTo(HaveOccurred())
+
+			s, err = store.OpenReadOnly(ctx, path)
+			Expect(err).NotTo(HaveOccurred())
+			version, err := s.SchemaVersion(ctx)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Close()).To(Succeed())
+
+			Expect(version).To(Equal(migrated))
+			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
+		})
+
+	It("gives a connection that refuses writes", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		s, err := store.Open(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Close()).To(Succeed())
+
+		s, err = store.OpenReadOnly(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+
+		Expect(s.DB().ExecContext(ctx, "CREATE TABLE scratch (x TEXT)")).Error().
+			To(MatchError(ContainSubstring("readonly")))
+	})
+
+	It("refuses a database a newer coroner migrated, leaving it byte-identical", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		s, err := store.Open(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Close()).To(Succeed())
+		// After Open the highest recorded version is the highest embedded one.
+		execSQLite(ctx, path,
+			"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
+		before, err := os.ReadFile(filepath.Clean(path))
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = store.OpenReadOnly(ctx, path)
+
+		Expect(err).To(MatchError(store.ErrDatabaseTooNew))
+		Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
+	})
+
+	It("refuses a SQLite file coroner did not create", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "other.db")
+		execSQLite(ctx, path, "CREATE TABLE contact (name TEXT)")
+
+		_, err := store.OpenReadOnly(ctx, path)
+
+		Expect(err).To(MatchError(store.ErrForeignDatabase))
+	})
+
+	It("opens an empty file at schema version 0", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		Expect(os.WriteFile(path, nil, 0o600)).To(Succeed())
+
+		s, err := store.OpenReadOnly(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+
+		Expect(s.SchemaVersion(ctx)).To(BeZero())
 	})
 })
 

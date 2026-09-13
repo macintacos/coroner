@@ -55,7 +55,8 @@
    `sqlcgen.Queries` cannot run SQL it did not generate. A store method's writes share one
    immediate transaction, which `write` retries whole while another writer holds the
    database; `read` and `readTx` begin deferred and never take the write lock. Only `Open`
-   uses the pool directly, for its identity check, WAL pragma and backup. Never use
+   and `OpenReadOnly` use the pool directly: `Open` for its identity check, WAL pragma and
+   backup, `OpenReadOnly` for its identity and version checks. Never use
    `SetMaxOpenConns(1)` or `:memory:`: a query on the pool then waits forever while a
    transaction holds the only connection, and every pooled `:memory:` connection is a
    separate empty database.
@@ -64,4 +65,4 @@
    first. Only seq comes from the database.
 8. **`Open` checks the file before it changes it:** `journal_mode = WAL` is set after the
    application-id check, never as a DSN pragma, which would rewrite a foreign file's
-   header on connect.
+   header on connect. `OpenReadOnly` never sets it.
