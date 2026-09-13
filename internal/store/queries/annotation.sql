@@ -10,6 +10,12 @@ RETURNING *;
 SELECT * FROM annotation
 WHERE id = ?;
 
+-- name: ListAnnotationsByIDPattern :many
+SELECT * FROM annotation
+WHERE id GLOB sqlc.arg(pattern)
+ORDER BY id
+LIMIT sqlc.arg(max_rows);
+
 -- name: ListAnnotations :many
 SELECT * FROM annotation
 WHERE timeline_id = ?

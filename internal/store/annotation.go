@@ -96,15 +96,37 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 	})
 }
 
-// DeleteAnnotation deletes the annotation with id.
-func (s *Store) DeleteAnnotation(ctx context.Context, id string) error {
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		_, err := q.GetAnnotation(ctx, id)
+// AnnotationsByIDPrefix returns up to limit annotations, in any timeline, whose id starts
+// with prefix, ordered by id. prefix must hold no GLOB metacharacters (*, ?, [).
+func (s *Store) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Annotation, error) {
+	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Annotation, error) {
+		rows, err := q.ListAnnotationsByIDPattern(ctx, sqlcgen.ListAnnotationsByIDPatternParams{
+			Pattern: prefix + "*", MaxRows: int64(limit),
+		})
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		return q.DeleteAnnotation(ctx, id)
+		return loadAll(rows, func(r sqlcgen.Annotation) (timeline.Annotation, error) { return loadAnnotation(ctx, q, r) })
+	})
+}
+
+// DeleteAnnotations deletes the annotations with ids, or none of them when one does not
+// exist.
+func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
+	return s.write(ctx, func(q *sqlcgen.Queries) error {
+		for _, id := range ids {
+			_, err := q.GetAnnotation(ctx, id)
+			if err != nil {
+				return err
+			}
+			err = q.DeleteAnnotation(ctx, id)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }
 

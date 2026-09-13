@@ -92,12 +92,57 @@ var _ = Describe("Annotations", func() {
 		Expect(s.Annotation(ctx, evidence.ID)).To(Equal(evidence))
 	})
 
-	It("deletes an annotation", func(ctx SpecContext) {
+	It("deletes annotations", func(ctx SpecContext) {
+		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
+		Expect(s.AddAnnotation(ctx, rootCause, uuid(21))).To(Succeed())
+
+		Expect(s.DeleteAnnotations(ctx, evidence.ID, rootCause.ID)).To(Succeed())
+
+		Expect(s.Annotations(ctx, incident.ID)).To(BeEmpty())
+	})
+
+	It("deletes none of the annotations when one does not exist", func(ctx SpecContext) {
 		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
 
-		Expect(s.DeleteAnnotation(ctx, evidence.ID)).To(Succeed())
+		Expect(s.DeleteAnnotations(ctx, evidence.ID, uuid(99))).To(MatchError(store.ErrNotFound))
 
-		Expect(s.Annotation(ctx, evidence.ID)).Error().To(MatchError(store.ErrNotFound))
+		Expect(s.Annotations(ctx, incident.ID)).To(Equal([]timeline.Annotation{evidence}))
+	})
+
+	It("deletes an event's annotations with the event", func(ctx SpecContext) {
+		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
+		Expect(s.AddAnnotation(ctx, rootCause, uuid(21))).To(Succeed())
+
+		Expect(s.DeleteEvents(ctx, pager.ID)).To(Succeed())
+
+		Expect(s.Annotations(ctx, incident.ID)).To(Equal([]timeline.Annotation{rootCause}))
+	})
+
+	Describe("AnnotationsByIDPrefix", func() {
+		BeforeEach(func(ctx SpecContext) {
+			other := timeline.Timeline{ID: uuid(3), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+			Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+			rootCause.TimelineID = other.ID
+			Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
+			Expect(s.AddAnnotation(ctx, rootCause, uuid(21))).To(Succeed())
+		})
+
+		It("finds the annotations whose id starts with the prefix, in every timeline, by id", func(ctx SpecContext) {
+			Expect(s.AnnotationsByIDPrefix(ctx, "0199a1b2-0000-7000-8000-00000000001", 10)).
+				To(Equal([]timeline.Annotation{evidence, rootCause}))
+		})
+
+		It("returns at most limit annotations", func(ctx SpecContext) {
+			Expect(s.AnnotationsByIDPrefix(ctx, "0199a1b2", 1)).To(Equal([]timeline.Annotation{evidence}))
+		})
+
+		It("finds one annotation by its full id", func(ctx SpecContext) {
+			Expect(s.AnnotationsByIDPrefix(ctx, rootCause.ID, 10)).To(Equal([]timeline.Annotation{rootCause}))
+		})
+
+		It("matches case-sensitively", func(ctx SpecContext) {
+			Expect(s.AnnotationsByIDPrefix(ctx, "0199A1B2", 10)).To(BeEmpty())
+		})
 	})
 
 	DescribeTable("reports an annotation that does not exist with ErrNotFound",
@@ -107,8 +152,8 @@ var _ = Describe("Annotations", func() {
 		Entry("UpdateAnnotation", func(s *store.Store, ctx SpecContext) error {
 			return s.UpdateAnnotation(ctx, rootCause, uuid(20))
 		}),
-		Entry("DeleteAnnotation", func(s *store.Store, ctx SpecContext) error {
-			return s.DeleteAnnotation(ctx, uuid(99))
+		Entry("DeleteAnnotations", func(s *store.Store, ctx SpecContext) error {
+			return s.DeleteAnnotations(ctx, uuid(99))
 		}),
 		Entry("AddAnnotation to an unknown timeline", func(s *store.Store, ctx SpecContext) error {
 			rootCause.TimelineID = uuid(99)
