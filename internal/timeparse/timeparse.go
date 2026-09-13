@@ -117,22 +117,22 @@ func parseEpoch(text string, _ time.Time, _ *time.Location) (Resolved, error) {
 		return Resolved{}, errNoMatch
 	}
 
-	n, err := strconv.ParseInt(whole, 10, 64)
+	epoch, err := strconv.ParseInt(whole, 10, 64)
 
 	switch len(whole) {
 	case 10:
 		nanos, _ := strconv.ParseInt((fraction + "000000000")[:9], 10, 64)
-		return resolve(time.Unix(n, nanos).UTC(), nil, precisionOf(len(fraction))), nil
+		return resolve(time.Unix(epoch, nanos).UTC(), nil, precisionOf(len(fraction))), nil
 	case 13:
-		return resolve(time.UnixMilli(n).UTC(), nil, timeline.PrecisionMillisecond), nil
+		return resolve(time.UnixMilli(epoch).UTC(), nil, timeline.PrecisionMillisecond), nil
 	case 16:
-		return resolve(time.UnixMicro(n).UTC(), nil, timeline.PrecisionMicrosecond), nil
+		return resolve(time.UnixMicro(epoch).UTC(), nil, timeline.PrecisionMicrosecond), nil
 	case 19:
 		if err != nil {
 			return Resolved{}, &ParseError{Err: ErrUnrecognized, Hint: "use RFC 3339 for times after 2262-04-11"}
 		}
 
-		return resolve(time.Unix(0, n).UTC(), nil, timeline.PrecisionNanosecond), nil
+		return resolve(time.Unix(0, epoch).UTC(), nil, timeline.PrecisionNanosecond), nil
 	}
 
 	return Resolved{}, &ParseError{Err: ErrUnrecognized, Hint: "an epoch has 10, 13, 16 or 19 digits"}
