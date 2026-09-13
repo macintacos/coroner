@@ -98,19 +98,19 @@ func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 
 // refuseForeign returns ErrForeignDatabase for a database coroner did not create.
 func refuseForeign(ctx context.Context, db *sql.DB) error {
-	var id, others int64
+	var appID, otherObjects int64
 	err := db.QueryRowContext(ctx, `SELECT
 		(SELECT application_id FROM pragma_application_id()),
 		(SELECT count(*) FROM sqlite_schema WHERE name NOT IN (?, 'sqlite_sequence'))`,
 		goose.DefaultTablename,
-	).Scan(&id, &others)
+	).Scan(&appID, &otherObjects)
 	if err != nil {
 		return fmt.Errorf("read database identity: %w", err)
 	}
 
 	// Id 0 with only goose's own objects is coroner's first migration that failed after
 	// goose created its table: the application id rolled back with the migration.
-	if (id != applicationID && id != 0) || (id == 0 && others > 0) {
+	if (appID != applicationID && appID != 0) || (appID == 0 && otherObjects > 0) {
 		return ErrForeignDatabase
 	}
 
