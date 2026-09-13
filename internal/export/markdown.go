@@ -51,10 +51,10 @@ type MarkdownOptions struct {
 }
 
 // WriteMarkdown writes env's timeline to w as a CommonMark outline for people: a title,
-// metadata bullets, the annotations on the whole timeline, then a section per day of its
-// events by occurred at and seq, with each event's annotations nested under it. It fails,
-// writing nothing, unless env holds one timeline and the event of every annotation, and
-// opts a grouping ParseGroupBy knows.
+// metadata bullets, the annotations on the whole timeline, a section per day of its events
+// by occurred at and seq, with each event's annotations nested under it, then opts.Diagram's
+// Mermaid diagram as a mermaid code block. It fails, writing nothing, unless env holds one
+// timeline and the event of every annotation, and opts a grouping ParseGroupBy knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
