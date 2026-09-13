@@ -119,6 +119,15 @@ var _ = Describe("event add", func() {
 				HaveField("OccurredAt", BeTemporally("==", time.Date(2026, time.September, 11, 3, 14, 7, 412_000_000, time.UTC))))))
 		})
 
+		It("adds to the timeline -t names instead of the current one", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "create", "mongo-failover")).To(Equal(0))
+
+			Expect(run(ctx, "event", "add", "Primary stepped down", "-t", "mongo-failover", "--json")).To(Equal(0))
+
+			Expect(out.String()).To(ContainSubstring(`"timeline_id":"0199a1b2-0000-7000-8000-000000000002"`))
+			Expect(storedEvents(ctx)).To(BeEmpty())
+		})
+
 		It("says on stderr which timeline it added to and the time it resolved", func(ctx SpecContext) {
 			Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0))
 

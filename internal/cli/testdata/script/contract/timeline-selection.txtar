@@ -33,3 +33,14 @@ stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
 # An empty CORONER_TIMELINE counts as unset.
 exits 0 coroner timeline view --json
 stdout '"name":"first"'
+
+# event add selects its timeline the same way: CORONER_TIMELINE over the timeline in use, -t
+# over both, and a missing timeline exits 3.
+env CORONER_TIMELINE=second
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z
+stderr '^Added event #1 to timeline `second` '
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z -t third
+stderr '^Added event #1 to timeline `third` '
+exits 3 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z -t missing --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
