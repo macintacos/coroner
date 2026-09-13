@@ -95,9 +95,17 @@ func referenceFilter(events []timeline.Event, f store.EventFilter) ([]timeline.E
 func keeps(f store.EventFilter, e timeline.Event) bool {
 	inWindow := (f.Since == nil || !e.OccurredAt.Before(*f.Since)) && (f.Until == nil || e.OccurredAt.Before(*f.Until))
 	fromSource := len(f.Sources) == 0 || (e.Source != nil && slices.Contains(f.Sources, *e.Source))
-	hasTags := !slices.ContainsFunc(f.Tags, func(tag string) bool { return !slices.Contains(e.Tags, tag) })
 
-	return inWindow && fromSource && hasTags && strings.Contains(asciiLower(e.Text), asciiLower(f.Contains))
+	return inWindow && fromSource && hasEveryTag(e.Tags, f.Tags) && strings.Contains(asciiLower(e.Text), asciiLower(f.Contains))
+}
+
+func hasEveryTag(have, want []string) bool {
+	for _, tag := range want {
+		if !slices.Contains(have, tag) {
+			return false
+		}
+	}
+	return true
 }
 
 // asciiLower folds only A–Z, as SQLite's lower() does.
@@ -153,7 +161,7 @@ func filter(events int) *rapid.Generator[store.EventFilter] {
 	})
 }
 
-// minute draws an instant from minutes past 14:00 on one day.
+// minute draws an instant first to last minutes from 14:00 on one day.
 func minute(first, last int) *rapid.Generator[time.Time] {
 	return rapid.Custom(func(t *rapid.T) time.Time {
 		m := rapid.IntRange(first, last).Draw(t, "minute")
