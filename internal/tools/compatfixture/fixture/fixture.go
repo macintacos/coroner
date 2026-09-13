@@ -44,7 +44,7 @@ func fill(ctx context.Context, s *store.Store) error {
 	}
 
 	err = add(Events(), func(e timeline.Event) error {
-		_, err := s.AddEvent(ctx, e, newSourceID(e.Source))
+		_, err := s.AddEvent(ctx, e, sourceID(e.Source))
 		return err
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func fill(ctx context.Context, s *store.Store) error {
 	}
 
 	err = add(Annotations(), func(a timeline.Annotation) error {
-		return s.AddAnnotation(ctx, a, newSourceID(a.Source))
+		return s.AddAnnotation(ctx, a, sourceID(a.Source))
 	})
 	if err != nil {
 		return err
@@ -82,9 +82,9 @@ func uuid(n int) string {
 	return fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", n)
 }
 
-// newSourceID returns the id Sources gives the source called name, or "" when name is nil
+// sourceID returns the id Sources gives the source called name, or "" when name is nil
 // or Sources has no such source.
-func newSourceID(name *string) string {
+func sourceID(name *string) string {
 	for _, source := range Sources() {
 		if name != nil && source.Name == *name {
 			return source.ID
