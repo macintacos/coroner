@@ -28,7 +28,7 @@ stdout '^Body: +Election timeout$'
 
 # list prints the timeline's own annotation first, one tab-separated row each.
 exec coroner annotation list
-stdout '\A[0-9a-f-]{36}\tcomment\tsam\t\tRoot cause: undersized oplog\n[0-9a-f-]{36}\tevidence\tjulian\t#1\t\[conn42\] stepping down\n\z'
+stdout '\A[0-9a-f-]{36}\tcomment\tsam\t-\tRoot cause: undersized oplog\n[0-9a-f-]{36}\tevidence\tjulian\t#1\t\[conn42\] stepping down\n\z'
 
 -- stepdown.log --
 [conn42] stepping down

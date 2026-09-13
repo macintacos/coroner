@@ -42,18 +42,21 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
+	ref, err := eventFlag(cmd.Flags())
+	if err != nil {
+		return err
+	}
 	o, err := newOutput(cmd, app)
 	if err != nil {
 		return err
 	}
-	eventRef := changedString(cmd.Flags(), "event")
 
 	return withStore(ctx, cmd, app, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
 		}
-		annotations, events, err := readAnnotations(ctx, s, t, eventRef, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		annotations, events, err := readAnnotations(ctx, s, t, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}
@@ -67,9 +70,10 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 // readAnnotations returns the annotations in t, or on the event ref names when set, with the
 // events they may be on in timeline.CompareEvents order.
 // ponytail: annotations and events are read in separate transactions, so an event deleted in
-// between lists its annotations last; read both in one store call if that matters.
+// between lists its annotations last, and text shows them on event #0; read both in one store
+// call if that matters.
 func readAnnotations(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *string, selection timelineSelection,
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef, selection timelineSelection,
 ) ([]timeline.Annotation, []timeline.Event, error) {
 	if ref != nil {
 		e, err := findEventIn(ctx, s, t, *ref, selection)
@@ -81,8 +85,8 @@ func readAnnotations(
 	}
 
 	annotations, err := s.Annotations(ctx, t.ID)
-	if err != nil {
-		return nil, nil, err
+	if err != nil || len(annotations) == 0 {
+		return annotations, nil, err
 	}
 	events, err := s.Events(ctx, t.ID)
 
@@ -126,17 +130,9 @@ func sortAnnotations(annotations []timeline.Annotation, order eventOrder) {
 	})
 }
 
-type annotationListJSON struct {
-	Annotations []annotationJSON `json:"annotations"`
-}
-
 func printAnnotations(o output, annotations []timeline.Annotation, order eventOrder) error {
 	if o.format == formatJSON {
-		listed := make([]annotationJSON, 0, len(annotations))
-		for _, a := range annotations {
-			listed = append(listed, newAnnotationJSON(a))
-		}
-		return o.json(annotationListJSON{Annotations: listed})
+		return o.json(newAnnotationListJSON(annotations))
 	}
 	if len(annotations) == 0 {
 		return o.notify("No annotations yet. Add one with: coroner annotation add <body> --kind comment")
@@ -144,11 +140,12 @@ func printAnnotations(o output, annotations []timeline.Annotation, order eventOr
 
 	rows := make([][]string, 0, len(annotations))
 	for _, a := range annotations {
-		event := ""
+		event := "-"
 		if a.EventID != nil {
 			event = "#" + strconv.FormatInt(order[*a.EventID].seq, 10)
 		}
 		firstLine, _, _ := strings.Cut(a.Body, "\n")
+		// A CRLF body's first line keeps its \r, which rows would print escaped.
 		rows = append(rows, []string{a.ID, string(a.Kind), orDash(a.Author), event, strings.TrimSuffix(firstLine, "\r")})
 	}
 

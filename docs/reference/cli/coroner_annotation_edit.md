@@ -28,7 +28,7 @@ coroner annotation edit <id> [flags]
 ```
       --body body       New body, or - to read it from stdin
       --dry-run         Show the edited annotation, and change nothing
-      --kind kind       New annotation kind: {evidence|comment}
+      --kind kind       New annotation kind: {evidence | comment}
       --source source   New source, created on first use
       --url url         New permalink, as a url
 ```
@@ -49,5 +49,5 @@ coroner annotation edit <id> [flags]
 
 ### SEE ALSO
 
-* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events
+* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events and timelines
 

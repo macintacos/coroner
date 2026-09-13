@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"time"
 
@@ -30,7 +31,7 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.String("body", "", "New `body`, or - to read it from stdin")
-	flags.String("kind", "", "New annotation `kind`: {evidence|comment}")
+	flags.String("kind", "", "New annotation `kind`: {evidence | comment}")
 	flags.String("source", "", "New `source`, created on first use")
 	flags.String("url", "", "New permalink, as a `url`")
 	flags.Bool("dry-run", false, "Show the edited annotation, and change nothing")
@@ -39,6 +40,10 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 func editAnnotation(ctx context.Context, cmd *cobra.Command, app App, ref string) error {
+	prefix, err := parseAnnotationRef(ref)
+	if err != nil {
+		return err
+	}
 	edit, err := readAnnotationEdit(cmd.Flags(), app)
 	if err != nil {
 		return err
@@ -52,7 +57,11 @@ func editAnnotation(ctx context.Context, cmd *cobra.Command, app App, ref string
 	return withStore(ctx, cmd, app, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// annotation is overwritten; apply the edit inside one store write if that matters.
-		a, err := findAnnotation(ctx, s, ref)
+		a, err := findAnnotation(ctx, s, prefix)
+		if err != nil {
+			return err
+		}
+		t, err := s.Timeline(ctx, a.TimelineID)
 		if err != nil {
 			return err
 		}
@@ -61,20 +70,20 @@ func editAnnotation(ctx context.Context, cmd *cobra.Command, app App, ref string
 			return previewAnnotation(o, a, "Would edit annotation "+a.ID+" to")
 		}
 
-		// The store upserts the source the annotation already had too, so it needs an id either way.
+		// UpdateAnnotation resolves a.Source by name even when --source did not change it, so it
+		// always needs a fallback id.
 		sourceID, err := newSourceID(a.Source, app.NewID)
 		if err != nil {
 			return err
 		}
 		err = s.UpdateAnnotation(ctx, a, sourceID)
+		if errors.Is(err, store.ErrNotFound) {
+			return annotationNotFoundError("no annotation has an id starting "+a.ID, err)
+		}
 		if err != nil {
 			return err
 		}
 		err = printAnnotation(o, a)
-		if err != nil {
-			return err
-		}
-		t, err := s.Timeline(ctx, a.TimelineID)
 		if err != nil {
 			return err
 		}
@@ -99,7 +108,7 @@ func readAnnotationEdit(flags *pflag.FlagSet, app App) (annotationEdit, error) {
 	}
 
 	if kind := changedString(flags, "kind"); kind != nil {
-		k, err := checkKind(*kind)
+		k, err := checkAnnotationKind(*kind)
 		if err != nil {
 			return edit, err
 		}

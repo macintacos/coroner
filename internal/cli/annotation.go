@@ -15,14 +15,16 @@ import (
 )
 
 const (
-	kindHint            = "Pass --kind evidence for raw material such as a log line, or --kind comment for commentary."
+	annotationKindHint  = "Pass --kind evidence for raw material such as a log line, or --kind comment for commentary."
 	listAnnotationsHint = "Run 'coroner annotation list' to see a timeline's annotations and their ids."
+	// shownAnnotations is how many annotations an ambiguous id prefix lists.
+	shownAnnotations = 10
 )
 
 func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "annotation",
-		Short:   "Attach evidence and comments to events",
+		Short:   "Attach evidence and comments to events and timelines",
 		GroupID: coreCommands,
 		Long: "An annotation is evidence, raw material kept verbatim such as a log line, or a comment,\n" +
 			"attached to an event or to the whole timeline. It has no time of its own in the\n" +
@@ -72,14 +74,55 @@ func newAnnotationJSON(a timeline.Annotation) annotationJSON {
 	}
 }
 
-// checkKind returns kind as an annotation kind, or usage naming the kinds there are.
-func checkKind(kind string) (timeline.AnnotationKind, error) {
+type annotationListJSON struct {
+	Annotations []annotationJSON `json:"annotations"`
+}
+
+func newAnnotationListJSON(annotations []timeline.Annotation) annotationListJSON {
+	listed := make([]annotationJSON, 0, len(annotations))
+	for _, a := range annotations {
+		listed = append(listed, newAnnotationJSON(a))
+	}
+
+	return annotationListJSON{Annotations: listed}
+}
+
+// printAnnotation prints a when o asks for JSON; text output leaves it to the command's message.
+func printAnnotation(o output, a timeline.Annotation) error {
+	if o.format != formatJSON {
+		return nil
+	}
+
+	return o.json(newAnnotationJSON(a))
+}
+
+// previewAnnotation prints a as a dry run would store it: its JSON object, or heading and a
+// description.
+func previewAnnotation(o output, a timeline.Annotation, heading string) error {
+	if o.format == formatJSON {
+		return o.json(newAnnotationJSON(a))
+	}
+
+	var b strings.Builder
+	b.WriteString(heading + "\n")
+	writeField(&b, "Kind:", string(a.Kind))
+	writeField(&b, "Source:", orDash(a.Source))
+	writeField(&b, "URL:", orDash(a.URL))
+	writeField(&b, "Author:", orDash(a.Author))
+	writeField(&b, "Body:", a.Body)
+
+	_, err := io.WriteString(o.out, b.String())
+	return err
+}
+
+// checkAnnotationKind returns kind as an annotation kind, or usage naming the kinds there are.
+func checkAnnotationKind(kind string) (timeline.AnnotationKind, error) {
 	switch k := timeline.AnnotationKind(kind); k {
 	case timeline.AnnotationEvidence, timeline.AnnotationComment:
 		return k, nil
 	}
 
-	return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: kindHint}
+	return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: annotationKindHint}
 }
 
 // annotationBody returns the body value gives, reading in when that is -. Stdin loses one
@@ -114,61 +157,83 @@ func annotationBody(value string, in io.Reader, inIsTTY bool) (string, error) {
 	return body, nil
 }
 
+// eventFlag returns the event reference -e gives, or nil when -e is not given.
+func eventFlag(flags *pflag.FlagSet) (*eventRef, error) {
+	var ref *eventRef
+	if value := changedString(flags, "event"); value != nil {
+		parsed, err := parseEventRef(*value)
+		if err != nil {
+			return nil, err
+		}
+		ref = &parsed
+	}
+
+	return ref, nil
+}
+
 // findEventIn returns the event ref names, which must be in t: an event in another timeline
 // is event_not_found.
 func findEventIn(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref string, selection timelineSelection,
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref eventRef, selection timelineSelection,
 ) (timeline.Event, error) {
+	// findEvent rejects -t with any ref but a bare seq; here -t already selected t, checked below.
+	if ref.timeline != "" || ref.idPrefix != "" {
+		selection.flag = nil
+	}
 	e, eventTimeline, err := findEvent(ctx, s, ref, selection)
 	if err != nil || e.TimelineID == t.ID {
 		return e, err
 	}
 
-	return e, &Error{
+	return timeline.Event{}, &Error{
 		Kind:    KindEventNotFound,
-		Message: fmt.Sprintf("event %s is in timeline `%s`, not `%s`", ref, eventTimeline.Name, t.Name),
+		Message: fmt.Sprintf("event %s#%d is not in timeline `%s`", eventTimeline.Name, e.Seq, t.Name),
 		Hint:    "Pass -t " + eventTimeline.Name + " to act on its own timeline.",
 	}
 }
 
-// findAnnotation returns the annotation whose id is, or uniquely starts with, ref, in any
-// timeline.
-func findAnnotation(ctx context.Context, s *store.Store, ref string) (timeline.Annotation, error) {
-	if !idRef.MatchString(ref) {
-		return timeline.Annotation{}, &Error{
-			Kind:    KindUsage,
-			Message: fmt.Sprintf("%q is not an annotation id", ref),
-			Hint:    listAnnotationsHint,
-		}
+// parseAnnotationRef returns ref as an annotation id prefix, lowercased: hex digits and dashes,
+// starting with a hex digit.
+func parseAnnotationRef(ref string) (string, error) {
+	prefix := strings.ToLower(ref)
+	if prefix == "" || !strings.ContainsRune("0123456789abcdef", rune(prefix[0])) ||
+		strings.Trim(prefix, "0123456789abcdef-") != "" {
+		return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an annotation id", ref), Hint: listAnnotationsHint}
 	}
 
-	annotations, err := s.AnnotationsByIDPrefix(ctx, ref, maxCandidates+1)
+	return prefix, nil
+}
+
+// findAnnotation returns the annotation whose id is, or uniquely starts with, prefix, in any
+// timeline.
+func findAnnotation(ctx context.Context, s *store.Store, prefix string) (timeline.Annotation, error) {
+	annotations, err := s.AnnotationsByIDPrefix(ctx, prefix, shownAnnotations+1)
 	switch {
 	case err != nil:
 		return timeline.Annotation{}, err
 	case len(annotations) == 1:
 		return annotations[0], nil
 	case len(annotations) == 0:
-		return timeline.Annotation{}, &Error{
-			Kind:    KindAnnotationNotFound,
-			Message: "no annotation has an id starting " + ref,
-			Hint:    listAnnotationsHint,
-		}
+		return timeline.Annotation{}, annotationNotFoundError("no annotation has an id starting "+prefix, nil)
 	}
 
-	lines := make([]string, 0, maxCandidates+1)
-	for _, a := range annotations[:min(len(annotations), maxCandidates)] {
+	lines := make([]string, 0, shownAnnotations+1)
+	for _, a := range annotations[:min(len(annotations), shownAnnotations)] {
 		lines = append(lines, fmt.Sprintf("  %s  %s", a.ID, a.Kind))
 	}
-	if len(annotations) > maxCandidates {
+	if len(annotations) > shownAnnotations {
 		lines = append(lines, "  and more")
 	}
 
 	return timeline.Annotation{}, &Error{
 		Kind:    KindAmbiguousID,
-		Message: "more than one annotation has an id starting " + ref,
+		Message: "more than one annotation has an id starting " + prefix,
 		Hint:    "Pass more of the id:\n" + strings.Join(lines, "\n"),
 	}
+}
+
+func annotationNotFoundError(message string, err error) *Error {
+	return &Error{Kind: KindAnnotationNotFound, Message: message, Hint: listAnnotationsHint, Err: err}
 }
 
 // annotationFields are the source and URL the flags give an annotation, each nil when not
@@ -187,11 +252,11 @@ func readAnnotationFields(flags *pflag.FlagSet) (annotationFields, error) {
 	return f, checkSlugs(f.source, nil)
 }
 
-// annotationTarget describes where a is attached, as in "event #12 in timeline `x`".
-func annotationTarget(t timeline.Timeline, eventSeq int64) string {
-	if eventSeq == 0 {
+// annotationTarget names the event e in t, or t itself when e is nil.
+func annotationTarget(t timeline.Timeline, e *timeline.Event) string {
+	if e == nil {
 		return fmt.Sprintf("timeline `%s`", t.Name)
 	}
 
-	return fmt.Sprintf("event #%d in timeline `%s`", eventSeq, t.Name)
+	return fmt.Sprintf("event #%d in timeline `%s`", e.Seq, t.Name)
 }

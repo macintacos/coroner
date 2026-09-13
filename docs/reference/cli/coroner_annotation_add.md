@@ -16,7 +16,7 @@ trailing newline and is never read otherwise.
 unique id prefix. The event must be in the timeline the annotation goes to.
 
 ```
-coroner annotation add {<body> | -} --kind {evidence|comment} [flags]
+coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
 ```
 
 ### Examples
@@ -33,7 +33,7 @@ coroner annotation add {<body> | -} --kind {evidence|comment} [flags]
       --author name        Who is adding it, as a name (default: config author, then USER)
       --dry-run            Show the annotation as it would be added, and add nothing
   -e, --event ref          Event to attach it to, as a ref: seq, timeline#seq or id (default: the timeline)
-      --kind kind          Annotation kind: {evidence|comment}
+      --kind kind          Annotation kind: {evidence | comment}
       --source source      System, service or person it came from, as a source, created on first use
   -t, --timeline name|id   Timeline name|id to act on
       --url url            Permalink to the log line or message, as a url
@@ -55,5 +55,5 @@ coroner annotation add {<body> | -} --kind {evidence|comment} [flags]
 
 ### SEE ALSO
 
-* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events
+* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events and timelines
 

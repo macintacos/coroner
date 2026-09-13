@@ -101,6 +101,14 @@ var _ = Describe("Annotations", func() {
 		Expect(s.Annotations(ctx, incident.ID)).To(BeEmpty())
 	})
 
+	It("deletes an annotation named twice once", func(ctx SpecContext) {
+		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
+
+		Expect(s.DeleteAnnotations(ctx, evidence.ID, evidence.ID)).To(Succeed())
+
+		Expect(s.Annotations(ctx, incident.ID)).To(BeEmpty())
+	})
+
 	It("deletes none of the annotations when one does not exist", func(ctx SpecContext) {
 		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
 
@@ -140,9 +148,20 @@ var _ = Describe("Annotations", func() {
 			Expect(s.AnnotationsByIDPrefix(ctx, rootCause.ID, 10)).To(Equal([]timeline.Annotation{rootCause}))
 		})
 
-		It("matches case-sensitively", func(ctx SpecContext) {
-			Expect(s.AnnotationsByIDPrefix(ctx, "0199A1B2", 10)).To(BeEmpty())
-		})
+		DescribeTable("rejects an id prefix that is empty or is not lowercase hex and dashes, which GLOB would read as a pattern",
+			func(ctx SpecContext, prefix string) {
+				annotations, err := s.AnnotationsByIDPrefix(ctx, prefix, 10)
+
+				Expect(err).To(HaveOccurred())
+				Expect(err).NotTo(MatchError(store.ErrNotFound))
+				Expect(annotations).To(BeEmpty())
+			},
+			Entry("empty", ""),
+			Entry("a star", "*"),
+			Entry("a question mark", "0199a1b2-?"),
+			Entry("a character class", "[0-9]"),
+			Entry("uppercase hex", "0199A1B2"),
+		)
 	})
 
 	DescribeTable("reports an annotation that does not exist with ErrNotFound",

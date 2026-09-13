@@ -4,7 +4,7 @@ title: coroner annotation
 
 ## coroner annotation
 
-Attach evidence and comments to events
+Attach evidence and comments to events and timelines
 
 ### Synopsis
 

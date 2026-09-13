@@ -3,8 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -21,7 +19,7 @@ const missingBodyHint = "Pass the body, or - to read it from stdin:\n" +
 
 func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add {<body> | -} --kind {evidence|comment}",
+		Use:   "add {<body> | -} --kind {evidence | comment}",
 		Short: "Attach evidence or a comment to an event or the timeline",
 		Long: "Attach an annotation to the event -e names, or to the whole timeline without -e. Evidence\n" +
 			"is kept verbatim: pass - to read a log line or chat message from stdin, which loses one\n" +
@@ -41,7 +39,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 	flags := cmd.Flags()
 	addTimelineFlag(flags)
 	flags.StringP("event", "e", "", "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)")
-	flags.String("kind", "", "Annotation `kind`: {evidence|comment}")
+	flags.String("kind", "", "Annotation `kind`: {evidence | comment}")
 	flags.String("source", "", "System, service or person it came from, as a `source`, created on first use")
 	flags.String("url", "", "Permalink to the log line or message, as a `url`")
 	flags.String("author", "", "Who is adding it, as a `name` (default: config author, then USER)")
@@ -63,11 +61,14 @@ func addAnnotation(ctx context.Context, cmd *cobra.Command, app App, args []stri
 	if err != nil {
 		return err
 	}
+	ref, err := eventFlag(cmd.Flags())
+	if err != nil {
+		return err
+	}
 	draft, err := draftAnnotation(cmd.Flags(), app, cfg, args)
 	if err != nil {
 		return err
 	}
-	eventRef := changedString(cmd.Flags(), "event")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
@@ -77,12 +78,15 @@ func addAnnotation(ctx context.Context, cmd *cobra.Command, app App, args []stri
 		}
 		a := draft.annotation
 		a.TimelineID = t.ID
-		seq, err := attachToEvent(ctx, s, &a, t, eventRef, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		e, err := annotatedEvent(ctx, s, t, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}
+		if e != nil {
+			a.EventID = &e.ID
+		}
 		if dryRun {
-			return previewAnnotation(o, a, fmt.Sprintf("Would add %s annotation to %s", a.Kind, annotationTarget(t, seq)))
+			return previewAnnotation(o, a, fmt.Sprintf("Would add %s annotation to %s", a.Kind, annotationTarget(t, e)))
 		}
 
 		err = s.AddAnnotation(ctx, a, draft.newSourceID)
@@ -94,26 +98,24 @@ func addAnnotation(ctx context.Context, cmd *cobra.Command, app App, args []stri
 			return err
 		}
 
-		return o.notify("Added %s annotation %s to %s", a.Kind, a.ID, annotationTarget(t, seq))
+		return o.notify("Added %s annotation %s to %s", a.Kind, a.ID, annotationTarget(t, e))
 	})
 }
 
-// attachToEvent points a at the event ref names in t, when ref is set, and returns the
-// event's seq, or 0 for none.
-func attachToEvent(
-	ctx context.Context, s *store.Store, a *timeline.Annotation, t timeline.Timeline, ref *string, selection timelineSelection,
-) (int64, error) {
-	if ref == nil {
-		return 0, nil
+// annotatedEvent returns the event ref names in t, or nil when ref is nil.
+func annotatedEvent(
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef, selection timelineSelection,
+) (*timeline.Event, error) {
+	var e *timeline.Event
+	if ref != nil {
+		found, err := findEventIn(ctx, s, t, *ref, selection)
+		if err != nil {
+			return nil, err
+		}
+		e = &found
 	}
 
-	e, err := findEventIn(ctx, s, t, *ref, selection)
-	if err != nil {
-		return 0, err
-	}
-
-	a.EventID = &e.ID
-	return e.Seq, nil
+	return e, nil
 }
 
 // annotationDraft is an annotation read from the command line and checked, still without its
@@ -127,7 +129,7 @@ type annotationDraft struct {
 // draftAnnotation reads the annotation args and flags describe and gives it new ids. It reads
 // stdin last, so a bad flag never waits on it.
 func draftAnnotation(flags *pflag.FlagSet, app App, cfg config.Config, args []string) (annotationDraft, error) {
-	kind, err := requiredKind(flags)
+	kind, err := requiredAnnotationKind(flags)
 	if err != nil {
 		return annotationDraft{}, err
 	}
@@ -171,13 +173,13 @@ func draftAnnotation(flags *pflag.FlagSet, app App, cfg config.Config, args []st
 	return annotationDraft{annotation: a, newSourceID: sourceID}, nil
 }
 
-func requiredKind(flags *pflag.FlagSet) (timeline.AnnotationKind, error) {
+func requiredAnnotationKind(flags *pflag.FlagSet) (timeline.AnnotationKind, error) {
 	kind := changedString(flags, "kind")
 	if kind == nil {
-		return "", &Error{Kind: KindUsage, Message: "annotation add needs --kind", Hint: kindHint}
+		return "", &Error{Kind: KindUsage, Message: "annotation add needs --kind", Hint: annotationKindHint}
 	}
 
-	return checkKind(*kind)
+	return checkAnnotationKind(*kind)
 }
 
 // annotationBodyArg rejects more than one argument, which is most often a body left unquoted.
@@ -191,31 +193,4 @@ func annotationBodyArg(_ *cobra.Command, args []string) error {
 		Message: fmt.Sprintf("annotation add takes the body as one argument, got %d", len(args)),
 		Hint:    "Quote a body that has spaces, or pass - to read it from stdin.",
 	}
-}
-
-// printAnnotation prints a when o asks for JSON; text output leaves it to the command's message.
-func printAnnotation(o output, a timeline.Annotation) error {
-	if o.format != formatJSON {
-		return nil
-	}
-
-	return o.json(newAnnotationJSON(a))
-}
-
-// previewAnnotation prints a as a dry run would store it: its JSON object, or heading and a
-// description.
-func previewAnnotation(o output, a timeline.Annotation, heading string) error {
-	if o.format == formatJSON {
-		return o.json(newAnnotationJSON(a))
-	}
-
-	var b strings.Builder
-	b.WriteString(heading + "\n")
-	writeField(&b, "Source:", orDash(a.Source))
-	writeField(&b, "URL:", orDash(a.URL))
-	writeField(&b, "Author:", orDash(a.Author))
-	writeField(&b, "Body:", a.Body)
-
-	_, err := io.WriteString(o.out, b.String())
-	return err
 }

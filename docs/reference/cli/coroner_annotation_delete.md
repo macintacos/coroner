@@ -45,5 +45,5 @@ coroner annotation delete <id>... [flags]
 
 ### SEE ALSO
 
-* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events
+* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events and timelines
 

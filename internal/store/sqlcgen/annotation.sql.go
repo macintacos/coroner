@@ -133,20 +133,20 @@ func (q *Queries) ListAnnotations(ctx context.Context, timelineID string) ([]Ann
 	return items, nil
 }
 
-const listAnnotationsByIDPattern = `-- name: ListAnnotationsByIDPattern :many
+const listAnnotationsByIDPrefix = `-- name: ListAnnotationsByIDPrefix :many
 SELECT id, timeline_id, event_id, kind, body, author, source_id, url, created_at, updated_at FROM annotation
-WHERE id GLOB ?1
+WHERE id GLOB ?
 ORDER BY id
-LIMIT ?2
+LIMIT ?
 `
 
-type ListAnnotationsByIDPatternParams struct {
-	Pattern string
-	MaxRows int64
+type ListAnnotationsByIDPrefixParams struct {
+	ID    string
+	Limit int64
 }
 
-func (q *Queries) ListAnnotationsByIDPattern(ctx context.Context, arg ListAnnotationsByIDPatternParams) ([]Annotation, error) {
-	rows, err := q.db.QueryContext(ctx, listAnnotationsByIDPattern, arg.Pattern, arg.MaxRows)
+func (q *Queries) ListAnnotationsByIDPrefix(ctx context.Context, arg ListAnnotationsByIDPrefixParams) ([]Annotation, error) {
+	rows, err := q.db.QueryContext(ctx, listAnnotationsByIDPrefix, arg.ID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

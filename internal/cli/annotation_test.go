@@ -212,6 +212,15 @@ var _ = Describe("annotation", func() {
 				Expect(storedAnnotations(ctx, "0199a1b2-0000-7000-8000-000000000003")).To(BeEmpty())
 			})
 
+			It("resolves an id or timeline#seq in the timeline -t names", func(ctx SpecContext) {
+				for _, ref := range []string{stepDownID, "mongo-outage#1"} {
+					Expect(run(ctx, "annotation", "add", "Drill log", "--kind", "evidence", "-t", "mongo-outage", "-e", ref)).
+						To(Equal(0))
+				}
+
+				Expect(storedAnnotations(ctx, outageID)).To(HaveLen(2))
+			})
+
 			It("exits 3 with kind event_not_found on a seq the timeline does not have", func(ctx SpecContext) {
 				Expect(run(ctx, "annotation", "add", "Drill log", "--kind", "evidence", "-e", "9", "--json")).To(Equal(3))
 
@@ -236,9 +245,12 @@ var _ = Describe("annotation", func() {
 				Expect(errOut.String()).To(ContainSubstring("mongo-outage#2  0199a1b2-0000-7000-8000-000000000003"))
 			})
 
-			It("exits 2 with kind usage on a ref that is neither a seq nor an id", func(ctx SpecContext) {
-				Expect(run(ctx, "annotation", "add", "Drill log", "--kind", "evidence", "-e", "Primary", "--json")).
-					To(Equal(2))
+			It("exits 2 with kind usage, before reading stdin, on a ref that is neither a seq nor an id", func(ctx SpecContext) {
+				reader, writer := io.Pipe()
+				DeferCleanup(writer.Close)
+				in = reader
+
+				Expect(run(ctx, "annotation", "add", "-", "--kind", "evidence", "-e", "Primary", "--json")).To(Equal(2))
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			})
@@ -357,7 +369,7 @@ var _ = Describe("annotation", func() {
 			Expect(run(ctx, "annotation", "list")).To(Equal(0))
 
 			Expect(out.String()).To(Equal(
-				"0199a1b2-0000-7000-8000-000000000003\tcomment\tjulian\t\tRoot cause: undersized oplog\n" +
+				"0199a1b2-0000-7000-8000-000000000003\tcomment\tjulian\t-\tRoot cause: undersized oplog\n" +
 					"0199a1b2-0000-7000-8000-000000000004\tevidence\tsam\t#1\telection log\n"))
 		})
 
@@ -430,6 +442,19 @@ var _ = Describe("annotation", func() {
 			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(HaveField("Kind", timeline.AnnotationEvidence)))
 		})
 
+		It("describes the edited annotation in text with --dry-run, kind included", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--kind", "comment", "--dry-run")).To(Equal(0))
+
+			Expect(out.String()).To(HavePrefix("Would edit annotation " + electionLogID + " to\n"))
+			Expect(out.String()).To(MatchRegexp(`(?m)^Kind: +comment$`))
+		})
+
+		It("finds the annotation by an upper-case id", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", strings.ToUpper(electionLogID), "--kind", "comment")).To(Equal(0))
+
+			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(HaveField("Kind", timeline.AnnotationComment)))
+		})
+
 		It("finds the annotation by a unique id prefix, with no timeline selected", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "use", "--clear")).To(Equal(0))
 
@@ -454,8 +479,12 @@ var _ = Describe("annotation", func() {
 			Expect(errOut.String()).To(ContainSubstring("0199a1b2-0000-7000-8000-000000000005"))
 		})
 
-		DescribeTable("exits 2, changing nothing, on a command line it cannot apply",
+		DescribeTable("exits 2, changing nothing and never waiting on stdin, on a command line it cannot apply",
 			func(ctx SpecContext, kind string, args ...string) {
+				reader, writer := io.Pipe()
+				DeferCleanup(writer.Close)
+				in = reader
+
 				Expect(run(ctx, append([]string{"annotation", "edit", "--json"}, args...)...)).To(Equal(2))
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"` + kind + `"`))
@@ -467,7 +496,7 @@ var _ = Describe("annotation", func() {
 			Entry("a blank body", "usage", electionLogID, "--body", " "),
 			Entry("a blank URL", "usage", electionLogID, "--url", ""),
 			Entry("a source outside the grammar", "invalid_name", electionLogID, "--source", "DB 2"),
-			Entry("a ref that is not an id", "usage", "Election", "--kind", "comment"),
+			Entry("a ref that is not an id", "usage", "Election", "--body", "-"),
 		)
 	})
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -48,18 +49,23 @@ func deleteAnnotations(ctx context.Context, cmd *cobra.Command, app App, refs []
 			return err
 		}
 
-		if !dryRun {
-			ids := make([]string, 0, len(annotations))
-			for _, a := range annotations {
-				ids = append(ids, a.ID)
-			}
-			err = s.DeleteAnnotations(ctx, ids...)
-			if err != nil {
-				return err
-			}
+		if dryRun {
+			return previewAnnotationDeletion(o, annotations, timelineNames)
 		}
 
-		return reportAnnotationDeletion(o, annotations, timelineNames, dryRun)
+		ids := make([]string, 0, len(annotations))
+		for _, a := range annotations {
+			ids = append(ids, a.ID)
+		}
+		err = s.DeleteAnnotations(ctx, ids...)
+		if errors.Is(err, store.ErrNotFound) {
+			return annotationNotFoundError("an annotation was deleted by another command first, so none were", err)
+		}
+		if err != nil {
+			return err
+		}
+
+		return reportAnnotationDeletion(o, annotations, timelineNames)
 	})
 }
 
@@ -68,7 +74,11 @@ func findAnnotations(ctx context.Context, s *store.Store, refs []string) ([]time
 	found := make([]timeline.Annotation, 0, len(refs))
 	seen := map[string]bool{}
 	for _, ref := range refs {
-		a, err := findAnnotation(ctx, s, ref)
+		prefix, err := parseAnnotationRef(ref)
+		if err != nil {
+			return nil, err
+		}
+		a, err := findAnnotation(ctx, s, prefix)
 		if err != nil {
 			return nil, err
 		}
@@ -98,25 +108,32 @@ func annotationTimelineNames(ctx context.Context, s *store.Store, annotations []
 	return names, nil
 }
 
-// reportAnnotationDeletion prints the deleted annotations as JSON, or a line for each: on
-// stdout for a dry run, as messages otherwise.
-func reportAnnotationDeletion(o output, annotations []timeline.Annotation, timelineNames map[string]string, dryRun bool) error {
+// previewAnnotationDeletion prints the annotations a delete would remove, as JSON or a line
+// each.
+func previewAnnotationDeletion(o output, annotations []timeline.Annotation, timelineNames map[string]string) error {
 	if o.format == formatJSON {
-		listed := make([]annotationJSON, 0, len(annotations))
-		for _, a := range annotations {
-			listed = append(listed, newAnnotationJSON(a))
-		}
-		return o.json(annotationListJSON{Annotations: listed})
+		return o.json(newAnnotationListJSON(annotations))
 	}
 
 	for _, a := range annotations {
-		line := fmt.Sprintf("%s annotation %s from timeline `%s`", a.Kind, a.ID, timelineNames[a.TimelineID])
-		var err error
-		if dryRun {
-			_, err = fmt.Fprintln(o.out, "Would delete "+line)
-		} else {
-			err = o.notify("Deleted %s", line)
+		_, err := fmt.Fprintf(o.out, "Would delete %s annotation %s from timeline `%s`\n", a.Kind, a.ID, timelineNames[a.TimelineID])
+		if err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// reportAnnotationDeletion prints the deleted annotations as JSON, or says on stderr what was
+// deleted.
+func reportAnnotationDeletion(o output, annotations []timeline.Annotation, timelineNames map[string]string) error {
+	if o.format == formatJSON {
+		return o.json(newAnnotationListJSON(annotations))
+	}
+
+	for _, a := range annotations {
+		err := o.notify("Deleted %s annotation %s from timeline `%s`", a.Kind, a.ID, timelineNames[a.TimelineID])
 		if err != nil {
 			return err
 		}

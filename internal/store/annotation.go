@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -97,12 +98,15 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 }
 
 // AnnotationsByIDPrefix returns up to limit annotations, in any timeline, whose id starts
-// with prefix, ordered by id. prefix must hold no GLOB metacharacters (*, ?, [).
+// with prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase
+// hex and dashes: *, ? and [ are patterns, and ids are lowercase.
 func (s *Store) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Annotation, error) {
+	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
+		return nil, fmt.Errorf("annotation id prefix %q is not lowercase hex and dashes", prefix)
+	}
+
 	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Annotation, error) {
-		rows, err := q.ListAnnotationsByIDPattern(ctx, sqlcgen.ListAnnotationsByIDPatternParams{
-			Pattern: prefix + "*", MaxRows: int64(limit),
-		})
+		rows, err := q.ListAnnotationsByIDPrefix(ctx, sqlcgen.ListAnnotationsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -111,7 +115,7 @@ func (s *Store) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit 
 	})
 }
 
-// DeleteAnnotations deletes the annotations with ids, or none of them when one does not
+// DeleteAnnotations deletes the annotations with ids, or none of them when any does not
 // exist.
 func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
@@ -120,7 +124,9 @@ func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
 			if err != nil {
 				return err
 			}
-			err = q.DeleteAnnotation(ctx, id)
+		}
+		for _, id := range ids {
+			err := q.DeleteAnnotation(ctx, id)
 			if err != nil {
 				return err
 			}

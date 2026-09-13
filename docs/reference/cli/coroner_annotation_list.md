@@ -48,5 +48,5 @@ coroner annotation list [-e <ref>] [flags]
 
 ### SEE ALSO
 
-* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events
+* [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events and timelines
 
