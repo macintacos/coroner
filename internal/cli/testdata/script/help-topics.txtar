@@ -1,0 +1,26 @@
+# help <command> prints the same help as <command> --help.
+exec coroner version --help
+cp stdout version-help.txt
+exec coroner help version
+cmp stdout version-help.txt
+! stderr .
+
+# A topic name is not a command.
+exits 2 coroner time
+! stdout .
+stderr 'unknown command "time" for "coroner"'
+
+# A mistyped topic exits 2 and suggests the closest topic.
+exits 2 coroner help tiem
+! stdout .
+stderr '^Did you mean ''coroner help time''\?$'
+
+# A name close to nothing still gets a suggestion.
+exits 2 coroner help nope
+! stdout .
+stderr '^Did you mean ''coroner help [a-z-]+''\?$'
+
+# help completes topic names alongside command names.
+exec coroner __complete help ''
+stdout '^time\t'
+stdout '^version\t'

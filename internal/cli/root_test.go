@@ -136,8 +136,20 @@ var _ = Describe("Run", func() {
 			Expect(code).To(Equal(0))
 			Expect(errOut.String()).To(BeEmpty())
 			Expect(out.String()).To(MatchRegexp(
-				`(?s)^.+\nUSAGE\n.*\nADDITIONAL COMMANDS\n.*version.*\nEXAMPLES\n.*\nFLAGS\n.*--version.*` +
+				`(?s)^.+\nUSAGE\n.*\nADDITIONAL COMMANDS\n.*version.*` +
+					`\nHELP TOPICS\n  environment  [^\n]+\n  exit-codes   [^\n]+\n  formatting   [^\n]+\n  time         [^\n]+\n` +
+					`\nEXAMPLES\n.*\nFLAGS\n.*--version.*` +
 					`\nGLOBAL FLAGS\n.*--db.*\nLEARN MORE\n.*https://github.com/macintacos/coroner/issues`))
+		})
+
+		It("prints a help topic's Markdown source on Out", func(ctx SpecContext) {
+			for _, topic := range cli.HelpTopics() {
+				out.Reset()
+
+				Expect(cli.Run(ctx, newApp("help", topic.Name))).To(Equal(0), topic.Name)
+				Expect(out.String()).To(Equal(topic.Body), topic.Name)
+				Expect(errOut.String()).To(BeEmpty(), topic.Name)
+			}
 		})
 
 		It("names each global flag's environment variable", func(ctx SpecContext) {

@@ -15,8 +15,14 @@ CORE COMMANDS
 
 ADDITIONAL COMMANDS
   completion   Generate the autocompletion script for the specified shell
-  help         Help about any command
+  help         Help about any command or topic
   version      Show coroner's version
+
+HELP TOPICS
+  environment  Environment variables coroner reads
+  exit-codes   Exit codes and the JSON error envelope
+  formatting   Output formats and what scripts can rely on
+  time         How coroner reads the times you type
 
 EXAMPLES
   $ coroner version --json
