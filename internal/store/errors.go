@@ -15,7 +15,8 @@ var (
 	ErrConflict = errors.New("already exists")
 	// ErrBusy means another writer held the database for every attempt.
 	ErrBusy = errors.New("database is busy")
-	// ErrForeignDatabase means the file is a SQLite database some other program wrote.
+	// ErrForeignDatabase means the path holds a directory or a SQLite database some other
+	// program wrote.
 	ErrForeignDatabase = errors.New("not a coroner database")
 	// ErrDatabaseTooNew means a newer coroner migrated the database past the schemas this
 	// build knows.

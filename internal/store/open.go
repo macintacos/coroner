@@ -45,8 +45,9 @@ type Schema struct {
 // Open opens the coroner database at path, creating it and its directory (mode 0700) when
 // missing, and applies pending migrations. Before migrating a database that already has a
 // schema, it copies it to <path>.pre-v<N>.bak, N being the schema it migrates to. It
-// returns ErrForeignDatabase for a SQLite file coroner did not create, ErrDatabaseTooNew
-// for one a newer coroner migrated, and ErrBackupExists when that backup is already there.
+// returns ErrForeignDatabase for a directory or a SQLite file coroner did not create,
+// ErrDatabaseTooNew for a database a newer coroner migrated, and ErrBackupExists when that
+// backup is already there.
 func Open(ctx context.Context, path string) (*Store, error) {
 	fsys, err := fs.Sub(migrations, "migrations")
 	if err != nil {
@@ -68,9 +69,12 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 	}
 
 	// mode=ro reports a missing file as SQLITE_CANTOPEN, not fs.ErrNotExist.
-	_, err = os.Stat(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
+	}
+	if info.IsDir() {
+		return nil, directoryError(path)
 	}
 
 	// Not immutable=1: it would leave no -shm/-wal behind, but it ignores a live writer's WAL.
@@ -113,6 +117,10 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
+	info, err := os.Stat(path)
+	if err == nil && info.IsDir() {
+		return nil, directoryError(path)
+	}
 
 	db, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
@@ -125,6 +133,12 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 	}
 
 	return &Store{db: db, migrations: fsys}, nil
+}
+
+// directoryError is the error for a directory at the database path, which SQLite reports only
+// as a failure to open.
+func directoryError(path string) error {
+	return fmt.Errorf("open %s: %w: it is a directory", path, ErrForeignDatabase)
 }
 
 // dsn escapes path because SQLite reads a file: URI, where ?, # and % are syntax.

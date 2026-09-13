@@ -73,6 +73,15 @@ var _ = Describe("Open", func() {
 			CREATE TABLE users (name TEXT);`),
 	)
 
+	It("refuses a directory as not a coroner database, leaving it empty", func(ctx SpecContext) {
+		dir := GinkgoT().TempDir()
+
+		_, err := store.Open(ctx, dir)
+
+		Expect(err).To(MatchError(store.ErrForeignDatabase))
+		Expect(os.ReadDir(dir)).To(BeEmpty())
+	})
+
 	It("refuses a database a newer coroner migrated, leaving it byte-identical with nothing beside it",
 		func(ctx SpecContext) {
 			path := migratedDatabase(ctx)
@@ -231,6 +240,12 @@ var _ = Describe("OpenReadOnly", func() {
 		execSQLite(ctx, path, "CREATE TABLE contact (name TEXT)")
 
 		_, err := store.OpenReadOnly(ctx, path)
+
+		Expect(err).To(MatchError(store.ErrForeignDatabase))
+	})
+
+	It("refuses a directory as not a coroner database", func(ctx SpecContext) {
+		_, err := store.OpenReadOnly(ctx, GinkgoT().TempDir())
 
 		Expect(err).To(MatchError(store.ErrForeignDatabase))
 	})
