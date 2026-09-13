@@ -99,7 +99,7 @@ func globalFlags() *pflag.FlagSet {
 	flags := pflag.NewFlagSet("global", pflag.ContinueOnError)
 	flags.String("db", "", "Database file `path` (env: CORONER_DB)")
 	flags.String("config", "", "Config file `path` (env: CORONER_CONFIG)")
-	flags.String("format", string(formatText), "Output `format`: {text|json|jsonl}")
+	flags.String("format", string(formatText), "Output `format`: {text|json|jsonl}, and more on timeline export")
 	flags.Bool("json", false, "Short for --format json")
 	flags.BoolP("quiet", "q", false, "Print only essential output")
 	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
