@@ -12,6 +12,11 @@ Show a timeline: a summary, then its events in the order they happened, each wit
 time since the event before it. Without a name, id or -t, show the timeline
 CORONER_TIMELINE or 'coroner timeline use' selects.
 
+On a terminal it opens an interactive viewer, where ? lists the keys and q quits.
+--format text, or piping the output, prints plain text instead. --source, --tag and
+--contains keep the events 'coroner event list' keeps with the same flags; --json prints
+the timeline object alone.
+
 ```
 coroner timeline view [<name|id>] [flags]
 ```
@@ -20,12 +25,16 @@ coroner timeline view [<name|id>] [flags]
 
 ```
   $ coroner timeline view mongo-outage-2026-09-11
+  $ coroner timeline view --tag election --source mongod
   $ coroner timeline view --json
 ```
 
 ### Options
 
 ```
+      --contains text      Keep events whose text contains this text, ignoring case
+      --source source      Keep events from this source; repeat to match any of several
+      --tag tag            Keep events with this tag; repeat to require all of them
   -t, --timeline name|id   Timeline name|id to act on
 ```
 

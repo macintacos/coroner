@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/store"
@@ -25,10 +27,8 @@ var _ = Describe("timeline", func() {
 		ids         int
 	)
 
-	run := func(ctx SpecContext, args ...string) int {
-		out.Reset()
-		errOut.Reset()
-		return cli.Run(ctx, cli.App{
+	newApp := func(args ...string) cli.App {
+		return cli.App{
 			Args: append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
 			Out:  &out,
 			Err:  &errOut,
@@ -43,7 +43,13 @@ var _ = Describe("timeline", func() {
 				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
 			},
 			OpenStore: store.Open,
-		})
+		}
+	}
+
+	run := func(ctx SpecContext, args ...string) int {
+		out.Reset()
+		errOut.Reset()
+		return cli.Run(ctx, newApp(args...))
 	}
 
 	BeforeEach(func() {
@@ -216,6 +222,75 @@ var _ = Describe("timeline", func() {
 
 				Expect(run(ctx, "timeline", "view")).To(Equal(0))
 				Expect(out.String()).To(HavePrefix("mongo-outage\n"))
+			})
+
+			It("lists only the events --source, --tag and --contains keep", func(ctx SpecContext) {
+				Expect(run(ctx, "timeline", "view", "mongo-outage", "--source", "mongod", "--tag", "election", "--contains", "ELECTED")).
+					To(Equal(0))
+
+				Expect(out.String()).To(HaveSuffix("\n\n#3\t2026-09-11T04:20:30Z\t\tmongod\tNew primary elected\n"))
+			})
+
+			Describe("on a terminal", func() {
+				// altScreen is the escape sequence a full-screen program starts with.
+				const altScreen = `\x1b\[\?1049h`
+
+				// viewOn runs timeline view with stdin and stdout on a terminal, reading keys from the
+				// returned writer, and sends its exit code on the returned channel.
+				viewOn := func(ctx SpecContext, screen io.Writer, args ...string) (io.Writer, <-chan int) {
+					keys, typed := io.Pipe()
+					app := newApp(append([]string{"timeline", "view", "mongo-outage"}, args...)...)
+					app.In, app.Out, app.Err = keys, screen, gbytes.NewBuffer()
+					app.InIsTTY, app.OutIsTTY = true, true
+
+					code := make(chan int, 1)
+					go func() {
+						code <- cli.Run(ctx, app)
+						// Unblocks a key write the finished command will never read.
+						_ = keys.Close()
+					}()
+					return typed, code
+				}
+
+				It("opens the viewer, where an agent keeps adding events and q exits 0", func(ctx SpecContext) {
+					screen := gbytes.NewBuffer()
+					keys, code := viewOn(ctx, screen)
+					Eventually(screen).Should(gbytes.Say(altScreen))
+
+					Expect(run(ctx, "event", "add", "Replica lag alarm", "-t", "mongo-outage")).To(Equal(0), errOut.String())
+
+					_, err := keys.Write([]byte("q"))
+					Expect(err).NotTo(HaveOccurred())
+					Eventually(code).Should(Receive(Equal(0)))
+				})
+
+				It("exits 130 on ctrl+c", func(ctx SpecContext) {
+					screen := gbytes.NewBuffer()
+					keys, code := viewOn(ctx, screen)
+					Eventually(screen).Should(gbytes.Say(altScreen))
+
+					_, err := keys.Write([]byte{0x03})
+					Expect(err).NotTo(HaveOccurred())
+					Eventually(code).Should(Receive(Equal(130)))
+				})
+
+				It("prints plain text when --format text is given", func(ctx SpecContext) {
+					var screen bytes.Buffer
+					_, code := viewOn(ctx, &screen, "--format", "text")
+
+					Eventually(code).Should(Receive(Equal(0)))
+					Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
+					Expect(screen.String()).NotTo(ContainSubstring("\x1b"))
+				})
+
+				It("prints plain text when stdin is not a terminal", func(ctx SpecContext) {
+					var screen bytes.Buffer
+					app := newApp("timeline", "view", "mongo-outage")
+					app.Out, app.OutIsTTY = &screen, true
+
+					Expect(cli.Run(ctx, app)).To(Equal(0))
+					Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
+				})
 			})
 		})
 

@@ -10,7 +10,9 @@ title: coroner help formatting
 
 `--format text|json|jsonl` picks the format, and `--json` is short for `--format json`.
 Text is the default, and it stays the default when output is piped: coroner never switches
-to JSON on its own. A command exits 2 when asked for a format it cannot print.
+to JSON on its own. A command exits 2 when asked for a format it cannot print. On a
+terminal, `coroner timeline view` opens an interactive viewer; `--format text` or a pipe
+prints plain text instead.
 
 - `text` is for people.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.
