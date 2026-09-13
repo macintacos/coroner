@@ -24,7 +24,6 @@ const missingTextHint = "Pass the text, or - to read it from stdin:\n" +
 	"Run 'coroner event add --help' for more."
 
 func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
-	def := eventAddDefinition()
 	cmd := &cobra.Command{
 		Use:   "add {<text> | -}",
 		Short: "Add an event to the current timeline",
@@ -40,12 +39,9 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
 			"      --ended \"2026-09-11 14:20\" --dry-run --json",
-		RunE: writeRunE(ctx, app, def, addEvent),
 	}
 
-	def.addFlags(cmd.Flags())
-
-	return cmd
+	return eventAddForm().attach(ctx, cmd, app, terminalForms(app))
 }
 
 func eventAddDefinition() definition {

@@ -39,10 +39,11 @@ func writeDefinitions() map[string]definition {
 	}
 }
 
-// formExemptFlags are the output and process globals a form never asks for. tz changes what is
-// written only where a command reads typed times, and those definitions declare it.
+// formExemptFlags are the output and process globals a form never asks for, and --interactive,
+// which opens the form. tz changes what is written only where a command reads typed times, and
+// those definitions declare it.
 func formExemptFlags() []string {
-	return []string{"db", "config", "format", "json", "quiet", "no-color", "debug", "help", "tz"}
+	return []string{"db", "config", "format", "json", "quiet", "no-color", "debug", "help", "tz", "interactive"}
 }
 
 var _ = Describe("write command definitions", func() {

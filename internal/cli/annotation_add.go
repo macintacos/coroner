@@ -17,7 +17,6 @@ const missingBodyHint = "Pass the body, or - to read it from stdin:\n" +
 	"Run 'coroner annotation add --help' for more."
 
 func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
-	def := annotationAddDefinition()
 	cmd := &cobra.Command{
 		Use:   "add {<body> | -} --kind {evidence | comment}",
 		Short: "Attach evidence or a comment to an event or the timeline",
@@ -31,12 +30,9 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +
 			"  $ coroner annotation add \"Step-down lands 5 s after the COLLSCAN burst\" -e 12 --kind comment\n" +
 			"  $ coroner annotation add \"Root cause: undersized oplog\" --kind comment --dry-run --json",
-		RunE: writeRunE(ctx, app, def, addAnnotation),
 	}
 
-	def.addFlags(cmd.Flags())
-
-	return cmd
+	return annotationAddForm().attach(ctx, cmd, app, terminalForms(app))
 }
 
 func annotationAddDefinition() definition {

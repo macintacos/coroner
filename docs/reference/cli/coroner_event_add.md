@@ -38,6 +38,7 @@ coroner event add {<text> | -} [flags]
       --author name     Who is adding it, as a name (default: config author, then USER)
       --dry-run         Show the event as it would be added, and add nothing
       --ended time      When it ended, as a time, for an event that lasted
+      --interactive     Open a form to fill in, prefilled from the other flags (needs a terminal)
       --source source   System, service or person it came from, as a source, created on first use
       --tag tag         Keyword such as phase:detect, as a tag; repeat for more
       --url url         Permalink to the log line or message, as a url

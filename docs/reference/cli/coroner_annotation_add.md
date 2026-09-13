@@ -33,6 +33,7 @@ coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
       --author name        Who is adding it, as a name (default: config author, then USER)
       --dry-run            Show the annotation as it would be added, and add nothing
   -e, --event ref          Event to attach it to, as a ref: seq, timeline#seq or id (default: the timeline)
+      --interactive        Open a form to fill in, prefilled from the other flags (needs a terminal)
       --kind kind          Annotation kind: {evidence | comment}
       --source source      System, service or person it came from, as a source, created on first use
   -t, --timeline name|id   Timeline name|id to act on
