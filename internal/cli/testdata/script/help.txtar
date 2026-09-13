@@ -9,18 +9,35 @@ cmp stdout help.txt
 stderr 'unknown flag: --no-such-flag'
 
 -- help.txt --
-coroner CLI
+coroner records what happened during an investigation, in order: name a timeline,
+add timestamped events from logs, chat and people, then view and export it.
 
-Usage:
-  coroner [flags]
+USAGE
+  coroner <command> [flags]
 
-Flags:
-      --config string   path to the config file
-      --db string       path to the database file
-      --debug           print debug detail on stderr
-      --format string   output format: text, json or jsonl (default "text")
-  -h, --help            help for coroner
-      --json            short for --format json
-      --no-color        disable color
-  -q, --quiet           print only essential output
-      --tz string       time zone for times in this invocation
+ADDITIONAL COMMANDS
+  completion   Generate the autocompletion script for the specified shell
+  help         Help about any command
+  version      Show coroner's version
+
+EXAMPLES
+  $ coroner version --json
+  $ coroner completion zsh > "${fpath[1]}/_coroner"
+
+FLAGS
+  -h, --help      help for coroner
+      --version   Show coroner's version
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl} (default "text")
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues

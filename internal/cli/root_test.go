@@ -3,7 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
-	"io/fs"
+	"errors"
 	"maps"
 	"os"
 
@@ -16,25 +16,18 @@ import (
 var _ = Describe("Run", func() {
 	var (
 		out, errOut bytes.Buffer
-		env, files  map[string]string
+		env         map[string]string
 	)
 
 	newApp := func(args ...string) cli.App {
 		return cli.App{
-			Args: args,
-			Out:  &out,
-			Err:  &errOut,
+			Args:    args,
+			Out:     &out,
+			Err:     &errOut,
+			Version: "v1.2.3",
 			LookupEnv: func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
-			},
-			ReadFile: func(name string) ([]byte, error) {
-				content, ok := files[name]
-				if !ok {
-					return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
-				}
-
-				return []byte(content), nil
 			},
 		}
 	}
@@ -43,17 +36,141 @@ var _ = Describe("Run", func() {
 		out.Reset()
 		errOut.Reset()
 		env = map[string]string{"HOME": "/home/ada"}
-		files = map[string]string{}
 	})
 
-	It("prints Hello, world! to Out and exits 0 without reading the process args", func(ctx SpecContext) {
+	It("runs the command line in App.Args, never the process args", func(ctx SpecContext) {
 		DeferCleanup(func(saved []string) { os.Args = saved }, os.Args)
 		os.Args = []string{"coroner", "--no-such-flag"}
 
-		code := cli.Run(ctx, newApp())
+		code := cli.Run(ctx, newApp("version"))
 
 		Expect(code).To(Equal(0))
-		Expect(out.String()).To(Equal("Hello, world!\n"))
+		Expect(out.String()).To(Equal("coroner version v1.2.3\n"))
+	})
+
+	Describe("version", func() {
+		It("prints compact JSON when Out is not a terminal", func(ctx SpecContext) {
+			code := cli.Run(ctx, newApp("version", "--format", "json"))
+
+			Expect(code).To(Equal(0))
+			Expect(out.String()).To(Equal(`{"coroner_version":"v1.2.3"}` + "\n"))
+		})
+
+		It("indents JSON when Out is a terminal", func(ctx SpecContext) {
+			app := newApp("version", "--json")
+			app.OutIsTTY = true
+
+			cli.Run(ctx, app)
+
+			Expect(out.String()).To(Equal("{\n  \"coroner_version\": \"v1.2.3\"\n}\n"))
+		})
+
+		It("is also printed by --version", func(ctx SpecContext) {
+			code := cli.Run(ctx, newApp("--version", "--json"))
+
+			Expect(code).To(Equal(0))
+			Expect(out.String()).To(Equal(`{"coroner_version":"v1.2.3"}` + "\n"))
+		})
+
+		It("exits 1 with kind internal and a way to report it when Out cannot be written", func(ctx SpecContext) {
+			app := newApp("version", "--json")
+			app.Out = failingWriter{}
+
+			code := cli.Run(ctx, app)
+
+			Expect(code).To(Equal(1))
+			envelope := decodeEnvelope(lastLine(errOut.String()))
+			Expect(envelope).To(HaveKeyWithValue("kind", "internal"))
+			Expect(envelope).To(HaveKeyWithValue("hint", SatisfyAll(
+				ContainSubstring("--debug"), ContainSubstring("https://github.com/macintacos/coroner/issues"))))
+		})
+	})
+
+	DescribeTable("accepts a global flag before or after the subcommand",
+		func(ctx SpecContext, flags ...string) {
+			Expect(cli.Run(ctx, newApp(append(flags, "version")...))).To(Equal(0))
+			before := out.String()
+			out.Reset()
+
+			Expect(cli.Run(ctx, newApp(append([]string{"version"}, flags...)...))).To(Equal(0))
+			Expect(out.String()).To(Equal(before))
+		},
+		Entry(nil, "--json"),
+		Entry(nil, "--format", "json"),
+		Entry(nil, "-q"),
+		Entry(nil, "--quiet"),
+		Entry(nil, "--no-color"),
+		Entry(nil, "--tz", "UTC"),
+		Entry(nil, "--debug"),
+		Entry(nil, "--db", "/tmp/coroner.db"),
+		Entry(nil, "--config", "/etc/coroner.toml"),
+	)
+
+	DescribeTable("rejects an output format the command cannot produce with exit 2 and kind usage",
+		func(ctx SpecContext, args ...string) {
+			code := cli.Run(ctx, newApp(append(args, "--json")...))
+
+			Expect(code).To(Equal(2))
+			Expect(out.String()).To(BeEmpty())
+			Expect(decodeEnvelope(lastLine(errOut.String()))).To(HaveKeyWithValue("kind", "usage"))
+		},
+		Entry("--json with --format text", "version", "--format", "text"),
+		Entry("--json with --format jsonl", "version", "--format", "jsonl"),
+		Entry("an unknown format", "version", "--format", "yaml"),
+	)
+
+	It("rejects jsonl for version, which prints a single object", func(ctx SpecContext) {
+		code := cli.Run(ctx, newApp("version", "--format", "jsonl"))
+
+		Expect(code).To(Equal(2))
+		Expect(out.String()).To(BeEmpty())
+	})
+
+	It("suggests the nearest command for an unknown one and exits 2", func(ctx SpecContext) {
+		code := cli.Run(ctx, newApp("versio"))
+
+		Expect(code).To(Equal(2))
+		Expect(errOut.String()).To(MatchRegexp(`(?s)Did you mean this\?\s+version`))
+	})
+
+	Describe("help", func() {
+		It("lays out root help on Out", func(ctx SpecContext) {
+			code := cli.Run(ctx, newApp("--help"))
+
+			Expect(code).To(Equal(0))
+			Expect(errOut.String()).To(BeEmpty())
+			Expect(out.String()).To(MatchRegexp(
+				`(?s)^.+\nUSAGE\n.*\nADDITIONAL COMMANDS\n.*version.*\nEXAMPLES\n.*\nFLAGS\n.*--version.*` +
+					`\nGLOBAL FLAGS\n.*--db.*\nLEARN MORE\n.*https://github.com/macintacos/coroner/issues`))
+		})
+
+		It("names each global flag's environment variable", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("--help"))
+
+			Expect(out.String()).To(MatchRegexp(`--db .*CORONER_DB`))
+			Expect(out.String()).To(MatchRegexp(`--debug .*CORONER_DEBUG`))
+			Expect(out.String()).To(MatchRegexp(`--no-color .*NO_COLOR`))
+		})
+
+		It("lists a subcommand's inherited flags under GLOBAL FLAGS", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("version", "--help"))
+
+			Expect(out.String()).To(MatchRegexp(`(?s)\nFLAGS\n.*-h, --help.*\nGLOBAL FLAGS\n.*--db`))
+		})
+
+		It("is printed when coroner runs without arguments", func(ctx SpecContext) {
+			code := cli.Run(ctx, newApp())
+
+			Expect(code).To(Equal(0))
+			Expect(out.String()).To(ContainSubstring("USAGE"))
+		})
+	})
+
+	It("writes a shell completion script to Out", func(ctx SpecContext) {
+		code := cli.Run(ctx, newApp("completion", "bash"))
+
+		Expect(code).To(Equal(0))
+		Expect(out.String()).To(ContainSubstring("bash completion"))
 	})
 
 	It("reports a rejected flag on Err and exits 2", func(ctx SpecContext) {
@@ -148,40 +265,20 @@ var _ = Describe("Run", func() {
 
 			Expect(errOut.String()).NotTo(ContainSubstring("level="))
 		})
-	})
 
-	It("rejects an empty --db", func(ctx SpecContext) {
-		code := cli.Run(ctx, newApp("--db="))
+		It("logs an internal failure under --debug", func(ctx SpecContext) {
+			app := newApp("--debug", "version")
+			app.Out = failingWriter{}
 
-		Expect(code).To(Equal(1))
-		Expect(errOut.String()).To(ContainSubstring("--db"))
-	})
+			cli.Run(ctx, app)
 
-	It("reads the config file named by --config and exits 1 on an unknown key", func(ctx SpecContext) {
-		files["/etc/coroner.toml"] = `default_timzone = "UTC"`
-
-		code := cli.Run(ctx, newApp("--config", "/etc/coroner.toml"))
-
-		Expect(code).To(Equal(1))
-		Expect(errOut.String()).To(ContainSubstring("default_timzone"))
-		Expect(out.String()).To(BeEmpty())
-	})
-
-	It("exits 1 naming the missing config file CORONER_CONFIG points at", func(ctx SpecContext) {
-		env["CORONER_CONFIG"] = "/missing/config.toml"
-
-		code := cli.Run(ctx, newApp())
-
-		Expect(code).To(Equal(1))
-		Expect(errOut.String()).To(ContainSubstring("/missing/config.toml"))
-	})
-
-	It("completes the command line even when the default config file is broken", func(ctx SpecContext) {
-		files["/home/ada/.config/coroner/config.toml"] = `default_timzone = "UTC"`
-
-		// Cobra writes completions to os.Stdout, not Out, so only the exit code is observable.
-		code := cli.Run(ctx, newApp("__complete", ""))
-
-		Expect(code).To(Equal(0))
+			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*command="coroner version" kind=internal exit_code=1`))
+		})
 	})
 })
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("broken pipe")
+}

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -144,7 +143,5 @@ func writeEnvelope(w io.Writer, e *Error) error {
 		body.Hint = &e.Hint
 	}
 
-	encoder := json.NewEncoder(w)
-	encoder.SetEscapeHTML(false)
-	return encoder.Encode(envelope{Error: body})
+	return writeJSON(w, false, envelope{Error: body})
 }

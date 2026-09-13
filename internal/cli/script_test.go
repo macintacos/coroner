@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	// Embeds the zone database so TZ resolves on machines without system tzdata instead of silently becoming UTC.
 	_ "time/tzdata"
 
+	"github.com/mattn/go-isatty"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -63,11 +65,15 @@ func runCoroner() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
 
+	build, _ := debug.ReadBuildInfo()
 	app, err := withTestClock(cli.App{
 		Args:      os.Args[1:],
 		In:        os.Stdin,
 		Out:       os.Stdout,
 		Err:       os.Stderr,
+		OutIsTTY:  isatty.IsTerminal(os.Stdout.Fd()),
+		ErrIsTTY:  isatty.IsTerminal(os.Stderr.Fd()),
+		Version:   build.Main.Version,
 		LookupEnv: os.LookupEnv,
 		ReadFile:  os.ReadFile,
 		Now:       time.Now,
