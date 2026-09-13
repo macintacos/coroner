@@ -43,7 +43,7 @@ gantt
     maria#58; checkout p99 is 4s :milestone, 2026-09-10T23:58:12, 0s
   section mongod
     ~Slow query on checkout.orders#58; 2150 ms :milestone, 2026-09-10T23:59:00, 0s
-    Replica set has no primary :2026-09-11T00:02:30, 2026-09-11T00:05:40
+    Replica set has no primary :2026-09-11T00:02:30, 190s
   section (no source)
     Rolled back deploy 812 :milestone, 2026-09-11T00:07:00, 0s
 ```

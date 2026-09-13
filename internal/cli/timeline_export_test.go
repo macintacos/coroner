@@ -197,7 +197,7 @@ var _ = Describe("timeline export", func() {
 		It("draws the times on the wall clock of the zone --tz names", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "export", "--format", "mermaid", "--tz", "America/New_York")).To(Equal(0), errOut.String())
 
-			Expect(out.String()).To(ContainSubstring("  title mongo-outage (America/New_York)\n"))
+			Expect(out.String()).To(ContainSubstring("  title mongo-outage (EDT)\n"))
 			Expect(out.String()).To(ContainSubstring(":milestone, 2026-09-10T23:14:07, 0s\n"))
 		})
 

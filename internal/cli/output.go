@@ -18,7 +18,7 @@ const (
 	formatText  format = "text"
 	formatJSON  format = "json"
 	formatJSONL format = "jsonl"
-	// formatMarkdown is not machine(), so errors under it print as text.
+	// formatMarkdown and formatMermaid are not machine(), so errors under them print as text.
 	formatMarkdown format = "md"
 	formatMermaid  format = "mermaid"
 )

@@ -24,41 +24,42 @@ func mermaid(env export.Envelope, zone *time.Location) string {
 }
 
 // hostileLabels is a timeline whose title, source and event text hold what Mermaid's gantt
-// parser would otherwise read as syntax: colons, entities, comments, directives, keywords
-// and dates at the start of a label, line breaks, and a 10 KB line.
+// parser would otherwise read as syntax: colons, semicolons, entities, comments, directives,
+// keywords and dates at the start of a label, keywords around JavaScript-only whitespace, line
+// breaks, and a 10 KB line.
 func hostileLabels() export.Envelope {
-	texts := []string{
-		"deploy-bot: checkout-api v2.31.0 rolled out",
-		"literal #58; and #35; stay literal",
-		"run `rs.status()` then ``` and ``",
-		"%% not a comment",
-		"5% of requests failed",
-		`%%{init: {"theme":"forest"}}%% stays`,
-		`semi; colon "double" 'single' <b>bold</b> & <script>alert(1)</script>`,
-		"first line\nsecond line\r\nthird line",
-		"section 5 failed",
-		"Title of the runbook",
-		"click here for logs",
-		"gantt chart attached",
-		"2026-09-10 deploy",
-		"😀 on-call paged",
-		strings.Repeat("ab:c#", 2000),
+	source := new("db-2:mongod;primary")
+	events := []export.Event{
+		{Source: source, Text: "deploy-bot: checkout-api v2.31.0 rolled out"},
+		{Source: source, Text: "literal #58; and #35; stay literal"},
+		{Source: source, Text: "run `rs.status()` then ``` and ``"},
+		{Source: source, Text: "%% not a comment"},
+		{Source: source, Text: "5% of requests failed"},
+		{Source: source, Text: `%%{init: {"theme":"forest"}}%% stays`},
+		{Source: source, Text: `semi; colon "double" 'single' <b>bold</b> & <script>alert(1)</script>`},
+		{Text: "first line\nsecond line\r\nthird line"},
+		{Text: "section 5 failed"},
+		{Text: "Title of the runbook"},
+		{Text: "click here for logs"},
+		{Text: "gantt chart attached"},
+		{Text: "2026-09-10 deploy"},
+		{Text: "😀 on-call paged"},
+		{Text: "section\u00a05 failed with an NBSP"},
+		{Text: "\ufeffclick with a leading BOM"},
+		{Text: "click to expand", Approximate: true},
+		{Text: strings.Repeat("ab:c#", 2000)},
 	}
 	start := time.Date(2026, time.September, 11, 3, 14, 0, 0, time.UTC)
-	events := make([]export.Event, 0, len(texts))
-	for i, text := range texts {
-		e := export.Event{
-			ID: "e" + string(rune('a'+i)), Seq: new(int64(i + 1)), OccurredAt: export.Instant(start.Add(time.Duration(i) * time.Second)),
-			Precision: timeline.PrecisionSecond, Tags: []string{}, Text: text,
-		}
-		if i < 7 {
-			e.Source = new("db-2:mongod")
-		}
-		events = append(events, e)
+	for i := range events {
+		events[i].ID = "e" + string(rune('a'+i))
+		events[i].Seq = new(int64(i + 1))
+		events[i].OccurredAt = export.Instant(start.Add(time.Duration(i) * time.Second))
+		events[i].Precision = timeline.PrecisionSecond
+		events[i].Tags = []string{}
 	}
 
 	return envelope(
-		export.Timeline{ID: "t1", Name: "hostile", Title: "Postmortem: #4821 at 100%", Refs: []string{}},
+		export.Timeline{ID: "t1", Name: "hostile", Title: "Postmortem: #4821 at 100%; take 2", Refs: []string{}},
 		events,
 		[]export.Annotation{},
 	)
@@ -77,15 +78,22 @@ var _ = Describe("WriteMermaid", func() {
 		matchGoldenFile(mermaidGoldenDir, "hostile", ".mmd", mermaid(hostileLabels(), time.UTC))
 	})
 
-	It("shows times on the zone's wall clock and names the zone in the title", func() {
-		diagram := mermaid(acrossFallBack(), newYork())
-
-		Expect(diagram).To(ContainSubstring("  title fall-back Clock change (America/New_York)\n"))
-		Expect(strings.Count(diagram, "2026-11-01T01:30:00")).To(Equal(2), diagram)
+	It("draws a timeline with no events as its title alone", func() {
+		matchGoldenFile(mermaidGoldenDir, "empty", ".mmd", mermaid(envelope(export.Timeline{ID: "t1", Name: "quiet", Refs: []string{}}, nil, nil), time.UTC))
 	})
 
-	It("writes the same bytes for the same export", func() {
-		Expect(mermaid(hostileLabels(), time.UTC)).To(Equal(mermaid(hostileLabels(), time.UTC)))
+	It("shows times on the zone's wall clock and names the zone in the title", func() {
+		env := acrossFallBack()
+		env.Events = append(env.Events, export.Event{
+			ID: "e4", Seq: new(int64(4)), OccurredAt: utc("2026-11-01T05:50:00Z"), Precision: timeline.PrecisionSecond,
+			EndedAt: new(utc("2026-11-01T06:10:00Z")), Tags: []string{}, Text: "Failover window",
+		})
+
+		diagram := mermaid(env, newYork())
+
+		Expect(diagram).To(ContainSubstring("  title fall-back Clock change (EDT/EST)\n"))
+		Expect(strings.Count(diagram, "2026-11-01T01:30:00")).To(Equal(2), diagram)
+		Expect(diagram).To(ContainSubstring("    Failover window :2026-11-01T01:50:00, 1200s\n"))
 	})
 
 	DescribeTable("fails, writing nothing, unless the export holds one timeline",
@@ -113,7 +121,6 @@ var _ = Describe("MermaidSize", func() {
 
 	It("exceeds MermaidMaxTextSize for an export Mermaid refuses to draw", func() {
 		env := checkoutSpike()
-		env.Annotations = nil
 		env.Events[0].Text = strings.Repeat("x", export.MermaidMaxTextSize)
 
 		size, err := export.MermaidSize(env, time.UTC)

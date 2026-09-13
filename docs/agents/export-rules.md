@@ -62,11 +62,22 @@
    the events every other format exports. Its layout is not a contract (`AGENTS.md` Rule
    3), but it keeps to gantt syntax that hosts running an old Mermaid still draw:
    second-precision `dateFormat`, and no `tickInterval`, `displayMode: compact`, `crit` or
-   colours. Every piece of text goes through its escaper, which writes `#`, `:` and `%` as
-   entities, and a task label that starts with what Mermaid's gantt lexer reads before
-   task text, such as `section`, `title`, `click` or a date, has its first character
-   written as an entity too. Unescaped, such text is silently dropped, starts a section,
-   replaces the title or fails to parse. A change to the escaper or the diagram's syntax
-   is checked by rendering `internal/export/testdata/mermaid/hostile.mmd` in a real
-   Mermaid. Those goldens change only through `go test ./internal/export -update`, with
-   the diff read before committing.
+   colours. Every piece of text goes through the diagram's escaper, which writes `#`, `:`,
+   `%` and `;` as entities; Mermaid before 10.8.0 reads title, section and task text only
+   up to `;`, `#` or `:`, and GitHub does not publish its Mermaid version. A task label
+   that starts, after any whitespace, with what Mermaid's gantt lexer reads before task
+   text, such as `section`, `title`, `click` or a date, has its first character written as
+   an entity too; the guard counts as whitespace what a JavaScript regexp does, such as
+   NBSP, `\v`, U+FEFF and the Unicode spaces, because the lexer is one. Unescaped, such
+   text is silently dropped, starts a section, replaces the title or fails to parse. A bar
+   is written as its start and a duration in seconds, `:<start>, <N>s`, never an end date:
+   on the night a zone falls back, a wall-clock end can come before its start, and Mermaid
+   silently draws no bar. Mermaid dates carry no offset, and a location named `Local` says
+   nothing to a reader, so the title names the zone by the abbreviations its times carry
+   on the zone's wall clock, such as `(EDT/EST)`, as the Markdown export labels times. A
+   diagram over `export.MermaidMaxTextSize` is still written whole, with a warning on
+   stderr, because cutting it would silently drop events. The escaper and the guard were
+   checked by rendering in Mermaid 11.12.0 and 10.2.4, and the keyword list follows
+   11.12.0's `gantt.jison`; a change to the escaper or the diagram's syntax is checked by
+   rendering `internal/export/testdata/mermaid/hostile.mmd` in both. Those goldens change
+   only through `go test ./internal/export -update`, with the diff read before committing.

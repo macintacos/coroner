@@ -88,7 +88,7 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		if err != nil {
 			return err
 		}
-		// No diagram line can close a three-backtick fence: each starts with gantt or indented keyword text.
+		// No diagram line can close the fence: a closing fence holds only backticks, and every line holds more.
 		blocks = append(blocks, "```mermaid\n"+diagram+"```")
 	}
 
