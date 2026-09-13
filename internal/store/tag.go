@@ -10,11 +10,13 @@ import (
 
 // TagUsage is a tag with how many events carry it and when they happened.
 type TagUsage struct {
-	Name                            string
-	EventCount                      int
+	Name       string
+	EventCount int
+	// FirstOccurredAt and LastOccurredAt are never zero: a tag exists only on an event.
 	FirstOccurredAt, LastOccurredAt time.Time
 }
 
+// tagUsageQuery is hand-written: sqlc cannot type MIN or MAX.
 const tagUsageQuery = `SELECT t.tag, COUNT(*), MIN(e.occurred_at), MAX(e.occurred_at)
 FROM event_tag t JOIN event e ON e.id = t.event_id
 GROUP BY t.tag
@@ -27,6 +29,7 @@ func (s *Store) TagUsages(ctx context.Context) ([]TagUsage, error) {
 	})
 }
 
+// scanTagUsage reads a row of tagUsageQuery; keep it in step with that column order.
 func scanTagUsage(rows *sql.Rows) (TagUsage, error) {
 	var (
 		usage       TagUsage

@@ -38,7 +38,9 @@ func newSourceListCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 type sourceListJSON struct {
-	Sources []listedSourceJSON `json:"sources"`
+	Sources   []listedSourceJSON `json:"sources"`
+	Total     int                `json:"total"`
+	Truncated bool               `json:"truncated"`
 }
 
 func printSources(o output, usages []store.SourceUsage) error {
@@ -59,7 +61,7 @@ func newSourceListJSON(usages []store.SourceUsage) sourceListJSON {
 		listed = append(listed, newListedSourceJSON(u))
 	}
 
-	return sourceListJSON{Sources: listed}
+	return sourceListJSON{Sources: listed, Total: len(listed)}
 }
 
 // sourceRows returns a row per source: its name, event and annotation counts, and first and

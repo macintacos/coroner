@@ -37,6 +37,10 @@ var _ = Describe("TagUsages", func() {
 		Expect(s.CreateTimeline(ctx, other)).To(Succeed())
 	})
 
+	It("returns an empty, non-nil slice when no event carries a tag", func(ctx SpecContext) {
+		Expect(s.TagUsages(ctx)).To(And(Not(BeNil()), BeEmpty()))
+	})
+
 	It("counts each tag's events across timelines and spans their occurred at, by name", func(ctx SpecContext) {
 		Expect(s.AddEvent(ctx, newEvent(10, incident.ID, at(20), "phase:detect", "election"), "")).Error().NotTo(HaveOccurred())
 		Expect(s.AddEvent(ctx, newEvent(11, other.ID, at(5), "phase:detect"), "")).Error().NotTo(HaveOccurred())

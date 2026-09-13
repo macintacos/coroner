@@ -14,13 +14,14 @@ import (
 
 func newSourceEditCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "edit <name> --name <new>",
+		Use:   "edit <name> --name <new-name>",
 		Short: "Rename a source",
 		Long: "Rename a source everywhere it is used. Events and annotations refer to a source by id,\n" +
 			"so they all follow the new name. A name another source has is refused: merging sources\n" +
-			"is not supported.",
-		Args:        cobra.ExactArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+			"is not supported yet.",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner source edit mongo --name mongodb --dry-run\n" +
 			"  $ coroner source edit mongo --name db-2/mongod",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -28,7 +29,7 @@ func newSourceEditCommand(ctx context.Context, app App) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("name", "", "New `name`")
+	cmd.Flags().String("name", "", "Rename it to `new-name`")
 	cmd.Flags().Bool("dry-run", false, "Show how many events and annotations the rename touches, and change nothing")
 
 	return cmd
@@ -46,9 +47,9 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) e
 	}
 
 	return withStore(ctx, cmd, app, func(s *store.Store) error {
-		// ponytail: every source's usage is read to find one; a by-name query if a database
-		// ever holds enough sources to notice. The read and the rename are separate
-		// transactions, so a concurrent edit of this source is overwritten.
+		// ponytail: reads every source's usage to find one; query by name if sources grow large.
+		// ponytail: the read and rename are separate transactions, so a concurrent edit is
+		// overwritten; rename inside one store write if that matters.
 		usages, err := s.SourceUsages(ctx)
 		if err != nil {
 			return err
@@ -61,7 +62,7 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) e
 		renamed.Name = newName
 
 		if dryRun {
-			return previewSourceEdit(o, usages, source, renamed)
+			return previewSourceEdit(o, usages, renamed, name)
 		}
 
 		err = s.RenameSource(ctx, source.ID, newName)
@@ -71,11 +72,9 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, name string) e
 		if err != nil {
 			return err
 		}
-		if o.format == formatJSON {
-			err = o.json(newListedSourceJSON(renamed))
-			if err != nil {
-				return err
-			}
+		err = printSource(o, renamed)
+		if err != nil {
+			return err
 		}
 
 		return o.notify("Renamed source `%s` to `%s`.", name, newName)
@@ -106,20 +105,31 @@ func findSource(usages []store.SourceUsage, name string) (store.SourceUsage, err
 	return usages[i], nil
 }
 
-// previewSourceEdit prints what renaming source to renamed would touch, failing as the rename
-// would when another source has the new name.
-func previewSourceEdit(o output, usages []store.SourceUsage, source, renamed store.SourceUsage) error {
-	holder, err := findSource(usages, renamed.Name)
-	if err == nil && holder.ID != source.ID {
+// previewSourceEdit prints what renaming the source called oldName to renamed would touch,
+// failing as the rename would when another source has the new name.
+func previewSourceEdit(o output, usages []store.SourceUsage, renamed store.SourceUsage, oldName string) error {
+	taken := slices.ContainsFunc(usages, func(u store.SourceUsage) bool {
+		return u.Name == renamed.Name && u.ID != renamed.ID
+	})
+	if taken {
 		return sourceExistsError(renamed.Name, nil)
 	}
 	if o.format == formatJSON {
 		return o.json(newListedSourceJSON(renamed))
 	}
 
-	_, err = fmt.Fprintf(o.out, "Would rename source `%s` to `%s`: events: %d, annotations: %d\n",
-		source.Name, renamed.Name, source.EventCount, source.AnnotationCount)
+	_, err := fmt.Fprintf(o.out, "Would rename source `%s` to `%s`: events: %d, annotations: %d\n",
+		oldName, renamed.Name, renamed.EventCount, renamed.AnnotationCount)
 	return err
+}
+
+// printSource prints u when o asks for JSON; text output leaves it to the command's message.
+func printSource(o output, u store.SourceUsage) error {
+	if o.format != formatJSON {
+		return nil
+	}
+
+	return o.json(newListedSourceJSON(u))
 }
 
 func sourceExistsError(name string, err error) *Error {

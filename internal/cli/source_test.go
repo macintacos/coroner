@@ -38,6 +38,7 @@ var _ = Describe("source list", func() {
 		})
 	}
 
+	// No command yet leaves a source without events, so the store seeds one.
 	BeforeEach(func(ctx SpecContext) {
 		home = GinkgoT().TempDir()
 		created := time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC)
@@ -66,7 +67,7 @@ var _ = Describe("source list", func() {
 				"annotation_count": 1,
 				"first_occurred_at": null,
 				"last_occurred_at": null
-			}]}`))
+			}], "total": 1, "truncated": false}`))
 		})
 
 		It("prints a dash for each missing occurred at as text", func(ctx SpecContext) {

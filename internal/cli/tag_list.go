@@ -38,7 +38,9 @@ func newTagListCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 type tagListJSON struct {
-	Tags []tagJSON `json:"tags"`
+	Tags      []tagJSON `json:"tags"`
+	Total     int       `json:"total"`
+	Truncated bool      `json:"truncated"`
 }
 
 type tagJSON struct {
@@ -71,7 +73,7 @@ func newTagListJSON(usages []store.TagUsage) tagListJSON {
 		})
 	}
 
-	return tagListJSON{Tags: tags}
+	return tagListJSON{Tags: tags, Total: len(tags)}
 }
 
 // tagRows returns a row per tag: its name, event count, and first and last occurred at.

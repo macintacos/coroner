@@ -10,7 +10,7 @@ List sources and fix their names
 
 A source is the system, service or person an event or annotation came from. Sources
 belong to the whole database, not one timeline, and are created the first time an event
-names one.
+or annotation names one.
 
 ```
 coroner source [flags]

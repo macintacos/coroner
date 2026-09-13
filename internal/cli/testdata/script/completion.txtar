@@ -22,6 +22,10 @@ cmp stdout none.txt
 exec coroner __complete timeline view -t mongo-failover ''
 cmp stdout none.txt
 
+# A source positional completes nothing, not file names.
+exec coroner __complete source edit ''
+cmp stdout none.txt
+
 # --db on the command line picks the database completion reads.
 exec coroner timeline create other-incident --db $WORK/other.db
 exec coroner __complete timeline use --db $WORK/other.db ''

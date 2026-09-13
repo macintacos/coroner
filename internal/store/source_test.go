@@ -37,6 +37,10 @@ var _ = Describe("Sources", func() {
 	})
 
 	Describe("SourceUsages", func() {
+		It("returns an empty, non-nil slice when there are no sources", func(ctx SpecContext) {
+			Expect(s.SourceUsages(ctx)).To(And(Not(BeNil()), BeEmpty()))
+		})
+
 		It("counts each source's events and annotations and spans its events' occurred at, by name", func(ctx SpecContext) {
 			Expect(s.AddEvent(ctx, newEvent(10, at(20), "mongod"), uuid(20))).Error().NotTo(HaveOccurred())
 			Expect(s.AddEvent(ctx, newEvent(11, at(5), "mongod"), uuid(21))).Error().NotTo(HaveOccurred())

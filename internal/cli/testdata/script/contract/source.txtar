@@ -4,9 +4,9 @@
 
 # With no events, both lists are empty.
 exits 0 coroner source list --json
-stdout '^\{"sources":\[\]\}$'
+stdout '^\{"sources":\[\],"total":0,"truncated":false\}$'
 exits 0 coroner tag list --json
-stdout '^\{"tags":\[\]\}$'
+stdout '^\{"tags":\[\],"total":0,"truncated":false\}$'
 
 exits 0 coroner timeline create mongo-outage
 exits 0 coroner timeline use mongo-outage
@@ -16,11 +16,11 @@ exits 0 coroner event add 'Election timeout logged' --at 2026-09-11T03:15:00Z --
 
 # source list prints every source by name, every key present.
 exits 0 coroner source list --json
-stdout '^\{"sources":\[\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"db-2/mongod","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":1,"annotation_count":0,"first_occurred_at":"2026-09-11T03:15:00\.000000000Z","last_occurred_at":"2026-09-11T03:15:00\.000000000Z"\},\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongo","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:20:00\.000000000Z"\}\]\}$'
+stdout '^\{"sources":\[\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"db-2/mongod","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":1,"annotation_count":0,"first_occurred_at":"2026-09-11T03:15:00\.000000000Z","last_occurred_at":"2026-09-11T03:15:00\.000000000Z"\},\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongo","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:20:00\.000000000Z"\}\],"total":2,"truncated":false\}$'
 
 # tag list prints every tag by name; an event without tags adds none.
 exits 0 coroner tag list --json
-stdout '^\{"tags":\[\{"name":"phase:detect","event_count":1,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:14:07\.000000000Z"\}\]\}$'
+stdout '^\{"tags":\[\{"name":"phase:detect","event_count":1,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:14:07\.000000000Z"\}\],"total":1,"truncated":false\}$'
 
 # edit --dry-run prints the source as it would be renamed, and renames nothing.
 exits 0 coroner source edit mongo --name mongodb --dry-run --json

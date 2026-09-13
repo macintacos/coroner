@@ -1,7 +1,6 @@
 package store
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	"time"
@@ -32,14 +31,15 @@ type SourceUsage struct {
 	FirstOccurredAt, LastOccurredAt *time.Time
 }
 
-// sourceUsageQuery is hand-written because sqlc types MIN and MAX as never null, and a source
-// with no events has neither.
+// sourceUsageQuery is hand-written: sqlc cannot type a MIN or MAX that is null for a source
+// with no events.
 const sourceUsageQuery = `SELECT s.id, s.name, s.created_at,
-	(SELECT COUNT(*) FROM event e WHERE e.source_id = s.id),
-	(SELECT COUNT(*) FROM annotation a WHERE a.source_id = s.id),
-	(SELECT MIN(e.occurred_at) FROM event e WHERE e.source_id = s.id),
-	(SELECT MAX(e.occurred_at) FROM event e WHERE e.source_id = s.id)
+	COALESCE(e.n, 0), COALESCE(a.n, 0), e.first, e.last
 FROM source s
+LEFT JOIN (SELECT source_id, COUNT(*) n, MIN(occurred_at) first, MAX(occurred_at) last
+	FROM event WHERE source_id IS NOT NULL GROUP BY source_id) e ON e.source_id = s.id
+LEFT JOIN (SELECT source_id, COUNT(*) n
+	FROM annotation WHERE source_id IS NOT NULL GROUP BY source_id) a ON a.source_id = s.id
 ORDER BY s.name`
 
 // SourceUsages returns every source with its usage, ordered by name.
@@ -49,23 +49,24 @@ func (s *Store) SourceUsages(ctx context.Context) ([]SourceUsage, error) {
 	})
 }
 
+// scanSourceUsage reads a row of sourceUsageQuery; keep it in step with that column order.
 func scanSourceUsage(rows *sql.Rows) (SourceUsage, error) {
 	var (
-		row         sqlcgen.Source
-		usage       SourceUsage
-		first, last *string
+		usage               SourceUsage
+		id, name, createdAt string
+		first, last         *string
 	)
-	err := rows.Scan(&row.ID, &row.Name, &row.CreatedAt, &usage.EventCount, &usage.AnnotationCount, &first, &last)
+	err := rows.Scan(&id, &name, &createdAt, &usage.EventCount, &usage.AnnotationCount, &first, &last)
 	if err != nil {
 		return SourceUsage{}, err
 	}
 
 	var p instants
+	usage.Source = timeline.Source{ID: id, Name: name, CreatedAt: p.parse(createdAt)}
 	usage.FirstOccurredAt = p.parseOptional(first)
 	usage.LastOccurredAt = p.parseOptional(last)
-	usage.Source, err = loadSource(row)
 
-	return usage, cmp.Or(p.err, err)
+	return usage, p.err
 }
 
 // RenameSource sets the name of the source with id. Its events and annotations name it by id,

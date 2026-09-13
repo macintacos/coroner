@@ -10,10 +10,10 @@ Rename a source
 
 Rename a source everywhere it is used. Events and annotations refer to a source by id,
 so they all follow the new name. A name another source has is refused: merging sources
-is not supported.
+is not supported yet.
 
 ```
-coroner source edit <name> --name <new> [flags]
+coroner source edit <name> --name <new-name> [flags]
 ```
 
 ### Examples
@@ -26,8 +26,8 @@ coroner source edit <name> --name <new> [flags]
 ### Options
 
 ```
-      --dry-run     Show how many events and annotations the rename touches, and change nothing
-      --name name   New name
+      --dry-run         Show how many events and annotations the rename touches, and change nothing
+      --name new-name   Rename it to new-name
 ```
 
 ### Options inherited from parent commands

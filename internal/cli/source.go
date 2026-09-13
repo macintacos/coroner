@@ -17,7 +17,7 @@ func newSourceCommand(ctx context.Context, app App) *cobra.Command {
 		GroupID: coreCommands,
 		Long: "A source is the system, service or person an event or annotation came from. Sources\n" +
 			"belong to the whole database, not one timeline, and are created the first time an event\n" +
-			"names one.",
+			"or annotation names one.",
 		Example: "  $ coroner source list\n" +
 			"  $ coroner source edit mongo --name mongodb",
 		// Help and the unknown-verb error print under any format.
@@ -30,14 +30,14 @@ func newSourceCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// sourceJSON is the canonical source object's keys.
+// sourceJSON is a source's own keys; listedSourceJSON adds its usage.
 type sourceJSON struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	CreatedAt string `json:"created_at"`
 }
 
-// listedSourceJSON adds a source's usage, which only list output carries, to its JSON.
+// listedSourceJSON is a source's JSON with its usage, as source list and source edit print it.
 type listedSourceJSON struct {
 	sourceJSON
 
