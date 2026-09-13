@@ -16,8 +16,8 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// Write creates the coroner database at path, which must not exist yet, and fills it with
-// the fixture's records. It returns an error when path exists.
+// Write creates the coroner database at path and fills it with the fixture's records; it
+// errors if path already exists.
 func Write(ctx context.Context, path string) error {
 	_, err := os.Lstat(path)
 	if err == nil {
