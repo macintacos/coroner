@@ -77,15 +77,20 @@ func (m Model) summary() string {
 	return strings.TrimSpace(count + " " + strings.Join(kept, ", "))
 }
 
+// footer is the open prompt or the last failure, wrapped so its hint is never cut, then the short
+// help.
 func (m Model) footer() string {
-	line := m.styles.failure.Render(m.problem)
-	if m.prompt != noPrompt {
-		line = m.input.View()
+	line := ""
+	switch {
+	case m.prompt != noPrompt:
+		line = m.fit(m.input.View())
+	case m.problem != "":
+		line = m.styles.failure.Width(m.width).Render(m.problem)
 	}
 
 	h := m.help
 	h.SetWidth(m.width)
-	return m.fit(line) + "\n" + h.ShortHelpView(m.keys.ShortHelp())
+	return line + "\n" + h.ShortHelpView(m.keys.ShortHelp())
 }
 
 // keyHelp lists every key, filling the space the event list takes.

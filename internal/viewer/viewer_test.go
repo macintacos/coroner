@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"regexp"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -416,6 +417,16 @@ var _ = Describe("the viewer", func() {
 
 			Expect(screen(m)).To(ContainSubstring("the database is busy"))
 			Expect(screen(m)).To(ContainSubstring("Primary stepped down"))
+		})
+
+		It("wraps a failure too long for one line, keeping its hint and the window's height", func() {
+			l.err = errors.New(`tag "Election": must be at most 64 lowercase letters, digits or "._:/-", ` +
+				"starting with a letter or digit. Did you mean `election`?")
+			m, cmd := press(open(fixture(), viewer.Match{}, l), "r")
+			m = settle(m, cmd)
+
+			Expect(screen(m)).To(ContainSubstring("Did you mean `election`?"))
+			Expect(strings.Split(screen(m), "\n")).To(HaveLen(20))
 		})
 	})
 

@@ -202,8 +202,9 @@ func (m Model) openPrompt(p prompt, value string) (tea.Model, tea.Cmd) {
 	m.input.Prompt = p.label()
 	m.input.SetValue(value)
 	m.input.CursorEnd()
+	focus := m.input.Focus()
 
-	return m, m.input.Focus()
+	return m.scroll(), focus
 }
 
 func (m Model) promptKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
@@ -272,7 +273,7 @@ func (m Model) jump(value string) Model {
 	r, err := timeparse.Parse(value, m.opts.Now(), m.opts.Location)
 	if err != nil {
 		m.problem = failure(err)
-		return m
+		return m.scroll()
 	}
 
 	i := slices.IndexFunc(m.snapshot.Events, func(e timeline.Event) bool { return !e.OccurredAt.Before(r.Instant) })
@@ -312,7 +313,7 @@ func (m Model) loaded(msg loadedMsg) Model {
 	case msg.err != nil:
 		m.problem = failure(msg.err)
 		m.pending = m.match
-		return m
+		return m.scroll()
 	}
 
 	m.problem = ""
