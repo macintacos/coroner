@@ -3,13 +3,14 @@ package cli
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/store"
 )
 
 // App is everything a command may use from outside itself. Commands go through these
@@ -29,7 +30,7 @@ type App struct {
 	Now      func() time.Time
 	// OpenStore creates the database at path, so only commands that use it may call it, and
 	// never from PersistentPreRunE.
-	OpenStore func(ctx context.Context, path string) (*sql.DB, error)
+	OpenStore func(ctx context.Context, path string) (*store.Store, error)
 }
 
 // Run executes the command line in app.Args and returns the process exit code.
