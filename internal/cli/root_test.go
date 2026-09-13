@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"os"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,6 +19,9 @@ var _ = Describe("Run", func() {
 	})
 
 	It("prints Hello, world! to Out and exits 0 without reading the process args", func(ctx SpecContext) {
+		DeferCleanup(func(saved []string) { os.Args = saved }, os.Args)
+		os.Args = []string{"coroner", "--no-such-flag"}
+
 		code := cli.Run(ctx, cli.App{Out: &out, Err: &errOut})
 
 		Expect(code).To(Equal(0))

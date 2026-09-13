@@ -1,4 +1,4 @@
-// Package cli holds coroner's cobra commands and the process-free entry point that runs them.
+// Package cli holds coroner's cobra commands and Run, which executes them against an App.
 package cli
 
 import (
@@ -8,16 +8,17 @@ import (
 	"time"
 )
 
-// App is everything a command may reach outside the process: main.go builds it from the
-// real args, stdio, environment, clock and store.
+// App is everything a command may use from outside itself. Commands go through these
+// fields, never cobra's InOrStdin, OutOrStdout or ErrOrStderr.
 type App struct {
+	// Args excludes the program name.
 	Args      []string
 	In        io.Reader
 	Out, Err  io.Writer
 	LookupEnv func(key string) (string, bool)
 	Now       func() time.Time
-	// OpenStore is called only by commands that need the database, so --help and friends
-	// never create one.
+	// OpenStore creates the database at path, so only commands that use it may call it, and
+	// never from PersistentPreRunE.
 	OpenStore func(ctx context.Context, path string) (*sql.DB, error)
 }
 
@@ -27,6 +28,8 @@ func Run(ctx context.Context, app App) int {
 	// Cobra falls back to os.Args when given nil.
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
+	// No SetOut: cobra prints deprecation notices through OutOrStderr, which returns Out
+	// once set. TODO: cobra's own help and usage output still reach os.Stdout/os.Stderr.
 	root.SetErr(app.Err)
 
 	if root.ExecuteContext(ctx) != nil {
