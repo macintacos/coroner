@@ -14,7 +14,10 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-const kindHint = "Pass --kind evidence for raw material such as a log line, or --kind comment for commentary."
+const (
+	kindHint            = "Pass --kind evidence for raw material such as a log line, or --kind comment for commentary."
+	listAnnotationsHint = "Run 'coroner annotation list' to see a timeline's annotations and their ids."
+)
 
 func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -30,7 +33,7 @@ func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 		RunE:        runNoun,
 	}
 
-	cmd.AddCommand(newAnnotationAddCommand(ctx, app), newAnnotationListCommand(ctx, app))
+	cmd.AddCommand(newAnnotationAddCommand(ctx, app), newAnnotationListCommand(ctx, app), newAnnotationEditCommand(ctx, app))
 
 	return cmd
 }
@@ -120,6 +123,46 @@ func findEventIn(
 		Kind:    KindEventNotFound,
 		Message: fmt.Sprintf("event %s is in timeline `%s`, not `%s`", ref, eventTimeline.Name, t.Name),
 		Hint:    "Pass -t " + eventTimeline.Name + " to act on its own timeline.",
+	}
+}
+
+// findAnnotation returns the annotation whose id is, or uniquely starts with, ref, in any
+// timeline.
+func findAnnotation(ctx context.Context, s *store.Store, ref string) (timeline.Annotation, error) {
+	if !idRef.MatchString(ref) {
+		return timeline.Annotation{}, &Error{
+			Kind:    KindUsage,
+			Message: fmt.Sprintf("%q is not an annotation id", ref),
+			Hint:    listAnnotationsHint,
+		}
+	}
+
+	annotations, err := s.AnnotationsByIDPrefix(ctx, ref, maxCandidates+1)
+	switch {
+	case err != nil:
+		return timeline.Annotation{}, err
+	case len(annotations) == 1:
+		return annotations[0], nil
+	case len(annotations) == 0:
+		return timeline.Annotation{}, &Error{
+			Kind:    KindAnnotationNotFound,
+			Message: "no annotation has an id starting " + ref,
+			Hint:    listAnnotationsHint,
+		}
+	}
+
+	lines := make([]string, 0, maxCandidates+1)
+	for _, a := range annotations[:min(len(annotations), maxCandidates)] {
+		lines = append(lines, fmt.Sprintf("  %s  %s", a.ID, a.Kind))
+	}
+	if len(annotations) > maxCandidates {
+		lines = append(lines, "  and more")
+	}
+
+	return timeline.Annotation{}, &Error{
+		Kind:    KindAmbiguousID,
+		Message: "more than one annotation has an id starting " + ref,
+		Hint:    "Pass more of the id:\n" + strings.Join(lines, "\n"),
 	}
 }
 

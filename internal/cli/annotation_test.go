@@ -368,4 +368,106 @@ var _ = Describe("annotation", func() {
 			Expect(errOut.String()).To(ContainSubstring("coroner annotation add"))
 		})
 	})
+
+	Describe("edit", func() {
+		const electionLogID = "0199a1b2-0000-7000-8000-000000000003"
+		created := "2026-09-13T01:30:05.250000000Z"
+
+		BeforeEach(func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "add", "election log", "-e", "1", "--kind", "evidence", "--source", "mongod",
+				"--url", "https://logs.example.com/l/1")).To(Equal(0))
+			now = now.Add(time.Hour)
+		})
+
+		It("changes the fields given, keeping its author, event and created at, and prints it as JSON", func(ctx SpecContext) {
+			env["USER"] = "sam"
+
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--kind", "comment", "--body",
+				"Election timeout, not a partition", "--source", "slack", "--url", "https://chat.example.com/p/9",
+				"--json")).To(Equal(0))
+
+			Expect(out.String()).To(MatchJSON(`{
+				"id": "` + electionLogID + `",
+				"timeline_id": "` + outageID + `",
+				"event_id": "` + stepDownID + `",
+				"kind": "comment",
+				"body": "Election timeout, not a partition",
+				"author": "julian",
+				"source": "slack",
+				"url": "https://chat.example.com/p/9",
+				"created_at": "` + created + `",
+				"updated_at": "2026-09-13T02:30:05.250000000Z"
+			}`))
+			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(SatisfyAll(
+				HaveField("Kind", timeline.AnnotationComment), HaveField("Source", HaveValue(Equal("slack"))))))
+		})
+
+		It("leaves the fields not given as they are", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--kind", "comment", "--json")).To(Equal(0))
+
+			Expect(out.String()).To(ContainSubstring(`"body":"election log","author":"julian","source":"mongod"`))
+		})
+
+		It("reads --body - from stdin", func(ctx SpecContext) {
+			in = strings.NewReader("[conn42] stepping down\n")
+
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--body", "-", "--json")).To(Equal(0))
+
+			Expect(out.String()).To(ContainSubstring(`"body":"[conn42] stepping down"`))
+		})
+
+		It("says on stderr what it edited", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--kind", "comment")).To(Equal(0))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(Equal("Edited comment annotation " + electionLogID + " in timeline `mongo-outage`\n"))
+		})
+
+		It("prints the edited annotation with --dry-run, and changes nothing", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--kind", "comment", "--dry-run", "--json")).To(Equal(0))
+
+			Expect(out.String()).To(ContainSubstring(`"kind":"comment"`))
+			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(HaveField("Kind", timeline.AnnotationEvidence)))
+		})
+
+		It("finds the annotation by a unique id prefix, with no timeline selected", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "use", "--clear")).To(Equal(0))
+
+			Expect(run(ctx, "annotation", "edit", electionLogID[:30], "--kind", "comment")).To(Equal(0))
+
+			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(HaveField("Kind", timeline.AnnotationComment)))
+		})
+
+		It("exits 3 with kind annotation_not_found on an id no annotation has", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", "0199a1b2-ffff", "--kind", "comment", "--json")).To(Equal(3))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"annotation_not_found"`))
+		})
+
+		It("exits 2 with kind ambiguous_id, naming the annotations, on a prefix several share", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "add", "Root cause: undersized oplog", "--kind", "comment")).To(Equal(0))
+
+			Expect(run(ctx, "annotation", "edit", "0199a1b2", "--kind", "comment", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"ambiguous_id"`))
+			Expect(errOut.String()).To(ContainSubstring(electionLogID))
+			Expect(errOut.String()).To(ContainSubstring("0199a1b2-0000-7000-8000-000000000005"))
+		})
+
+		DescribeTable("exits 2, changing nothing, on a command line it cannot apply",
+			func(ctx SpecContext, kind string, args ...string) {
+				Expect(run(ctx, append([]string{"annotation", "edit", "--json"}, args...)...)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"` + kind + `"`))
+				Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(SatisfyAll(
+					HaveField("Kind", timeline.AnnotationEvidence), HaveField("Body", "election log"))))
+			},
+			Entry("no field to edit", "usage", electionLogID),
+			Entry("an unknown kind", "usage", electionLogID, "--kind", "note"),
+			Entry("a blank body", "usage", electionLogID, "--body", " "),
+			Entry("a blank URL", "usage", electionLogID, "--url", ""),
+			Entry("a source outside the grammar", "invalid_name", electionLogID, "--source", "DB 2"),
+			Entry("a ref that is not an id", "usage", "Election", "--kind", "comment"),
+		)
+	})
 })

@@ -82,7 +82,7 @@ func addAnnotation(ctx context.Context, cmd *cobra.Command, app App, args []stri
 			return err
 		}
 		if dryRun {
-			return previewAnnotation(o, a, annotationTarget(t, seq))
+			return previewAnnotation(o, a, fmt.Sprintf("Would add %s annotation to %s", a.Kind, annotationTarget(t, seq)))
 		}
 
 		err = s.AddAnnotation(ctx, a, draft.newSourceID)
@@ -202,14 +202,15 @@ func printAnnotation(o output, a timeline.Annotation) error {
 	return o.json(newAnnotationJSON(a))
 }
 
-// previewAnnotation prints a as it would be added to target: its JSON object, or a description.
-func previewAnnotation(o output, a timeline.Annotation, target string) error {
+// previewAnnotation prints a as a dry run would store it: its JSON object, or heading and a
+// description.
+func previewAnnotation(o output, a timeline.Annotation, heading string) error {
 	if o.format == formatJSON {
 		return o.json(newAnnotationJSON(a))
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Would add %s annotation to %s\n", a.Kind, target)
+	b.WriteString(heading + "\n")
 	writeField(&b, "Source:", orDash(a.Source))
 	writeField(&b, "URL:", orDash(a.URL))
 	writeField(&b, "Author:", orDash(a.Author))
