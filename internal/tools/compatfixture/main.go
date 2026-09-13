@@ -13,15 +13,15 @@ import (
 )
 
 func main() {
-	out := flag.String("o", "", "path of the database to write; it must not exist yet")
+	path := flag.String("o", "", "path of the database to write; it must not exist yet")
 	flag.Parse()
 
-	if *out == "" || flag.NArg() > 0 {
+	if *path == "" || flag.NArg() > 0 {
 		fmt.Fprintln(os.Stderr, "usage: go run ./internal/tools/compatfixture -o <path>")
 		os.Exit(2)
 	}
 
-	err := fixture.Write(context.Background(), *out)
+	err := fixture.Write(context.Background(), *path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "compatfixture:", err)
 		os.Exit(1)
