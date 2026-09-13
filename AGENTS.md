@@ -14,7 +14,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run setup` installs the pinned tools and Go modules and registers the git hooks.
 - `mise run build` builds the binary into `bin/`.
 - `mise run format` runs every formatter in write mode, plus `go mod tidy`,
-  `sqlc generate` and the CLI reference generator.
+  `sqlc generate` and the CLI reference generator, which also reruns when a help topic
+  changes.
 - `mise run lint` runs the linters without writing, then fails if the CLI reference is
   stale. It does not check YAML, TOML, shell or Pkl formatting, `go mod tidy` or
   `sqlc generate`; only `mise run format` and `pre-commit` apply those.
@@ -72,12 +73,16 @@ digraph coroner_rules_router {
   `internal/config`. `main.go` builds `cli.App` from the process; code below it takes
   everything from `cli.App`, never from `os`. Dev tools run with `go run`:
   `internal/tools/` (`docgen` writes the CLI reference).
+- Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
+  `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
+  `exit-codes` disagrees with the exit-code map or `environment` misses an environment
+  variable the code reads.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
-  picks the exit code; `Kind.ExitCode` in
-  [`internal/cli/errors.go`](internal/cli/errors.go) is the table. Any other error, or a
-  panic, exits 1 as `internal`. A command declares the output formats it supports in its
-  `formats` annotation, and any other `--format` or `--json` exits 2 as `usage`. `cli.Run`
-  prints every error once, adding the JSON error envelope under `--format json|jsonl`.
+  picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
+  is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the
+  output formats it supports in its `formats` annotation, and any other `--format` or
+  `--json` exits 2 as `usage`. `cli.Run` prints every error once, adding the JSON error
+  envelope under `--format json|jsonl`.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`
   and the fixed clock `CORONER_TEST_NOW`. Contract scripts live in

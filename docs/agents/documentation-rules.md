@@ -27,6 +27,7 @@ digraph coroner_docs_router {
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
+    "Edit internal/cli/topics/*.md" [shape=box];
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
@@ -39,7 +40,8 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
-    "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command or flag changed: regenerate, never hand-edit"];
+    "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
+    "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables"];
     "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
 }
 ```
@@ -70,8 +72,13 @@ digraph coroner_docs_router {
 - **The docs site pages** (not in the repo yet) — the site itself (EXC-1300), the tutorial
   and how-to guides (EXC-1301), and the reference and explanation pages (EXC-1302).
 - **[`docs/reference/cli/`](../reference/cli/)** (human-facing) — the CLI reference, one
-  page per command, generated from the commands by `go run ./internal/tools/docgen` and
-  checked for drift by `mise run lint`. Never hand-edited.
+  page per command and per help topic, generated from the commands and topics by
+  `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never
+  hand-edited.
+- **[`internal/cli/topics/*.md`](../../internal/cli/topics/)** (humans and agents at the
+  terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
+  CLI reference pages. Specs pin the `exit-codes` table and the `environment` variables to
+  the code.
 - **`skills/coroner/SKILL.md`** (not in the repo yet — EXC-1277) — the agent skill that
   ships with coroner, with its references.
 
