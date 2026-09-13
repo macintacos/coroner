@@ -89,19 +89,19 @@ type timelineToEdit struct {
 // line changes it, and applies what differs from the stored timeline, until it is applied, nothing
 // differs, or Esc ends the form; z is the zone a dry run prints in.
 func askTimelineEdit(ctx context.Context, s formSession, z zone, in fieldValues) error {
-	edited, chosen, err := chooseTimelineToEdit(ctx, s, in)
+	target, chosen, err := chooseTimelineToEdit(ctx, s, in)
 	if err != nil || !chosen {
 		return err
 	}
-	t := edited.timeline
+	t := target.timeline
 	// The command line's changes prefill the form; they are not read otherwise.
 	opening := timelineEdit{
 		name: in.value("name"), title: in.value("title"), addRefs: in.values("add-ref"), removeRefs: in.values("remove-ref"),
 	}.apply(t, t.UpdatedAt)
 	prefilled := fieldValues{"name": {opening.Name}, "title": {opening.Title}, "ref": opening.Refs, "dry-run": in.values("dry-run")}
 
-	_, err = s.askUntil(ctx, timelineEditFormDefinition(edited.taken), formChoices{}, prefilled, func(typed fieldValues) error {
-		return editTyped(ctx, s, z, t.Name, timelineEditValues(t, edited.nameOrID, typed))
+	_, err = s.askUntil(ctx, timelineEditFormDefinition(target.taken), formChoices{}, prefilled, func(typed fieldValues) error {
+		return editTyped(ctx, s, z, t.Name, timelineEditValues(t, target.nameOrID, typed))
 	})
 
 	return err
@@ -127,29 +127,29 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 	}
 
 	nameOrID := in.value("timeline")
-	var edited timelineToEdit
+	var target timelineToEdit
 	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
 		var err error
 		if nameOrID != nil {
-			edited.timeline, err = findTimeline(ctx, st, *nameOrID)
+			target.timeline, err = findTimeline(ctx, st, *nameOrID)
 		} else {
-			edited.timeline, err = selectTimeline(ctx, st, nil, s.app.LookupEnv)
+			target.timeline, err = selectTimeline(ctx, st, nil, s.app.LookupEnv)
 		}
 		if err != nil {
 			return err
 		}
-		edited.nameOrID = *cmp.Or(nameOrID, &edited.timeline.Name)
+		target.nameOrID = *cmp.Or(nameOrID, &target.timeline.Name)
 
 		timelines, err := st.Timelines(ctx)
 		for _, other := range timelines {
-			if other.ID != edited.timeline.ID {
-				edited.taken = append(edited.taken, other.Name)
+			if other.ID != target.timeline.ID {
+				target.taken = append(target.taken, other.Name)
 			}
 		}
 		return err
 	})
 
-	return edited, err == nil, err
+	return target, err == nil, err
 }
 
 // timelineEditFormDefinition is timeline edit's fields as its form asks for them: the name,
