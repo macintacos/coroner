@@ -1,6 +1,6 @@
 // Command docgen writes coroner's CLI reference into docs/reference/cli, one Markdown file
-// per command. With --check it lists how that directory drifts from the commands instead,
-// and exits 1 on any drift. Run it from the module root.
+// per command and per help topic. With --check it lists how that directory drifts from the
+// commands and topics instead, and exits 1 on any drift. Run it from the module root.
 package main
 
 import (
@@ -35,13 +35,13 @@ func main() {
 	}
 
 	// A zero App is enough: rendering pages runs no command.
-	root := cli.NewRoot(context.Background(), cli.App{})
+	ref := reference{root: cli.NewRoot(context.Background(), cli.App{}), topics: cli.HelpTopics()}
 
 	var err error
 	if *checkOnly {
-		err = check(root, outDir, os.Stderr)
+		err = check(ref, outDir, os.Stderr)
 	} else {
-		err = write(root, outDir)
+		err = write(ref, outDir)
 	}
 
 	if err != nil {
@@ -50,8 +50,14 @@ func main() {
 	}
 }
 
+// reference is what the CLI reference documents: a page per command, and one per help topic.
+type reference struct {
+	root   *cobra.Command
+	topics []cli.HelpTopic
+}
+
 // write replaces dir with the reference, so pages of removed commands go with it.
-func write(root *cobra.Command, dir string) error {
+func write(ref reference, dir string) error {
 	err := os.RemoveAll(dir)
 	if err != nil {
 		return err
@@ -62,23 +68,23 @@ func write(root *cobra.Command, dir string) error {
 		return err
 	}
 
-	return generate(root, dir)
+	return generate(ref, dir)
 }
 
 // check prints an added, changed or removed line to out for each page dir that differs
-// from root's reference, and fails if any.
-func check(root *cobra.Command, dir string, out io.Writer) error {
+// from ref, and fails if any.
+func check(ref reference, dir string, out io.Writer) error {
 	tmp, err := os.MkdirTemp("", "docgen")
 	if err != nil {
 		return err
 	}
 
-	return errors.Join(checkAgainst(root, tmp, dir, out), os.RemoveAll(tmp))
+	return errors.Join(checkAgainst(ref, tmp, dir, out), os.RemoveAll(tmp))
 }
 
 // checkAgainst is check's body; check owns tmp so its removal error is joined to the result.
-func checkAgainst(root *cobra.Command, tmp, dir string, out io.Writer) error {
-	err := generate(root, tmp)
+func checkAgainst(ref reference, tmp, dir string, out io.Writer) error {
+	err := generate(ref, tmp)
 	if err != nil {
 		return err
 	}
@@ -103,10 +109,24 @@ func checkAgainst(root *cobra.Command, tmp, dir string, out io.Writer) error {
 	return errors.Join(err, fmt.Errorf("%s is out of date; run `go run ./internal/tools/docgen`", dir))
 }
 
-func generate(root *cobra.Command, dir string) error {
-	root.DisableAutoGenTag = true
+func generate(ref reference, dir string) error {
+	ref.root.DisableAutoGenTag = true
 
-	return doc.GenMarkdownTreeCustom(root, dir, frontMatter, func(link string) string { return link })
+	err := doc.GenMarkdownTreeCustom(ref.root, dir, frontMatter, func(link string) string { return link })
+	if err != nil {
+		return err
+	}
+
+	for _, topic := range ref.topics {
+		name := ref.root.Name() + "_help_" + topic.Name + ".md"
+
+		err = os.WriteFile(filepath.Join(dir, name), []byte(frontMatter(name)+topic.Body), 0o600)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // frontMatter titles a page by its command path: coroner_event_add.md is "coroner event add".

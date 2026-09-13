@@ -54,7 +54,13 @@ local formatters = new Mapping<String, Step> {
 
   // docgen writes the CLI reference outside the glob, so stage it explicitly.
   ["Docs(Generate)    [[docgen]]"] = new Step {
-    glob = List("internal/cli/**/*.go", "internal/tools/docgen/**/*.go", "go.mod")
+    glob =
+      List(
+        "internal/cli/**/*.go",
+        "internal/cli/topics/*.md",
+        "internal/tools/docgen/**/*.go",
+        "go.mod",
+      )
     check = "go run ./internal/tools/docgen --check"
     fix = "go run ./internal/tools/docgen"
     stage = List("docs/reference/cli/*.md")

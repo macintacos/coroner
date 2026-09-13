@@ -8,15 +8,17 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/cli"
 )
 
 // newTree builds a fresh tree per call: generating pages mutates it, adding a help command.
-func newTree() *cobra.Command {
+func newTree(topics ...cli.HelpTopic) reference {
 	root := &cobra.Command{Use: "tool", Short: "A tool"}
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(&cobra.Command{Use: "sub", Short: "A subcommand", Run: func(*cobra.Command, []string) {}})
 
-	return root
+	return reference{root: root, topics: topics}
 }
 
 var _ = Describe("docgen", func() {
@@ -81,5 +83,27 @@ var _ = Describe("docgen", func() {
 		Expect(write(newTree(), dir)).To(Succeed())
 
 		Expect(check(newTree(), dir, &bytes.Buffer{})).To(Succeed())
+	})
+
+	Describe("help topics", func() {
+		topic := cli.HelpTopic{Name: "time", Short: "Reading times", Body: "# Reading times\n\nUse RFC 3339.\n"}
+
+		It("writes a page per topic, titled as its help command, holding the topic's source", func() {
+			Expect(write(newTree(topic), dir)).To(Succeed())
+
+			pages, err := readPages(os.DirFS(dir))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(pages["tool_help_time.md"])).To(Equal("---\ntitle: tool help time\n---\n\n# Reading times\n\nUse RFC 3339.\n"))
+		})
+
+		It("lists a topic page whose source changed", func() {
+			Expect(write(newTree(topic), dir)).To(Succeed())
+			edited := topic
+			edited.Body += "Or an epoch.\n"
+			var out bytes.Buffer
+
+			Expect(check(newTree(edited), dir, &out)).NotTo(Succeed())
+			Expect(out.String()).To(Equal("changed: " + filepath.Join(dir, "tool_help_time.md") + "\n"))
+		})
 	})
 })
