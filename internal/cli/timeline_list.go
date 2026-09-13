@@ -10,6 +10,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
+	"github.com/macintacos/coroner/internal/viewer"
 )
 
 func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
@@ -24,8 +25,11 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 		Example:     "  $ coroner timeline list\n  $ coroner timeline list --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o, err := newOutput(cmd, app)
-			if err != nil {
+			switch {
+			case err != nil:
 				return err
+			case o.format != formatJSON && interactive(cmd, app):
+				return pickTimeline(ctx, cmd, app, o)
 			}
 
 			return withStore(ctx, cmd, app, func(s *store.Store) error {
@@ -38,6 +42,74 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 			})
 		},
 	}
+}
+
+// pickTimeline reads the timelines, closes the database, shows the picker, and makes the
+// timeline picked current through timeline use's run function, warning when CORONER_TIMELINE
+// still selects another. With no timelines it prints the plain list's hint instead.
+func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) error {
+	cfg, z, err := resolveZone(cmd, app)
+	if err != nil {
+		return err
+	}
+	var rows []viewer.TimelineRow
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+		rows, err = readTimelineRows(ctx, s)
+		return err
+	})
+	switch {
+	case err != nil:
+		return err
+	case len(rows) == 0:
+		return printTimelines(o, nil, "")
+	}
+
+	noColor, _ := cmd.Flags().GetBool("no-color")
+	picked, ok, err := viewer.Pick(ctx,
+		viewer.Terminal{In: app.In, Out: app.Out, NoColor: !colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)},
+		viewer.PickOptions{Rows: rows, Notice: shadowNotice(app.LookupEnv), Location: z.loc})
+	switch {
+	case errors.Is(err, viewer.ErrInterrupted):
+		return &Error{Kind: KindInterrupted, Message: "interrupted", Err: err}
+	case err != nil || !ok:
+		return err
+	}
+
+	used, err := useTimeline(ctx, app, cfg, fieldValues{"timeline": {picked.Name}})
+	if err == nil {
+		err = used.render(o)
+	}
+	if warning := shadowWarning(app.LookupEnv, picked); err == nil && warning != "" {
+		err = o.notify("%s", warning)
+	}
+
+	return err
+}
+
+// readTimelineRows returns listTimelines' timelines with their event counts and last events.
+func readTimelineRows(ctx context.Context, s *store.Store) ([]viewer.TimelineRow, error) {
+	timelines, currentID, err := listTimelines(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]viewer.TimelineRow, 0, len(timelines))
+	for _, t := range timelines {
+		// ponytail: reads every event to count them; add a count and last event query to the
+		// store if a timeline ever holds enough events to slow the picker's start.
+		events, err := s.Events(ctx, t.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		row := viewer.TimelineRow{Timeline: t, Events: len(events), Current: t.ID == currentID}
+		if len(events) > 0 {
+			row.Last = &events[len(events)-1]
+		}
+		rows = append(rows, row)
+	}
+
+	return rows, nil
 }
 
 type timelineListJSON struct {

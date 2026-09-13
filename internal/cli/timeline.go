@@ -343,3 +343,26 @@ func printTimeline(o output, t timeline.Timeline) error {
 
 	return o.json(newTimelineJSON(t))
 }
+
+// shadowNotice returns what the timeline picker says while CORONER_TIMELINE selects the
+// timeline commands act on over the one it stores, or "" when the variable is unset or empty.
+func shadowNotice(lookupEnv func(string) (string, bool)) string {
+	nameOrID, by := resolveTimeline(nil, lookupEnv, "")
+	if by != selectedByEnv {
+		return ""
+	}
+
+	return fmt.Sprintf("CORONER_TIMELINE=%q selects the timeline commands act on", nameOrID)
+}
+
+// shadowWarning returns the warning printed once picked is stored while CORONER_TIMELINE
+// selects another timeline, or "" when it is unset, empty or names picked.
+func shadowWarning(lookupEnv func(string) (string, bool), picked timeline.Timeline) string {
+	nameOrID, by := resolveTimeline(nil, lookupEnv, "")
+	if by != selectedByEnv || nameOrID == picked.Name || nameOrID == picked.ID {
+		return ""
+	}
+
+	return fmt.Sprintf("CORONER_TIMELINE=%q still selects the timeline commands act on. Unset it to act on `%s`.",
+		nameOrID, picked.Name)
+}
