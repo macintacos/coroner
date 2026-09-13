@@ -80,15 +80,15 @@ func WriteHTML(w io.Writer, env Envelope, zone *time.Location) error {
 	if err != nil {
 		return err
 	}
-	var b bytes.Buffer
-	err = shell.Execute(&b, htmlPage{
+	var page bytes.Buffer
+	err = shell.Execute(&page, htmlPage{
 		CSS: viewerCSS, Export: exported.String(), Zone: zoneData.String(), Library: visTimeline, Viewer: viewerJS,
 	})
 	if err != nil {
 		return err
 	}
 
-	_, err = w.Write(b.Bytes())
+	_, err = w.Write(page.Bytes())
 	return err
 }
 

@@ -99,14 +99,14 @@ func (o output) writeTo(path string, writeFile func(name string, data []byte, pe
 		return write(o)
 	}
 
-	var file bytes.Buffer
+	var buffer bytes.Buffer
 	piped := o
-	piped.out, piped.outTTY = &file, false
+	piped.out, piped.outTTY = &buffer, false
 	err := write(piped)
 	if err != nil {
 		return err
 	}
-	err = writeFile(path, file.Bytes(), 0o644)
+	err = writeFile(path, buffer.Bytes(), 0o644)
 	if err != nil {
 		return &Error{
 			Kind: KindUsage, Message: "cannot write " + path, Err: err,

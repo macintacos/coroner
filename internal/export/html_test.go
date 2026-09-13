@@ -36,11 +36,11 @@ func page(env export.Envelope, zone *time.Location) string {
 // naming it, and fails unless each is inlined exactly once.
 func elideAssets(page string) string {
 	GinkgoHelper()
-	for _, name := range []string{"html/vendor/vis-timeline-graph2d.min.js", "html/viewer.js", "html/viewer.css"} {
-		asset, err := os.ReadFile(filepath.Clean(name))
+	for _, path := range []string{"html/vendor/vis-timeline-graph2d.min.js", "html/viewer.js", "html/viewer.css"} {
+		asset, err := os.ReadFile(filepath.Clean(path))
 		Expect(err).NotTo(HaveOccurred())
-		Expect(strings.Count(page, string(asset))).To(Equal(1), name)
-		page = strings.Replace(page, string(asset), "/* "+name+" */", 1)
+		Expect(strings.Count(page, string(asset))).To(Equal(1), path)
+		page = strings.Replace(page, string(asset), "/* "+path+" */", 1)
 	}
 
 	return page

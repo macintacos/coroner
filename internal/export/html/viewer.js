@@ -17,7 +17,7 @@
 
   // Browsers disagree on parsing more than three fractional digits, and a Date holds
   // milliseconds anyway.
-  const instant = (text) => new Date(text.replace(/(\.\d{3})\d+/, "$1"));
+  const instant = (timestamp) => new Date(timestamp.replace(/(\.\d{3})\d+/, "$1"));
 
   // spanAt returns the zone span in force at ms; spans are in start order, and the first also
   // stands for all time before it.
@@ -58,14 +58,14 @@
 
   // when returns an instant at precision in the export zone, with the zone's abbreviation
   // after a clock time. An hour shows its minutes when the zone puts it off the hour. Digits
-  // below the second come from the text, which keeps all nine.
-  const when = (text, precision) => {
-    const moment = inZone(instant(text));
+  // below the second come from the timestamp, which keeps all nine.
+  const when = (timestamp, precision) => {
+    const moment = inZone(instant(timestamp));
     if (precision === "day") return moment.format("YYYY-MM-DD");
     const clock = precision === "hour" && moment.minute() !== 0 ? "HH:mm" : clockLayouts[precision] ?? "HH:mm:ss";
     let shown = moment.format("YYYY-MM-DD " + clock);
     const digits = fractionDigits[precision];
-    if (digits) shown += "." + text.match(/\.(\d+)/)[1].slice(0, digits);
+    if (digits) shown += "." + timestamp.match(/\.(\d+)/)[1].slice(0, digits);
     return shown + " " + spanAt(moment.valueOf()).abbreviation;
   };
 
@@ -111,8 +111,8 @@
     return list;
   };
 
-  const field = (list, name, value) => {
-    list.append(element("dt", name));
+  const field = (list, label, value) => {
+    list.append(element("dt", label));
     const description = element("dd");
     description.append(value);
     list.append(description);
