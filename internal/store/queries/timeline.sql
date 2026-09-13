@@ -31,6 +31,7 @@ DELETE FROM timeline
 WHERE id = ?;
 
 -- name: AllocateSeq :one
+-- AllocateSeq returns the timeline's next seq and advances its counter; call it in the transaction that creates the event.
 UPDATE timeline
 SET next_seq = next_seq + 1
 WHERE id = ?

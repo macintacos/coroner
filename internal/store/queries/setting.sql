@@ -6,7 +6,7 @@ WHERE key = 'current_timeline';
 INSERT INTO setting (
   key, value
 ) VALUES (
-  'current_timeline', ?
+  'current_timeline', sqlc.arg(timeline_id)
 )
 ON CONFLICT (key) DO UPDATE SET value = excluded.value;
 

@@ -16,6 +16,7 @@ WHERE id = ?
 RETURNING next_seq - 1
 `
 
+// AllocateSeq returns the timeline's next seq and advances its counter; call it in the transaction that creates the event.
 func (q *Queries) AllocateSeq(ctx context.Context, id string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, allocateSeq, id)
 	var column_1 int64

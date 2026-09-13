@@ -62,6 +62,7 @@ type Timeline struct {
 }
 
 type TimelineRef struct {
+	Position   int64
 	TimelineID string
 	Ref        string
 }

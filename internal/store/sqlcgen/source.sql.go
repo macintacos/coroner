@@ -153,6 +153,7 @@ type UpsertSourceParams struct {
 	CreatedAt string
 }
 
+// UpsertSource returns the existing source when name is taken, ignoring id and created_at; the no-op DO UPDATE is what makes RETURNING yield that row.
 func (q *Queries) UpsertSource(ctx context.Context, arg UpsertSourceParams) (Source, error) {
 	row := q.db.QueryRowContext(ctx, upsertSource, arg.ID, arg.Name, arg.CreatedAt)
 	var i Source

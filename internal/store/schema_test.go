@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -14,8 +15,6 @@ import (
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
 )
-
-func id(n int) string { return fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", n) }
 
 var _ = Describe("Schema", func() {
 	now := timeline.FormatInstant(time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC))
@@ -28,6 +27,7 @@ var _ = Describe("Schema", func() {
 		pager           sqlcgen.Event
 	)
 
+	id := func(n int) string { return fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", n) }
 	eventParams := func(n int, seq int64) sqlcgen.CreateEventParams {
 		return sqlcgen.CreateEventParams{
 			ID:                id(n),
@@ -69,7 +69,9 @@ var _ = Describe("Schema", func() {
 		Expect(err).NotTo(HaveOccurred())
 		slack, err = queries.CreateSource(ctx, sqlcgen.CreateSourceParams{ID: id(3), Name: "slack", CreatedAt: now})
 		Expect(err).NotTo(HaveOccurred())
-		pager, err = queries.CreateEvent(ctx, eventParams(4, 1))
+		seq, err := queries.AllocateSeq(ctx, incident.ID)
+		Expect(err).NotTo(HaveOccurred())
+		pager, err = queries.CreateEvent(ctx, eventParams(4, seq))
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -105,6 +107,98 @@ var _ = Describe("Schema", func() {
 		Entry("deleting a source an event still uses", "FOREIGN KEY", func(ctx context.Context) error {
 			return queries.DeleteSource(ctx, slack.ID)
 		}),
+		Entry("deleting a source only an annotation uses", "FOREIGN KEY", func(ctx context.Context) error {
+			source, err := queries.CreateSource(ctx, sqlcgen.CreateSourceParams{ID: id(10), Name: "db-2/mongod", CreatedAt: now})
+			Expect(err).NotTo(HaveOccurred())
+			params := annotationParams(11, incident.ID, nil)
+			params.SourceID = &source.ID
+			_, err = queries.CreateAnnotation(ctx, params)
+			Expect(err).NotTo(HaveOccurred())
+			return queries.DeleteSource(ctx, source.ID)
+		}),
+		Entry("a precision outside the list", "CHECK", func(ctx context.Context) error {
+			params := eventParams(10, 2)
+			params.OccurredPrecision = "fortnight"
+			_, err := queries.CreateEvent(ctx, params)
+			return err
+		}),
+		Entry("an occurred offset beyond a day", "CHECK", func(ctx context.Context) error {
+			params := eventParams(10, 2)
+			params.OccurredOffset = new(int64(86401))
+			_, err := queries.CreateEvent(ctx, params)
+			return err
+		}),
+		Entry("an approximate that is not 0 or 1", "CHECK", func(ctx context.Context) error {
+			params := eventParams(10, 2)
+			params.Approximate = 2
+			_, err := queries.CreateEvent(ctx, params)
+			return err
+		}),
+		Entry("a white-space-only event text", "CHECK", func(ctx context.Context) error {
+			params := eventParams(10, 2)
+			params.Text = "\t\n"
+			_, err := queries.CreateEvent(ctx, params)
+			return err
+		}),
+		Entry("an annotation kind outside the list", "CHECK", func(ctx context.Context) error {
+			params := annotationParams(10, incident.ID, nil)
+			params.Kind = "note"
+			_, err := queries.CreateAnnotation(ctx, params)
+			return err
+		}),
+		Entry("a white-space-only annotation body", "CHECK", func(ctx context.Context) error {
+			params := annotationParams(10, incident.ID, nil)
+			params.Body = "\u3000"
+			_, err := queries.CreateAnnotation(ctx, params)
+			return err
+		}),
+		Entry("a white-space-only ref", "CHECK", func(ctx context.Context) error {
+			return queries.AddTimelineRef(ctx, sqlcgen.AddTimelineRefParams{TimelineID: incident.ID, Ref: "\n"})
+		}),
+	)
+
+	checkFailed := ContainSubstring("CHECK constraint failed")
+	expectCheckAgrees := func(err, validationErr error) {
+		GinkgoHelper()
+		if validationErr != nil {
+			Expect(err).To(MatchError(checkFailed))
+			return
+		}
+		// The fixture already holds inc-465, so an accepted name may still fail UNIQUE.
+		Expect(err).To(Or(Not(HaveOccurred()), MatchError(Not(checkFailed))))
+	}
+	grammarCorpus := []any{}
+	for _, input := range []string{
+		"a", "inc-465", "db.2_x", strings.Repeat("a", 64), strings.Repeat("a", 65), "", "-a", ".a", "Inc",
+		"inc 465", "phase:detect", "phase:Detect", "db-2/mongod", "a]", "a*", "é",
+	} {
+		grammarCorpus = append(grammarCorpus, Entry(fmt.Sprintf("%q", input), input))
+	}
+	describeGrammar := func(description string, body any) {
+		DescribeTable(description, append([]any{body}, grammarCorpus...)...)
+	}
+
+	describeGrammar("checks a timeline name exactly as timeline.ValidateTimelineName does",
+		func(ctx SpecContext, name string) {
+			_, err := queries.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
+				ID: id(10), Name: name, CreatedAt: now, UpdatedAt: now,
+			})
+			expectCheckAgrees(err, timeline.ValidateTimelineName(name))
+		},
+	)
+
+	describeGrammar("checks a source name exactly as timeline.ValidateSourceName does",
+		func(ctx SpecContext, name string) {
+			_, err := queries.CreateSource(ctx, sqlcgen.CreateSourceParams{ID: id(10), Name: name, CreatedAt: now})
+			expectCheckAgrees(err, timeline.ValidateSourceName(name))
+		},
+	)
+
+	describeGrammar("checks a tag exactly as timeline.ValidateTag does",
+		func(ctx SpecContext, tag string) {
+			err := queries.AddEventTag(ctx, sqlcgen.AddEventTagParams{EventID: pager.ID, Tag: tag})
+			expectCheckAgrees(err, timeline.ValidateTag(tag))
+		},
 	)
 
 	It("accepts an annotation on an event in its own timeline", func(ctx SpecContext) {
@@ -115,6 +209,38 @@ var _ = Describe("Schema", func() {
 	It("accepts an annotation on the timeline itself", func(ctx SpecContext) {
 		Expect(queries.CreateAnnotation(ctx, annotationParams(10, other.ID, nil))).
 			To(HaveField("EventID", BeNil()))
+	})
+
+	It("accepts every precision", func(ctx SpecContext) {
+		for n, precision := range []timeline.Precision{
+			timeline.PrecisionDay, timeline.PrecisionHour, timeline.PrecisionMinute, timeline.PrecisionSecond,
+			timeline.PrecisionMillisecond, timeline.PrecisionMicrosecond, timeline.PrecisionNanosecond,
+		} {
+			params := eventParams(10+n, int64(2+n))
+			params.OccurredPrecision = string(precision)
+			Expect(queries.CreateEvent(ctx, params)).Error().NotTo(HaveOccurred(), string(precision))
+		}
+	})
+
+	It("accepts every annotation kind", func(ctx SpecContext) {
+		for n, kind := range []timeline.AnnotationKind{timeline.AnnotationEvidence, timeline.AnnotationComment} {
+			params := annotationParams(10+n, incident.ID, nil)
+			params.Kind = string(kind)
+			Expect(queries.CreateAnnotation(ctx, params)).Error().NotTo(HaveOccurred(), string(kind))
+		}
+	})
+
+	It("deletes a timeline's tags, refs and annotations with it", func(ctx SpecContext) {
+		Expect(queries.AddEventTag(ctx, sqlcgen.AddEventTagParams{EventID: pager.ID, Tag: "phase:detect"})).To(Succeed())
+		Expect(queries.AddTimelineRef(ctx, sqlcgen.AddTimelineRefParams{TimelineID: incident.ID, Ref: "INC-465"})).To(Succeed())
+		Expect(queries.CreateAnnotation(ctx, annotationParams(10, incident.ID, &pager.ID))).Error().NotTo(HaveOccurred())
+		Expect(queries.CreateAnnotation(ctx, annotationParams(11, incident.ID, nil))).Error().NotTo(HaveOccurred())
+
+		Expect(queries.DeleteTimeline(ctx, incident.ID)).To(Succeed())
+
+		Expect(queries.ListEventTags(ctx, pager.ID)).To(BeEmpty())
+		Expect(queries.ListTimelineRefs(ctx, incident.ID)).To(BeEmpty())
+		Expect(queries.ListAnnotations(ctx, incident.ID)).To(BeEmpty())
 	})
 
 	It("clears the current timeline when that timeline is deleted", func(ctx SpecContext) {
