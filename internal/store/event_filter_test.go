@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 var _ = Describe("buildEventQuery", func() {
@@ -31,4 +32,90 @@ var _ = Describe("buildEventQuery", func() {
 		Expect(strings.Count(query, "?")).To(Equal(len(args)))
 		Expect(args).To(HaveLen(9))
 	})
+})
+
+var _ = Describe("ListEvents", func() {
+	created := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
+	at := func(minute int) time.Time { return time.Date(2026, 9, 12, 14, minute, 0, 0, time.UTC) }
+	incident := timeline.Timeline{ID: uuid(1), Name: "inc-465", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+	other := timeline.Timeline{ID: uuid(2), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+
+	newEvent := func(n int, timelineID string, occurred time.Time, source *string, text string, tags ...string) timeline.Event {
+		return timeline.Event{
+			ID:         uuid(n),
+			TimelineID: timelineID,
+			OccurredAt: occurred,
+			Precision:  timeline.PrecisionMinute,
+			Source:     source,
+			Tags:       append([]string{}, tags...),
+			Text:       text,
+			CreatedAt:  created,
+			UpdatedAt:  created,
+		}
+	}
+	seqs := func(events []timeline.Event) []int64 {
+		out := []int64{}
+		for _, e := range events {
+			out = append(out, e.Seq)
+		}
+		return out
+	}
+
+	var s *store.Store
+
+	// Seqs 1–4 in incident, plus one event in another timeline that no filter may return.
+	BeforeEach(func(ctx SpecContext) {
+		s = openStore(ctx)
+		Expect(s.CreateTimeline(ctx, incident)).To(Succeed())
+		Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+
+		pager := newEvent(10, incident.ID, at(0), new("pagerduty"), "Pager fires for DB-2", "team:db", "phase:detect")
+		pager.OccurredOffset = new(-4 * 3600)
+		pager.URL = new("https://example.com/incidents/465")
+		pager.EndedAt = new(at(20))
+		for n, e := range []timeline.Event{
+			pager,
+			newEvent(11, incident.ID, at(15), new("slack"), "50% of writes fail", "team:db"),
+			newEvent(12, incident.ID, at(15), nil, "a_b rollback", "phase:detect"),
+			newEvent(13, incident.ID, at(30), new("grafana"), "abc dashboards red"),
+			newEvent(14, other.ID, at(15), new("slack"), "Pager fires for DB-2", "team:db"),
+		} {
+			Expect(s.AddEvent(ctx, e, uuid(20+n))).Error().NotTo(HaveOccurred())
+		}
+	})
+
+	It("returns every event of the timeline, as Events reads them, for the zero filter", func(ctx SpecContext) {
+		events, err := s.Events(ctx, incident.ID)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(s.ListEvents(ctx, incident.ID, store.EventFilter{})).To(Equal(store.EventPage{Events: events, Total: 4}))
+	})
+
+	It("returns an empty page for a timeline with no events", func(ctx SpecContext) {
+		Expect(s.ListEvents(ctx, uuid(9), store.EventFilter{})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
+	})
+
+	DescribeTable("keeps the events the filter selects, in order, up to its limit",
+		func(ctx SpecContext, f store.EventFilter, want []int64, total int, truncated bool) {
+			page, err := s.ListEvents(ctx, incident.ID, f)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(seqs(page.Events)).To(Equal(want))
+			Expect(page.Total).To(Equal(total))
+			Expect(page.Truncated).To(Equal(truncated))
+		},
+		Entry("includes an event exactly at Since", store.EventFilter{Since: new(at(15))}, []int64{2, 3, 4}, 3, false),
+		Entry("excludes an event exactly at Until", store.EventFilter{Until: new(at(15))}, []int64{1}, 1, false),
+		Entry("keeps events carrying every tag", store.EventFilter{Tags: []string{"phase:detect", "team:db"}}, []int64{1}, 1, false),
+		Entry("keeps events from any source", store.EventFilter{Sources: []string{"pagerduty", "slack"}}, []int64{1, 2}, 2, false),
+		Entry("matches % in Contains literally", store.EventFilter{Contains: "%"}, []int64{2}, 1, false),
+		Entry("matches _ in Contains literally", store.EventFilter{Contains: "_"}, []int64{3}, 1, false),
+		Entry("matches Contains ignoring ASCII case", store.EventFilter{Contains: "db-2"}, []int64{1}, 1, false),
+		Entry("orders descending by occurred at, then seq", store.EventFilter{Order: store.OrderDesc}, []int64{4, 3, 2, 1}, 4, false),
+		Entry("truncates to Limit, counting every match", store.EventFilter{Limit: 2}, []int64{1, 2}, 4, true),
+		Entry("limits after filtering and ordering",
+			store.EventFilter{Tags: []string{"team:db"}, Order: store.OrderDesc, Limit: 1}, []int64{2}, 2, true),
+		Entry("does not truncate at a Limit equal to the matches", store.EventFilter{Limit: 4}, []int64{1, 2, 3, 4}, 4, false),
+		Entry("returns nothing for an unknown source", store.EventFilter{Sources: []string{"absent"}}, []int64{}, 0, false),
+	)
 })
