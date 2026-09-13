@@ -19,6 +19,7 @@ import (
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 )
 
@@ -36,6 +37,7 @@ var migrations embed.FS
 type Store struct {
 	db         *sql.DB
 	migrations fs.FS
+	blobDir    string
 }
 
 // Schema is a database's schema version, and the latest one this build embeds.
@@ -89,7 +91,7 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
 	}
 
-	return &Store{db: db, migrations: fsys}, nil
+	return &Store{db: db, migrations: fsys, blobDir: config.BlobDir(path)}, nil
 }
 
 // Schema reads the database's schema version. It is safe to call below Latest; every other
@@ -134,7 +136,7 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
 	}
 
-	return &Store{db: db, migrations: fsys}, nil
+	return &Store{db: db, migrations: fsys, blobDir: config.BlobDir(path)}, nil
 }
 
 // directoryError is the error for a directory at the database path, which SQLite reports only

@@ -38,13 +38,19 @@ func (o AttachmentOwner) Validate() error {
 
 // Validate reports every way a breaks the domain rules, or nil.
 func (a Attachment) Validate() error {
-	errs := []error{a.Owner.Validate()}
-	if len(a.SHA256) != 64 || strings.Trim(a.SHA256, "0123456789abcdef") != "" {
-		errs = append(errs, fmt.Errorf("sha256 %q: must be 64 lowercase hex digits", a.SHA256))
-	}
+	errs := []error{a.Owner.Validate(), ValidateSHA256(a.SHA256)}
 	if a.Size < 0 {
 		errs = append(errs, fmt.Errorf("size %d: must not be negative", a.Size))
 	}
 
 	return errors.Join(errs...)
+}
+
+// ValidateSHA256 returns an error unless hash is 64 lowercase hex digits.
+func ValidateSHA256(hash string) error {
+	if len(hash) != 64 || strings.Trim(hash, "0123456789abcdef") != "" {
+		return fmt.Errorf("sha256 %q: must be 64 lowercase hex digits", hash)
+	}
+
+	return nil
 }
