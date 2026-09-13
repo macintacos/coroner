@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,38 +19,42 @@ const (
 	formatJSONL format = "jsonl"
 )
 
-// outputFormat returns the format --format and --json select, rejecting one cmd cannot
-// produce.
-func outputFormat(cmd *cobra.Command, supported ...format) (format, error) {
+// formatsAnnotation is the cmd.Annotations key listing the formats a command prints,
+// comma-separated, as in "text,json". A command without it prints text only.
+const formatsAnnotation = "formats"
+
+func (f format) machine() bool {
+	return f == formatJSON || f == formatJSONL
+}
+
+// outputFormat returns the format --format and --json select, rejecting one cmd does not
+// declare in its formatsAnnotation.
+func outputFormat(cmd *cobra.Command) (format, error) {
 	flags := cmd.Flags()
-	chosen := format(flags.Lookup("format").Value.String())
+	chosen, _ := flags.GetString("format")
 
 	if asJSON, _ := flags.GetBool("json"); asJSON {
-		if flags.Changed("format") && chosen != formatJSON {
+		if flags.Changed("format") && format(chosen) != formatJSON {
 			return "", &Error{
 				Kind:    KindUsage,
-				Message: "--json conflicts with --format " + string(chosen),
+				Message: "--json conflicts with --format " + chosen,
 				Hint:    "Pass --json or --format, not both.",
 			}
 		}
 
-		chosen = formatJSON
+		chosen = string(formatJSON)
 	}
 
+	supported := strings.Split(cmp.Or(cmd.Annotations[formatsAnnotation], string(formatText)), ",")
 	if !slices.Contains(supported, chosen) {
-		options := make([]string, len(supported))
-		for i, f := range supported {
-			options[i] = "--format " + string(f)
-		}
-
 		return "", &Error{
 			Kind:    KindUsage,
 			Message: fmt.Sprintf("%s cannot print --format %s", cmd.CommandPath(), chosen),
-			Hint:    "Use " + strings.Join(options, " or ") + ".",
+			Hint:    "Use --format " + strings.Join(supported, " or --format ") + ".",
 		}
 	}
 
-	return chosen, nil
+	return format(chosen), nil
 }
 
 // writeJSON writes v as one JSON document, indented when pretty.

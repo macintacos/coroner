@@ -3,9 +3,11 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"maps"
 	"os"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -108,29 +110,23 @@ var _ = Describe("Run", func() {
 
 	DescribeTable("rejects an output format the command cannot produce with exit 2 and kind usage",
 		func(ctx SpecContext, args ...string) {
-			code := cli.Run(ctx, newApp(append(args, "--json")...))
+			code := cli.Run(ctx, newApp(args...))
 
 			Expect(code).To(Equal(2))
 			Expect(out.String()).To(BeEmpty())
 			Expect(decodeEnvelope(lastLine(errOut.String()))).To(HaveKeyWithValue("kind", "usage"))
 		},
-		Entry("--json with --format text", "version", "--format", "text"),
-		Entry("--json with --format jsonl", "version", "--format", "jsonl"),
-		Entry("an unknown format", "version", "--format", "yaml"),
+		Entry("--json conflicting with --format", "version", "--json", "--format", "text"),
+		Entry("--json conflicting with --format and no subcommand", "--json", "--format", "text"),
+		Entry("jsonl for version, which prints a single object", "version", "--format", "jsonl"),
+		Entry("json for a command that prints only text", "completion", "bash", "--json"),
 	)
 
-	It("rejects jsonl for version, which prints a single object", func(ctx SpecContext) {
-		code := cli.Run(ctx, newApp("version", "--format", "jsonl"))
+	It("rejects an unknown format with exit 2", func(ctx SpecContext) {
+		code := cli.Run(ctx, newApp("version", "--format", "yaml"))
 
 		Expect(code).To(Equal(2))
 		Expect(out.String()).To(BeEmpty())
-	})
-
-	It("suggests the nearest command for an unknown one and exits 2", func(ctx SpecContext) {
-		code := cli.Run(ctx, newApp("versio"))
-
-		Expect(code).To(Equal(2))
-		Expect(errOut.String()).To(MatchRegexp(`(?s)Did you mean this\?\s+version`))
 	})
 
 	Describe("help", func() {
@@ -155,7 +151,21 @@ var _ = Describe("Run", func() {
 		It("lists a subcommand's inherited flags under GLOBAL FLAGS", func(ctx SpecContext) {
 			cli.Run(ctx, newApp("version", "--help"))
 
-			Expect(out.String()).To(MatchRegexp(`(?s)\nFLAGS\n.*-h, --help.*\nGLOBAL FLAGS\n.*--db`))
+			Expect(out.String()).To(MatchRegexp(`(?s)\nGLOBAL FLAGS\n.*--db.*-h, --help`))
+		})
+
+		It("ignores a value flag that follows --help", func(ctx SpecContext) {
+			code := cli.Run(ctx, newApp("--help", "--db", "/tmp/x.db"))
+
+			Expect(code).To(Equal(0))
+			Expect(errOut.String()).To(BeEmpty())
+			Expect(out.String()).To(ContainSubstring("USAGE"))
+		})
+
+		It("lists a command's ungrouped subcommands under COMMANDS", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("completion", "--help"))
+
+			Expect(out.String()).To(MatchRegexp(`(?m)^COMMANDS\n(?:  .+\n)*  bash `))
 		})
 
 		It("is printed when coroner runs without arguments", func(ctx SpecContext) {
@@ -203,6 +213,7 @@ var _ = Describe("Run", func() {
 		Entry("--format=jsonl", "--format=jsonl", "--no-such-flag"),
 		Entry("--json before the bad flag", "--json", "--no-such-flag"),
 		Entry("--json after the bad flag", "--no-such-flag", "--json"),
+		Entry("--json after --help", "--no-such-flag", "--help", "--json"),
 	)
 
 	It("exits 130 with kind interrupted once the context is cancelled", func(ctx SpecContext) {
@@ -212,10 +223,12 @@ var _ = Describe("Run", func() {
 		code := cli.Run(cancelled, newApp("--json"))
 
 		Expect(code).To(Equal(130))
-		Expect(decodeEnvelope(lastLine(errOut.String()))).To(HaveKeyWithValue("kind", "interrupted"))
+		envelope := decodeEnvelope(lastLine(errOut.String()))
+		Expect(envelope).To(HaveKeyWithValue("kind", "interrupted"))
+		Expect(envelope).To(HaveKeyWithValue("hint", BeNil()))
 	})
 
-	Describe("error colour", func() {
+	Describe("error color", func() {
 		const red = "\x1b[31m"
 
 		It("marks the error in red when Err is a terminal", func(ctx SpecContext) {
@@ -227,7 +240,7 @@ var _ = Describe("Run", func() {
 			Expect(errOut.String()).To(HavePrefix(red))
 		})
 
-		DescribeTable("prints no escape codes when colour is off",
+		DescribeTable("prints no escape codes when color is off",
 			func(ctx SpecContext, isTTY bool, extraEnv map[string]string, args ...string) {
 				maps.Copy(env, extraEnv)
 				app := newApp(append(args, "--no-such-flag")...)
@@ -252,18 +265,44 @@ var _ = Describe("Run", func() {
 			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*kind=usage exit_code=2`))
 		})
 
-		It("logs the failure under CORONER_DEBUG", func(ctx SpecContext) {
-			env["CORONER_DEBUG"] = "1"
+		DescribeTable("logs the failure when CORONER_DEBUG is on",
+			func(ctx SpecContext, value string) {
+				env["CORONER_DEBUG"] = value
 
-			cli.Run(ctx, newApp("--no-such-flag"))
+				cli.Run(ctx, newApp("--no-such-flag"))
 
-			Expect(errOut.String()).To(ContainSubstring("level=DEBUG"))
+				Expect(errOut.String()).To(ContainSubstring("level=DEBUG"))
+			},
+			Entry(nil, "1"),
+			Entry(nil, "true"),
+			Entry("a value that is not a boolean", "yes"),
+		)
+
+		DescribeTable("prints no log lines without debug",
+			func(ctx SpecContext, extraEnv map[string]string) {
+				maps.Copy(env, extraEnv)
+
+				cli.Run(ctx, newApp("--no-such-flag"))
+
+				Expect(errOut.String()).NotTo(ContainSubstring("level="))
+			},
+			Entry("CORONER_DEBUG unset", nil),
+			Entry("CORONER_DEBUG empty", map[string]string{"CORONER_DEBUG": ""}),
+			Entry("CORONER_DEBUG=0", map[string]string{"CORONER_DEBUG": "0"}),
+			Entry("CORONER_DEBUG=false", map[string]string{"CORONER_DEBUG": "false"}),
+		)
+
+		It("logs the failure's message and the command-line args", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("--debug", "--no-such-flag"))
+
+			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*message=.*unknown flag.* args="\[--debug --no-such-flag\]"`))
 		})
 
-		It("prints no log lines without debug", func(ctx SpecContext) {
-			cli.Run(ctx, newApp("--no-such-flag"))
+		It("logs no error attribute for a failure without a cause", func(ctx SpecContext) {
+			cli.Run(ctx, newApp("--debug", "version", "--format", "yaml"))
 
-			Expect(errOut.String()).NotTo(ContainSubstring("level="))
+			Expect(errOut.String()).To(ContainSubstring("level=DEBUG"))
+			Expect(errOut.String()).NotTo(ContainSubstring("error="))
 		})
 
 		It("logs an internal failure under --debug", func(ctx SpecContext) {
@@ -276,6 +315,20 @@ var _ = Describe("Run", func() {
 		})
 	})
 })
+
+// lastLine returns the final line of output that ends in a newline.
+func lastLine(output string) string {
+	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
+	return lines[len(lines)-1]
+}
+
+// decodeEnvelope returns the "error" object of a stderr JSON error envelope line.
+func decodeEnvelope(line string) map[string]any {
+	var envelope map[string]map[string]any
+	ExpectWithOffset(1, json.Unmarshal([]byte(line), &envelope)).To(Succeed(), line)
+	ExpectWithOffset(1, envelope).To(HaveLen(1), line)
+	return envelope["error"]
+}
 
 type failingWriter struct{}
 

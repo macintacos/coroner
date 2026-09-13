@@ -69,13 +69,14 @@ digraph coroner_rules_router {
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
-  `internal/config`. `main.go` hands args, stdio, whether each output is a terminal, env,
-  file reads, clock, build version and signals to `cli.Run`; code below it takes them from
-  `cli.App`, never from `os`.
-- Errors and exit codes: a command returns a `*cli.Error` whose `Kind` picks the exit
-  code; `Kind.ExitCode` in [`internal/cli/errors.go`](internal/cli/errors.go) is the
-  table. Any other error a command returns exits 1 as `internal`. `cli.Run` prints every
-  error once, adding the JSON error envelope under `--format json|jsonl`.
+  `internal/config`. `main.go` builds `cli.App` from the process; code below it takes
+  everything from `cli.App`, never from `os`.
+- Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
+  picks the exit code; `Kind.ExitCode` in
+  [`internal/cli/errors.go`](internal/cli/errors.go) is the table. Any other error, or a
+  panic, exits 1 as `internal`. A command declares the output formats it supports in its
+  `formats` annotation, and any other `--format` or `--json` exits 2 as `usage`. `cli.Run`
+  prints every error once, adding the JSON error envelope under `--format json|jsonl`.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`
   and the fixed clock `CORONER_TEST_NOW`. Contract scripts live in

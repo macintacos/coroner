@@ -8,11 +8,12 @@ import (
 
 func newVersionCommand(app App) *cobra.Command {
 	return &cobra.Command{
-		Use:     "version",
-		Short:   "Show coroner's version",
-		GroupID: additionalCommands,
-		Args:    cobra.NoArgs,
-		Example: "  $ coroner version\n  $ coroner version --json",
+		Use:         "version",
+		Short:       "Show coroner's version",
+		GroupID:     additionalCommands,
+		Args:        cobra.NoArgs,
+		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Example:     "  $ coroner version\n  $ coroner version --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return writeVersion(cmd, app)
 		},
@@ -24,12 +25,12 @@ type versionJSON struct {
 }
 
 func writeVersion(cmd *cobra.Command, app App) error {
-	format, err := outputFormat(cmd, formatText, formatJSON)
+	chosen, err := outputFormat(cmd)
 	if err != nil {
 		return err
 	}
 
-	if format == formatJSON {
+	if chosen == formatJSON {
 		return writeJSON(app.Out, app.OutIsTTY, versionJSON{CoronerVersion: app.Version})
 	}
 

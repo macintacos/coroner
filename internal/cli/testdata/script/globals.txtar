@@ -16,5 +16,7 @@ exec coroner --db $WORK/c.db completion powershell
 ! exists $WORK/.local/share/coroner
 
 # Piped output carries no color, even on an error.
+exec coroner --help
+! stdout '\x1b'
 exits 2 coroner versio
 ! stderr '\x1b'
