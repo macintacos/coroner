@@ -9,7 +9,6 @@ import "package://github.com/jdx/hk/releases/download/v1.58.1/hk@1.58.1#/Builtin
 //   mise run format -> the `fix` hook   -> `formatters` (write mode)
 //   mise run lint   -> the `check` hook -> `linters`, plus the CLI reference's drift check
 // The `pre-commit` hook runs BOTH, so every commit stays formatted and clean.
-// The `commit-msg` hook rejects a message that is not a Conventional Commit.
 //
 // Step keys use a uniform `Language(Action)  [[builtins.tool]]` scheme,
 // column-aligned on the bracket tag, so hk's per-run output reads consistently.
@@ -116,16 +115,20 @@ hooks {
 
   ["commit-msg"] {
     steps = new Mapping<String, Step> {
-      // The util rejects the Merge and Revert subjects git writes itself, so those pass first.
+      // The util rejects the merge, revert and reapply subjects git writes, so those pass
+      // first. Keep the set in sync with cliff.toml's commit_parsers.
       ["Git(CommitMsg)    [[builtins.check_conventional_commit]]"] = (
         Builtins.check_conventional_commit
       ) {
-        check =
-          """
-          sed -n '/^[^#]/{p;q;}' {{commit_msg_file}} | grep -qE '^(Merge|Revert) ' ||
-            hk util check-conventional-commit {{commit_msg_file}} ||
-            { echo 'Expected a Conventional Commit: type(scope)!: summary' >&2; exit 1; }
-          """
+        check {
+          command =
+            """
+            sed -n '/^[^#]/{p;q;}' "{{commit_msg_file}}" |
+              grep -qE '^(Merge (branch(es)?|remote-tracking branch(es)?|tags?|commits?) |(Revert|Reapply) ")' ||
+              hk util check-conventional-commit "{{commit_msg_file}}" ||
+              { echo 'Expected a Conventional Commit, such as: feat(cli): add timeline list' >&2; exit 1; }
+            """
+        }
       }
     }
   }

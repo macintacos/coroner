@@ -1,11 +1,10 @@
-# git-cliff renders CHANGELOG.md from the Conventional Commit history at release:
-#   git cliff --tag vX.Y.Z -o CHANGELOG.md
+# git-cliff renders CHANGELOG.md from the Conventional Commit history at release.
 # https://git-cliff.org/docs/configuration
 [changelog]
 header = """
 # Changelog
 
-Every change to coroner, grouped by kind. Generated from the commit history by git-cliff;
+Changes to coroner, grouped by commit type. Generated from the commit history by git-cliff;
 never edit it by hand.
 
 """
@@ -19,9 +18,12 @@ body = """
 ### {{ group | striptags | trim }}
 
 {% for commit in commits %}\
-- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}\
+{{ commit.message | split(pat="\n") | first | upper_first }}\
+{% if commit.breaking and commit.breaking_description != commit.message %} ({{ commit.breaking_description }}){% endif %}
 {% endfor %}\
 {% endfor %}
+
 """
 trim = true
 
@@ -32,8 +34,10 @@ protect_breaking_commits = true
 # Groups sort on the HTML comment, which the body template strips.
 commit_parsers = [
   { field = "breaking", pattern = "true", group = "<!-- 0 -->Breaking" },
-  # `Initial commit` and git's Merge and Revert subjects. filter_unconventional would
-  # drop them too, but warns about it on every run.
+  # git's own revert and reapply subjects, which hk.pkl's commit-msg hook lets through.
+  { message = '^(Revert|Reapply) "', group = "<!-- 8 -->Miscellaneous" },
+  # `Initial commit` and git's merge subjects. filter_unconventional would drop them
+  # too, but warns about it on every run.
   { field = "conventional", pattern = "false", skip = true },
   { message = "^feat", group = "<!-- 1 -->Features" },
   { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
@@ -42,6 +46,6 @@ commit_parsers = [
   { message = "^docs", group = "<!-- 5 -->Documentation" },
   { message = "^test", group = "<!-- 6 -->Tests" },
   { message = "^(build|ci)", group = "<!-- 7 -->Build" },
-  # chore, and the style and revert types.
+  # chore, style and revert.
   { message = ".*", group = "<!-- 8 -->Miscellaneous" },
 ]

@@ -26,8 +26,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, regenerating the CLI reference when a help topic or the Go code
-it documents changes, `commit-msg` rejects a message that is not a Conventional Commit
-(Rule 5), and `pre-push` runs `mise run test` when Go files, `go.mod` or `go.sum` change.
+it documents changes; `commit-msg` rejects a message that is not a Conventional Commit
+(Rule 5); and `pre-push` runs `mise run test` when Go files, `go.mod` or `go.sum` change.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request and
 push to `main`: `mise run lint`, `go run ./internal/tools/docgen --check`,
@@ -127,8 +127,9 @@ digraph coroner_rules_router {
    [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):** use `feat!:`
    or `BREAKING CHANGE:` only with the maintainer's approval. Before 1.0, breaks are
    listed under a **Breaking** changelog heading. The `commit-msg` hook rejects a
-   non-conventional message (git's own merge and revert subjects pass), and git-cliff
-   builds the changelog from the history, so a commit's type picks its heading.
+   non-conventional message (git's own merge, revert and reapply subjects pass; merges are
+   left out of the changelog), and git-cliff builds the changelog from the history, so a
+   commit's type picks its heading.
 6. **Keep the agent skill in sync:** when a command used in `skills/coroner/SKILL.md` (not
    in the repo yet) changes, update the skill in the same PR, or its examples test fails.
 7. **Run `mise run preflight` before declaring work done:** it runs lint, test and build

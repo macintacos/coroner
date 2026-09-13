@@ -32,8 +32,7 @@ golangci-lint        = "latest"
 sqlc                 = "latest"
 "aqua:pressly/goose" = "latest"
 
-# Release: git-cliff renders CHANGELOG.md from the commit history (config in cliff.toml).
-git-cliff = "latest"
+git-cliff = "latest" # Changelog generator (config in cliff.toml)
 
 # (Re)register git hooks whenever tools are installed or updated.
 [hooks]
