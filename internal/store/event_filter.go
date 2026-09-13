@@ -121,22 +121,22 @@ func queryEvents(ctx context.Context, tx sqlcgen.DBTX, query string, args []any)
 // step with the event table.
 func scanEvent(rows *sql.Rows) (timeline.Event, error) {
 	var (
-		row    sqlcgen.Event
-		source *string
-		tags   string
+		row      sqlcgen.Event
+		source   *string
+		tagsJSON string
 	)
 	err := rows.Scan(
 		&row.ID, &row.TimelineID, &row.Seq, &row.OccurredAt, &row.OccurredOffset,
 		&row.OccurredPrecision, &row.Approximate, &row.OccurredRaw, &row.EndedAt, &row.SourceID, &row.Text,
 		&row.Url, &row.Author, &row.CreatedAt, &row.UpdatedAt,
-		&source, &tags,
+		&source, &tagsJSON,
 	)
 	if err != nil {
 		return timeline.Event{}, err
 	}
 
 	var tagList []string
-	err = json.Unmarshal([]byte(tags), &tagList)
+	err = json.Unmarshal([]byte(tagsJSON), &tagList)
 	if err != nil {
 		return timeline.Event{}, err
 	}

@@ -147,7 +147,7 @@ func event(created time.Time) *rapid.Generator[timeline.Event] {
 }
 
 // filter draws a filter whose bounds land on and beside event's grid.
-func filter(events int) *rapid.Generator[store.EventFilter] {
+func filter(eventCount int) *rapid.Generator[store.EventFilter] {
 	return rapid.Custom(func(t *rapid.T) store.EventFilter {
 		return store.EventFilter{
 			Since:    rapid.Ptr(minute(-1, 6), true).Draw(t, "since"),
@@ -156,7 +156,7 @@ func filter(events int) *rapid.Generator[store.EventFilter] {
 			Tags:     rapid.SliceOfNDistinct(rapid.SampledFrom(tagNames()), 0, 2, rapid.ID).Draw(t, "tags"),
 			Contains: rapid.StringOfN(rapid.RuneFrom([]rune(textRunes)), 0, 3, -1).Draw(t, "contains"),
 			Order:    rapid.SampledFrom([]store.Order{store.OrderAsc, store.OrderDesc}).Draw(t, "order"),
-			Limit:    rapid.IntRange(0, events+1).Draw(t, "limit"),
+			Limit:    rapid.IntRange(0, eventCount+1).Draw(t, "limit"),
 		}
 	})
 }
