@@ -10,7 +10,8 @@ import (
 
 const additionalCommands = "additional"
 
-func newRoot(app App) *cobra.Command {
+// NewRoot builds coroner's command tree, whose commands run against app.
+func NewRoot(app App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "coroner <command> [flags]",
 		Short: "Build root-cause investigation timelines",
