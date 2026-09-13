@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -260,6 +261,111 @@ var _ = Describe("annotation", func() {
 				Expect(out.String()).To(MatchRegexp(`(?m)^Body: +Election timeout$`))
 				Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
 			})
+		})
+	})
+
+	Describe("list", func() {
+		listed := func() []map[string]any {
+			GinkgoHelper()
+			var body struct {
+				Annotations []map[string]any `json:"annotations"`
+			}
+			Expect(json.Unmarshal(out.Bytes(), &body)).To(Succeed())
+			return body.Annotations
+		}
+		listedIDs := func() []any {
+			GinkgoHelper()
+			ids := []any{}
+			for _, a := range listed() {
+				ids = append(ids, a["id"])
+			}
+			return ids
+		}
+		addAnnotation := func(ctx SpecContext, args ...string) {
+			GinkgoHelper()
+			now = now.Add(time.Minute)
+			Expect(run(ctx, append([]string{"annotation", "add"}, args...)...)).To(Equal(0))
+		}
+
+		It("lists the timeline's own annotations first, then by when their event happened, then oldest first",
+			func(ctx SpecContext) {
+				// #2 happened before #1.
+				Expect(run(ctx, "event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:10:00Z")).To(Equal(0))
+				addAnnotation(ctx, "election log", "-e", "1", "--kind", "evidence")
+				addAnnotation(ctx, "pager log", "-e", "2", "--kind", "evidence")
+				addAnnotation(ctx, "Root cause: undersized oplog", "--kind", "comment")
+				addAnnotation(ctx, "Pager fired late", "-e", "2", "--kind", "comment")
+
+				Expect(run(ctx, "annotation", "list", "--json")).To(Equal(0))
+
+				Expect(listedIDs()).To(Equal([]any{
+					"0199a1b2-0000-7000-8000-000000000006",
+					"0199a1b2-0000-7000-8000-000000000005",
+					"0199a1b2-0000-7000-8000-000000000007",
+					"0199a1b2-0000-7000-8000-000000000004",
+				}))
+			})
+
+		It("returns a body read from stdin byte for byte, less one trailing newline", func(ctx SpecContext) {
+			log := "2026-09-11T03:14:07.412+0000 I REPL [conn42] stepping down\r\n\t└ reason: \"election\"  \n\n"
+			in = strings.NewReader(log)
+			addAnnotation(ctx, "-", "-e", "1", "--kind", "evidence")
+
+			Expect(run(ctx, "annotation", "list", "--json")).To(Equal(0))
+
+			Expect(listed()).To(ConsistOf(HaveKeyWithValue("body", strings.TrimSuffix(log, "\n"))))
+		})
+
+		DescribeTable("lists only the annotations on the event -e names",
+			func(ctx SpecContext, ref string) {
+				Expect(run(ctx, "event", "add", "Pager fires for db-2")).To(Equal(0))
+				addAnnotation(ctx, "election log", "-e", "1", "--kind", "evidence")
+				addAnnotation(ctx, "pager log", "-e", "2", "--kind", "evidence")
+				addAnnotation(ctx, "Root cause: undersized oplog", "--kind", "comment")
+
+				Expect(run(ctx, "annotation", "list", "-e", ref, "--json")).To(Equal(0))
+
+				Expect(listedIDs()).To(Equal([]any{"0199a1b2-0000-7000-8000-000000000005"}))
+			},
+			Entry("by seq", "2"),
+			Entry("by timeline and seq", "mongo-outage#2"),
+			Entry("by id", "0199a1b2-0000-7000-8000-000000000003"),
+		)
+
+		It("exits 3 with kind event_not_found on an event in another timeline", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "create", "mongo-failover")).To(Equal(0))
+			Expect(run(ctx, "event", "add", "Failover drill", "-t", "mongo-failover")).To(Equal(0))
+
+			Expect(run(ctx, "annotation", "list", "-e", "mongo-failover#1", "--json")).To(Equal(3))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"event_not_found"`))
+		})
+
+		It("lists the timeline -t names", func(ctx SpecContext) {
+			addAnnotation(ctx, "Root cause: undersized oplog", "--kind", "comment")
+			Expect(run(ctx, "timeline", "create", "mongo-failover")).To(Equal(0))
+
+			Expect(run(ctx, "annotation", "list", "-t", "mongo-failover", "--json")).To(Equal(0))
+
+			Expect(out.String()).To(Equal("{\"annotations\":[]}\n"))
+		})
+
+		It("prints a tab-separated row per annotation when piped: id, kind, author, event and first line", func(ctx SpecContext) {
+			addAnnotation(ctx, "Root cause: undersized oplog\nSee the capacity review.", "--kind", "comment")
+			addAnnotation(ctx, "election log", "-e", "1", "--kind", "evidence", "--author", "sam")
+
+			Expect(run(ctx, "annotation", "list")).To(Equal(0))
+
+			Expect(out.String()).To(Equal(
+				"0199a1b2-0000-7000-8000-000000000003\tcomment\tjulian\t\tRoot cause: undersized oplog\n" +
+					"0199a1b2-0000-7000-8000-000000000004\tevidence\tsam\t#1\telection log\n"))
+		})
+
+		It("says on stderr when there are none, and prints nothing", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "list")).To(Equal(0))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring("coroner annotation add"))
 		})
 	})
 })

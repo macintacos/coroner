@@ -40,4 +40,5 @@ coroner annotation [flags]
 
 * [coroner](coroner.md)	 - Build root-cause investigation timelines
 * [coroner annotation add](coroner_annotation_add.md)	 - Attach evidence or a comment to an event or the timeline
+* [coroner annotation list](coroner_annotation_list.md)	 - List a timeline's annotations
 

@@ -98,8 +98,8 @@ func addAnnotation(ctx context.Context, cmd *cobra.Command, app App, args []stri
 	})
 }
 
-// attachToEvent points a at the event ref names, when ref is set, and returns the event's
-// seq, or 0 for none. An event outside t is event_not_found.
+// attachToEvent points a at the event ref names in t, when ref is set, and returns the
+// event's seq, or 0 for none.
 func attachToEvent(
 	ctx context.Context, s *store.Store, a *timeline.Annotation, t timeline.Timeline, ref *string, selection timelineSelection,
 ) (int64, error) {
@@ -107,16 +107,9 @@ func attachToEvent(
 		return 0, nil
 	}
 
-	e, eventTimeline, err := findEvent(ctx, s, *ref, selection)
+	e, err := findEventIn(ctx, s, t, *ref, selection)
 	if err != nil {
 		return 0, err
-	}
-	if e.TimelineID != t.ID {
-		return 0, &Error{
-			Kind:    KindEventNotFound,
-			Message: fmt.Sprintf("event %s is in timeline `%s`, not `%s`", *ref, eventTimeline.Name, t.Name),
-			Hint:    fmt.Sprintf("Pass -t %s to annotate it in its own timeline.", eventTimeline.Name),
-		}
 	}
 
 	a.EventID = &e.ID

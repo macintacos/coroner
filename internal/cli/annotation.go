@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -29,7 +30,7 @@ func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 		RunE:        runNoun,
 	}
 
-	cmd.AddCommand(newAnnotationAddCommand(ctx, app))
+	cmd.AddCommand(newAnnotationAddCommand(ctx, app), newAnnotationListCommand(ctx, app))
 
 	return cmd
 }
@@ -103,6 +104,23 @@ func annotationBody(value string, in io.Reader, inIsTTY bool) (string, error) {
 	}
 
 	return body, nil
+}
+
+// findEventIn returns the event ref names, which must be in t: an event in another timeline
+// is event_not_found.
+func findEventIn(
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref string, selection timelineSelection,
+) (timeline.Event, error) {
+	e, eventTimeline, err := findEvent(ctx, s, ref, selection)
+	if err != nil || e.TimelineID == t.ID {
+		return e, err
+	}
+
+	return e, &Error{
+		Kind:    KindEventNotFound,
+		Message: fmt.Sprintf("event %s is in timeline `%s`, not `%s`", ref, eventTimeline.Name, t.Name),
+		Hint:    "Pass -t " + eventTimeline.Name + " to act on its own timeline.",
+	}
 }
 
 // annotationFields are the source and URL the flags give an annotation, each nil when not
