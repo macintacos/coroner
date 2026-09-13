@@ -24,6 +24,10 @@ exclude = [
   "LICENSE.md",
 ]
 
+[per-file-ignores]
+# CLAUDE.md is only Claude Code's `@AGENTS.md` import, not a document with a title.
+"CLAUDE.md" = ["MD041"]
+
 [MD024]
 # Only flag duplicate headings that are siblings (share a parent), not across the
 # whole document. (This is also rumdl's default; kept explicit.)
