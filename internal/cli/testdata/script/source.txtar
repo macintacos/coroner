@@ -1,0 +1,37 @@
+# A command line rejected before it reaches the database never creates one.
+exits 2 coroner source edit mongo
+stderr '--name'
+exits 2 coroner source edit mongo --name 'Mongo DB'
+stderr 'Did you mean `mongo-db`\?'
+exits 2 coroner source edit
+! exists $WORK/.local/share/coroner
+
+# Empty lists print nothing on stdout and say where sources and tags come from.
+exec coroner source list
+! stdout .
+stderr 'coroner event add'
+exec coroner tag list
+! stdout .
+stderr 'coroner event add'
+
+# Piped, each row's fields are tab-separated.
+exec coroner timeline create mongo-outage
+exec coroner timeline use mongo-outage
+exec coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z --source mongo --tag phase:detect
+exec coroner source list
+stdout '^mongo\t1\t0\t2026-09-11T03:14:07\.000000000Z\t2026-09-11T03:14:07\.000000000Z$'
+exec coroner tag list
+stdout '^phase:detect\t1\t2026-09-11T03:14:07\.000000000Z\t2026-09-11T03:14:07\.000000000Z$'
+
+# --dry-run says what a rename would touch, and renames nothing.
+exec coroner source edit mongo --name mongodb --dry-run
+stdout '^Would rename source `mongo` to `mongodb`: events: 1, annotations: 0$'
+exec coroner source list
+stdout '^mongo\t'
+
+# edit says what it renamed on stderr.
+exec coroner source edit mongo --name mongodb
+! stdout .
+stderr '^Renamed source `mongo` to `mongodb`\.$'
+exec coroner source list
+stdout '^mongodb\t'

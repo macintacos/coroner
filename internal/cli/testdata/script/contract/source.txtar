@@ -1,0 +1,59 @@
+# JSON output and exit codes of the source and tag commands. Ids are UUIDv7 and differ per
+# run, so they match by pattern; created at comes from CORONER_TEST_NOW and occurred at from
+# --at.
+
+# With no events, both lists are empty.
+exits 0 coroner source list --json
+stdout '^\{"sources":\[\]\}$'
+exits 0 coroner tag list --json
+stdout '^\{"tags":\[\]\}$'
+
+exits 0 coroner timeline create mongo-outage
+exits 0 coroner timeline use mongo-outage
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z --source mongo --tag phase:detect
+exits 0 coroner event add 'Secondary caught up' --at 2026-09-11T03:20:00Z --source mongo
+exits 0 coroner event add 'Election timeout logged' --at 2026-09-11T03:15:00Z --source db-2/mongod
+
+# source list prints every source by name, every key present.
+exits 0 coroner source list --json
+stdout '^\{"sources":\[\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"db-2/mongod","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":1,"annotation_count":0,"first_occurred_at":"2026-09-11T03:15:00\.000000000Z","last_occurred_at":"2026-09-11T03:15:00\.000000000Z"\},\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongo","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:20:00\.000000000Z"\}\]\}$'
+
+# tag list prints every tag by name; an event without tags adds none.
+exits 0 coroner tag list --json
+stdout '^\{"tags":\[\{"name":"phase:detect","event_count":1,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:14:07\.000000000Z"\}\]\}$'
+
+# edit --dry-run prints the source as it would be renamed, and renames nothing.
+exits 0 coroner source edit mongo --name mongodb --dry-run --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongodb","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:20:00\.000000000Z"\}$'
+cp stdout renamed.json
+exits 0 coroner source list --json
+stdout '"name":"mongo",'
+! stdout '"name":"mongodb"'
+
+# edit prints the renamed source, and its events follow it.
+exits 0 coroner source edit mongo --name mongodb --json
+cmp stdout renamed.json
+exits 0 coroner source list --json
+stdout '"name":"mongodb",[^}]*"event_count":2,'
+! stdout '"name":"mongo",'
+
+# A name another source has exits 4, kind source_exists, with or without --dry-run.
+exits 4 coroner source edit mongodb --name db-2/mongod --json
+! stdout .
+stderr '^\{"error":\{"kind":"source_exists","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 4 coroner source edit mongodb --name db-2/mongod --dry-run --json
+! stdout .
+stderr '^\{"error":\{"kind":"source_exists",[^\n]+\}\}\n\z'
+
+# A source that does not exist exits 3, kind source_not_found.
+exits 3 coroner source edit mongo --name mongo-2 --json
+! stdout .
+stderr '^\{"error":\{"kind":"source_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# An invalid name exits 2, kind invalid_name, with a suggested name in the hint.
+exits 2 coroner source edit mongodb --name 'Mongo DB' --json
+stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*mongo-db[^\n]*"\}\}\n\z'
+
+# edit without --name exits 2, kind usage.
+exits 2 coroner source edit mongodb --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'

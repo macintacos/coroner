@@ -40,7 +40,9 @@ coroner <command> [flags]
 
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
 * [coroner event](coroner_event.md)	 - Add events to a timeline
+* [coroner source](coroner_source.md)	 - List sources and fix their names
 * [coroner status](coroner_status.md)	 - Show the database and the timeline commands act on
+* [coroner tag](coroner_tag.md)	 - List the tags events carry
 * [coroner timeline](coroner_timeline.md)	 - Create, list and switch between timelines
 * [coroner version](coroner_version.md)	 - Show coroner's version
 

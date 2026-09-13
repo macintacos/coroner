@@ -12,6 +12,8 @@ USAGE
 
 CORE COMMANDS
   event        Add events to a timeline
+  source       List sources and fix their names
+  tag          List the tags events carry
   timeline     Create, list and switch between timelines
 
 ADDITIONAL COMMANDS
