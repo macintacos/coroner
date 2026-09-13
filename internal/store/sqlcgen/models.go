@@ -17,6 +17,17 @@ type Annotation struct {
 	UpdatedAt  string
 }
 
+type Attachment struct {
+	ID           string
+	EventID      *string
+	AnnotationID *string
+	Filename     string
+	Mime         string
+	Sha256       string
+	Size         int64
+	CreatedAt    string
+}
+
 type Event struct {
 	ID                string
 	TimelineID        string

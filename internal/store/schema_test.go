@@ -52,6 +52,18 @@ var _ = Describe("Schema", func() {
 			UpdatedAt:  now,
 		}
 	}
+	const emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	attachmentParams := func(n int, eventID, annotationID *string) sqlcgen.CreateAttachmentParams {
+		return sqlcgen.CreateAttachmentParams{
+			ID:           id(n),
+			EventID:      eventID,
+			AnnotationID: annotationID,
+			Filename:     "grafana.png",
+			Mime:         "image/png",
+			Sha256:       emptySHA256,
+			CreatedAt:    now,
+		}
+	}
 
 	BeforeEach(func(ctx SpecContext) {
 		s, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
@@ -155,6 +167,50 @@ var _ = Describe("Schema", func() {
 		Entry("a white-space-only ref", "CHECK", func(ctx context.Context) error {
 			return queries.AddTimelineRef(ctx, sqlcgen.AddTimelineRefParams{TimelineID: incident.ID, Ref: "\n"})
 		}),
+		Entry("an attachment on both an event and an annotation", "CHECK", func(ctx context.Context) error {
+			annotation, err := queries.CreateAnnotation(ctx, annotationParams(10, incident.ID, &pager.ID))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = queries.CreateAttachment(ctx, attachmentParams(11, &pager.ID, &annotation.ID))
+			return err
+		}),
+		Entry("an attachment on neither an event nor an annotation", "CHECK", func(ctx context.Context) error {
+			_, err := queries.CreateAttachment(ctx, attachmentParams(10, nil, nil))
+			return err
+		}),
+		Entry("an attachment sha256 one digit short", "CHECK", func(ctx context.Context) error {
+			params := attachmentParams(10, &pager.ID, nil)
+			params.Sha256 = emptySHA256[1:]
+			_, err := queries.CreateAttachment(ctx, params)
+			return err
+		}),
+		Entry("an uppercase attachment sha256", "CHECK", func(ctx context.Context) error {
+			params := attachmentParams(10, &pager.ID, nil)
+			params.Sha256 = strings.ToUpper(emptySHA256)
+			_, err := queries.CreateAttachment(ctx, params)
+			return err
+		}),
+		Entry("an attachment sha256 that is not hex", "CHECK", func(ctx context.Context) error {
+			params := attachmentParams(10, &pager.ID, nil)
+			params.Sha256 = "g" + emptySHA256[1:]
+			_, err := queries.CreateAttachment(ctx, params)
+			return err
+		}),
+		Entry("a negative attachment size", "CHECK", func(ctx context.Context) error {
+			params := attachmentParams(10, &pager.ID, nil)
+			params.Size = -1
+			_, err := queries.CreateAttachment(ctx, params)
+			return err
+		}),
+		Entry("an attachment created at without nine fractional digits", "CHECK", func(ctx context.Context) error {
+			params := attachmentParams(10, &pager.ID, nil)
+			params.CreatedAt = "2026-09-13T09:00:00Z"
+			_, err := queries.CreateAttachment(ctx, params)
+			return err
+		}),
+		Entry("an attachment on an event that does not exist", "FOREIGN KEY", func(ctx context.Context) error {
+			_, err := queries.CreateAttachment(ctx, attachmentParams(10, new(id(99)), nil))
+			return err
+		}),
 	)
 
 	checkFailed := ContainSubstring("CHECK constraint failed")
@@ -241,6 +297,18 @@ var _ = Describe("Schema", func() {
 		Expect(queries.ListEventTags(ctx, pager.ID)).To(BeEmpty())
 		Expect(queries.ListTimelineRefs(ctx, incident.ID)).To(BeEmpty())
 		Expect(queries.ListAnnotations(ctx, incident.ID)).To(BeEmpty())
+	})
+
+	It("deletes an event's attachments, and those of its annotations, with it", func(ctx SpecContext) {
+		annotation, err := queries.CreateAnnotation(ctx, annotationParams(10, incident.ID, &pager.ID))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(queries.CreateAttachment(ctx, attachmentParams(11, &pager.ID, nil))).Error().NotTo(HaveOccurred())
+		Expect(queries.CreateAttachment(ctx, attachmentParams(12, nil, &annotation.ID))).Error().NotTo(HaveOccurred())
+
+		Expect(queries.DeleteEvent(ctx, pager.ID)).To(Succeed())
+
+		Expect(queries.ListEventAttachments(ctx, &pager.ID)).To(BeEmpty())
+		Expect(queries.ListAnnotationAttachments(ctx, &annotation.ID)).To(BeEmpty())
 	})
 
 	It("clears the current timeline when that timeline is deleted", func(ctx SpecContext) {
