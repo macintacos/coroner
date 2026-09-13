@@ -3,11 +3,46 @@ package store
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
+	"errors"
 	"math/big"
 	"time"
+
+	"github.com/macintacos/coroner/internal/store/sqlcgen"
 )
 
-const firstBackoff = 20 * time.Millisecond
+const (
+	writeAttempts = 3
+	firstBackoff  = 20 * time.Millisecond
+)
+
+// read runs fn in a read-only transaction, which never takes the write lock.
+func (s *Store) read(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
+	return translate(s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, fn))
+}
+
+// write runs fn in one immediate transaction, retried whole while another writer holds the
+// database. fn may therefore run more than once, so it must change nothing outside the
+// transaction.
+func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
+	return translate(retryBusy(ctx, writeAttempts, func() error {
+		return s.inTx(ctx, nil, fn)
+	}))
+}
+
+func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(*sqlcgen.Queries) error) error {
+	tx, err := s.db.BeginTx(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	err = fn(sqlcgen.New(tx))
+	if err != nil {
+		return errors.Join(err, tx.Rollback())
+	}
+
+	return tx.Commit()
+}
 
 // retryBusy calls fn up to attempts times while it fails with SQLITE_BUSY, waiting a
 // jittered, doubling backoff between calls, and returns its last error.
