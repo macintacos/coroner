@@ -71,8 +71,9 @@ never renumber a rule, only retire it.
 - **OUT-8** Anything that crosses the program's own boundary is explicit, such as writing
   a file. The database is internal state and is exempt.
   ([clig.dev](https://clig.dev/#output))
-- **OUT-9** Color is off when the stream isn't a TTY, `NO_COLOR` is set and non-empty,
-  `TERM=dumb`, or `--no-color` is passed. ([clig.dev](https://clig.dev/#output))
+- **OUT-9** Color is off when the stream isn't a TTY, `NO_COLOR` or `CORONER_NO_COLOR` is
+  set and non-empty, `TERM=dumb`, or `--no-color` is passed.
+  ([clig.dev](https://clig.dev/#output))
 - **OUT-10** No spinners or animation when stderr isn't a TTY.
   ([clig.dev](https://clig.dev/#output))
 - **OUT-11** stderr is not a log file: no `WARN`/`ERR` level labels outside verbose or
@@ -90,8 +91,8 @@ never renumber a rule, only retire it.
   ([clig.dev](https://clig.dev/#errors))
 - **E-4** Unexpected errors print a short message and an issue URL, with no raw stack
   trace by default. `SilenceUsage` and `SilenceErrors` are set on root, and errors print
-  once, from `main`, which also maps them to exit codes. Debug detail appears only under
-  `--debug`/`CORONER_DEBUG`. ([clig.dev](https://clig.dev/#errors))
+  once, from `cli.Run`, which also maps them to exit codes. Debug detail appears only
+  under `--debug`/`CORONER_DEBUG`. ([clig.dev](https://clig.dev/#errors))
 
 ## Arguments and flags
 
