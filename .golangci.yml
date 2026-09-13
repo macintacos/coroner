@@ -78,6 +78,16 @@ linters:
               desc: take I/O as parameters
             - pkg: database/sql
               desc: storage lives in internal/store
+        export-contract:
+          files:
+            - "${base-path}/internal/export/**"
+          deny:
+            - pkg: github.com/macintacos/coroner/internal/store
+              desc: exports map internal/timeline types; the SQLite schema is never a contract
+            - pkg: github.com/macintacos/coroner/internal/cli
+              desc: commands depend on exports, not the other way round
+            - pkg: github.com/spf13/cobra
+              desc: exports know nothing of commands
         sqlcgen-private:
           files:
             - "!${base-path}/internal/store/**"
