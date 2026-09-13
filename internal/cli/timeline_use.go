@@ -12,8 +12,9 @@ func newTimelineUseCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "use {<name|id> | --clear}",
 		Short: "Set the current timeline",
-		Long: "Make a timeline current, so commands that act on a timeline use it when none is named.\n" +
-			"Each database keeps its own current timeline. --clear leaves none current.",
+		Long: "Make a timeline current, so commands that act on a timeline use it when neither -t nor\n" +
+			"CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves\n" +
+			"none current.",
 		Args: cobra.MaximumNArgs(1),
 		Example: "  $ coroner timeline use mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline use --clear",

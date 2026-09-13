@@ -8,8 +8,9 @@ Set the current timeline
 
 ### Synopsis
 
-Make a timeline current, so commands that act on a timeline use it when none is named.
-Each database keeps its own current timeline. --clear leaves none current.
+Make a timeline current, so commands that act on a timeline use it when neither -t nor
+CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves
+none current.
 
 ```
 coroner timeline use {<name|id> | --clear} [flags]
