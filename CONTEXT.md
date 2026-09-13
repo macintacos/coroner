@@ -67,6 +67,10 @@ _Avoid_: resolution, granularity
 **Approximate**: Marks an occurred at as a guess, as in "around 10:15".\
 _Avoid_: fuzzy, uncertain
 
+**Gap**: A stretch of time between events that no event covers, often a blank the
+investigation still has to fill.\
+_Avoid_: hole, blank
+
 ### Finding things
 
 **Seq**: The permanent per-timeline counter value an event gets when it is added, shown as
