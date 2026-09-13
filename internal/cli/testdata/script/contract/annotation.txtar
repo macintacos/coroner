@@ -1,0 +1,84 @@
+# JSON output and exit codes of the annotation commands. Ids are UUIDv7 and differ per run,
+# so they match by pattern, and while one annotation is stored the id prefix 0 names it;
+# created at comes from CORONER_TEST_NOW. Times are RFC 3339 only, the stable input grammar.
+
+exits 0 coroner timeline create mongo-outage
+exits 0 coroner timeline use mongo-outage
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z
+
+# --dry-run prints the annotation object, and adds nothing.
+exits 0 coroner annotation add 'Election timeout' -e 1 --kind comment --dry-run --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","event_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","kind":"comment",'
+exits 0 coroner annotation list --json
+stdout '^\{"annotations":\[\]\}$'
+
+# add prints the annotation object, every key present. Stdin loses one trailing newline.
+stdin stepdown.log
+exits 0 coroner annotation add - -e 1 --kind evidence --source mongod --url https://logs.example.com/l/1 --author julian --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","event_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","kind":"evidence","body":"\[conn42\] stepping down\\n\\tretrying","author":"julian","source":"mongod","url":"https://logs\.example\.com/l/1","created_at":"2026-09-13T01:30:00\.000000000Z","updated_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+
+# list prints the same objects under annotations.
+exits 0 coroner annotation list --json
+stdout '^\{"annotations":\[\{"id":"[^"]{36}","timeline_id":"[^"]{36}","event_id":"[^"]{36}","kind":"evidence","body":"[^"]+","author":"julian","source":"mongod","url":"[^"]+","created_at":"[^"]{30}","updated_at":"[^"]{30}"\}\]\}$'
+
+# edit prints the edited object.
+exits 0 coroner annotation edit 0 --kind comment --json
+stdout '^\{"id":"[^"]{36}","timeline_id":"[^"]{36}","event_id":"[^"]{36}","kind":"comment","body":"\[conn42\] stepping down\\n\\tretrying","author":"julian",'
+
+# An edit with nothing to change exits 2, kind usage.
+exits 2 coroner annotation edit 0 --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# delete --dry-run prints the objects it would delete, and deletes nothing; delete prints them.
+exits 0 coroner annotation delete 0 --dry-run --json
+stdout '^\{"annotations":\[\{"id":"[^"]{36}","timeline_id":"[^"]{36}","event_id":"[^"]{36}","kind":"comment",[^\n]+\}\]\}$'
+exits 0 coroner annotation delete 0 --json
+stdout '^\{"annotations":\[\{"id":"[^"]{36}","timeline_id":"[^"]{36}","event_id":"[^"]{36}","kind":"comment",[^\n]+\}\]\}$'
+exits 0 coroner annotation list --json
+stdout '^\{"annotations":\[\]\}$'
+
+# An id no annotation has exits 3, kind annotation_not_found.
+exits 3 coroner annotation delete 0 --json
+! stdout .
+stderr '^\{"error":\{"kind":"annotation_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# An annotation with no event is on the whole timeline: event_id is null.
+exits 0 coroner annotation add 'Root cause: undersized oplog' --kind comment --json
+stdout '"event_id":null,"kind":"comment",'
+
+# An id prefix several annotations share exits 2, kind ambiguous_id.
+exits 0 coroner annotation add 'Oplog window was 40 minutes' --kind evidence
+exits 2 coroner annotation edit 0 --kind evidence --json
+! stdout .
+stderr '^\{"error":\{"kind":"ambiguous_id","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# An unknown kind exits 2, kind usage, and the hint names the kinds.
+exits 2 coroner annotation add 'Election timeout' --kind note --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]*evidence[^\n]*comment[^\n]*"\}\}\n\z'
+
+# No body exits 2, kind usage.
+exits 2 coroner annotation add --kind comment --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# An event in another timeline exits 3, kind event_not_found, and adds nothing.
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner event add 'Failover drill' -t mongo-failover
+exits 3 coroner annotation add 'Drill log' -e 'mongo-failover#1' --kind evidence --json
+! stdout .
+stderr '^\{"error":\{"kind":"event_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 0 coroner annotation list -t mongo-failover --json
+stdout '^\{"annotations":\[\]\}$'
+
+# With no timeline current, add and list exit 2, kind timeline_required.
+exits 0 coroner timeline use --clear
+exits 2 coroner annotation add 'Election timeout' --kind comment --json
+stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
+exits 2 coroner annotation list --json
+stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
+
+-- stepdown.log --
+[conn42] stepping down
+	retrying
