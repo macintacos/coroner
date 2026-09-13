@@ -43,8 +43,8 @@ func Run(ctx context.Context, app App) int {
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
 	// No SetOut: cobra prints deprecation notices through OutOrStderr, which returns Out
-	// once set. TODO: those notices, `help <unknown>` and __complete's output still reach
-	// os.Stderr or os.Stdout rather than Err and Out.
+	// once set. TODO: those notices and __complete's output still reach os.Stderr or
+	// os.Stdout rather than Err and Out.
 	root.SetErr(app.Err)
 
 	cmd, err := root.ExecuteContextC(ctx)
