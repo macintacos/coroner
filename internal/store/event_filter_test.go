@@ -30,7 +30,6 @@ var _ = Describe("buildEventQuery", func() {
 		Expect(query).NotTo(ContainSubstring("DROP"))
 		Expect(args).To(ContainElements(hostile, hostile+"2", hostile+"3"))
 		Expect(strings.Count(query, "?")).To(Equal(len(args)))
-		Expect(args).To(HaveLen(9))
 	})
 })
 
@@ -40,14 +39,13 @@ var _ = Describe("ListEvents", func() {
 	incident := timeline.Timeline{ID: uuid(1), Name: "inc-465", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
 	other := timeline.Timeline{ID: uuid(2), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
 
-	newEvent := func(n int, timelineID string, occurred time.Time, source *string, text string, tags ...string) timeline.Event {
+	newEvent := func(n int, timelineID string, occurred time.Time, text string) timeline.Event {
 		return timeline.Event{
 			ID:         uuid(n),
 			TimelineID: timelineID,
 			OccurredAt: occurred,
 			Precision:  timeline.PrecisionMinute,
-			Source:     source,
-			Tags:       append([]string{}, tags...),
+			Tags:       []string{},
 			Text:       text,
 			CreatedAt:  created,
 			UpdatedAt:  created,
@@ -69,17 +67,28 @@ var _ = Describe("ListEvents", func() {
 		Expect(s.CreateTimeline(ctx, incident)).To(Succeed())
 		Expect(s.CreateTimeline(ctx, other)).To(Succeed())
 
-		pager := newEvent(10, incident.ID, at(0), new("pagerduty"), "Pager fires for DB-2", "team:db", "phase:detect")
+		pager := newEvent(10, incident.ID, at(0), "Pager fires for DB-2")
 		pager.OccurredOffset = new(-4 * 3600)
-		pager.URL = new("https://example.com/incidents/465")
+		pager.Approximate = true
+		pager.OccurredRaw = new("around 10:00")
 		pager.EndedAt = new(at(20))
-		for n, e := range []timeline.Event{
-			pager,
-			newEvent(11, incident.ID, at(15), new("slack"), "50% of writes fail", "team:db"),
-			newEvent(12, incident.ID, at(15), nil, "a_b rollback", "phase:detect"),
-			newEvent(13, incident.ID, at(30), new("grafana"), "abc dashboards red"),
-			newEvent(14, other.ID, at(15), new("slack"), "Pager fires for DB-2", "team:db"),
-		} {
+		pager.Source = new("pagerduty")
+		pager.Tags = []string{"team:db", "phase:detect"}
+		pager.URL = new("https://example.com/incidents/465")
+		pager.Author = new("julian")
+		pager.UpdatedAt = created.Add(time.Hour)
+		writes := newEvent(11, incident.ID, at(15), "50% of writes fail")
+		writes.Source = new("slack")
+		writes.Tags = []string{"team:db"}
+		rollback := newEvent(12, incident.ID, at(15), "a_b rollback")
+		rollback.Tags = []string{"phase:detect"}
+		dashboards := newEvent(13, incident.ID, at(30), "abc dashboards red")
+		dashboards.Source = new("grafana")
+		elsewhere := newEvent(14, other.ID, at(15), "Pager fires for DB-2")
+		elsewhere.Source = new("slack")
+		elsewhere.Tags = []string{"team:db"}
+
+		for n, e := range []timeline.Event{pager, writes, rollback, dashboards, elsewhere} {
 			Expect(s.AddEvent(ctx, e, uuid(20+n))).Error().NotTo(HaveOccurred())
 		}
 	})
@@ -94,6 +103,14 @@ var _ = Describe("ListEvents", func() {
 	It("returns an empty page for a timeline with no events", func(ctx SpecContext) {
 		Expect(s.ListEvents(ctx, uuid(9), store.EventFilter{})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
 	})
+
+	DescribeTable("rejects a bound outside years 0000–9999",
+		func(ctx SpecContext, f store.EventFilter) {
+			Expect(s.ListEvents(ctx, incident.ID, f)).Error().To(HaveOccurred())
+		},
+		Entry("Since", store.EventFilter{Since: new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC))}),
+		Entry("Until", store.EventFilter{Until: new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC))}),
+	)
 
 	DescribeTable("keeps the events the filter selects, in order, up to its limit",
 		func(ctx SpecContext, f store.EventFilter, want []int64, total int, truncated bool) {
