@@ -112,5 +112,5 @@ digraph coroner_rules_router {
    listed under a **Breaking** changelog heading.
 6. **Keep the agent skill in sync:** when a command used in `skills/coroner/SKILL.md` (not
    in the repo yet) changes, update the skill in the same PR, or its examples test fails.
-7. **Run `mise run preflight` before declaring work done:** it runs lint, test and build
-   ([`.mise/tasks/preflight`](.mise/tasks/preflight)).
+7. **Run `mise run preflight` before declaring work done:** it runs lint, test, build and
+   `golangci-lint config verify` ([`.mise/tasks/preflight`](.mise/tasks/preflight)).
