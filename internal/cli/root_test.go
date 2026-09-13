@@ -62,6 +62,13 @@ var _ = Describe("Run", func() {
 		Expect(out.String()).To(BeEmpty())
 	})
 
+	It("rejects an empty --db", func(ctx SpecContext) {
+		code := cli.Run(ctx, newApp("--db="))
+
+		Expect(code).To(Equal(1))
+		Expect(errOut.String()).To(ContainSubstring("--db"))
+	})
+
 	It("reads the config file named by --config and exits 1 on an unknown key", func(ctx SpecContext) {
 		files["/etc/coroner.toml"] = `default_timzone = "UTC"`
 
@@ -79,5 +86,14 @@ var _ = Describe("Run", func() {
 
 		Expect(code).To(Equal(1))
 		Expect(errOut.String()).To(ContainSubstring("/missing/config.toml"))
+	})
+
+	It("completes the command line even when the default config file is broken", func(ctx SpecContext) {
+		files["/home/ada/.config/coroner/config.toml"] = `default_timzone = "UTC"`
+
+		// Cobra writes completions to os.Stdout, not Out, so only the exit code is observable.
+		code := cli.Run(ctx, newApp("__complete", ""))
+
+		Expect(code).To(Equal(0))
 	})
 })

@@ -12,17 +12,14 @@ func newRoot(app App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "coroner",
 		Short: "coroner CLI",
-		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			// TODO: hand the resolved Config to the first command that needs it.
-			_, err := config.Resolve(config.Flags{
-				DBPath:     flagValue(cmd, "db"),
-				ConfigPath: flagValue(cmd, "config"),
-			}, app.LookupEnv, app.ReadFile)
+			_, err := resolveConfig(cmd, app)
+			if err != nil {
+				return err
+			}
 
-			return err
-		},
-		RunE: func(_ *cobra.Command, _ []string) error {
-			_, err := fmt.Fprintln(app.Out, "Hello, world!")
+			_, err = fmt.Fprintln(app.Out, "Hello, world!")
 			return err
 		},
 	}
@@ -31,6 +28,14 @@ func newRoot(app App) *cobra.Command {
 	root.PersistentFlags().String("config", "", "path to the config file")
 
 	return root
+}
+
+// resolveConfig resolves the global flags, environment and config file for cmd.
+func resolveConfig(cmd *cobra.Command, app App) (config.Config, error) {
+	return config.Resolve(config.Flags{
+		DBPath:     flagValue(cmd, "db"),
+		ConfigPath: flagValue(cmd, "config"),
+	}, app.LookupEnv, app.ReadFile)
 }
 
 // flagValue returns the named flag's value, or nil when it was not given on the command line.

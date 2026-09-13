@@ -20,7 +20,7 @@ func files(contents map[string]string) func(string) ([]byte, error) {
 	return func(name string) ([]byte, error) {
 		content, ok := contents[name]
 		if !ok {
-			return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+			return nil, fs.ErrNotExist
 		}
 
 		return []byte(content), nil
@@ -67,6 +67,12 @@ var _ = Describe("Resolve", func() {
 			input{
 				env:   map[string]string{"HOME": home},
 				files: map[string]string{userConfig: `db = "/file.db"`},
+			},
+			"/file.db"),
+		Entry("a file named by CORONER_CONFIG beats the default",
+			input{
+				env:   map[string]string{"HOME": home, "CORONER_CONFIG": "/env.toml"},
+				files: map[string]string{"/env.toml": `db = "/file.db"`},
 			},
 			"/file.db"),
 		Entry("an empty CORONER_DB counts as unset",
@@ -143,16 +149,6 @@ var _ = Describe("Resolve", func() {
 				DefaultTimezone: "America/New_York",
 				Author:          "ada",
 			}),
-		Entry("HOME is not needed when --db and --config are both given",
-			input{
-				flags: config.Flags{DBPath: new("/flag.db"), ConfigPath: new("/flag.toml")},
-				files: map[string]string{"/flag.toml": ""},
-			},
-			config.Config{
-				DBPath:          "/flag.db",
-				ConfigPath:      "/flag.toml",
-				DefaultTimezone: "local",
-			}),
 	)
 
 	DescribeTable("errors",
@@ -177,7 +173,7 @@ var _ = Describe("Resolve", func() {
 			[]string{"/missing.toml"}),
 		Entry("a missing file named by CORONER_CONFIG",
 			input{env: map[string]string{"HOME": home, "CORONER_CONFIG": "/missing.toml"}},
-			[]string{"/missing.toml"}),
+			[]string{"/missing.toml", "CORONER_CONFIG"}),
 		Entry("an unknown key",
 			input{
 				env:   map[string]string{"HOME": home},
@@ -201,9 +197,23 @@ var _ = Describe("Resolve", func() {
 			[]string{"HOME"}),
 	)
 
+	It("does not need HOME when --db and --config are both given", func() {
+		cfg, err := resolve(input{
+			flags: config.Flags{DBPath: new("/flag.db"), ConfigPath: new("/flag.toml")},
+			files: map[string]string{"/flag.toml": ""},
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg).To(Equal(config.Config{
+			DBPath:          "/flag.db",
+			ConfigPath:      "/flag.toml",
+			DefaultTimezone: "local",
+		}))
+	})
+
 	It("reports a read failure at the default path instead of falling back to defaults", func() {
-		readFile := func(name string) ([]byte, error) {
-			return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+		readFile := func(string) ([]byte, error) {
+			return nil, fs.ErrPermission
 		}
 
 		_, err := config.Resolve(config.Flags{}, env(map[string]string{"HOME": home}), readFile)

@@ -1,9 +1,11 @@
 // Package config resolves where coroner's database and config file live, and the user's
-// defaults, with the precedence flags, then CORONER_* environment, then the config file, then
-// defaults.
+// defaults. The config file path is taken from --config, then CORONER_CONFIG, then the XDG
+// config directory. The database path is taken from --db, then CORONER_DB, then the config
+// file's db, then the XDG data directory.
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,10 +21,11 @@ type Flags struct {
 	DBPath, ConfigPath *string
 }
 
-// Config is the resolved configuration.
+// Config is Resolve's result. ConfigPath is the path in effect whether or not a file exists
+// there; Author is empty when unset.
 type Config struct {
 	DBPath, ConfigPath string
-	// DefaultTimezone is "local" or an IANA time zone name.
+	// DefaultTimezone is the file's default_timezone, unvalidated, or "local" when unset.
 	DefaultTimezone string
 	Author          string
 }
@@ -33,131 +36,138 @@ type fileConfig struct {
 	Author          string `toml:"author"`
 }
 
-type setting struct {
-	flag      *string
-	flagName  string
-	envKey    string
-	fileValue string
-}
-
 // Resolve works out the configuration from the flags, the environment and the config file,
-// reading them only through lookupEnv and readFile.
+// reading them only through lookupEnv and readFile. An empty CORONER_* or XDG_* variable
+// counts as unset.
 func Resolve(
 	flags Flags, lookupEnv func(string) (string, bool), readFile func(string) ([]byte, error),
 ) (Config, error) {
-	configPath, explicit, err := pick(setting{
-		flag: flags.ConfigPath, flagName: "--config", envKey: "CORONER_CONFIG",
-	}, lookupEnv)
+	err := rejectEmpty(flags)
 	if err != nil {
 		return Config{}, err
 	}
 
-	if configPath == "" {
-		configPath, err = defaultPath(lookupEnv, "XDG_CONFIG_HOME", ".config", "config.toml")
-		if err != nil {
-			return Config{}, err
-		}
+	env := func(key string) string {
+		value, _ := lookupEnv(key)
+		return value
 	}
 
-	file, err := load(configPath, explicit, readFile)
+	configPath, file, err := loadConfigFile(flags.ConfigPath, env, readFile)
 	if err != nil {
 		return Config{}, err
 	}
 
-	dbPath, _, err := pick(setting{
-		flag: flags.DBPath, flagName: "--db", envKey: "CORONER_DB", fileValue: file.DB,
-	}, lookupEnv)
-	if err != nil {
-		return Config{}, err
-	}
-
+	dbPath := cmp.Or(deref(flags.DBPath), env("CORONER_DB"), file.DB)
 	if dbPath == "" {
-		dbPath, err = defaultPath(lookupEnv, "XDG_DATA_HOME", ".local/share", "coroner.db")
+		dataHome, err := xdgHome(env, "XDG_DATA_HOME", ".local/share")
 		if err != nil {
 			return Config{}, err
 		}
-	}
 
-	timezone := file.DefaultTimezone
-	if timezone == "" {
-		timezone = "local"
+		dbPath = filepath.Join(dataHome, "coroner", "coroner.db")
 	}
 
 	return Config{
 		DBPath:          dbPath,
 		ConfigPath:      configPath,
-		DefaultTimezone: timezone,
+		DefaultTimezone: cmp.Or(file.DefaultTimezone, "local"),
 		Author:          file.Author,
 	}, nil
 }
 
-// pick returns the first of the flag, the environment variable and the file value that is
-// set, reporting whether it came from the flag or the environment. An empty variable counts
-// as unset, as XDG_* do; "" means none is set.
-func pick(s setting, lookupEnv func(string) (string, bool)) (string, bool, error) {
-	if s.flag != nil {
-		if *s.flag == "" {
-			return "", false, fmt.Errorf("%s must not be empty", s.flagName)
-		}
-
-		return *s.flag, true, nil
+func rejectEmpty(flags Flags) error {
+	if flags.ConfigPath != nil && *flags.ConfigPath == "" {
+		return errors.New("--config must not be empty")
 	}
 
-	value, _ := lookupEnv(s.envKey)
-	if value != "" {
-		return value, true, nil
+	if flags.DBPath != nil && *flags.DBPath == "" {
+		return errors.New("--db must not be empty")
 	}
 
-	return s.fileValue, false, nil
+	return nil
 }
 
-// defaultPath returns name inside the coroner directory under the XDG base directory named
-// by xdgKey, or under HOME's homeSubdir when that variable is unset or not absolute.
-func defaultPath(lookupEnv func(string) (string, bool), xdgKey, homeSubdir, name string) (string, error) {
-	base, _ := lookupEnv(xdgKey)
-	if !filepath.IsAbs(base) {
-		home, _ := lookupEnv("HOME")
-		if home == "" {
-			return "", fmt.Errorf("HOME is not set: set HOME or %s", xdgKey)
-		}
-
-		base = filepath.Join(home, homeSubdir)
+func deref(s *string) string {
+	if s == nil {
+		return ""
 	}
 
-	return filepath.Join(base, "coroner", name), nil
+	return *s
 }
 
-// load reads and decodes the config file at path. A missing file is an error only when the
-// path was given explicitly.
-func load(path string, explicit bool, readFile func(string) ([]byte, error)) (fileConfig, error) {
-	var file fileConfig
+// loadConfigFile returns the config file's path and decoded contents. A missing file is an
+// error only when --config or CORONER_CONFIG named it.
+func loadConfigFile(
+	flag *string, env func(string) string, readFile func(string) ([]byte, error),
+) (string, fileConfig, error) {
+	path := cmp.Or(deref(flag), env("CORONER_CONFIG"))
+	named := path != ""
+	if !named {
+		configHome, err := xdgHome(env, "XDG_CONFIG_HOME", ".config")
+		if err != nil {
+			return "", fileConfig{}, err
+		}
+
+		path = filepath.Join(configHome, "coroner", "config.toml")
+	}
 
 	data, err := readFile(path)
-	if errors.Is(err, fs.ErrNotExist) && !explicit {
-		return file, nil
+	switch {
+	case errors.Is(err, fs.ErrNotExist) && !named:
+		return path, fileConfig{}, nil
+	case errors.Is(err, fs.ErrNotExist) && flag == nil:
+		return "", fileConfig{}, fmt.Errorf("config file %s does not exist (set by CORONER_CONFIG)", path)
+	case errors.Is(err, fs.ErrNotExist):
+		return "", fileConfig{}, fmt.Errorf("config file %s does not exist", path)
+	case err != nil:
+		return "", fileConfig{}, fmt.Errorf("read config file %s: %w", path, err)
 	}
 
+	file, err := decode(path, data)
 	if err != nil {
-		return file, fmt.Errorf("read config: %w", err)
+		return "", fileConfig{}, err
 	}
+
+	return path, file, nil
+}
+
+// xdgHome returns the XDG base directory named by xdgKey, or HOME's homeSubdir when that
+// variable is unset or not absolute.
+func xdgHome(env func(string) string, xdgKey, homeSubdir string) (string, error) {
+	base := env(xdgKey)
+	if filepath.IsAbs(base) {
+		return base, nil
+	}
+
+	home := env("HOME")
+	if home == "" {
+		return "", fmt.Errorf("HOME is not set and %s is not an absolute path", xdgKey)
+	}
+
+	return filepath.Join(home, homeSubdir), nil
+}
+
+// decode parses the config file at path, rejecting unknown keys and a relative db.
+func decode(path string, data []byte) (fileConfig, error) {
+	var file fileConfig
 
 	meta, err := toml.Decode(string(data), &file)
 	if err != nil {
-		return file, fmt.Errorf("%s: %w", path, err)
+		return fileConfig{}, fmt.Errorf("config file %s: %w", path, err)
 	}
 
 	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
 		keys := make([]string, len(undecoded))
 		for i, key := range undecoded {
-			keys[i] = fmt.Sprintf("%q", key.String())
+			keys[i] = key.String()
 		}
 
-		return file, fmt.Errorf("%s: unknown config key %s", path, strings.Join(keys, ", "))
+		return fileConfig{}, fmt.Errorf("config file %s: unknown config key %s", path, strings.Join(keys, ", "))
 	}
 
 	// A relative path would resolve against whichever directory coroner runs in.
 	if file.DB != "" && !filepath.IsAbs(file.DB) {
-		return file, fmt.Errorf("%s: db must be an absolute path, got %q", path, file.DB)
+		return fileConfig{}, fmt.Errorf("config file %s: db must be an absolute path, got %q", path, file.DB)
 	}
 
 	return file, nil
