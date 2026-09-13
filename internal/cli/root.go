@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"fmt"
+	"runtime/debug"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -13,8 +16,8 @@ func newRoot(app App) *cobra.Command {
 		Short: "Build root-cause investigation timelines",
 		Long: "coroner records what happened during an investigation, in order: name a timeline,\n" +
 			"add timestamped events from logs, chat and people, then view and export it.",
-		Example: "  $ coroner version --json\n" +
-			"  $ coroner completion zsh > \"${fpath[1]}/_coroner\"",
+		Example:     "  $ coroner version --json",
+		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
 				return writeVersion(cmd, app)
@@ -35,6 +38,7 @@ func newRoot(app App) *cobra.Command {
 	})
 
 	help := newHelpTemplate()
+	// Cobra's help function writes through OutOrStdout, bypassing app.Out.
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
 		// A help function cannot fail the command.
 		_ = help.Execute(app.Out, cmd)
@@ -44,8 +48,11 @@ func newRoot(app App) *cobra.Command {
 	root.SetHelpCommandGroupID(additionalCommands)
 	root.SetCompletionCommandGroupID(additionalCommands)
 	root.AddCommand(newVersionCommand(app))
-	addCompletionCommand(root, app)
 
+	// Last, in this order: cobra adds help and completion only to a root with subcommands,
+	// and wrapRunErrors wraps only the commands already added.
+	addHelpCommand(root)
+	addCompletionCommand(root, app)
 	wrapRunErrors(root)
 
 	return root
@@ -62,8 +69,19 @@ func globalFlags() *pflag.FlagSet {
 	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
 	flags.String("tz", "", "Time `zone` for this invocation (default: config default_timezone, then TZ)")
 	flags.Bool("debug", false, "Print debug detail on stderr (env: CORONER_DEBUG)")
+	flags.BoolP("help", "h", false, "Show help for a command")
 
 	return flags
+}
+
+func addHelpCommand(root *cobra.Command) {
+	root.InitDefaultHelpCmd()
+
+	for _, cmd := range root.Commands() {
+		if cmd.Name() == "help" {
+			cmd.Example = "  $ coroner help\n  $ coroner help version"
+		}
+	}
 }
 
 // addCompletionCommand adds cobra's completion command now rather than at execution, so its
@@ -74,24 +92,69 @@ func addCompletionCommand(root *cobra.Command, app App) {
 	root.InitDefaultCompletionCmd()
 	root.SetOut(nil)
 
+	examples := map[string]string{
+		"completion": "  $ coroner completion zsh > \"${fpath[1]}/_coroner\"\n" +
+			"  $ coroner completion fish > ~/.config/fish/completions/coroner.fish",
+		"bash":       "  $ coroner completion bash > ~/.local/share/bash-completion/completions/coroner",
+		"zsh":        "  $ coroner completion zsh > \"${fpath[1]}/_coroner\"",
+		"fish":       "  $ coroner completion fish > ~/.config/fish/completions/coroner.fish",
+		"powershell": "  PS> coroner completion powershell | Out-String | Invoke-Expression",
+	}
+
 	for _, cmd := range root.Commands() {
 		if cmd.Name() == "completion" {
-			cmd.Example = "  $ coroner completion zsh > \"${fpath[1]}/_coroner\"\n" +
-				"  $ coroner completion fish > ~/.config/fish/completions/coroner.fish"
+			cmd.Example = examples["completion"]
+			for _, shell := range cmd.Commands() {
+				shell.Example = examples[shell.Name()]
+			}
 		}
 	}
 }
 
-// wrapRunErrors makes every error a command body returns an *Error, so Run can tell an
-// untyped error from cobra, which rejected the command line, from a command's own.
+// wrapRunErrors makes every error a command's hooks or body return an *Error, recovering a
+// panic into an internal one, so Run can tell an untyped error from cobra, which rejected the
+// command line, from a command's own. A body runs only once outputFormat accepts
+// --format and --json.
 func wrapRunErrors(cmd *cobra.Command) {
+	hooks := []*func(*cobra.Command, []string) error{
+		&cmd.PersistentPreRunE, &cmd.PreRunE, &cmd.RunE, &cmd.PostRunE, &cmd.PersistentPostRunE,
+	}
+	for _, hook := range hooks {
+		if run := *hook; run != nil {
+			*hook = typedHook(run)
+		}
+	}
+
 	if run := cmd.RunE; run != nil {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			return asInternal(run(cmd, args))
+			_, err := outputFormat(cmd)
+			if err != nil {
+				return err
+			}
+
+			return run(cmd, args)
 		}
 	}
 
 	for _, child := range cmd.Commands() {
 		wrapRunErrors(child)
+	}
+}
+
+// typedHook returns run with its errors and panics made *Error.
+func typedHook(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = &Error{
+					Kind:    KindInternal,
+					Message: fmt.Sprintf("unexpected panic: %v", r),
+					Hint:    internalHint,
+					Err:     fmt.Errorf("%v\n%s", r, debug.Stack()),
+				}
+			}
+		}()
+
+		return asInternal(run(cmd, args))
 	}
 }

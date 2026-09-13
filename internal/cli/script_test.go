@@ -92,7 +92,10 @@ func runCoroner() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
 
-	build, _ := debug.ReadBuildInfo()
+	version := "(devel)"
+	if build, ok := debug.ReadBuildInfo(); ok {
+		version = build.Main.Version
+	}
 	app, err := withTestClock(cli.App{
 		Args:      os.Args[1:],
 		In:        os.Stdin,
@@ -100,7 +103,7 @@ func runCoroner() {
 		Err:       os.Stderr,
 		OutIsTTY:  isatty.IsTerminal(os.Stdout.Fd()),
 		ErrIsTTY:  isatty.IsTerminal(os.Stderr.Fd()),
-		Version:   build.Main.Version,
+		Version:   version,
 		LookupEnv: os.LookupEnv,
 		ReadFile:  os.ReadFile,
 		Now:       time.Now,

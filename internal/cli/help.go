@@ -8,14 +8,25 @@ import (
 
 // helpTemplate renders help for any command. Root's persistent flags are its GLOBAL FLAGS;
 // a subcommand's are the ones it inherits.
-const helpTemplate = `{{or .Long .Short}}
+const helpTemplate = `{{trimRight (or .Long .Short)}}
 
 USAGE
   {{.UseLine}}
+{{- if and .HasParent .HasAvailableSubCommands}}
+  {{.CommandPath}} <command> [flags]
+{{- end}}
+{{- /* IsAvailableCommand is false for cobra's help command, so it is named explicitly. */}}
 {{- range $group := .Groups}}
 
 {{$group.Title}}
 {{- range $.Commands}}{{if and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding}}  {{.Short}}
+{{- end}}{{end}}
+{{- end}}
+{{- if not .AllChildCommandsHaveGroup}}
+
+COMMANDS
+{{- range .Commands}}{{if and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help"))}}
   {{rpad .Name .NamePadding}}  {{.Short}}
 {{- end}}{{end}}
 {{- end}}
@@ -50,6 +61,7 @@ LEARN MORE
 `
 
 func newHelpTemplate() *template.Template {
+	// Local funcs: cobra's own register through the package-global cobra.AddTemplateFunc.
 	return template.Must(template.New("help").Funcs(template.FuncMap{
 		"rpad": func(s string, width int) string {
 			return fmt.Sprintf("%-*s", width, s)

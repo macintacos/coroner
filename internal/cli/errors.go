@@ -4,12 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-const issuesURL = "https://github.com/macintacos/coroner/issues"
+const (
+	issuesURL    = "https://github.com/macintacos/coroner/issues"
+	internalHint = "Re-run with --debug for details, or report the bug at " + issuesURL
+)
 
 // Kind names a class of failure. Scripts branch on it through the exit code and the JSON
 // error envelope, so a kind's meaning and exit code never change.
@@ -19,26 +23,33 @@ type Kind string
 const (
 	KindInternal Kind = "internal"
 
-	KindUsage            Kind = "usage"
-	KindInvalidTime      Kind = "invalid_time"
-	KindInvalidName      Kind = "invalid_name"
+	KindUsage       Kind = "usage"
+	KindInvalidTime Kind = "invalid_time"
+	KindInvalidName Kind = "invalid_name"
+	// KindTimelineRequired means no timeline was named and none is current.
 	KindTimelineRequired Kind = "timeline_required"
-	KindAmbiguousID      Kind = "ambiguous_id"
+	// KindAmbiguousID means an ID prefix matches more than one record.
+	KindAmbiguousID Kind = "ambiguous_id"
 
+	// KindTimelineNotFound means the named timeline does not exist.
 	KindTimelineNotFound Kind = "timeline_not_found"
 	KindEventNotFound    Kind = "event_not_found"
 
+	// KindTimelineExists means a timeline with that name already exists.
 	KindTimelineExists Kind = "timeline_exists"
-	KindIDConflict     Kind = "id_conflict"
+	// KindIDConflict means a record with that ID already exists with different content.
+	KindIDConflict Kind = "id_conflict"
 
-	KindDBBusy       Kind = "db_busy"
+	KindDBBusy Kind = "db_busy"
+	// KindDBUnreadable means the database cannot be opened or read.
 	KindDBUnreadable Kind = "db_unreadable"
-	KindDBTooNew     Kind = "db_too_new"
+	// KindDBTooNew means the database's schema is newer than this build knows.
+	KindDBTooNew Kind = "db_too_new"
 
 	KindInterrupted Kind = "interrupted"
 )
 
-// ExitCode returns the process exit code for kind.
+// ExitCode returns the process exit code for kind. An unknown kind exits 1, as internal.
 func (kind Kind) ExitCode() int {
 	switch kind {
 	case KindInternal:
@@ -59,7 +70,8 @@ func (kind Kind) ExitCode() int {
 }
 
 // Error is how a command reports a failure: Message says what went wrong and Hint how to
-// fix it. Only Kind is stable; the text may change.
+// fix it. Err is the cause, logged under --debug and never printed otherwise. Only Kind is
+// stable; the text may change.
 type Error struct {
 	Kind          Kind
 	Message, Hint string
@@ -83,27 +95,69 @@ func usageError(cmd *cobra.Command, err error) *Error {
 	}
 }
 
-// asInternal passes nil and *Error through and makes any other error an internal one.
+// asInternal passes nil and a kinded *Error through and makes any other error an internal
+// one.
 func asInternal(err error) error {
 	if err == nil {
 		return nil
 	}
 
-	if _, ok := errors.AsType[*Error](err); ok {
+	typed, ok := errors.AsType[*Error](err)
+	if ok && typed.Kind != "" {
 		return err
 	}
 
-	return &Error{
-		Kind:    KindInternal,
-		Message: err.Error(),
-		Hint:    "Re-run with --debug for details, or report the bug at " + issuesURL,
-		Err:     err,
-	}
+	return &Error{Kind: KindInternal, Message: err.Error(), Hint: internalHint, Err: err}
 }
 
 // errorStyle is how a failure is presented on Err.
 type errorStyle struct {
-	color, debug, machine bool
+	color, machine bool
+}
+
+// errorStyleFor reads the global flags that shape error output straight from app.Args,
+// because cobra may have failed before parsing them. It also reports whether to log debug
+// detail.
+func errorStyleFor(app App) (errorStyle, bool) {
+	flags := globalFlags()
+	flags.ParseErrorsAllowlist.UnknownFlags = true
+	flags.SetOutput(io.Discard)
+	// ponytail: a subcommand flag whose value starts with "--" (--text --json) reads here as
+	// the next flag; parse with the failing command's own flag set if that ever matters.
+	_ = flags.Parse(app.Args)
+
+	chosen, _ := flags.GetString("format")
+	json, _ := flags.GetBool("json")
+	debug, _ := flags.GetBool("debug")
+	noColor, _ := flags.GetBool("no-color")
+
+	style := errorStyle{
+		color:   colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv),
+		machine: json || format(chosen).machine(),
+	}
+
+	return style, debug || envTrue(app.LookupEnv, "CORONER_DEBUG")
+}
+
+// colorEnabled reports whether a stream may carry color.
+func colorEnabled(isTTY, noColorFlag bool, lookupEnv func(string) (string, bool)) bool {
+	term, _ := lookupEnv("TERM")
+	return isTTY && !noColorFlag && term != "dumb" &&
+		!envSet(lookupEnv, "NO_COLOR") && !envSet(lookupEnv, "CORONER_NO_COLOR")
+}
+
+// envSet reports whether the environment variable key is set and non-empty.
+func envSet(lookupEnv func(string) (string, bool), key string) bool {
+	value, _ := lookupEnv(key)
+	return value != ""
+}
+
+// envTrue reports whether the environment variable key is set to a true boolean, or to any
+// other non-empty value that is not one.
+func envTrue(lookupEnv func(string) (string, bool), key string) bool {
+	value, _ := lookupEnv(key)
+	on, err := strconv.ParseBool(value)
+	return on || (err != nil && value != "")
 }
 
 // writeError prints e with its hint as the last line, followed under a machine format by
@@ -132,9 +186,10 @@ type envelope struct {
 }
 
 type envelopeError struct {
-	Kind    Kind    `json:"kind"`
-	Message string  `json:"message"`
-	Hint    *string `json:"hint"`
+	Kind    Kind   `json:"kind"`
+	Message string `json:"message"`
+	// nil encodes as null: the envelope always carries every key.
+	Hint *string `json:"hint"`
 }
 
 func writeEnvelope(w io.Writer, e *Error) error {

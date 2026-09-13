@@ -1,6 +1,5 @@
-// Command coroner is the coroner CLI. It hands the process's args, stdio and whether each
-// output is a terminal, environment, file reads, clock, build version and signals to
-// cli.Run and exits with its code.
+// Command coroner is the coroner CLI. It builds a cli.App from the process and exits with
+// cli.Run's code.
 package main
 
 import (
@@ -22,7 +21,10 @@ func main() {
 	// Restoring default signal handling once ctx is done lets a second Ctrl-C kill at once.
 	context.AfterFunc(ctx, stop)
 
-	build, _ := debug.ReadBuildInfo()
+	version := "(devel)"
+	if build, ok := debug.ReadBuildInfo(); ok {
+		version = build.Main.Version
+	}
 	code := cli.Run(ctx, cli.App{
 		Args:      os.Args[1:],
 		In:        os.Stdin,
@@ -30,7 +32,7 @@ func main() {
 		Err:       os.Stderr,
 		OutIsTTY:  isatty.IsTerminal(os.Stdout.Fd()),
 		ErrIsTTY:  isatty.IsTerminal(os.Stderr.Fd()),
-		Version:   build.Main.Version,
+		Version:   version,
 		LookupEnv: os.LookupEnv,
 		ReadFile:  os.ReadFile,
 		Now:       time.Now,
