@@ -151,11 +151,11 @@ func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraf
 		return annotationDraft{}, err
 	}
 	fields := readAnnotationFields(in)
-	value := in.value("body")
-	if value == nil {
+	rawBody := in.value("body")
+	if rawBody == nil {
 		return annotationDraft{}, &Error{Kind: KindUsage, Message: "annotation add needs the annotation's body", Hint: missingBodyHint}
 	}
-	body, err := annotationBody(*value, app.In, app.InIsTTY)
+	body, err := annotationBody(*rawBody, app.In, app.InIsTTY)
 	if err != nil {
 		return annotationDraft{}, err
 	}

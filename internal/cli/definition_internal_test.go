@@ -59,11 +59,11 @@ var _ = Describe("write command definitions", func() {
 	It("accept every form field's zero value, which a form reads as not given", func() {
 		var problems []string
 		for path, def := range writeDefinitions() {
-			for _, field := range def.formFields(formCheckEnv()) {
-				field.Blur()
-				err := field.Error()
+			for _, formField := range def.formFields(formCheckEnv()) {
+				formField.Blur()
+				err := formField.Error()
 				if err != nil {
-					problems = append(problems, fmt.Sprintf("coroner %s: form field %s rejects its zero value: %v", path, field.GetKey(), err))
+					problems = append(problems, fmt.Sprintf("coroner %s: form field %s rejects its zero value: %v", path, formField.GetKey(), err))
 				}
 			}
 		}
@@ -260,17 +260,17 @@ func flagShapeProblems(path string, flag *pflag.Flag, f field) []string {
 }
 
 // fieldProblems names how field's help text or default differs from flag's.
-func fieldProblems(path string, flag *pflag.Flag, field huh.Field) []string {
+func fieldProblems(path string, flag *pflag.Flag, formField huh.Field) []string {
 	var problems []string
 	_, usage := pflag.UnquoteUsage(flag)
-	view, _ := field.WithWidth(400).(interface{ View() string })
+	view, _ := formField.WithWidth(400).(interface{ View() string })
 	if view == nil || !strings.Contains(ansi.Strip(view.View()), usage) {
 		problems = append(problems, fmt.Sprintf("coroner %s: form field %s does not show %q", path, flag.Name, usage))
 	}
 
 	// A repeatable flag's default [] is a Text field's empty string.
 	flagDefault := strings.TrimSuffix(strings.TrimPrefix(flag.DefValue, "["), "]")
-	if formDefault := fmt.Sprint(field.GetValue()); formDefault != flagDefault {
+	if formDefault := fmt.Sprint(formField.GetValue()); formDefault != flagDefault {
 		problems = append(problems, fmt.Sprintf("coroner %s: form field %s defaults to %q, flag --%s to %q",
 			path, flag.Name, formDefault, flag.Name, flag.DefValue))
 	}
@@ -381,11 +381,11 @@ func flagError(ctx context.Context, args []string) *Error {
 // formError returns the error def's form field called name shows once it holds value and loses
 // focus, with times read as the flag side reads them.
 func formError(def definition, name, value string) error {
-	for _, field := range def.formFields(formCheckEnv()) {
-		if field.GetKey() != name {
+	for _, formField := range def.formFields(formCheckEnv()) {
+		if formField.GetKey() != name {
 			continue
 		}
-		switch f := field.(type) {
+		switch f := formField.(type) {
 		case *huh.Input:
 			f.Value(&value)
 		case *huh.Text:
@@ -393,9 +393,9 @@ func formError(def definition, name, value string) error {
 		default:
 			Fail(fmt.Sprintf("form field %s takes no text", name))
 		}
-		field.Blur()
+		formField.Blur()
 
-		return field.Error()
+		return formField.Error()
 	}
 
 	Fail("no form field " + name)
