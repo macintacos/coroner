@@ -129,8 +129,8 @@ never renumber a rule, only retire it.
 
 - **I-1** Prompts and TUI only on a TTY. The bubbletea forms and viewer make this a live
   rule. ([clig.dev](https://clig.dev/#interactivity))
-- **I-2** `--no-input` disables every prompt, and arrives with EXC-1294, after the first
-  forms. ([clig.dev](https://clig.dev/#interactivity))
+- **I-2** `--no-input` and `CORONER_NO_INPUT` disable every prompt: forms, the picker and
+  the viewer. ([clig.dev](https://clig.dev/#interactivity))
 - **I-3** Ctrl-C always works. ([clig.dev](https://clig.dev/#interactivity))
 
 ## Subcommands

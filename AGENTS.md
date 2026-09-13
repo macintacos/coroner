@@ -109,7 +109,12 @@ digraph coroner_rules_router {
   `timeline edit` open that form, attached through `formCommand`
   ([`add_form.go`](internal/cli/add_form.go)), run each submit through the same run
   function, and print the flags-only command it equals
-  ([`command_echo.go`](internal/cli/command_echo.go)).
+  ([`command_echo.go`](internal/cli/command_echo.go)). `interactiveTerminal` there is the
+  one decision whether a form, the viewer or the picker may open: stdin and stdout on a
+  terminal, `TERM` not `dumb`, and no `--no-input` or `CORONER_NO_INPUT`.
+  [`no-input.txtar`](internal/cli/testdata/script/no-input.txtar) runs each such command
+  with no terminal, and a spec in [`no_input_test.go`](internal/cli/no_input_test.go)
+  fails when a command with `--interactive` has no run there.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
   the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract
