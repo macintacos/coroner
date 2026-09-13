@@ -54,10 +54,10 @@ var _ = Describe("Schema", func() {
 	}
 
 	BeforeEach(func(ctx SpecContext) {
-		conn, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
+		s, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
 		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(conn.Close)
-		queries = sqlcgen.New(conn)
+		DeferCleanup(s.Close)
+		queries = sqlcgen.New(s.DB())
 
 		incident, err = queries.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
 			ID: id(1), Name: "inc-465", CreatedAt: now, UpdatedAt: now,

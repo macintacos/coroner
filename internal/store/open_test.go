@@ -1,22 +1,158 @@
 package store_test
 
 import (
+	"context"
+	"database/sql"
+	"os"
 	"path/filepath"
+	"testing/fstest"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/internal/store/sqlcgen"
 )
 
 var _ = Describe("Open", func() {
-	It("migrates a new database file and stamps coroner's application id", func(ctx SpecContext) {
-		conn, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
+	It("migrates a new database file at a path containing a space, ?, # and %, and stamps coroner's application id",
+		func(ctx SpecContext) {
+			path := filepath.Join(GinkgoT().TempDir(), "odd ?#% dir", "coroner ?#%25.db")
+
+			s, err := store.Open(ctx, path)
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(s.Close)
+
+			Expect(path).To(BeAnExistingFile())
+			var applicationID int64
+			Expect(s.DB().QueryRowContext(ctx, "PRAGMA application_id").Scan(&applicationID)).To(Succeed())
+			Expect(applicationID).To(Equal(int64(1668248174)))
+		})
+
+	It("puts the database in WAL mode, so a reader never waits for a writer", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+
+		s, err := store.Open(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(s.Close()).To(Succeed())
+
+		conn, err := sql.Open("sqlite", path)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(conn.Close)
+		var mode string
+		Expect(conn.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&mode)).To(Succeed())
+		Expect(mode).To(Equal("wal"))
+	})
 
-		var applicationID int64
-		Expect(conn.QueryRowContext(ctx, "PRAGMA application_id").Scan(&applicationID)).To(Succeed())
-		Expect(applicationID).To(Equal(int64(1668248174)))
+	It("creates a missing parent directory that only its owner can use", func(ctx SpecContext) {
+		dir := filepath.Join(GinkgoT().TempDir(), "coroner")
+
+		s, err := store.Open(ctx, filepath.Join(dir, "coroner.db"))
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+
+		info, err := os.Stat(dir)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(info.Mode().Perm()).To(Equal(os.FileMode(0o700)))
+	})
+
+	DescribeTable("refuses a SQLite file coroner did not create, leaving it byte-identical",
+		func(ctx SpecContext, statement string) {
+			path := filepath.Join(GinkgoT().TempDir(), "other.db")
+			execSQLite(ctx, path, statement)
+			before, err := os.ReadFile(filepath.Clean(path))
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = store.Open(ctx, path)
+
+			Expect(err).To(MatchError(store.ErrForeignDatabase))
+			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
+		},
+		Entry("with an unrelated table", "CREATE TABLE contact (name TEXT)"),
+		Entry("with another application id", "PRAGMA application_id = 42"),
+	)
+
+	It("takes no backup of a new database", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+
+		s, err := store.Open(ctx, path)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+
+		Expect(filepath.Glob(path + ".pre-v*.bak")).To(BeEmpty())
+	})
+
+	Describe("upgrading a database that holds data", func() {
+		const laterTables = "SELECT count(*) FROM sqlite_schema WHERE name = 'later'"
+
+		var path, backup string
+		var v2 fstest.MapFS
+
+		BeforeEach(func(ctx SpecContext) {
+			initial, err := os.ReadFile("migrations/00001_initial_schema.sql")
+			Expect(err).NotTo(HaveOccurred())
+			v1 := fstest.MapFS{"00001_initial_schema.sql": {Data: initial}}
+			v2 = fstest.MapFS{
+				"00001_initial_schema.sql": {Data: initial},
+				"00002_later.sql":          {Data: []byte("-- +goose Up\nCREATE TABLE later (x TEXT) STRICT;\n")},
+			}
+
+			path = filepath.Join(GinkgoT().TempDir(), "coroner.db")
+			backup = path + ".pre-v2.bak"
+			s, err := store.OpenWithMigrations(ctx, path, v1)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = sqlcgen.New(s.DB()).CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
+				ID:        "0199a1b2-0000-7000-8000-000000000001",
+				Name:      "inc-465",
+				CreatedAt: "2026-09-13T09:00:00.000000000Z",
+				UpdatedAt: "2026-09-13T09:00:00.000000000Z",
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.Close()).To(Succeed())
+		})
+
+		It("first copies the database as it was to <db>.pre-v<N>.bak, N being the schema it upgrades to",
+			func(ctx SpecContext) {
+				s, err := store.OpenWithMigrations(ctx, path, v2)
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(s.Close)
+
+				Expect(querySQLite(ctx, backup, "SELECT count(*) FROM timeline")).To(Equal(int64(1)))
+				Expect(querySQLite(ctx, backup, laterTables)).To(BeZero())
+				Expect(querySQLite(ctx, path, laterTables)).To(Equal(int64(1)))
+			})
+
+		It("refuses to migrate, naming the backup, when that backup already exists", func(ctx SpecContext) {
+			Expect(os.WriteFile(backup, []byte("an earlier backup"), 0o600)).To(Succeed())
+
+			_, err := store.OpenWithMigrations(ctx, path, v2)
+
+			Expect(err).To(MatchError(ContainSubstring(backup)))
+			Expect(os.ReadFile(filepath.Clean(backup))).To(Equal([]byte("an earlier backup")))
+			Expect(querySQLite(ctx, path, laterTables)).To(BeZero())
+		})
 	})
 })
+
+// execSQLite runs statement on the SQLite file at path without going through the store.
+func execSQLite(ctx context.Context, path, statement string) {
+	GinkgoHelper()
+	conn, err := sql.Open("sqlite", path)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(conn.Close)
+	Expect(conn.ExecContext(ctx, statement)).Error().NotTo(HaveOccurred())
+	Expect(conn.Close()).To(Succeed())
+}
+
+// querySQLite returns the single integer query selects from the SQLite file at path,
+// without going through the store.
+func querySQLite(ctx context.Context, path, query string) int64 {
+	GinkgoHelper()
+	conn, err := sql.Open("sqlite", path)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(conn.Close)
+
+	var n int64
+	Expect(conn.QueryRowContext(ctx, query).Scan(&n)).To(Succeed())
+	return n
+}
