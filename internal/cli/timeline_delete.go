@@ -3,15 +3,16 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
+	def := timelineDeleteDefinition()
 	cmd := &cobra.Command{
 		Use:   "delete <name|id> {--yes | --dry-run}",
 		Short: "Delete a timeline and everything in it",
@@ -22,61 +23,75 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Example: "  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run\n" +
 			"  $ coroner timeline delete mongo-outage-2026-09-11 --yes",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return deleteTimeline(ctx, cmd, app, args[0])
-		},
+		RunE: writeRunE(ctx, app, def, deleteTimeline),
 	}
 
-	cmd.Flags().Bool("yes", false, "Delete without asking")
-	cmd.Flags().Bool("dry-run", false, "Show what would be deleted, and delete nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func deleteTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID string) error {
-	yes, _ := cmd.Flags().GetBool("yes")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
+func timelineDeleteDefinition() definition {
+	return definition{fields: []field{
+		{name: "timeline", arg: true, usage: "Timeline to delete, as a `name|id`"},
+		{name: "yes", typ: boolField, usage: "Delete without asking"},
+		{name: "dry-run", typ: boolField, usage: "Show what would be deleted, and delete nothing"},
+	}}
+}
+
+// timelineDeleted is the timeline delete removed or, with --dry-run, would remove, with how many
+// events and annotations it holds.
+type timelineDeleted struct {
+	timeline            timeline.Timeline
+	dryRun              bool
+	events, annotations int
+}
+
+func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineDeleted, error) {
+	err := timelineDeleteDefinition().check(in, checkEnv{})
+	if err != nil {
+		return timelineDeleted{}, err
+	}
+	nameOrID := in.values("timeline")[0]
+	yes, _ := in.boolean("yes")
+	dryRun, _ := in.boolean("dry-run")
 	if !yes && !dryRun {
-		return &Error{
+		return timelineDeleted{}, &Error{
 			Kind:    KindUsage,
 			Message: fmt.Sprintf("deleting timeline %q needs --yes", nameOrID),
 			Hint:    "Pass --yes to delete it and everything in it, or --dry-run to see what that deletes.",
 		}
 	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+	deleted := timelineDeleted{dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		t, err := findTimeline(ctx, s, nameOrID)
 		if err != nil {
 			return err
 		}
-		if dryRun {
-			return reportDeletion(ctx, s, o.out, t)
+		deleted.timeline = t
+		if !dryRun {
+			return s.DeleteTimeline(ctx, t.ID)
 		}
 
-		err = s.DeleteTimeline(ctx, t.ID)
+		events, err := s.Events(ctx, t.ID)
 		if err != nil {
 			return err
 		}
+		annotations, err := s.Annotations(ctx, t.ID)
+		deleted.events, deleted.annotations = len(events), len(annotations)
 
-		return o.notify("Deleted timeline `%s`.", t.Name)
+		return err
 	})
+
+	return deleted, err
 }
 
-// reportDeletion writes to w what deleting t would remove.
-func reportDeletion(ctx context.Context, s *store.Store, w io.Writer, t timeline.Timeline) error {
-	events, err := s.Events(ctx, t.ID)
-	if err != nil {
-		return err
-	}
-	annotations, err := s.Annotations(ctx, t.ID)
-	if err != nil {
-		return err
+func (d timelineDeleted) render(o output) error {
+	if !d.dryRun {
+		return o.notify("Deleted timeline `%s`.", d.timeline.Name)
 	}
 
-	_, err = fmt.Fprintf(w, "Would delete timeline `%s`: events: %d, annotations: %d\n", t.Name, len(events), len(annotations))
+	_, err := fmt.Fprintf(o.out, "Would delete timeline `%s`: events: %d, annotations: %d\n", d.timeline.Name, d.events, d.annotations)
 	return err
 }

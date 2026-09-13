@@ -136,18 +136,34 @@ func (by selectedBy) setting() string {
 // addTimelineFlag declares -t/--timeline, so every command registers the same name,
 // shorthand and usage.
 func addTimelineFlag(flags *pflag.FlagSet) {
-	flags.StringP("timeline", "t", "", "Timeline `name|id` to act on")
+	flags.StringP("timeline", "t", "", timelineField().usage)
+}
+
+// timelineField is -t as a write command's field.
+func timelineField() field {
+	return field{name: "timeline", shorthand: "t", usage: "Timeline `name|id` to act on", check: withoutEnv(checkTimelineFlag)}
 }
 
 // timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
 // Commands call it at the top of RunE, before any I/O.
 func timelineFlag(flags *pflag.FlagSet) (*string, error) {
 	flag := changedString(flags, "timeline")
-	if flag != nil && *flag == "" {
-		return nil, &Error{Kind: KindUsage, Message: "-t must not be empty", Hint: "Pass -t with a timeline name or id."}
+	if flag != nil {
+		err := checkTimelineFlag(*flag)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return flag, nil
+}
+
+func checkTimelineFlag(value string) error {
+	if value != "" {
+		return nil
+	}
+
+	return &Error{Kind: KindUsage, Message: "-t must not be empty", Hint: "Pass -t with a timeline name or id."}
 }
 
 // resolveTimeline returns the nameOrID that selects the timeline, and its layer: flag when

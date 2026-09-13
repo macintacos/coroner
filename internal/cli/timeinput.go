@@ -21,6 +21,33 @@ type zone struct {
 	label string
 }
 
+// tzField is --tz, which root registers, as the field of a command that reads time input.
+func tzField() field {
+	return field{
+		name: "tz", usage: "Time `zone` for this invocation (default: config default_timezone, then TZ)", inherited: true,
+		check: func(tz string, env checkEnv) error {
+			_, err := timeZone(&tz, "", env.now.Location())
+			return err
+		},
+	}
+}
+
+// checkAt resolves value as --at, as of env.
+func checkAt(value string, env checkEnv) error {
+	_, err := resolveTime("--at", &value, env.now, env.zone.loc)
+	return err
+}
+
+// resolveEnded resolves input as --ended, as of env, rejecting an approximate time with hint.
+func resolveEnded(input string, env checkEnv, hint string) (timeparse.Resolved, error) {
+	r, err := resolveTime("--ended", &input, env.now, env.zone.loc)
+	if err == nil && r.Approximate {
+		return r, &Error{Kind: KindInvalidTime, Message: "--ended must not be approximate", Hint: hint}
+	}
+
+	return r, err
+}
+
 // timeZone returns the zone naive time input is read in: tz, the --tz flag (nil when not
 // given), else the config file's defaultTimezone, which config.Resolve defaults to local.
 // Either may say local, in any case, for the local zone.

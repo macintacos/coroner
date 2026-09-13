@@ -97,6 +97,12 @@ func (d definition) check(values fieldValues, env checkEnv) error {
 	return nil
 }
 
+// inherited returns f registered by a parent command rather than the command itself.
+func inherited(f field) field {
+	f.inherited = true
+	return f
+}
+
 // withoutEnv makes check, which reads no time input, a field check.
 func withoutEnv(check func(string) error) func(string, checkEnv) error {
 	return func(value string, _ checkEnv) error {
@@ -154,4 +160,9 @@ func (v fieldValues) boolean(name string) (bool, bool) {
 	b, _ := strconv.ParseBool(*value)
 
 	return b, true
+}
+
+func (v fieldValues) given(name string) bool {
+	_, ok := v[name]
+	return ok
 }

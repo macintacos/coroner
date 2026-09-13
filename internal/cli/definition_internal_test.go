@@ -25,6 +25,11 @@ import (
 func writeDefinitions() map[string]definition {
 	return map[string]definition{
 		"timeline create": timelineCreateDefinition(),
+		"timeline edit":   timelineEditDefinition(),
+		"timeline delete": timelineDeleteDefinition(),
+		"event add":       eventAddDefinition(),
+		"event edit":      eventEditDefinition(),
+		"event delete":    eventDeleteDefinition(),
 	}
 }
 
@@ -58,6 +63,25 @@ var _ = Describe("write command definitions", func() {
 				HaveField("Kind", byFlag.Kind), HaveField("Message", byFlag.Message), HaveField("Hint", byFlag.Hint)))
 		},
 		Entry("timeline create <name>", "timeline create", "name", "Mongo Outage"),
+		Entry("timeline edit --name", "timeline edit", "name", "Bad Name", "mongo-outage"),
+		Entry("timeline edit --add-ref", "timeline edit", "add-ref", " ", "mongo-outage"),
+		Entry("event add <text>", "event add", "text", " "),
+		Entry("event add -t", "event add", "timeline", "", "Pager fires"),
+		Entry("event add --tz", "event add", "tz", "Mars/Olympus", "Pager fires"),
+		Entry("event add --at", "event add", "at", "2026-13-45", "Pager fires"),
+		Entry("event add --ended", "event add", "ended", "~2026-09-11T03:14:00Z", "Pager fires"),
+		Entry("event add --source", "event add", "source", "DB 2", "Pager fires"),
+		Entry("event add --tag", "event add", "tag", "Bad Tag", "Pager fires"),
+		Entry("event add --url", "event add", "url", " ", "Pager fires"),
+		Entry("event add --author", "event add", "author", " ", "Pager fires"),
+		Entry("event edit <event>", "event edit", "event", "Bad Ref!", "--dry-run"),
+		Entry("event edit --text", "event edit", "text", " ", "12"),
+		Entry("event edit --at", "event edit", "at", "2026-13-45", "12"),
+		Entry("event edit --ended", "event edit", "ended", "~2026-09-11T03:14:00Z", "12"),
+		Entry("event edit --source", "event edit", "source", " ", "12"),
+		Entry("event edit --add-tag", "event edit", "add-tag", "Bad Tag", "12"),
+		Entry("event edit --url", "event edit", "url", " ", "12"),
+		Entry("event delete <event>...", "event delete", "events", "Bad Ref!"),
 	)
 })
 

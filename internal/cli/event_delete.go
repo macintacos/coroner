@@ -9,11 +9,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newEventDeleteCommand(ctx context.Context, app App) *cobra.Command {
+	def := eventDeleteDefinition()
 	cmd := &cobra.Command{
 		Use:   "delete <event>...",
 		Short: "Delete events and their annotations",
@@ -27,66 +29,90 @@ func newEventDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner event delete 12 14 --dry-run\n" +
 			"  $ coroner event delete mongo-outage-2026-09-11#12 --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return deleteEvents(ctx, cmd, app, args)
-		},
-	}
-
-	cmd.Flags().Bool("dry-run", false, "Show what would be deleted, and delete nothing")
-
-	return cmd
-}
-
-func deleteEvents(ctx context.Context, cmd *cobra.Command, app App, refs []string) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
-	parsed := make([]eventRef, 0, len(refs))
-	for _, ref := range refs {
-		parsedRef, err := parseEventRef(ref)
-		if err != nil {
-			return err
-		}
-		parsed = append(parsed, parsedRef)
-	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, z, err := resolveZone(cmd, app)
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		found, err := findEvents(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
-		if err != nil {
-			return err
-		}
-		if dryRun {
-			err = writeDeletion(o, z, found)
+			o, err := newOutput(cmd, app)
+			if err != nil {
+				return err
+			}
+			cfg, z, err := resolveZone(cmd, app)
+			if err != nil {
+				return err
+			}
+			deleted, err := deleteEvents(ctx, app, cfg, def.read(cmd.Flags(), args))
 			if err != nil {
 				return err
 			}
 
-			return notifyDeletion(o, "Would delete", found)
+			return deleted.render(o, z)
+		},
+	}
+
+	def.addFlags(cmd.Flags())
+
+	return cmd
+}
+
+func eventDeleteDefinition() definition {
+	return definition{fields: []field{
+		inherited(timelineField()),
+		{name: "events", arg: true, typ: stringsField, usage: "Events to delete, as `ref`s: seq, timeline#seq or id", check: withoutEnv(checkEventRef)},
+		{name: "dry-run", typ: boolField, usage: "Show what would be deleted, and delete nothing"},
+	}}
+}
+
+// eventsDeleted are the events delete removed or, with --dry-run, would remove.
+type eventsDeleted struct {
+	found  foundEvents
+	dryRun bool
+}
+
+func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventsDeleted, error) {
+	err := eventDeleteDefinition().check(in, checkEnv{})
+	if err != nil {
+		return eventsDeleted{}, err
+	}
+	refs := make([]eventRef, 0, len(in.values("events")))
+	for _, ref := range in.values("events") {
+		parsed, err := parseEventRef(ref)
+		if err != nil {
+			return eventsDeleted{}, err
+		}
+		refs = append(refs, parsed)
+	}
+	dryRun, _ := in.boolean("dry-run")
+
+	deleted := eventsDeleted{dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+		found, err := findEvents(ctx, s, refs, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
+		if err != nil {
+			return err
+		}
+		deleted.found = found
+		if dryRun {
+			return nil
 		}
 
 		err = s.DeleteEvents(ctx, found.ids()...)
 		if errors.Is(err, store.ErrNotFound) {
 			return eventNotFoundError("another coroner deleted one of the events first; nothing was deleted", err)
 		}
-		if err != nil {
-			return err
-		}
-		err = writeDeletion(o, z, found)
-		if err != nil {
-			return err
-		}
 
-		return notifyDeletion(o, "Deleted", found)
+		return err
 	})
+
+	return deleted, err
+}
+
+// render prints the events as they were, with times in z, and says what happened to them.
+func (d eventsDeleted) render(o output, z zone) error {
+	err := writeDeletion(o, z, d.found)
+	if err != nil {
+		return err
+	}
+	if d.dryRun {
+		return notifyDeletion(o, "Would delete", d.found)
+	}
+
+	return notifyDeletion(o, "Deleted", d.found)
 }
 
 // foundEvents are events with their timelines, each once, in the order first named.

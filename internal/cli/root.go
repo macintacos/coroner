@@ -103,7 +103,7 @@ func globalFlags() *pflag.FlagSet {
 	flags.Bool("json", false, "Short for --format json")
 	flags.BoolP("quiet", "q", false, "Print only essential output")
 	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
-	flags.String("tz", "", "Time `zone` for this invocation (default: config default_timezone, then TZ)")
+	flags.String("tz", "", tzField().usage)
 	flags.Bool("debug", false, "Print debug detail on stderr (env: CORONER_DEBUG)")
 	flags.BoolP("help", "h", false, "Show help for a command")
 

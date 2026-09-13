@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
+	def := timelineEditDefinition()
 	cmd := &cobra.Command{
 		Use:   "edit <name|id>",
 		Short: "Rename a timeline or change its title and refs",
@@ -28,38 +29,57 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822\n" +
 			"  $ coroner timeline edit mongo-failover --title \"\" --dry-run --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return editTimeline(ctx, cmd, app, args[0])
+			o, err := newOutput(cmd, app)
+			if err != nil {
+				return err
+			}
+			cfg, z, err := resolveZone(cmd, app)
+			if err != nil {
+				return err
+			}
+			edited, err := editTimeline(ctx, app, cfg, def.read(cmd.Flags(), args))
+			if err != nil {
+				return err
+			}
+
+			return edited.render(o, z)
 		},
 	}
 
-	cmd.Flags().String("name", "", "New `name`")
-	cmd.Flags().String("title", "", "New `title`; an empty one clears it")
-	cmd.Flags().StringArray("add-ref", nil, "Add a ticket key or URL; repeat for more")
-	cmd.Flags().StringArray("remove-ref", nil, "Remove a ref; repeat for more")
-	cmd.Flags().Bool("dry-run", false, "Show the edited timeline, and change nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func editTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID string) error {
-	edit, err := readTimelineEdit(cmd.Flags())
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, z, err := resolveZone(cmd, app)
-	if err != nil {
-		return err
-	}
+func timelineEditDefinition() definition {
+	return definition{fields: []field{
+		{name: "timeline", arg: true, usage: "Timeline to edit, as a `name|id`"},
+		{name: "name", usage: "New `name`", check: withoutEnv(checkName)},
+		{name: "title", usage: "New `title`; an empty one clears it"},
+		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef)},
+		{name: "remove-ref", typ: stringsField, usage: "Remove a ref; repeat for more"},
+		{name: "dry-run", typ: boolField, usage: "Show the edited timeline, and change nothing"},
+	}}
+}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+// timelineEdited is the timeline as edit stored it, or as --dry-run shows it would.
+type timelineEdited struct {
+	timeline timeline.Timeline
+	dryRun   bool
+}
+
+func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineEdited, error) {
+	edit, err := readTimelineEdit(in)
+	if err != nil {
+		return timelineEdited{}, err
+	}
+	dryRun, _ := in.boolean("dry-run")
+
+	edited := timelineEdited{dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// timeline is overwritten; apply the edit inside one store write if that matters.
-		t, err := findTimeline(ctx, s, nameOrID)
+		t, err := findTimeline(ctx, s, in.values("timeline")[0])
 		if err != nil {
 			return err
 		}
@@ -68,60 +88,73 @@ func editTimeline(ctx context.Context, cmd *cobra.Command, app App, nameOrID str
 		if err != nil {
 			return err
 		}
+		edited.timeline = t
 		if dryRun {
-			return previewEdit(ctx, s, o, z, t)
+			return checkNameFree(ctx, s, t)
 		}
 
 		err = s.UpdateTimeline(ctx, t)
 		if errors.Is(err, store.ErrConflict) {
 			return timelineExistsError(t.Name, "Pick another --name.", err)
 		}
-		if err != nil {
-			return err
-		}
-		err = printTimeline(o, t)
-		if err != nil {
-			return err
-		}
 
-		return o.notify("Edited timeline `%s`.", t.Name)
+		return err
 	})
+
+	return edited, err
 }
 
-// timelineEdit is the change edit's flags ask for. Nil or empty fields change nothing.
+// render prints the edited timeline, in z when --dry-run shows it as text.
+func (e timelineEdited) render(o output, z zone) error {
+	if !e.dryRun {
+		err := printTimeline(o, e.timeline)
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Edited timeline `%s`.", e.timeline.Name)
+	}
+
+	if o.format == formatJSON {
+		return o.json(newTimelineJSON(e.timeline))
+	}
+
+	_, err := io.WriteString(o.out, timelineSummary(e.timeline, z))
+	return err
+}
+
+// timelineEdit is the change edit's fields ask for. Nil or empty fields change nothing.
 type timelineEdit struct {
 	name, title         *string
 	addRefs, removeRefs []string
 }
 
-// readTimelineEdit returns the edit the flags ask for. It runs before the store opens, so it
-// rejects a name or ref no timeline could take.
-func readTimelineEdit(flags *pflag.FlagSet) (timelineEdit, error) {
-	edit := timelineEdit{
-		name:       changedString(flags, "name"),
-		title:      changedString(flags, "title"),
-		addRefs:    stringArray(flags, "add-ref"),
-		removeRefs: stringArray(flags, "remove-ref"),
+// readTimelineEdit returns the edit in asks for. It runs before the store opens, so it rejects a
+// name or ref no timeline could take.
+func readTimelineEdit(in fieldValues) (timelineEdit, error) {
+	err := timelineEditDefinition().check(in, checkEnv{})
+	if err != nil {
+		return timelineEdit{}, err
 	}
-
-	if !slices.ContainsFunc([]string{"name", "title", "add-ref", "remove-ref"}, flags.Changed) {
-		return edit, &Error{
+	if !slices.ContainsFunc([]string{"name", "title", "add-ref", "remove-ref"}, in.given) {
+		return timelineEdit{}, &Error{
 			Kind:    KindUsage,
 			Message: "nothing to edit",
 			Hint:    "Pass --name, --title, --add-ref or --remove-ref.",
 		}
 	}
-	if edit.name != nil {
-		err := checkName(*edit.name)
-		if err != nil {
-			return edit, err
-		}
-	}
-	if slices.ContainsFunc(edit.addRefs, func(ref string) bool { return strings.TrimSpace(ref) == "" }) {
-		return edit, &Error{Kind: KindUsage, Message: "--add-ref must not be blank", Hint: "A ref is a ticket key or URL."}
+
+	return timelineEdit{
+		name: in.value("name"), title: in.value("title"), addRefs: in.values("add-ref"), removeRefs: in.values("remove-ref"),
+	}, nil
+}
+
+func checkAddedRef(ref string) error {
+	if strings.TrimSpace(ref) != "" {
+		return nil
 	}
 
-	return edit, nil
+	return &Error{Kind: KindUsage, Message: "--add-ref must not be blank", Hint: "A ref is a ticket key or URL."}
 }
 
 // apply returns t with the edit made and updated at set to now.
@@ -142,9 +175,8 @@ func (e timelineEdit) apply(t timeline.Timeline, now time.Time) timeline.Timelin
 	return t
 }
 
-// previewEdit prints t as the edit would store it, with times in z, failing as the update
-// would when another timeline has t's name.
-func previewEdit(ctx context.Context, s *store.Store, o output, z zone, t timeline.Timeline) error {
+// checkNameFree fails as the update would when a timeline other than t has t's name.
+func checkNameFree(ctx context.Context, s *store.Store, t timeline.Timeline) error {
 	holder, err := s.TimelineByName(ctx, t.Name)
 	switch {
 	case err == nil && holder.ID != t.ID:
@@ -153,10 +185,5 @@ func previewEdit(ctx context.Context, s *store.Store, o output, z zone, t timeli
 		return err
 	}
 
-	if o.format == formatJSON {
-		return o.json(newTimelineJSON(t))
-	}
-
-	_, err = io.WriteString(o.out, timelineSummary(t, z))
-	return err
+	return nil
 }
