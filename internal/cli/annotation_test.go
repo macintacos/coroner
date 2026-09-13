@@ -470,4 +470,62 @@ var _ = Describe("annotation", func() {
 			Entry("a ref that is not an id", "usage", "Election", "--kind", "comment"),
 		)
 	})
+
+	Describe("delete", func() {
+		const (
+			electionLogID = "0199a1b2-0000-7000-8000-000000000003"
+			rootCauseID   = "0199a1b2-0000-7000-8000-000000000004"
+		)
+
+		BeforeEach(func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "add", "election log", "-e", "1", "--kind", "evidence")).To(Equal(0))
+			Expect(run(ctx, "annotation", "add", "Root cause: undersized oplog", "--kind", "comment")).To(Equal(0))
+		})
+
+		It("deletes every annotation named and says so on stderr", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "delete", electionLogID, rootCauseID)).To(Equal(0))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(Equal(
+				"Deleted evidence annotation " + electionLogID + " from timeline `mongo-outage`\n" +
+					"Deleted comment annotation " + rootCauseID + " from timeline `mongo-outage`\n"))
+			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
+		})
+
+		It("prints the deleted annotations as JSON", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "delete", rootCauseID, electionLogID, "--json")).To(Equal(0))
+
+			Expect(out.String()).To(HavePrefix(`{"annotations":[{"id":"` + rootCauseID + `",`))
+			Expect(out.String()).To(ContainSubstring(`{"id":"` + electionLogID + `",`))
+		})
+
+		It("deletes an annotation named twice once", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "delete", electionLogID, electionLogID)).To(Equal(0))
+
+			Expect(strings.Count(errOut.String(), "Deleted")).To(Equal(1))
+			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(HaveField("ID", rootCauseID)))
+		})
+
+		It("exits 3 with kind annotation_not_found, deleting none, when one id matches nothing", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "delete", electionLogID, "0199a1b2-ffff", "--json")).To(Equal(3))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"annotation_not_found"`))
+			Expect(storedAnnotations(ctx, outageID)).To(HaveLen(2))
+		})
+
+		It("says on stdout what --dry-run would delete, and deletes nothing", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "delete", electionLogID, rootCauseID, "--dry-run")).To(Equal(0))
+
+			Expect(out.String()).To(Equal(
+				"Would delete evidence annotation " + electionLogID + " from timeline `mongo-outage`\n" +
+					"Would delete comment annotation " + rootCauseID + " from timeline `mongo-outage`\n"))
+			Expect(storedAnnotations(ctx, outageID)).To(HaveLen(2))
+		})
+
+		It("exits 2 with kind usage when no id is given", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "delete", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+		})
+	})
 })

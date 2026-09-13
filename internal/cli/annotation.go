@@ -33,7 +33,12 @@ func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 		RunE:        runNoun,
 	}
 
-	cmd.AddCommand(newAnnotationAddCommand(ctx, app), newAnnotationListCommand(ctx, app), newAnnotationEditCommand(ctx, app))
+	cmd.AddCommand(
+		newAnnotationAddCommand(ctx, app),
+		newAnnotationListCommand(ctx, app),
+		newAnnotationEditCommand(ctx, app),
+		newAnnotationDeleteCommand(ctx, app),
+	)
 
 	return cmd
 }
