@@ -12,7 +12,7 @@ envelope names.
 | Code | Meaning | Kinds |
 | --- | --- | --- |
 | 0 | Success | |
-| 1 | Internal error: a bug in coroner | `internal` |
+| 1 | Unexpected error, such as a bug | `internal` |
 | 2 | Usage error or invalid input; nothing was written | `usage`, `invalid_time`, `invalid_name`, `timeline_required`, `ambiguous_id` |
 | 3 | Not found | `timeline_not_found`, `event_not_found` |
 | 4 | Conflicts with what is already stored | `timeline_exists`, `id_conflict` |
@@ -25,8 +25,8 @@ MUST be treated as a command failure.
 ## The JSON error envelope
 
 An error prints on stderr, followed by a hint that says how to fix it when there is one.
-Under `--format json` or `--format jsonl`, the last line of stderr is a JSON error
-envelope:
+Under `--json`, `--format json` or `--format jsonl`, the last line of stderr is a JSON
+error envelope:
 
 ```json
 {"error":{"kind":"usage","message":"unknown flag: --no-such-flag","hint":"Run 'coroner --help' for usage."}}

@@ -84,6 +84,10 @@ linters:
           deny:
             - pkg: github.com/macintacos/coroner/internal/store/sqlcgen
               desc: use internal/store; never serialize sqlc models
+    exhaustive:
+      check:
+        - switch
+        - map
     forbidigo:
       analyze-types: true
       forbid:

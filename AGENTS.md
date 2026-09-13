@@ -14,8 +14,7 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run setup` installs the pinned tools and Go modules and registers the git hooks.
 - `mise run build` builds the binary into `bin/`.
 - `mise run format` runs every formatter in write mode, plus `go mod tidy`,
-  `sqlc generate` and the CLI reference generator, which also reruns when a help topic
-  changes.
+  `sqlc generate` and the CLI reference generator.
 - `mise run lint` runs the linters without writing, then fails if the CLI reference is
   stale. It does not check YAML, TOML, shell or Pkl formatting, `go mod tidy` or
   `sqlc generate`; only `mise run format` and `pre-commit` apply those.
@@ -26,7 +25,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
   done (Rule 7).
 
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
-linter and applies fixes, and `pre-push` runs `mise run test` when Go files, `go.mod` or
+linter and applies fixes, regenerating the CLI reference when a help topic or the Go code
+it documents changes, and `pre-push` runs `mise run test` when Go files, `go.mod` or
 `go.sum` change.
 
 ## Routing

@@ -5,6 +5,18 @@ exec coroner help version
 cmp stdout version-help.txt
 ! stderr .
 
+# help ignores --format and --json, as --help does.
+exec coroner help version --json
+cmp stdout version-help.txt
+exec coroner help time --format jsonl
+
+# help <topic> ignores extra arguments, as help <command> does.
+exec coroner help time
+cp stdout time-topic.txt
+exec coroner help time extra
+cmp stdout time-topic.txt
+! stderr .
+
 # A topic name is not a command.
 exits 2 coroner time
 ! stdout .
