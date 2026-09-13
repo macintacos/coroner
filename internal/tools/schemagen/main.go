@@ -82,16 +82,16 @@ func generate() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// tidyDescriptions joins the wrapped lines of object's description and of each property's, and
+// tidyDescriptions joins the wrapped lines of schema's description and of each property's, and
 // moves a nullable property's description from inside its oneOf, where the nullable tag leaves
 // it, onto the property.
-func tidyDescriptions(object *jsonschema.Schema) {
-	object.Description = strings.Join(strings.Fields(object.Description), " ")
-	if object.Properties == nil {
+func tidyDescriptions(schema *jsonschema.Schema) {
+	schema.Description = strings.Join(strings.Fields(schema.Description), " ")
+	if schema.Properties == nil {
 		return
 	}
 
-	for property := range object.Properties.ValuesFromOldest() {
+	for property := range schema.Properties.ValuesFromOldest() {
 		if len(property.OneOf) > 0 && property.Description == "" {
 			property.Description, property.OneOf[0].Description = property.OneOf[0].Description, ""
 		}
