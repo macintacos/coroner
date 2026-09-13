@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -15,7 +16,7 @@ import (
 )
 
 var _ = Describe("Opening a database an earlier release wrote", func() {
-	fixtures, _ := filepath.Glob("testdata/compat/*.db")
+	fixtures, _ := filepath.Glob("testdata/compat/v*.db")
 
 	for _, committed := range fixtures {
 		It("migrates and reads "+filepath.Base(committed), func(ctx SpecContext) {
@@ -28,65 +29,39 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 		})
 	}
 
-	// Until the first release commits its fixture, check the one this build writes.
-	if len(fixtures) == 0 {
-		It("reads a database compatfixture writes", func(ctx SpecContext) {
-			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-			Expect(fixture.Write(ctx, path)).To(Succeed())
+	// The next release's fixture is this build's output, so it must pass the same checks.
+	It("reads a database compatfixture writes", func(ctx SpecContext) {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		Expect(fixture.Write(ctx, path)).To(Succeed())
 
-			expectCompatFixture(ctx, path)
-		})
-	}
+		expectCompatFixture(ctx, path)
+	})
 })
 
-// expectCompatFixture opens the compatfixture database at path and reads back, through the
-// store API, every kind of record it holds.
+// expectCompatFixture opens the compatfixture database at path, reads back every record
+// fixture writes, and adds an event to check that the timeline's seq counter survived.
 func expectCompatFixture(ctx context.Context, path string) {
 	GinkgoHelper()
 	s, err := store.Open(ctx, path)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(s.Close)
 
-	timelines, err := s.Timelines(ctx)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(timelines).To(HaveExactElements(HaveField("Name", "inc-2041"), HaveField("Name", "inc-2042")))
+	timelines := fixture.Timelines()
+	Expect(s.Timelines(ctx)).To(Equal(timelines))
+	Expect(s.Sources(ctx)).To(Equal(fixture.Sources()))
+	Expect(s.CurrentTimeline(ctx)).To(Equal(timelines[0]))
+	for _, t := range timelines {
+		Expect(s.Events(ctx, t.ID)).To(Equal(slices.DeleteFunc(fixture.Events(),
+			func(e timeline.Event) bool { return e.TimelineID != t.ID })))
+		Expect(s.Annotations(ctx, t.ID)).To(Equal(slices.DeleteFunc(fixture.Annotations(),
+			func(a timeline.Annotation) bool { return a.TimelineID != t.ID })))
+	}
 
-	current, err := s.CurrentTimeline(ctx)
+	at := time.Date(2026, 9, 14, 10, 0, 0, 0, time.UTC)
+	added, err := s.AddEvent(ctx, timeline.Event{
+		ID: uuid(100), TimelineID: timelines[0].ID, OccurredAt: at, Precision: timeline.PrecisionMinute,
+		Tags: []string{}, Text: "Postmortem held", CreatedAt: at, UpdatedAt: at,
+	}, "")
 	Expect(err).NotTo(HaveOccurred())
-	Expect(current.Name).To(Equal("inc-2041"))
-	Expect(current.Refs).To(Equal([]string{"INC-2041", "https://status.example.com/incidents/2041", "PM-77"}))
-
-	events, err := s.Events(ctx, current.ID)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(events).To(ConsistOf(
-		HaveField("Precision", timeline.PrecisionDay),
-		HaveField("Precision", timeline.PrecisionHour),
-		HaveField("Precision", timeline.PrecisionMinute),
-		HaveField("Precision", timeline.PrecisionSecond),
-		HaveField("Precision", timeline.PrecisionMillisecond),
-		HaveField("Precision", timeline.PrecisionMicrosecond),
-		HaveField("Precision", timeline.PrecisionNanosecond),
-	))
-	Expect(events).To(SatisfyAll(
-		ContainElement(HaveField("Approximate", true)),
-		ContainElement(HaveField("EndedAt", HaveValue(BeTemporally("==", time.Date(2026, 9, 12, 16, 45, 0, 0, time.UTC))))),
-		ContainElement(HaveField("OccurredAt", BeTemporally("==", time.Date(2026, 9, 12, 16, 24, 59, 123456789, time.UTC)))),
-		ContainElement(HaveField("OccurredOffset", BeNil())),
-		ContainElement(HaveField("OccurredOffset", HaveValue(Equal(-25200)))),
-		ContainElement(HaveField("Source", BeNil())),
-		ContainElement(HaveField("Source", HaveValue(Equal("pagerduty")))),
-		ContainElement(HaveField("Tags", Equal([]string{"deploy", "rollback"}))),
-	))
-
-	annotations, err := s.Annotations(ctx, current.ID)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(annotations).To(ConsistOf(
-		SatisfyAll(HaveField("Kind", timeline.AnnotationEvidence), HaveField("EventID", Not(BeNil()))),
-		SatisfyAll(HaveField("Kind", timeline.AnnotationComment), HaveField("EventID", Not(BeNil()))),
-		HaveField("EventID", BeNil()),
-	))
-
-	other := timelines[1]
-	Expect(s.Events(ctx, other.ID)).To(HaveLen(1))
-	Expect(s.Annotations(ctx, other.ID)).To(BeEmpty())
+	Expect(added.Seq).To(Equal(int64(8)))
 }

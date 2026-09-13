@@ -78,7 +78,7 @@ var _ = Describe("Open", func() {
 			CREATE TABLE users (name TEXT);`),
 	)
 
-	It("refuses a database a newer coroner migrated, leaving it byte-identical and taking no backup",
+	It("refuses a database a newer coroner migrated, leaving it byte-identical with nothing beside it",
 		func(ctx SpecContext) {
 			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
 			s, err := store.Open(ctx, path)
@@ -94,7 +94,7 @@ var _ = Describe("Open", func() {
 
 			Expect(err).To(MatchError(store.ErrDatabaseTooNew))
 			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
-			Expect(filepath.Glob(path + ".pre-v*.bak")).To(BeEmpty())
+			Expect(os.ReadDir(filepath.Dir(path))).To(HaveExactElements(HaveField("Name()", "coroner.db")))
 		})
 
 	It("finishes a first migration that failed after creating the version table", func(ctx SpecContext) {
