@@ -229,7 +229,6 @@ func (m Model) edit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// submit applies value, entered at prompt p.
 func (m Model) submit(p prompt, value string) (tea.Model, tea.Cmd) {
 	match := m.pending
 	switch p {
