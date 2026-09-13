@@ -47,11 +47,13 @@
    types. The `sqlcgen-private` depguard rule in [`.golangci.yml`](../../.golangci.yml)
    fails any import of `sqlcgen` outside `internal/store`.
 6. **A store method's function passed to `Store.write` or `read` uses only the
-   `sqlcgen.Queries` it is given:** calling another `Store` method from inside `write`
-   waits on the transaction's own write lock until `ErrBusy`. A store method's writes
-   share one immediate transaction, which `write` retries whole while another writer holds
-   the database; `read` begins deferred and never takes the write lock. Only `Open` uses
-   the pool directly, for its identity check, WAL pragma and backup. Never use
+   `sqlcgen.Queries` it is given, and one passed to `readTx` only the `*sql.Tx`:** calling
+   another `Store` method from inside `write` waits on the transaction's own write lock
+   until `ErrBusy`. Hand-written reads (Rule 4) run through `readTx`, because
+   `sqlcgen.Queries` cannot run SQL it did not generate. A store method's writes share one
+   immediate transaction, which `write` retries whole while another writer holds the
+   database; `read` and `readTx` begin deferred and never take the write lock. Only `Open`
+   uses the pool directly, for its identity check, WAL pragma and backup. Never use
    `SetMaxOpenConns(1)` or `:memory:`: a query on the pool then waits forever while a
    transaction holds the only connection, and every pooled `:memory:` connection is a
    separate empty database.

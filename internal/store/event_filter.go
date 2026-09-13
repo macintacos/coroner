@@ -1,9 +1,12 @@
 package store
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"time"
 
+	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -41,6 +44,62 @@ type EventPage struct {
 	Total int
 	// Truncated reports that the limit left matches out.
 	Truncated bool
+}
+
+// ListEvents returns the events of the timeline with timelineID that f keeps, with their
+// tags and source, ordered by occurred at, then seq.
+func (s *Store) ListEvents(ctx context.Context, timelineID string, f EventFilter) (EventPage, error) {
+	query, args := buildEventQuery(timelineID, f)
+
+	return readTx(ctx, s, func(tx *sql.Tx) (EventPage, error) {
+		rows, err := tx.QueryContext(ctx, query, args...)
+		if err != nil {
+			return EventPage{}, err
+		}
+		// rows.Err reports what went wrong; Close only matters on an early return.
+		defer func() { _ = rows.Close() }()
+
+		page := EventPage{Events: []timeline.Event{}}
+		for rows.Next() {
+			e, err := scanEvent(rows, &page.Total)
+			if err != nil {
+				return EventPage{}, err
+			}
+			page.Events = append(page.Events, e)
+		}
+		err = rows.Err()
+		if err != nil {
+			return EventPage{}, err
+		}
+
+		page.Truncated = len(page.Events) < page.Total
+		return page, nil
+	})
+}
+
+// scanEvent reads a row of eventSelect into an event, and its match count into total.
+func scanEvent(rows *sql.Rows, total *int) (timeline.Event, error) {
+	var (
+		row    sqlcgen.Event
+		source *string
+		tags   string
+	)
+	err := rows.Scan(
+		&row.ID, &row.TimelineID, &row.Seq, &row.OccurredAt, &row.OccurredOffset,
+		&row.OccurredPrecision, &row.Approximate, &row.OccurredRaw, &row.EndedAt, &row.SourceID, &row.Text,
+		&row.Url, &row.Author, &row.CreatedAt, &row.UpdatedAt,
+		&source, &tags, total,
+	)
+	if err != nil {
+		return timeline.Event{}, err
+	}
+
+	tagList := []string{}
+	if tags != "" {
+		tagList = strings.Split(tags, ",")
+	}
+
+	return eventFromRow(row, source, tagList)
 }
 
 // eventSelect reads an event's row with its source name, its tags joined by commas (the tag

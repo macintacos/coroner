@@ -157,6 +157,11 @@ func loadEvent(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Event) (time
 		return timeline.Event{}, err
 	}
 
+	return eventFromRow(row, source, tags)
+}
+
+// eventFromRow maps row, with the name of its source and its tags, to a timeline.Event.
+func eventFromRow(row sqlcgen.Event, source *string, tags []string) (timeline.Event, error) {
 	var p instants
 	e := timeline.Event{
 		ID:             row.ID,
