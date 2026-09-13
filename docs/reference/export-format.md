@@ -293,7 +293,8 @@ draft 2020-12, with the `$id`
 `https://raw.githubusercontent.com/macintacos/coroner/main/schema/export-v1.schema.json`.
 It describes the envelope at its root and each record under `$defs`. It is open: it lists
 every key as required but allows keys it does not list, so an export from a later minor
-version still validates.
+version still validates. A key added in a minor version is listed but not required, so an
+export from an earlier minor version validates too.
 
 The schema is generated from the Go types by `go run ./internal/tools/schemagen` and is
 never edited by hand. `mise run lint` fails when it is out of date.
