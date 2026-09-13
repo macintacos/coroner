@@ -53,7 +53,7 @@ var _ = Describe("Attachments", func() {
 		blobDir string
 	)
 
-	attachment := func(n int, owner timeline.AttachmentOwner, filename string) timeline.Attachment {
+	newAttachment := func(n int, owner timeline.AttachmentOwner, filename string) timeline.Attachment {
 		return timeline.Attachment{ID: uuid(n), Owner: owner, Filename: filename, CreatedAt: created.Add(time.Duration(n) * time.Second)}
 	}
 	sha256Hex := func(content []byte) string {
@@ -88,9 +88,9 @@ var _ = Describe("Attachments", func() {
 
 	It("stores a file under its content's hash, readable only by its owner, and lists it on its event",
 		func(ctx SpecContext) {
-			added := add(ctx, attachment(10, onPager, "grafana.png"), screenshot)
+			added := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
 
-			want := attachment(10, onPager, "grafana.png")
+			want := newAttachment(10, onPager, "grafana.png")
 			want.MIME = "image/png"
 			want.SHA256 = sha256Hex(screenshot)
 			want.Size = int64(len(screenshot))
@@ -104,8 +104,8 @@ var _ = Describe("Attachments", func() {
 		})
 
 	It("lists an annotation's attachments oldest first", func(ctx SpecContext) {
-		later := add(ctx, attachment(11, onEvidence, "later.png"), screenshot)
-		earlier := add(ctx, attachment(10, onEvidence, "earlier.png"), []byte("\x89PNG\r\n\x1a\nearlier"))
+		later := add(ctx, newAttachment(11, onEvidence, "later.png"), screenshot)
+		earlier := add(ctx, newAttachment(10, onEvidence, "earlier.png"), []byte("\x89PNG\r\n\x1a\nearlier"))
 
 		Expect(s.ListAttachments(ctx, onEvidence)).To(Equal([]timeline.Attachment{earlier, later}))
 		Expect(s.ListAttachments(ctx, onPager)).To(BeEmpty())
@@ -113,7 +113,7 @@ var _ = Describe("Attachments", func() {
 
 	DescribeTable("takes the MIME type from the filename's extension when the content sniffs as generic text",
 		func(ctx SpecContext, filename, content, want string) {
-			Expect(add(ctx, attachment(10, onPager, filename), []byte(content))).To(HaveField("MIME", want))
+			Expect(add(ctx, newAttachment(10, onPager, filename), []byte(content))).To(HaveField("MIME", want))
 		},
 		Entry("JSON", "trace.json", `{"spans":[1,2]}`, "application/json"),
 		Entry("SVG", "panel.svg", `<svg xmlns="http://www.w3.org/2000/svg"></svg>`, "image/svg+xml"),
@@ -123,8 +123,8 @@ var _ = Describe("Attachments", func() {
 
 	It("keeps one blob for identical content until garbage collection finds no attachment using it",
 		func(ctx SpecContext) {
-			onEvent := add(ctx, attachment(10, onPager, "grafana.png"), screenshot)
-			onAnnotation := add(ctx, attachment(11, onEvidence, "same-panel.png"), screenshot)
+			onEvent := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
+			onAnnotation := add(ctx, newAttachment(11, onEvidence, "same-panel.png"), screenshot)
 			blob := filepath.Join(blobDir, onEvent.SHA256)
 			Expect(os.ReadDir(blobDir)).To(HaveExactElements(HaveField("Name()", onEvent.SHA256)))
 
@@ -138,7 +138,7 @@ var _ = Describe("Attachments", func() {
 		})
 
 	It("deletes an event's attachments with it, and leaves their blobs to garbage collection", func(ctx SpecContext) {
-		added := add(ctx, attachment(10, onPager, "grafana.png"), screenshot)
+		added := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
 
 		Expect(s.DeleteEvents(ctx, pager.ID)).To(Succeed())
 
@@ -149,10 +149,10 @@ var _ = Describe("Attachments", func() {
 
 	It("leaves only an orphan blob, which garbage collection deletes, when the row cannot be written",
 		func(ctx SpecContext) {
-			first := add(ctx, attachment(10, onPager, "grafana.png"), screenshot)
+			first := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
 			other := []byte("\x89PNG\r\n\x1a\nanother panel")
 
-			_, err := s.AddAttachment(ctx, attachment(10, onPager, "other.png"), bytes.NewReader(other))
+			_, err := s.AddAttachment(ctx, newAttachment(10, onPager, "other.png"), bytes.NewReader(other))
 
 			Expect(err).To(MatchError(store.ErrConflict))
 			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{first}))
@@ -163,7 +163,7 @@ var _ = Describe("Attachments", func() {
 	It("reports an owner that does not exist with ErrNotFound, writing no blob", func(ctx SpecContext) {
 		missing := timeline.AttachmentOwner{EventID: new(uuid(99))}
 
-		_, err := s.AddAttachment(ctx, attachment(10, missing, "grafana.png"), bytes.NewReader(screenshot))
+		_, err := s.AddAttachment(ctx, newAttachment(10, missing, "grafana.png"), bytes.NewReader(screenshot))
 
 		Expect(err).To(MatchError(store.ErrNotFound))
 		Expect(os.ReadDir(blobDir)).To(BeEmpty())
@@ -173,7 +173,7 @@ var _ = Describe("Attachments", func() {
 		boom := errors.New("boom")
 		content := io.MultiReader(bytes.NewReader(screenshot), iotest.ErrReader(boom))
 
-		_, err := s.AddAttachment(ctx, attachment(10, onPager, "grafana.png"), content)
+		_, err := s.AddAttachment(ctx, newAttachment(10, onPager, "grafana.png"), content)
 
 		Expect(err).To(MatchError(boom))
 		Expect(os.ReadDir(blobDir)).To(BeEmpty())
@@ -196,7 +196,7 @@ var _ = Describe("Attachments", func() {
 			defer GinkgoRecover()
 			defer close(done)
 			for n := range adds {
-				add(ctx, attachment(100+n, onPager, "panel.png"), []byte{byte(n)})
+				add(ctx, newAttachment(100+n, onPager, "panel.png"), []byte{byte(n)})
 			}
 		})
 		wg.Go(func() {
@@ -224,7 +224,7 @@ var _ = Describe("Attachments", func() {
 	}, SpecTimeout(time.Minute))
 
 	It("stores a filename that looks like a path as display text only", func(ctx SpecContext) {
-		added := add(ctx, attachment(10, onPager, "../../escaped.png"), screenshot)
+		added := add(ctx, newAttachment(10, onPager, "../../escaped.png"), screenshot)
 
 		Expect(s.ListAttachments(ctx, onPager)).To(HaveExactElements(HaveField("Filename", "../../escaped.png")))
 		Expect(filepath.Join(dir, "..", "escaped.png")).NotTo(BeAnExistingFile())
@@ -237,7 +237,7 @@ var _ = Describe("Attachments", func() {
 
 	DescribeTable("rejects an owner that is not exactly one event or annotation, writing no blob",
 		func(ctx SpecContext, owner timeline.AttachmentOwner) {
-			_, err := s.AddAttachment(ctx, attachment(10, owner, "grafana.png"), bytes.NewReader(screenshot))
+			_, err := s.AddAttachment(ctx, newAttachment(10, owner, "grafana.png"), bytes.NewReader(screenshot))
 			Expect(err).To(MatchError(ContainSubstring("owner")))
 			Expect(blobDir).NotTo(BeADirectory())
 

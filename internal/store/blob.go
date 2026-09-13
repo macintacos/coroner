@@ -28,14 +28,14 @@ type stagedBlob struct {
 	head     []byte
 }
 
-// stageBlob copies content into a new temporary file in dir, creating dir (mode 0700) when
-// missing, and hashes it on the way.
-func stageBlob(dir string, content io.Reader) (stagedBlob, error) {
-	err := os.Mkdir(dir, 0o700)
+// stageBlob copies content into a new temporary file in blobDir, creating blobDir (mode
+// 0700) when missing, and hashes it on the way.
+func stageBlob(blobDir string, content io.Reader) (stagedBlob, error) {
+	err := os.Mkdir(blobDir, 0o700)
 	switch {
 	case err == nil:
 		// Without it, a power loss can drop the new directory, and with it a committed row's blob.
-		err = syncDir(filepath.Dir(dir))
+		err = syncDir(filepath.Dir(blobDir))
 	case errors.Is(err, fs.ErrExist):
 		err = nil
 	}
@@ -43,7 +43,7 @@ func stageBlob(dir string, content io.Reader) (stagedBlob, error) {
 		return stagedBlob{}, fmt.Errorf("create blob directory: %w", err)
 	}
 
-	f, err := os.CreateTemp(dir, ".tmp-*")
+	f, err := os.CreateTemp(blobDir, ".tmp-*")
 	if err != nil {
 		return stagedBlob{}, fmt.Errorf("stage blob: %w", err)
 	}
@@ -82,11 +82,11 @@ func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {
 	return stagedBlob{sha256: hex.EncodeToString(hash.Sum(nil)), size: size, head: head}, nil
 }
 
-// commitBlob names a staged blob by its hash and syncs dir so the name survives a crash, or
-// discards it when a blob with that hash already exists. Store.write may retry it, so a
-// staged file already renamed is not an error.
-func commitBlob(dir string, staged stagedBlob) error {
-	final := filepath.Join(dir, staged.sha256)
+// commitBlob names a staged blob by its hash and syncs blobDir so the name survives a
+// crash, or discards it when a blob with that hash already exists. Store.write may retry
+// it, so a staged file already renamed is not an error.
+func commitBlob(blobDir string, staged stagedBlob) error {
+	final := filepath.Join(blobDir, staged.sha256)
 	_, err := os.Lstat(final)
 	switch {
 	case err == nil:
@@ -100,7 +100,7 @@ func commitBlob(dir string, staged stagedBlob) error {
 		if err != nil {
 			return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 		}
-		return syncDir(dir)
+		return syncDir(blobDir)
 	default:
 		return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 	}
@@ -115,12 +115,13 @@ func syncDir(dir string) error {
 	return errors.Join(d.Sync(), d.Close())
 }
 
-// deleteUnreferenced deletes every blob in dir whose hash is not in referenced and returns
-// their hashes in name order. It leaves anything that is not a blob, such as a staged file.
+// deleteUnreferenced deletes every blob in blobDir whose hash is not in referenced and
+// returns their hashes in name order. It leaves anything that is not a blob, such as a
+// staged file.
 // ponytail: staged .tmp-* files a crash left are never collected; sweep by age with an
 // injected clock if they accumulate.
-func deleteUnreferenced(dir string, referenced []string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
+	entries, err := os.ReadDir(blobDir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return []string{}, nil
 	}
@@ -140,7 +141,7 @@ func deleteUnreferenced(dir string, referenced []string) ([]string, error) {
 			continue
 		}
 
-		err := os.Remove(filepath.Join(dir, name))
+		err := os.Remove(filepath.Join(blobDir, name))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("delete blob %s: %w", name, err)
 		}
