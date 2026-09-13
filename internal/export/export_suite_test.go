@@ -29,9 +29,15 @@ func TestExport(t *testing.T) {
 // matchGolden compares got with testdata/markdown/<name>.md, rewriting the file instead under -update.
 func matchGolden(name, got string) {
 	GinkgoHelper()
-	path := filepath.Join(goldenDir, name+".md")
+	matchGoldenFile(goldenDir, name, ".md", got)
+}
+
+// matchGoldenFile compares got with <dir>/<name><ext>, rewriting the file instead under -update.
+func matchGoldenFile(dir, name, ext, got string) {
+	GinkgoHelper()
+	path := filepath.Join(dir, name+ext)
 	if flag.Lookup(updateFlag).Value.String() == "true" {
-		Expect(os.MkdirAll(goldenDir, 0o750)).To(Succeed())
+		Expect(os.MkdirAll(dir, 0o750)).To(Succeed())
 		Expect(os.WriteFile(path, []byte(got), 0o600)).To(Succeed())
 	}
 
