@@ -7,6 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -29,17 +30,28 @@ func (r resolved) approximately() resolved {
 }
 
 func parseIn(zone, input string) (resolved, error) {
+	return parseAt(time.Date(2026, 9, 12, 21, 30, 0, 0, time.FixedZone("EDT", -4*60*60)), zone, input)
+}
+
+func parseAt(now time.Time, zone, input string) (resolved, error) {
 	loc, err := time.LoadLocation(zone)
 	Expect(err).NotTo(HaveOccurred())
 
-	now := time.Date(2026, 9, 12, 21, 30, 0, 0, time.FixedZone("EDT", -4*60*60))
 	got, err := timeparse.Parse(input, now, loc)
 
 	return resolved{timeline.FormatInstant(got.Instant), got.Offset, got.Precision, got.Approximate}, err
 }
 
-// The corpus pins what each input means at 2026-09-12T21:30:00-04:00. A row that changes
-// after a dependency upgrade is a behaviour change to decide on, not a row to update.
+func utc(instant string) time.Time {
+	t, err := time.Parse(time.RFC3339, instant)
+	Expect(err).NotTo(HaveOccurred())
+
+	return t
+}
+
+// The corpus pins what each input means at 2026-09-12T21:30:00-04:00 unless a row states
+// its own now. A row that changes after a dependency upgrade is a behaviour change to
+// decide on, not a row to update.
 var _ = Describe("Parse golden corpus", func() {
 	const (
 		edt = -4 * 60 * 60
@@ -57,26 +69,45 @@ var _ = Describe("Parse golden corpus", func() {
 		func(input string, _ resolved) string { return input },
 		Entry(nil, "2026-09-12T14:05:03Z",
 			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond)),
-		Entry("RFC 3339 milliseconds, which olebedev/when read as 05:03 local", "2026-09-12T14:05:03.123Z",
+		Entry(nil, "2026-09-12T14:05:03.123Z",
 			at("2026-09-12T14:05:03.123000000Z", nil, timeline.PrecisionMillisecond)),
 		Entry(nil, "2026-09-12T14:05:03.123456-04:00",
 			at("2026-09-12T18:05:03.123456000Z", new(edt), timeline.PrecisionMicrosecond)),
 		Entry(nil, "2026-09-12T14:05:03.123456789+05:30",
 			at("2026-09-12T08:35:03.123456789Z", new(ist), timeline.PrecisionNanosecond)),
-		Entry("+00:00 states a zero offset, where Z states none", "2026-09-12T14:05:03+00:00",
+		// +00:00 states a zero offset, where Z states none.
+		Entry(nil, "2026-09-12T14:05:03+00:00",
 			at("2026-09-12T14:05:03.000000000Z", new(0), timeline.PrecisionSecond)),
-		Entry("MongoDB's offset without a colon", "2026-09-12T14:05:03.000-0400",
+		// -00:00 states UTC with the local offset unknown, as Z does.
+		Entry(nil, "2026-09-12T14:05:03-00:00",
+			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond)),
+		// MongoDB's offset without a colon.
+		Entry(nil, "2026-09-12T14:05:03.000-0400",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionMillisecond)),
 		Entry(nil, "2026-09-12T14:05:03+0530",
 			at("2026-09-12T08:35:03.000000000Z", new(ist), timeline.PrecisionSecond)),
-		Entry("epoch seconds", "1789236000",
+		Entry(nil, "2026-09-12 14:05:03.123Z",
+			at("2026-09-12T14:05:03.123000000Z", nil, timeline.PrecisionMillisecond)),
+		Entry(nil, "2026-09-12 14:05:03.123456+05:30",
+			at("2026-09-12T08:35:03.123456000Z", new(ist), timeline.PrecisionMicrosecond)),
+		// RFC 3339 allows a lowercase t and z.
+		Entry(nil, "2026-09-12t14:05:03.123z",
+			at("2026-09-12T14:05:03.123000000Z", nil, timeline.PrecisionMillisecond)),
+		Entry(nil, "2026-09-12T14:05Z",
+			at("2026-09-12T14:05:00.000000000Z", nil, timeline.PrecisionMinute)),
+		Entry(nil, "1789236000",
 			at("2026-09-12T18:00:00.000000000Z", nil, timeline.PrecisionSecond)),
-		Entry("epoch milliseconds", "1789236000123",
+		Entry(nil, "1789236000123",
 			at("2026-09-12T18:00:00.123000000Z", nil, timeline.PrecisionMillisecond)),
-		Entry("epoch microseconds", "1789236000123456",
+		Entry(nil, "1789236000123456",
 			at("2026-09-12T18:00:00.123456000Z", nil, timeline.PrecisionMicrosecond)),
-		Entry("epoch nanoseconds", "1789236000123456789",
+		Entry(nil, "1789236000123456789",
 			at("2026-09-12T18:00:00.123456789Z", nil, timeline.PrecisionNanosecond)),
+		Entry(nil, "1789236000.5",
+			at("2026-09-12T18:00:00.500000000Z", nil, timeline.PrecisionMillisecond)),
+		// GNU date's epoch marker.
+		Entry(nil, "@1789236000",
+			at("2026-09-12T18:00:00.000000000Z", nil, timeline.PrecisionSecond)),
 		Entry(nil, "~2026-09-12T14:05:03Z",
 			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond).approximately()),
 		Entry(nil, "around 2026-09-12T14:05:03-04:00",
@@ -85,33 +116,48 @@ var _ = Describe("Parse golden corpus", func() {
 			at("2026-09-12T18:00:00.000000000Z", nil, timeline.PrecisionSecond).approximately()),
 		Entry(nil, "2026-09-12 14:05:03",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry(nil, "2026-09-12T14:05:03",
+			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry(nil, "2026-09-12T14:05:03.123",
+			at("2026-09-12T18:05:03.123000000Z", new(edt), timeline.PrecisionMillisecond)),
 		Entry(nil, "2026-09-12 14:05:03.5",
 			at("2026-09-12T18:05:03.500000000Z", new(edt), timeline.PrecisionMillisecond)),
 		Entry(nil, "2026-09-12 14:05:03.1234",
 			at("2026-09-12T18:05:03.123400000Z", new(edt), timeline.PrecisionMicrosecond)),
-		Entry("log4j and Python comma milliseconds", "2026-09-12 14:05:03,123",
+		// log4j and Python comma milliseconds.
+		Entry(nil, "2026-09-12 14:05:03,123",
 			at("2026-09-12T18:05:03.123000000Z", new(edt), timeline.PrecisionMillisecond)),
-		Entry("a naive time outside daylight saving", "2026-12-03 10:15:00",
+		Entry(nil, "2026-09-12 14:05",
+			at("2026-09-12T18:05:00.000000000Z", new(edt), timeline.PrecisionMinute)),
+		// A naive time outside daylight saving.
+		Entry(nil, "2026-12-03 10:15:00",
 			at("2026-12-03T15:15:00.000000000Z", new(est), timeline.PrecisionSecond)),
 		Entry(nil, "around 2026-09-12 14:05:03",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond).approximately()),
-		Entry("the hour after clocks spring forward", "2026-03-08 03:30:00",
+		// The hour after clocks spring forward.
+		Entry(nil, "2026-03-08 03:30:00",
 			at("2026-03-08T07:30:00.000000000Z", new(edt), timeline.PrecisionSecond)),
-		Entry("the repeated hour, disambiguated by an offset", "2026-11-01T01:30:00-04:00",
+		// The repeated hour, disambiguated by an offset.
+		Entry(nil, "2026-11-01T01:30:00-04:00",
 			at("2026-11-01T05:30:00.000000000Z", new(edt), timeline.PrecisionSecond)),
-		Entry("syslog, this year", "Sep 12 14:05:03",
+		Entry(nil, "Sep 12 14:05:03",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
-		Entry("syslog later in the year than now, so last year", "Sep 13 14:05:03",
+		// Syslog later in the year than now, so last year.
+		Entry(nil, "Sep 13 14:05:03",
 			at("2025-09-13T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
-		Entry("syslog with a space-padded day", "Jan  2 03:04:05",
+		// Syslog with a space-padded day.
+		Entry(nil, "Jan  2 03:04:05",
 			at("2026-01-02T08:04:05.000000000Z", new(est), timeline.PrecisionSecond)),
-		Entry("syslog on a leap day, the latest one before now", "Feb 29 12:00:00",
+		// Syslog on a leap day, the latest one before now.
+		Entry(nil, "Feb 29 12:00:00",
 			at("2024-02-29T17:00:00.000000000Z", new(est), timeline.PrecisionSecond)),
-		Entry("yesterday counted in the stated zone, where it is already Sep 13", "yesterday 14:05 UTC",
+		// Yesterday counted in the stated zone, where it is already Sep 13.
+		Entry(nil, "yesterday 14:05 UTC",
 			at("2026-09-12T14:05:00.000000000Z", nil, timeline.PrecisionMinute)),
 		Entry(nil, "yesterday 00:30 UTC",
 			at("2026-09-12T00:30:00.000000000Z", nil, timeline.PrecisionMinute)),
-		Entry("the latest 00:30 in the stated zone, an hour ago", "00:30 UTC",
+		// The latest 00:30 in the stated zone, an hour ago.
+		Entry(nil, "00:30 UTC",
 			at("2026-09-13T00:30:00.000000000Z", nil, timeline.PrecisionMinute)),
 		Entry(nil, "23:00 UTC",
 			at("2026-09-12T23:00:00.000000000Z", nil, timeline.PrecisionMinute)),
@@ -121,41 +167,55 @@ var _ = Describe("Parse golden corpus", func() {
 			at("2026-09-12T14:05:00.000000000Z", nil, timeline.PrecisionMinute)),
 		Entry(nil, "14:05 PDT",
 			at("2026-09-12T21:05:00.000000000Z", new(pdt), timeline.PrecisionMinute)),
+		// Half an hour ago in PDT.
+		Entry(nil, "18:00 PDT",
+			at("2026-09-13T01:00:00.000000000Z", new(pdt), timeline.PrecisionMinute)),
+		// A time of day later than now in the stated zone is the previous evening there.
+		Entry(nil, "20:00 PDT",
+			at("2026-09-12T03:00:00.000000000Z", new(pdt), timeline.PrecisionMinute)),
+		Entry(nil, "22:00 -0400",
+			at("2026-09-12T02:00:00.000000000Z", new(edt), timeline.PrecisionMinute)),
+		Entry(nil, "23:30 -0700",
+			at("2026-09-12T06:30:00.000000000Z", new(pdt), timeline.PrecisionMinute)),
+		Entry(nil, "09:00 +0530",
+			at("2026-09-12T03:30:00.000000000Z", new(ist), timeline.PrecisionMinute)),
 		Entry(nil, "Sep 12 2026 14:05 +0530",
 			at("2026-09-12T08:35:00.000000000Z", new(ist), timeline.PrecisionMinute)),
 		Entry(nil, "10 minutes ago",
 			at("2026-09-13T01:20:00.000000000Z", new(edt), timeline.PrecisionMinute)),
-		Entry("an hour-precise time at the start of its hour", "3 hours ago",
+		// An hour-precise time at the start of its hour.
+		Entry(nil, "3 hours ago",
 			at("2026-09-12T22:00:00.000000000Z", new(edt), timeline.PrecisionHour)),
 		Entry(nil, "2 seconds ago",
 			at("2026-09-13T01:29:58.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry(nil, "2 weeks ago",
+			at("2026-08-29T04:00:00.000000000Z", new(edt), timeline.PrecisionDay)),
 		Entry(nil, "now",
 			at("2026-09-13T01:30:00.000000000Z", new(edt), timeline.PrecisionSecond)),
 		Entry(nil, "today",
 			at("2026-09-12T04:00:00.000000000Z", new(edt), timeline.PrecisionDay)),
 		Entry(nil, "yesterday",
 			at("2026-09-11T04:00:00.000000000Z", new(edt), timeline.PrecisionDay)),
-		Entry("an explicitly future day", "tomorrow",
-			at("2026-09-13T04:00:00.000000000Z", new(edt), timeline.PrecisionDay)),
 		Entry(nil, "yesterday 14:05",
 			at("2026-09-11T18:05:00.000000000Z", new(edt), timeline.PrecisionMinute)),
-		Entry("a weekday is the latest one before now", "friday",
+		// A weekday is the latest one before now.
+		Entry(nil, "friday",
 			at("2026-09-11T04:00:00.000000000Z", new(edt), timeline.PrecisionDay)),
 		Entry(nil, "friday 9am",
 			at("2026-09-11T13:00:00.000000000Z", new(edt), timeline.PrecisionHour)),
-		Entry("a time of day later than now is last night", "23:00",
+		// A time of day later than now is last night.
+		Entry(nil, "23:00",
 			at("2026-09-12T03:00:00.000000000Z", new(edt), timeline.PrecisionMinute)),
-		Entry("a date later in the year than now is last year", "Dec 3 10:15",
+		// A date later in the year than now is last year.
+		Entry(nil, "Dec 3 10:15",
 			at("2025-12-03T15:15:00.000000000Z", new(est), timeline.PrecisionMinute)),
-		Entry("last week is a day, since go-dateparser has no week period", "last week",
-			at("2026-09-05T04:00:00.000000000Z", new(edt), timeline.PrecisionDay)),
 		Entry(nil, "12 September 2026 14:05:03",
-			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
-		Entry("a naive ISO date-time with T", "2026-09-12T14:05:03",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
 		Entry(nil, "~yesterday 14:05",
 			at("2026-09-11T18:05:00.000000000Z", new(edt), timeline.PrecisionMinute).approximately()),
 		Entry(nil, "around 9am",
+			at("2026-09-12T13:00:00.000000000Z", new(edt), timeline.PrecisionHour).approximately()),
+		Entry(nil, "around\t9am",
 			at("2026-09-12T13:00:00.000000000Z", new(edt), timeline.PrecisionHour).approximately()),
 	)
 
@@ -165,20 +225,32 @@ var _ = Describe("Parse golden corpus", func() {
 			Expect(err).To(MatchError(kind))
 		},
 		func(input string, _ error) string { return input },
-		Entry("an empty input", "", timeparse.ErrUnrecognized),
-		Entry("a bare approximate marker", "~", timeparse.ErrUnrecognized),
+		Entry(nil, "", timeparse.ErrUnrecognized),
+		Entry(nil, "~", timeparse.ErrUnrecognized),
 		Entry(nil, "garbage", timeparse.ErrUnrecognized),
-		Entry("last with a weekday and a time, which go-dateparser cannot read", "last friday 9am",
-			timeparse.ErrUnrecognized),
-		Entry("a wall time clocks spring forward over", "2026-03-08 02:30:00", timeparse.ErrDSTGap),
-		Entry("a wall time clocks fall back through twice", "2026-11-01 01:30:00", timeparse.ErrDSTFold),
+		// go-dateparser cannot read last with a weekday and a time.
+		Entry(nil, "last friday 9am", timeparse.ErrUnrecognized),
+		// Too many digits for epoch seconds, too few for milliseconds.
+		Entry(nil, "12345678901", timeparse.ErrUnrecognized),
+		Entry(nil, "20260912", timeparse.ErrUnrecognized),
+		// Epoch nanoseconds past 2262-04-11 overflow 64 bits.
+		Entry(nil, "9999999999999999999", timeparse.ErrUnrecognized),
+		Entry(nil, "2026-03-08 02:30:00", timeparse.ErrDSTGap),
+		Entry(nil, "2026-11-01 01:30:00", timeparse.ErrDSTFold),
 		Entry(nil, "2026-03-08 02:30", timeparse.ErrDSTGap),
 		Entry(nil, "2026-11-01 01:30", timeparse.ErrDSTFold),
-		Entry("a gap time go-dateparser would move to 01:30 EST", "march 8 2026 2:30am", timeparse.ErrDSTGap),
-		Entry(nil, "november 1 2026 1:30am", timeparse.ErrDSTFold),
+		// go-dateparser alone would move this gap time to 01:30 EST.
+		Entry(nil, "march 8 2026 2:30am", timeparse.ErrDSTGap),
+		Entry(nil, "november 2 2025 1:30am", timeparse.ErrDSTFold),
+		// go-dateparser has no week period, so it would read these as a day.
+		Entry(nil, "last week", timeparse.ErrTooCoarse),
+		Entry(nil, "this week", timeparse.ErrTooCoarse),
 		Entry(nil, "last month", timeparse.ErrTooCoarse),
 		Entry(nil, "september 2026", timeparse.ErrTooCoarse),
-		Entry("a year, which is too short for an epoch", "2025", timeparse.ErrTooCoarse),
+		// A year, too short for an epoch.
+		Entry(nil, "2025", timeparse.ErrTooCoarse),
+		Entry(nil, "tomorrow", timeparse.ErrFuture),
+		Entry(nil, "in 2 hours", timeparse.ErrFuture),
 	)
 
 	DescribeTable("resolves in another time zone",
@@ -187,21 +259,62 @@ var _ = Describe("Parse golden corpus", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal(want))
 		},
-		Entry("an explicit offset wins", "Asia/Kolkata", "2026-09-12T14:05:03-04:00",
+		func(zone, input string, _ resolved) string { return input + " in " + zone },
+		// An explicit offset wins.
+		Entry(nil, "Asia/Kolkata", "2026-09-12T14:05:03-04:00",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
-		Entry("a naive time in UTC states a zero offset", "UTC", "2026-09-12 14:05:03",
+		// A naive time in UTC states a zero offset.
+		Entry(nil, "UTC", "2026-09-12 14:05:03",
 			at("2026-09-12T14:05:03.000000000Z", new(0), timeline.PrecisionSecond)),
-		Entry("a relative time takes the zone's offset", "Asia/Kolkata", "10 minutes ago",
+		// A relative time takes the zone's offset.
+		Entry(nil, "Asia/Kolkata", "10 minutes ago",
 			at("2026-09-13T01:20:00.000000000Z", new(ist), timeline.PrecisionMinute)),
+		// Santiago's clocks spring forward at midnight, so the day has no 00:00.
+		Entry(nil, "America/Santiago", "2026-09-06",
+			at("2026-09-06T03:00:00.000000000Z", new(-3*60*60), timeline.PrecisionDay)),
 	)
 
-	It("hints at both offsets a repeated wall time could mean", func() {
-		_, err := parseIn("America/New_York", "2026-11-01 01:30:00")
+	DescribeTable("resolves at its own now",
+		func(now time.Time, zone, input string, want resolved) {
+			got, err := parseAt(now, zone, input)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(want))
+		},
+		func(now time.Time, zone, input string, _ resolved) string {
+			return input + " in " + zone + " at " + now.Format(time.RFC3339)
+		},
+		// Now is 01:30 in +05:30.
+		Entry(nil, utc("2026-09-12T20:00:00Z"), "America/New_York", "01:00 +0530",
+			at("2026-09-12T19:30:00.000000000Z", new(ist), timeline.PrecisionMinute)),
+		Entry(nil, utc("2026-09-12T20:00:00Z"), "America/New_York", "yesterday 01:00 +0530",
+			at("2026-09-11T19:30:00.000000000Z", new(ist), timeline.PrecisionMinute)),
+		// Now is 01:45 EST, in the repeated hour; 70 minutes earlier was 01:35 EDT.
+		Entry(nil, utc("2026-11-01T06:45:00Z"), "America/New_York", "70 minutes ago",
+			at("2026-11-01T05:35:00.000000000Z", new(edt), timeline.PrecisionMinute)),
+		Entry(nil, utc("2026-11-01T06:45:00Z"), "America/New_York", "now",
+			at("2026-11-01T06:45:00.000000000Z", new(est), timeline.PrecisionSecond)),
+		Entry(nil, utc("2026-11-01T06:45:00Z"), "America/New_York", "23:00",
+			at("2026-11-01T03:00:00.000000000Z", new(edt), timeline.PrecisionMinute)),
+		// Now is 04:30 EDT; two hours earlier was 01:30 EST, before the skipped hour.
+		Entry(nil, utc("2026-03-08T08:30:00Z"), "America/New_York", "2 hours ago",
+			at("2026-03-08T06:00:00.000000000Z", new(est), timeline.PrecisionHour)),
+	)
 
-		rejected, ok := errors.AsType[*timeparse.ParseError](err)
-		Expect(ok).To(BeTrue())
-		Expect(rejected.Hint).To(And(
+	DescribeTable("hints at a fix",
+		func(input string, hint types.GomegaMatcher) {
+			_, err := parseIn("America/New_York", input)
+
+			rejected, ok := errors.AsType[*timeparse.ParseError](err)
+			Expect(ok).To(BeTrue())
+			Expect(rejected.Hint).To(hint)
+		},
+		func(input string, _ types.GomegaMatcher) string { return input },
+		Entry(nil, "2026-11-01 01:30:00", And(
 			ContainSubstring("2026-11-01T01:30:00-04:00"), ContainSubstring("2026-11-01T01:30:00-05:00"),
-		))
-	})
+		)),
+		Entry(nil, "2026-03-08 02:30:00", And(
+			ContainSubstring("2026-03-08T02:30:00-05:00"), ContainSubstring("2026-03-08T02:30:00-04:00"),
+		)),
+		Entry(nil, "12345678901", ContainSubstring("10, 13, 16 or 19 digits")),
+	)
 })
