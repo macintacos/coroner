@@ -3,7 +3,7 @@
 //   sqlc v1.31.1
 // source: authors.sql
 
-package db
+package sqlcgen
 
 import (
 	"context"

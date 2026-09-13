@@ -44,10 +44,10 @@ local formatters = new Mapping<String, Step> {
 
   // `sqlc generate` writes Go files outside the glob, so stage them explicitly.
   ["SQL(Generate)     [[sqlc]]"] = new Step {
-    glob = List("sqlc.yaml", "internal/db/migrations/*.sql", "internal/db/queries/*.sql")
+    glob = List("sqlc.yaml", "internal/store/migrations/*.sql", "internal/store/queries/*.sql")
     check = "sqlc diff"
     fix = "sqlc generate"
-    stage = List("internal/db/*.go")
+    stage = List("internal/store/sqlcgen/*.go")
   }
 }
 
