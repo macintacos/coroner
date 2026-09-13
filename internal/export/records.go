@@ -13,6 +13,8 @@ import (
 type Record interface {
 	// line returns the record as its JSONL object, with "type" as the first key.
 	line() any
+	// validate reports a malformed ID, name or tag in the record.
+	validate() error
 }
 
 // The JSONL objects embed the record, which json/v2 inlines after "type".
