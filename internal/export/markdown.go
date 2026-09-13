@@ -46,6 +46,8 @@ type MarkdownOptions struct {
 	GroupBy GroupBy
 	// IncludeRaw adds each event's time as it was written.
 	IncludeRaw bool
+	// Diagram appends the timeline's Mermaid diagram, in Zone, as a mermaid code block.
+	Diagram bool
 }
 
 // WriteMarkdown writes env's timeline to w as a CommonMark outline for people: a title,
@@ -81,6 +83,14 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		md.timelineAnnotations(onTimeline),
 		md.sections(events),
 	)
+	if opts.Diagram {
+		diagram, err := mermaid(env, md.zone)
+		if err != nil {
+			return err
+		}
+		// No diagram line can close a three-backtick fence: each starts with gantt or indented keyword text.
+		blocks = append(blocks, "```mermaid\n"+diagram+"```")
+	}
 
 	_, err = io.WriteString(w, strings.Join(blocks, "\n\n")+"\n")
 	return err
