@@ -31,17 +31,14 @@ const (
 	// KindAmbiguousID means an ID prefix matches more than one record.
 	KindAmbiguousID Kind = "ambiguous_id"
 
-	// KindTimelineNotFound means the named timeline does not exist.
 	KindTimelineNotFound Kind = "timeline_not_found"
 	KindEventNotFound    Kind = "event_not_found"
 
-	// KindTimelineExists means a timeline with that name already exists.
 	KindTimelineExists Kind = "timeline_exists"
 	// KindIDConflict means a record with that ID already exists with different content.
 	KindIDConflict Kind = "id_conflict"
 
-	KindDBBusy Kind = "db_busy"
-	// KindDBUnreadable means the database cannot be opened or read.
+	KindDBBusy       Kind = "db_busy"
 	KindDBUnreadable Kind = "db_unreadable"
 	// KindDBTooNew means the database's schema is newer than this build knows.
 	KindDBTooNew Kind = "db_too_new"
