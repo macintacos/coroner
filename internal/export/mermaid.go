@@ -63,7 +63,7 @@ func mermaid(env Envelope, zone *time.Location) (string, error) {
 		escaper: strings.NewReplacer("#", "#35;", ":", "#58;", "%", "#37;", ";", "#59;"),
 		// What Mermaid 11.12.0's gantt.jison matches before task text, \s being JavaScript's. It
 		// runs on escaped text, so rules needing a raw : (accTitle:, accDescr:) are absent.
-		keyword: regexp.MustCompile(strings.ReplaceAll(
+		syntax: regexp.MustCompile(strings.ReplaceAll(
 			`(?i)^\s*(gantt|inclusiveenddates|topaxis|accdescr\s*\{|href\s+"|(call|click|dateformat|axisformat|tickinterval|includes|excludes|todaymarker|weekday|weekend|title|accdescription|section)\s|\d{4}-\d\d-\d\d)`,
 			`\s`, `[\s\x{0B}\x{FEFF}\p{Z}]`,
 		)),
@@ -78,7 +78,7 @@ func mermaid(env Envelope, zone *time.Location) (string, error) {
 type mermaidRenderer struct {
 	zone    *time.Location
 	escaper *strings.Replacer
-	keyword *regexp.Regexp
+	syntax  *regexp.Regexp
 }
 
 // header returns the diagram's opening lines: t's title, naming the zone, and the date formats.
@@ -147,7 +147,7 @@ func (gantt mermaidRenderer) label(e Event) string {
 	if e.Approximate {
 		return "~" + label
 	}
-	if gantt.keyword.MatchString(label) {
+	if gantt.syntax.MatchString(label) {
 		first, size := utf8.DecodeRuneInString(label)
 		return fmt.Sprintf("#%d;", first) + label[size:]
 	}

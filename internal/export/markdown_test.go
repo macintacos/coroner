@@ -341,10 +341,10 @@ var _ = Describe("WriteMarkdown", func() {
 	DescribeTable("ends the outline with a mermaid code block holding exactly the Mermaid export, in the same zone",
 		func(env export.Envelope) {
 			zone := newYork()
-			without := markdown(env, export.MarkdownOptions{Zone: zone})
+			withoutDiagram := markdown(env, export.MarkdownOptions{Zone: zone})
 			source := []byte(markdown(env, export.MarkdownOptions{Zone: zone, Diagram: true}))
 
-			Expect(string(source)).To(HavePrefix(without))
+			Expect(string(source)).To(HavePrefix(withoutDiagram))
 			block, ok := parseGFM(source).LastChild().(*ast.FencedCodeBlock)
 			Expect(ok).To(BeTrue(), string(source))
 			Expect(string(block.Language(source))).To(Equal("mermaid"))
