@@ -29,7 +29,7 @@ digraph coroner_docs_router {
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
-    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status"];
+    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license"];
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks and hk hooks, the routing digraph, where things live, the repository rules"];
     "Which doc does the change affect?" -> "Edit docs/agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
@@ -45,7 +45,8 @@ digraph coroner_docs_router {
 ## The doc landscape
 
 - **[`README.md`](../../README.md)** (human-facing) — the front door: what coroner is,
-  install, the development tasks, and project status.
+  install, the development tasks, project status, and the license, which points at
+  `LICENSE`.
 - **[`AGENTS.md`](../../AGENTS.md)** (agent-facing) — the router: what coroner is, the
   `mise` tasks and `hk` hooks, the routing digraph, where things live, and the repository
   rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through the import;
