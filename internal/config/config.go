@@ -98,9 +98,9 @@ func deref(s *string) string {
 // loadConfigFile returns the config file's path and decoded contents. A missing file is an
 // error only when --config or CORONER_CONFIG named it.
 func loadConfigFile(
-	flag *string, env func(string) string, readFile func(string) ([]byte, error),
+	configFlag *string, env func(string) string, readFile func(string) ([]byte, error),
 ) (string, fileConfig, error) {
-	path := cmp.Or(deref(flag), env("CORONER_CONFIG"))
+	path := cmp.Or(deref(configFlag), env("CORONER_CONFIG"))
 	named := path != ""
 	if !named {
 		configHome, err := xdgHome(env, "XDG_CONFIG_HOME", ".config")
@@ -115,7 +115,7 @@ func loadConfigFile(
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && !named:
 		return path, fileConfig{}, nil
-	case errors.Is(err, fs.ErrNotExist) && flag == nil:
+	case errors.Is(err, fs.ErrNotExist) && configFlag == nil:
 		return "", fileConfig{}, fmt.Errorf("config file %s does not exist (set by CORONER_CONFIG)", path)
 	case errors.Is(err, fs.ErrNotExist):
 		return "", fileConfig{}, fmt.Errorf("config file %s does not exist", path)
