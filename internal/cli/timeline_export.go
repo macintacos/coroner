@@ -74,21 +74,21 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		in := exportInput{version: app.Version, at: now, filter: filter}
-		in.timeline, err = selectTimeline(ctx, s, flag, app.LookupEnv)
+		input := exportInput{version: app.Version, exportedAt: now, filter: filter}
+		input.timeline, err = selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
 		}
-		page, err := s.ListEvents(ctx, in.timeline.ID, filter)
+		page, err := s.ListEvents(ctx, input.timeline.ID, filter)
 		if err != nil {
 			return err
 		}
-		in.events = page.Events
-		in.annotations, err = s.Annotations(ctx, in.timeline.ID)
+		input.events = page.Events
+		input.annotations, err = s.Annotations(ctx, input.timeline.ID)
 		if err != nil {
 			return err
 		}
-		in.sources, err = s.Sources(ctx)
+		input.sources, err = s.Sources(ctx)
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 			}
 		}
 
-		err = writeExport(o, newExport(in))
+		err = writeExport(o, newExport(input))
 		if err != nil {
 			return err
 		}
@@ -110,10 +110,10 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 
 // exportInput is what an export is made from, as the store returned it.
 type exportInput struct {
-	version  string
-	at       time.Time
-	timeline timeline.Timeline
-	filter   store.EventFilter
+	version    string
+	exportedAt time.Time
+	timeline   timeline.Timeline
+	filter     store.EventFilter
 	// events are in filter's order.
 	events []timeline.Event
 	// annotations are every annotation in the timeline.
@@ -122,15 +122,15 @@ type exportInput struct {
 	sources []timeline.Source
 }
 
-// newExport returns in's timeline as an export: its events in ascending order, the
+// newExport returns input's timeline as an export: its events in ascending order, the
 // annotations on the timeline or on those events, and the sources they name.
-func newExport(in exportInput) export.Envelope {
-	env := export.NewEnvelope(in.version, in.at)
-	env.Query = newExportQuery(in.timeline.Name, in.filter)
-	env.Timelines = []export.Timeline{export.NewTimeline(in.timeline)}
+func newExport(input exportInput) export.Envelope {
+	env := export.NewEnvelope(input.version, input.exportedAt)
+	env.Query = newExportQuery(input.timeline.Name, input.filter)
+	env.Timelines = []export.Timeline{export.NewTimeline(input.timeline)}
 
-	events := slices.Clone(in.events)
-	if in.filter.Order == store.OrderDesc {
+	events := slices.Clone(input.events)
+	if input.filter.Order == store.OrderDesc {
 		slices.Reverse(events)
 	}
 	exported, named := map[string]bool{}, map[string]bool{}
@@ -141,7 +141,7 @@ func newExport(in exportInput) export.Envelope {
 			named[*e.Source] = true
 		}
 	}
-	for _, a := range in.annotations {
+	for _, a := range input.annotations {
 		if a.EventID == nil || exported[*a.EventID] {
 			env.Annotations = append(env.Annotations, export.NewAnnotation(a))
 			if a.Source != nil {
@@ -149,7 +149,7 @@ func newExport(in exportInput) export.Envelope {
 			}
 		}
 	}
-	for _, s := range in.sources {
+	for _, s := range input.sources {
 		if named[s.Name] {
 			env.Sources = append(env.Sources, export.NewSource(s))
 		}

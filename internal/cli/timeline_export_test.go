@@ -101,9 +101,9 @@ var _ = Describe("timeline export", func() {
 	It("resolves a relative bound against the instant it records as exported at", func(ctx SpecContext) {
 		instant := func(key string) time.Time {
 			GinkgoHelper()
-			m := regexp.MustCompile(`"` + key + `":"([^"]*)"`).FindStringSubmatch(out.String())
-			Expect(m).To(HaveLen(2), out.String())
-			t, err := time.Parse(time.RFC3339Nano, m[1])
+			match := regexp.MustCompile(`"` + key + `":"([^"]*)"`).FindStringSubmatch(out.String())
+			Expect(match).To(HaveLen(2), out.String())
+			t, err := time.Parse(time.RFC3339Nano, match[1])
 			Expect(err).NotTo(HaveOccurred())
 			return t
 		}

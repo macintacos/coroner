@@ -71,10 +71,10 @@ func (e *DecodeError) Error() string {
 func Decode(r io.Reader) ([]Record, error) {
 	reader := bufio.NewReader(r)
 	var d decoder
-	for n := 1; ; n++ {
+	for lineNum := 1; ; lineNum++ {
 		line, err := reader.ReadBytes('\n')
 		if len(line) > 0 {
-			d.add(n, line)
+			d.add(lineNum, line)
 		}
 		if errors.Is(err, io.EOF) {
 			break
@@ -98,7 +98,7 @@ type decoder struct {
 	skipping bool
 }
 
-func (d *decoder) add(n int, line []byte) {
+func (d *decoder) add(lineNum int, line []byte) {
 	typ, record, err := decodeLine(line)
 	if typ == "header" {
 		d.skipping = errors.Is(err, errUnsupported)
@@ -108,7 +108,7 @@ func (d *decoder) add(n int, line []byte) {
 
 	switch {
 	case err != nil:
-		d.invalid = append(d.invalid, LineError{Line: n, Err: err})
+		d.invalid = append(d.invalid, LineError{Line: lineNum, Err: err})
 	case record != nil:
 		d.records = append(d.records, record)
 	}

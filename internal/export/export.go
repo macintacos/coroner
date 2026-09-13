@@ -180,9 +180,9 @@ func NewEnvelope(coronerVersion string, exportedAt time.Time) Envelope {
 	}
 }
 
-func (e Envelope) header() Header {
+func (env Envelope) header() Header {
 	return Header{
-		Format: e.Format, FormatVersion: e.FormatVersion, CoronerVersion: e.CoronerVersion, ExportedAt: e.ExportedAt, Query: e.Query,
+		Format: env.Format, FormatVersion: env.FormatVersion, CoronerVersion: env.CoronerVersion, ExportedAt: env.ExportedAt, Query: env.Query,
 	}
 }
 
