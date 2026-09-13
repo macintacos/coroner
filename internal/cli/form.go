@@ -41,6 +41,10 @@ func (f field) formValue(value any) []string {
 		if value {
 			return []string{"true"}
 		}
+	case []string:
+		if len(value) > 0 {
+			return value
+		}
 	case string:
 		if f.typ == stringsField {
 			return valueLines(value)
@@ -65,6 +69,7 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 		// Read when a check or preview runs, so a zone typed into the form applies to its times.
 		env:     func() checkEnv { return typedZone(env, d, fields) },
 		choices: choices,
+		in:      in,
 	}
 	tz := slices.IndexFunc(d.fields, func(f field) bool { return f.name == "tz" })
 	for i, f := range d.fields {
@@ -83,6 +88,8 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 type fieldForm struct {
 	env     func() checkEnv
 	choices formChoices
+	// in is the values the form opens with.
+	in fieldValues
 }
 
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
@@ -125,7 +132,7 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 		b, _ := strconv.ParseBool(*bound)
 		return huh.NewConfirm().Key(f.name).Title(title).Description(help).Value(&b)
 	case f.typ == stringsField && f.list:
-		return newListField(huh.NewInput().Key(f.name).Title(title), help, valueLines(*bound), check)
+		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check)
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)
@@ -164,16 +171,14 @@ func useSuggestionKey() key.Binding {
 
 func (s suggestingInput) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	press, ok := msg.(tea.KeyPressMsg)
-	suggestion := s.suggest(fmt.Sprint(s.GetValue()))
-	if !ok || suggestion == "" || !key.Matches(press, useSuggestionKey()) {
-		_, cmd := s.Input.Update(msg)
-		return s, cmd
+	if suggestion := s.suggest(fmt.Sprint(s.GetValue())); ok && suggestion != "" && key.Matches(press, useSuggestionKey()) {
+		*s.bound = suggestion
+		s.Value(s.bound)
 	}
+	// The Input clears the error the rejected value left on any key.
+	_, cmd := s.Input.Update(msg)
 
-	*s.bound = suggestion
-	s.Value(s.bound)
-
-	return s, nil
+	return s, cmd
 }
 
 func (s suggestingInput) KeyBinds() []key.Binding {

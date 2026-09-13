@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -158,7 +159,8 @@ var _ = Describe("form fields", func() {
 			_, stay := ref.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			_, next := ref.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
-			Expect(stay).To(BeNil())
+			Expect(stay).NotTo(BeNil())
+			Expect(stay()).To(Equal(tea.RequestWindowSize()))
 			Expect(next).NotTo(BeNil())
 			Expect(next()).To(Equal(huh.NextField()))
 		})
@@ -195,6 +197,59 @@ var _ = Describe("form fields", func() {
 			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1"}}))
 		})
 
+		It("gives back a value it opens with unchanged, even one holding a newline", func() {
+			in := fieldValues{"ref": {"INC-1\nfollow-up"}}
+
+			Expect(refs.formValues(refs.formFields(formCheckEnv(), in, formChoices{}))).To(Equal(in))
+		})
+
+		It("shows the last five values while typing, and five around the picked one, counting the rest", func() {
+			in := fieldValues{"ref": {"INC-1", "INC-2", "INC-3", "INC-4", "INC-5", "INC-6", "INC-7", "INC-8"}}
+			ref := namedField(refs.formFields(formCheckEnv(), in, formChoices{}), "ref")
+
+			Expect(fieldView(ref)).To(SatisfyAll(
+				ContainSubstring("… 3 more"), ContainSubstring("INC-4"), ContainSubstring("INC-8"), Not(ContainSubstring("INC-3"))))
+
+			press(ref, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp)
+			Expect(fieldView(ref)).To(SatisfyAll(
+				ContainSubstring("… 3 more"), ContainSubstring("× INC-3"), ContainSubstring("INC-7"), Not(ContainSubstring("INC-8"))))
+		})
+
+		It("shows in its help only the keys that act on what it holds", func() {
+			ref := namedField(refs.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "ref")
+			ref.WithKeyMap(huh.NewDefaultKeyMap())
+			Expect(helpKeys(ref)).To(Equal([]string{"shift+tab back", "enter submit", "enter next"}))
+
+			typeInto(ref, "INC-1")
+			Expect(helpKeys(ref)).To(Equal([]string{"enter add", "shift+tab back"}))
+
+			press(ref, tea.KeyEnter)
+			Expect(helpKeys(ref)).To(Equal([]string{"↑/↓ pick", "shift+tab back", "enter submit", "enter next"}))
+
+			press(ref, tea.KeyUp)
+			Expect(helpKeys(ref)).To(Equal([]string{"↑/↓ pick", "backspace remove", "shift+tab back", "enter submit", "enter next"}))
+		})
+
+		It("keeps its typing line on screen inside a form after a dozen values", func() {
+			def := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}, refs.fields[0]}}
+			form := huh.NewForm(huh.NewGroup(def.formFields(formCheckEnv(), fieldValues{}, formChoices{})...))
+			size := tea.WindowSizeMsg{Width: 100, Height: 12}
+			form.Init()
+			form.Update(size)
+
+			typeKeys(form, "Mongo Outage")
+			form.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+			form.Update(huh.NextField())
+			for i := range 12 {
+				typeKeys(form, fmt.Sprintf("INC-%d", i))
+				pressResizing(form, tea.KeyEnter, size)
+			}
+			typeKeys(form, "TYPING-NOW")
+
+			Expect(form.GetString("name")).To(Equal("mongo-outage"))
+			Expect(ansi.Strip(form.View())).To(SatisfyAll(ContainSubstring("… 7 more"), ContainSubstring("TYPING-NOW")))
+		})
+
 		It("refuses a value its check rejects, and adds nothing", func() {
 			fields := refs.formFields(formCheckEnv(), fieldValues{}, formChoices{})
 			ref := namedField(fields, "ref")
@@ -206,13 +261,15 @@ var _ = Describe("form fields", func() {
 		})
 	})
 
-	It("replace a rejected value with the one its field suggests on ctrl+e", func() {
+	It("replace a rejected value with the one its field suggests on ctrl+e, clearing its error", func() {
 		names := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}}}
 		name := namedField(names.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
+		name.WithKeyMap(huh.NewDefaultKeyMap())
 		typeInto(name, "Mongo Outage")
+		press(name, tea.KeyEnter)
+		Expect(name.Error()).To(HaveOccurred())
 
 		name.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
-		name.Blur()
 
 		Expect(fieldText([]huh.Field{name}, "name")).To(Equal("mongo-outage"))
 		Expect(name.Error()).NotTo(HaveOccurred())
@@ -233,6 +290,35 @@ func press(formField huh.Field, codes ...rune) {
 	for _, code := range codes {
 		formField.Update(tea.KeyPressMsg{Code: code})
 	}
+}
+
+// typeKeys presses a key in form for each character of text.
+func typeKeys(form *huh.Form, text string) {
+	for _, r := range text {
+		form.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+// pressResizing presses code in form and, when the key asks for the window size, gives form size
+// again, as the terminal would.
+func pressResizing(form *huh.Form, code rune, size tea.WindowSizeMsg) {
+	GinkgoHelper()
+	_, cmd := form.Update(tea.KeyPressMsg{Code: code})
+	if cmd != nil && reflect.DeepEqual(cmd(), tea.RequestWindowSize()) {
+		form.Update(size)
+	}
+}
+
+// helpKeys returns the enabled key bindings formField shows in its help, as "key description".
+func helpKeys(formField huh.Field) []string {
+	var keys []string
+	for _, binding := range formField.KeyBinds() {
+		if binding.Enabled() {
+			keys = append(keys, binding.Help().Key+" "+binding.Help().Desc)
+		}
+	}
+
+	return keys
 }
 
 // enter types value into formField and presses enter.

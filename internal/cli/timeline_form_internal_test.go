@@ -120,17 +120,36 @@ var _ = Describe("timeline forms", func() {
 			Expect(runOn(ctx, path, "timeline", "create", "mongo-outage", "--title", "Primary election storm")).To(Equal(0), errOut.String())
 		}
 
-		It("exit 2 off a terminal when the name is missing, as cobra rejects it", func(ctx SpecContext) {
-			app := appOn()
-			app.InIsTTY = false
-			app.Args = []string{"--db", db, "timeline", "create"}
+		DescribeTable("exit 2 off a terminal unless one name is given, as cobra rejects it, pointing at --help",
+			func(ctx SpecContext, args []string, message string) {
+				errOut.Reset()
+				app := appOn()
+				app.InIsTTY = false
+				app.Args = append([]string{"--db", db, "timeline", "create"}, args...)
 
-			Expect(Run(ctx, app)).To(Equal(2))
-			Expect(errOut.String()).To(ContainSubstring("accepts 1 arg(s), received 0"))
+				Expect(Run(ctx, app)).To(Equal(2))
+				Expect(errOut.String()).To(ContainSubstring(message))
+				Expect(errOut.String()).To(ContainSubstring("Run 'coroner timeline create --help' for usage."))
+			},
+			Entry("no name", nil, "accepts 1 arg(s), received 0"),
+			Entry("two names", []string{"mongo-outage", "second"}, "accepts 1 arg(s), received 2"),
+		)
+
+		It("write nothing and report interrupted when Ctrl-C ends the form", func(ctx SpecContext) {
+			command := create(ctx, answers(func(fields []huh.Field) (bool, error) {
+				fill(fields, map[string]string{"name": "mongo-outage"})
+				return false, huh.ErrUserAborted
+			}))
+
+			err := runForm(ctx, command, "timeline", "create")
+
+			Expect(err).To(HaveField("Kind", KindInterrupted))
+			Expect(run(ctx, "timeline", "list", "--json")).To(Equal(0), errOut.String())
+			Expect(out.String()).NotTo(ContainSubstring("mongo-outage"))
 		})
 
 		It("write the name, title and refs submitted, as its echoed command does", func(ctx SpecContext) {
-			command := create(ctx, answers(named("mongo-outage", "Primary election storm", "INC-4821", "INC-4822", "INC-4823")))
+			command := create(ctx, answers(named("mongo-failover", "Primary election storm", "INC-4821", "INC-4822", "INC-4823")))
 
 			Expect(runForm(ctx, command, "timeline", "create", "--json")).To(Succeed())
 			written := withoutRecordKeys(out.Bytes())
@@ -147,6 +166,26 @@ var _ = Describe("timeline forms", func() {
 			Expect(runForm(ctx, command, "timeline", "create", "mongo-outage", "--interactive")).To(Succeed())
 
 			Expect(renderedDescription(namedField(asked[0], "name"))).To(ContainSubstring("`mongo-outage` exists"))
+		})
+
+		It("note under a taken name that submitting uses it when --if-not-exists is given", func(ctx SpecContext) {
+			existing(ctx, db)
+			command := create(ctx, answers(cancel))
+
+			Expect(runForm(ctx, command, "timeline", "create", "mongo-outage", "--if-not-exists", "--interactive")).To(Succeed())
+
+			Expect(renderedDescription(namedField(asked[0], "name"))).To(ContainSubstring("submitting uses it"))
+		})
+
+		It("use the existing timeline for a taken name without asking when --if-not-exists is given", func(ctx SpecContext) {
+			existing(ctx, db)
+			command := create(ctx, answers(named("mongo-outage", "Other title")))
+
+			Expect(runForm(ctx, command, "timeline", "create", "--if-not-exists", "--json")).To(Succeed())
+
+			Expect(asked).To(HaveLen(1))
+			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("title", "Primary election storm"))
+			Expect(echoedArgs(ctx, errOut.String())).To(ContainElement("--if-not-exists"))
 		})
 
 		It("use the existing timeline for a taken name, printing what --if-not-exists prints", func(ctx SpecContext) {
@@ -169,7 +208,7 @@ var _ = Describe("timeline forms", func() {
 
 			Expect(asked).To(HaveLen(3))
 			Expect(fieldText(asked[2], "title")).To(Equal("Other title"))
-			Expect(fieldText(asked[2], "ref")).To(Equal("INC-1"))
+			Expect(fieldText(asked[2], "ref")).To(Equal("[INC-1]"))
 			Expect(run(ctx, "timeline", "list", "--json")).To(Equal(0), errOut.String())
 			Expect(out.String()).NotTo(ContainSubstring("Other title"))
 		})
@@ -201,12 +240,21 @@ var _ = Describe("timeline forms", func() {
 
 			Expect(fieldText(asked[0], "name")).To(Equal("mongo-outage"))
 			Expect(fieldText(asked[0], "title")).To(Equal("Primary election storm"))
-			Expect(fieldText(asked[0], "refs")).To(Equal("INC-4821\nINC-4822"))
+			Expect(fieldText(asked[0], "ref")).To(Equal("[INC-4821 INC-4822]"))
+		})
+
+		It("replace a rejected new name with the one its field suggests on ctrl+e", func() {
+			name := namedField(timelineEditFormDefinition(nil).formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
+			typeInto(name, "Mongo Failover")
+
+			name.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+
+			Expect(fieldText([]huh.Field{name}, "name")).To(Equal("mongo-failover"))
 		})
 
 		It("store the refs added and removed, as its echoed command does", func(ctx SpecContext) {
 			command := edit(ctx, answers(func(fields []huh.Field) (bool, error) {
-				refs := namedField(fields, "refs")
+				refs := namedField(fields, "ref")
 				for _, ref := range []string{"INC-1", "INC-2", "INC-3"} {
 					enter(refs, ref)
 				}
@@ -243,6 +291,16 @@ var _ = Describe("timeline forms", func() {
 			Expect(fieldText(asked[1], "name")).To(Equal("mongo-outage"))
 		})
 
+		It("exit as timeline_required, pointing at timeline create, when there is no timeline to edit", func(ctx SpecContext) {
+			db = filepath.Join(GinkgoT().TempDir(), "coroner.db")
+			command := edit(ctx, answers())
+
+			err := runForm(ctx, command, "timeline", "edit")
+
+			Expect(err).To(HaveField("Kind", KindTimelineRequired))
+			Expect(err).To(HaveField("Hint", ContainSubstring("coroner timeline create")))
+		})
+
 		It("reopen with what was typed when the new name is taken", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "create", "second")).To(Equal(0), errOut.String())
 			command := edit(ctx, answers(renamed("second"), cancel))
@@ -258,6 +316,7 @@ var _ = Describe("timeline forms", func() {
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
 
+			Expect(errOut.String()).To(ContainSubstring("Nothing to change."))
 			Expect(errOut.String()).NotTo(ContainSubstring("Equivalent command"))
 		})
 	})
@@ -266,7 +325,7 @@ var _ = Describe("timeline forms", func() {
 var _ = DescribeTable("timelineEditValues gives edit the changes a form made to a timeline",
 	func(submitted, want fieldValues) {
 		t := timeline.Timeline{Name: "mongo-outage", Title: "Primary election storm", Refs: []string{"INC-1", "INC-2"}}
-		unchanged := fieldValues{"name": {"mongo-outage"}, "title": {"Primary election storm"}, "refs": {"INC-1", "INC-2"}}
+		unchanged := fieldValues{"name": {"mongo-outage"}, "title": {"Primary election storm"}, "ref": {"INC-1", "INC-2"}}
 		maps.Copy(unchanged, submitted)
 		maps.DeleteFunc(unchanged, func(_ string, values []string) bool { return values == nil })
 
@@ -277,11 +336,11 @@ var _ = DescribeTable("timelineEditValues gives edit the changes a form made to 
 		fieldValues{"timeline": {"mongo-outage"}, "name": {"mongo-failover"}}),
 	Entry("a cleared title as an empty one", fieldValues{"title": nil},
 		fieldValues{"timeline": {"mongo-outage"}, "title": {""}}),
-	Entry("the refs added and those removed", fieldValues{"refs": {"INC-2", "INC-3", "INC-4"}},
+	Entry("the refs added and those removed", fieldValues{"ref": {"INC-2", "INC-3", "INC-4"}},
 		fieldValues{"timeline": {"mongo-outage"}, "add-ref": {"INC-3", "INC-4"}, "remove-ref": {"INC-1"}}),
-	Entry("nothing for the same refs in another order", fieldValues{"refs": {"INC-2", "INC-1"}},
+	Entry("nothing for the same refs in another order", fieldValues{"ref": {"INC-2", "INC-1"}},
 		fieldValues{"timeline": {"mongo-outage"}}),
-	Entry("every ref removed", fieldValues{"refs": nil},
+	Entry("every ref removed", fieldValues{"ref": nil},
 		fieldValues{"timeline": {"mongo-outage"}, "remove-ref": {"INC-1", "INC-2"}}),
 	Entry("a dry run", fieldValues{"dry-run": {"true"}},
 		fieldValues{"timeline": {"mongo-outage"}, "dry-run": {"true"}}),
@@ -289,7 +348,7 @@ var _ = DescribeTable("timelineEditValues gives edit the changes a form made to 
 
 var _ = DescribeTable("a name field's preview",
 	func(name string, want OmegaMatcher) {
-		preview := namePreview([]string{"mongo-outage"}, "Timeline `%s` exists.")
+		preview := namePreview([]string{"mongo-outage"}, func(name string) string { return "Timeline `" + name + "` exists." })
 
 		Expect(preview(name, checkEnv{})).To(want)
 	},

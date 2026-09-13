@@ -313,6 +313,16 @@ func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, [
 	}
 }
 
+// oneArgOrNone accepts no argument, which a form asks for, and rejects more than one as
+// cobra.ExactArgs(1) does.
+func oneArgOrNone(cmd *cobra.Command, args []string) error {
+	if len(args) > 1 {
+		return cobra.ExactArgs(1)(cmd, args)
+	}
+
+	return nil
+}
+
 func timelineExistsError(name, hint string, err error) *Error {
 	return &Error{Kind: KindTimelineExists, Message: fmt.Sprintf("timeline %q already exists", name), Hint: hint, Err: err}
 }

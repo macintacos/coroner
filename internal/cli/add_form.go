@@ -20,14 +20,20 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// addForm is an add command's definition and what its form needs besides.
-type addForm[R renderer] struct {
+// formWrite is a write command a form submits to: its path below coroner, definition and run function.
+type formWrite[R renderer] struct {
 	// path is the command below coroner, as in "event add".
 	path string
 	def  definition
+	run  func(context.Context, App, config.Config, fieldValues) (R, error)
+}
+
+// addForm is an add command's form: the command it submits to, and what each entry picks from and
+// the next one clears.
+type addForm[R renderer] struct {
+	formWrite[R]
 	// cleared are the fields another entry opens without.
 	cleared []string
-	run     func(context.Context, App, config.Config, fieldValues) (R, error)
 	// choices reads what the form picks from once the timeline t is known, labelling times in z.
 	choices func(ctx context.Context, s *store.Store, t timeline.Timeline, z zone) (formChoices, error)
 }
@@ -36,7 +42,10 @@ type addForm[R renderer] struct {
 // huh.ErrUserAborted.
 type askFunc func(ctx context.Context, fields ...huh.Field) (bool, error)
 
-// formSession is what one run of an add command's form reads and writes.
+// errAskAgain is what a form's submission returns to ask the form again without printing an error.
+var errAskAgain = errors.New("ask the form again")
+
+// formSession is what one run of a write command's form reads and writes.
 type formSession struct {
 	app App
 	cfg config.Config
@@ -49,14 +58,15 @@ type formSession struct {
 
 const interactiveUsage = "Open a form to fill in, prefilled from the other flags (needs a terminal)"
 
-// formCommand is a write command with a form: its definition, when its command line runs without
-// the form, what runs it then, and the form's session.
+// formCommand is a write command with a form.
 type formCommand struct {
 	def definition
 	// ready reports whether the command line's values run without a form.
-	ready     func(in fieldValues) bool
+	ready func(in fieldValues) bool
+	// flagsOnly runs the command line without a form.
 	flagsOnly func(*cobra.Command, []string) error
-	session   func(cmd *cobra.Command, s formSession, in fieldValues) error
+	// session runs the form, prefilled from the command line's values.
+	session func(cmd *cobra.Command, s formSession, in fieldValues) error
 }
 
 // attach registers c's flags and --interactive on cmd, and a RunE that asks through forms when
@@ -231,19 +241,30 @@ func askTimeline(
 	return picked, true, nil
 }
 
-// entry asks for one entry, prefilled from in, and adds it once submitted, asking again with what was
-// typed while the add rejects it as correctable. It returns the values last submitted, or in when
-// none was.
+// entry asks for one entry, prefilled from in, and adds it to in's timeline once submitted. It returns
+// the values last submitted, or in when none was.
 func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, error) {
-	env := baseCheckEnv(s)
-	choices, err := f.entryChoices(ctx, s, in, env.zone)
+	choices, err := f.entryChoices(ctx, s, in, baseCheckEnv(s).zone)
 	if err != nil {
 		return in, err
 	}
 
-	def := withoutField(f.def, "timeline")
+	return s.askUntil(ctx, withoutField(f.def, "timeline"), choices, in, func(typed fieldValues) error {
+		if in.given("timeline") {
+			typed["timeline"] = in.values("timeline")
+		}
+		return f.submit(ctx, s, typed)
+	})
+}
+
+// askUntil asks def's fields, prefilled from in and picking from choices, and passes what was typed to
+// submit. It asks again with what was typed while submit returns errAskAgain, or a correctable error,
+// which it prints. It returns what was last typed and submit's error, or in when Esc ends the form.
+func (s formSession) askUntil(
+	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
+) (fieldValues, error) {
 	for {
-		fields := def.formFields(env, in, choices)
+		fields := def.formFields(baseCheckEnv(s), in, choices)
 		submitted, err := s.ask(ctx, fields...)
 		switch {
 		case err != nil:
@@ -253,17 +274,16 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 		}
 
 		typed := def.formValues(fields)
-		if in.given("timeline") {
-			typed["timeline"] = in.values("timeline")
-		}
-		err = f.add(ctx, s, typed)
-		if err == nil || !correctable(err) {
-			return typed, err
-		}
-
+		err = submit(typed)
 		rejected, _ := errors.AsType[*Error](err)
-		err = writeError(s.app.Err, rejected, s.style)
-		if err != nil {
+		switch {
+		case errors.Is(err, errAskAgain):
+		case correctable(err):
+			err = writeError(s.app.Err, rejected, s.style)
+			if err != nil {
+				return typed, err
+			}
+		default:
 			return typed, err
 		}
 		in = typed
@@ -286,18 +306,18 @@ func (f addForm[R]) entryChoices(ctx context.Context, s formSession, in fieldVal
 	return choices, err
 }
 
-// correctable reports whether err rejects an entry the user can fix and submit again: usage, or a
-// record not found, except the timeline, which the entry has no field for.
+// correctable reports whether err rejects a submission the user can fix and submit again: usage, a
+// taken timeline name, or a record not found other than the timeline the form writes to.
 func correctable(err error) bool {
 	rejected, ok := errors.AsType[*Error](err)
-	return ok && (rejected.Kind.ExitCode() == 2 || rejected.Kind.ExitCode() == 3) &&
+	return ok && (rejected.Kind.ExitCode() == 2 || rejected.Kind.ExitCode() == 3 || rejected.Kind == KindTimelineExists) &&
 		rejected.Kind != KindTimelineNotFound && rejected.Kind != KindTimelineRequired
 }
 
-// add runs the entry's values as the command line would, prints what it added and the
-// flags-only command that adds the same, to the same database.
-func (f addForm[R]) add(ctx context.Context, s formSession, values fieldValues) error {
-	result, err := f.run(ctx, s.app, s.cfg, values)
+// submit runs values as the command line would, and prints the result and the flags-only command it
+// equals, against the same database.
+func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldValues) error {
+	result, err := w.run(ctx, s.app, s.cfg, values)
 	if err != nil {
 		return err
 	}
@@ -306,7 +326,7 @@ func (f addForm[R]) add(ctx context.Context, s formSession, values fieldValues) 
 		return err
 	}
 
-	return s.echo(f.path, f.def, values)
+	return s.echo(w.path, w.def, values)
 }
 
 // echo prints the flags-only command that gives values to the command at path, with def's
