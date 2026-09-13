@@ -35,7 +35,7 @@ type App struct {
 
 // Run executes the command line in app.Args and returns the process exit code.
 func Run(ctx context.Context, app App) int {
-	root := newRoot(app)
+	root := NewRoot(app)
 	// Cobra falls back to os.Args when given nil.
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
