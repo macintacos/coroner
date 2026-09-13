@@ -41,6 +41,9 @@ coroner timeline [flags]
 
 * [coroner](coroner.md)	 - Build root-cause investigation timelines
 * [coroner timeline create](coroner_timeline_create.md)	 - Create a timeline
+* [coroner timeline delete](coroner_timeline_delete.md)	 - Delete a timeline and everything in it
+* [coroner timeline edit](coroner_timeline_edit.md)	 - Rename a timeline or change its title and refs
 * [coroner timeline list](coroner_timeline_list.md)	 - List timelines, marking the current one
 * [coroner timeline use](coroner_timeline_use.md)	 - Set the current timeline
+* [coroner timeline view](coroner_timeline_view.md)	 - Show a timeline and its events
 
