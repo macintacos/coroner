@@ -27,10 +27,9 @@ var _ = Describe("interactive commands off a terminal", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		var missing []string
-		for _, path := range interactiveCommands(cli.NewRoot(ctx, cli.App{})) {
-			ran := regexp.MustCompile(`(?m)^(exits \d+|!? *exec) coroner ` + regexp.QuoteMeta(path) + `( |$)`)
-			if !ran.Match(script) {
-				missing = append(missing, path)
+		for _, cmd := range interactiveCommands(cli.NewRoot(ctx, cli.App{})) {
+			if !noTerminalRun(cmd).Match(script) {
+				missing = append(missing, cmd.CommandPath())
 			}
 		}
 
@@ -40,7 +39,8 @@ var _ = Describe("interactive commands off a terminal", func() {
 	DescribeTable("exit 2 at once, never waiting on a stdin that stays open, when the command line gives no input",
 		func(ctx SpecContext, names string, args ...string) {
 			home := GinkgoT().TempDir()
-			stdin, _ := io.Pipe()
+			stdin, typed := io.Pipe()
+			DeferCleanup(typed.Close)
 			var errOut bytes.Buffer
 			app := cli.App{
 				Args: append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
@@ -68,22 +68,24 @@ var _ = Describe("interactive commands off a terminal", func() {
 	)
 })
 
-// interactiveCommands returns the path below coroner of each command that can open a form,
-// picker or viewer: those with --interactive, and the viewer's and picker's commands, which
-// have no flag to find them by.
-func interactiveCommands(root *cobra.Command) []string {
+// interactiveCommands returns each command that can open a form, picker or viewer: those
+// with --interactive, and the viewer's and picker's commands, which have no flag to find them
+// by. A new command that opens a picker or viewer without --interactive must be added to its
+// list.
+func interactiveCommands(root *cobra.Command) []*cobra.Command {
 	GinkgoHelper()
-	paths := []string{"timeline view", "timeline list"}
-	for _, path := range paths {
+	var cmds []*cobra.Command
+	for _, path := range []string{"timeline view", "timeline list"} {
 		cmd, _, err := root.Find(strings.Fields(path))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cmd.CommandPath()).To(Equal("coroner " + path))
+		cmds = append(cmds, cmd)
 	}
 
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
-		if cmd.LocalFlags().Lookup("interactive") != nil {
-			paths = append(paths, strings.TrimPrefix(cmd.CommandPath(), "coroner "))
+		if hasInteractive(cmd) {
+			cmds = append(cmds, cmd)
 		}
 		for _, child := range cmd.Commands() {
 			walk(child)
@@ -91,5 +93,19 @@ func interactiveCommands(root *cobra.Command) []string {
 	}
 	walk(root)
 
-	return paths
+	return cmds
+}
+
+// noTerminalRun matches a line of noInputScript that runs cmd. A form command's run must be
+// the exit 2 it falls back to, since a flags-only run passes even when the fallback is gone.
+func noTerminalRun(cmd *cobra.Command) *regexp.Regexp {
+	run := `(exits \d+|!? *exec)`
+	if hasInteractive(cmd) {
+		run = `exits 2`
+	}
+	return regexp.MustCompile(`(?m)^` + run + ` ` + regexp.QuoteMeta(cmd.CommandPath()) + `( |$)`)
+}
+
+func hasInteractive(cmd *cobra.Command) bool {
+	return cmd.LocalFlags().Lookup("interactive") != nil
 }

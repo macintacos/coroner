@@ -26,7 +26,8 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"-e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or\n" +
 			"unique id prefix. The event must be in the timeline the annotation goes to.\n\n" +
 			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks\n" +
-			"the event from the timeline, and prints the command each entry equals.",
+			"the event from the timeline, and prints the command each entry equals. Under --json only\n" +
+			"--interactive opens it, and --no-input never does.",
 		Args:        annotationBodyArg,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +

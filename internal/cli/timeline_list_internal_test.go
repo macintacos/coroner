@@ -150,20 +150,7 @@ var _ = Describe("timeline list on a terminal", func() {
 		Expect(current(ctx)).To(Equal("mongo-outage"))
 	})
 
-	DescribeTable("prints the plain list without reading keys when a format is asked for",
-		func(ctx SpecContext, args ...string) {
-			a := app
-			a.InIsTTY, a.OutIsTTY = true, true
-
-			Expect(run(ctx, a, append([]string{"timeline", "list"}, args...)...)).To(Equal(0), errOut.String())
-			Expect(out.String()).To(ContainSubstring("db-2-disk-full"))
-			Expect(terminal.read.Load()).To(BeFalse())
-		},
-		Entry("--json", "--json"),
-		Entry("--format text", "--format", "text"),
-	)
-
-	DescribeTable("prints the plain list without reading keys when input is turned off",
+	DescribeTable("prints the plain list without reading keys when a format is asked for or input is turned off",
 		func(ctx SpecContext, noInputEnv string, args ...string) {
 			env["CORONER_NO_INPUT"] = noInputEnv
 			a := app
@@ -173,6 +160,8 @@ var _ = Describe("timeline list on a terminal", func() {
 			Expect(out.String()).To(ContainSubstring("db-2-disk-full"))
 			Expect(terminal.read.Load()).To(BeFalse())
 		},
+		Entry("--json", "", "--json"),
+		Entry("--format text", "", "--format", "text"),
 		Entry("--no-input", "", "--no-input"),
 		Entry("CORONER_NO_INPUT", "1"),
 	)

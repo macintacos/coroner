@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"path/filepath"
 	"time"
 
@@ -297,26 +298,18 @@ var _ = Describe("timeline", func() {
 					Expect(screen.String()).NotTo(ContainSubstring("\x1b"))
 				})
 
-				It("prints plain text when TERM is dumb", func(ctx SpecContext) {
-					env["TERM"] = "dumb"
-					var screen bytes.Buffer
-					_, code := viewOn(ctx, &screen)
-
-					Eventually(code).Should(Receive(Equal(0)))
-					Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
-				})
-
-				DescribeTable("prints plain text when input is turned off",
-					func(ctx SpecContext, noInputEnv string, args ...string) {
-						env["CORONER_NO_INPUT"] = noInputEnv
+				DescribeTable("prints plain text when TERM is dumb or input is turned off",
+					func(ctx SpecContext, vars map[string]string, args ...string) {
+						maps.Copy(env, vars)
 						var screen bytes.Buffer
 						_, code := viewOn(ctx, &screen, args...)
 
 						Eventually(code).Should(Receive(Equal(0)))
 						Expect(screen.String()).To(HavePrefix("mongo-outage\n"))
 					},
-					Entry("--no-input", "", "--no-input"),
-					Entry("CORONER_NO_INPUT", "1"),
+					Entry("TERM=dumb", map[string]string{"TERM": "dumb"}),
+					Entry("--no-input", nil, "--no-input"),
+					Entry("CORONER_NO_INPUT=1", map[string]string{"CORONER_NO_INPUT": "1"}),
 				)
 
 				It("prints plain text when stdin is not a terminal", func(ctx SpecContext) {

@@ -11,6 +11,7 @@ stdin pager.txt
 exits 2 coroner annotation add
 stderr '--kind evidence'
 exits 2 coroner timeline create
+stderr 'Usage: coroner timeline create <name>'
 stderr 'coroner timeline create --help'
 exec coroner timeline create mongo-outage
 exec coroner timeline use mongo-outage
@@ -18,7 +19,7 @@ exits 2 coroner timeline edit mongo-outage
 stderr 'Pass --name, --title, --add-ref or --remove-ref'
 
 # With every required input given, the same commands run without asking.
-exec coroner timeline edit mongo-outage --title 'Primary election storm' --no-input
+exec coroner timeline edit mongo-outage --title 'Primary election storm'
 exec coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z --source mongod
 exec coroner annotation add 'replSetStepDown in the log' --kind evidence -e 1
 
@@ -27,9 +28,11 @@ exits 2 coroner event add 'Pager fires' --interactive
 stderr '--interactive needs a terminal'
 exits 2 coroner event add 'Pager fires' --interactive --no-input --json
 stderr '\{"error":\{"kind":"usage",.*\}\n\z'
+stderr 'conflicts with --no-input'
 env CORONER_NO_INPUT=1
 exits 2 coroner timeline create other --interactive --json
 stderr '\{"error":\{"kind":"usage",.*\}\n\z'
+stderr 'conflicts with CORONER_NO_INPUT'
 env CORONER_NO_INPUT=
 
 # The viewer and picker print plain text instead, the same with input turned off.

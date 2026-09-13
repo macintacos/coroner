@@ -25,10 +25,10 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Show a timeline and its events in the order they happened. Without a name, id or -t,\n" +
 			"show the timeline CORONER_TIMELINE or 'coroner timeline use' selects.\n\n" +
 			"On a terminal it opens an interactive viewer, where ? lists the keys and q quits.\n" +
-			"--format text, or piping the output, prints plain text instead: a summary, then the\n" +
-			"events, each with the gap since the event before it. --source, --tag and --contains keep\n" +
-			"the events 'coroner event list' keeps with the same flags; --json prints the timeline\n" +
-			"object alone.",
+			"--format text, piping the output, --no-input or CORONER_NO_INPUT prints plain text instead:\n" +
+			"a summary, then the events, each with the gap since the event before it. --source, --tag and\n" +
+			"--contains keep the events 'coroner event list' keeps with the same flags; --json prints the\n" +
+			"timeline object alone.",
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Annotations:       map[string]string{formatsAnnotation: "text,json"},
@@ -117,7 +117,7 @@ func viewTimeline(
 
 // interactive is interactiveTerminal, unless --format asked for plain output (I-1).
 func interactive(cmd *cobra.Command, app App) bool {
-	return interactiveTerminal(cmd, app) && !cmd.Flags().Changed("format")
+	return interactiveTerminal(app, noInput(cmd, app)) && !cmd.Flags().Changed("format")
 }
 
 // timelineLoader returns the viewer's Load for the timeline with timelineID in the database at

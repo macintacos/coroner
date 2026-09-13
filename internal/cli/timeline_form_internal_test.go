@@ -120,7 +120,7 @@ var _ = Describe("timeline forms", func() {
 			Expect(runOn(ctx, path, "timeline", "create", "mongo-outage", "--title", "Primary election storm")).To(Equal(0), errOut.String())
 		}
 
-		DescribeTable("exit 2 off a terminal unless one name is given, as cobra rejects it, pointing at --help",
+		DescribeTable("exit 2 off a terminal unless one name is given, as cobra rejects it, showing the usage line",
 			func(ctx SpecContext, args []string, message string) {
 				errOut.Reset()
 				app := appOn()
@@ -129,7 +129,7 @@ var _ = Describe("timeline forms", func() {
 
 				Expect(Run(ctx, app)).To(Equal(2))
 				Expect(errOut.String()).To(ContainSubstring(message))
-				Expect(errOut.String()).To(ContainSubstring("Run 'coroner timeline create --help' for usage."))
+				Expect(errOut.String()).To(ContainSubstring("Usage: coroner timeline create <name> [flags]\nRun 'coroner timeline create --help' for more."))
 			},
 			Entry("no name", nil, "accepts 1 arg(s), received 0"),
 			Entry("two names", []string{"mongo-outage", "second"}, "accepts 1 arg(s), received 2"),

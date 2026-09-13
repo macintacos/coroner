@@ -14,6 +14,7 @@ Creating a timeline does not make it current; run 'coroner timeline use' for tha
 
 On a terminal, with no name or with --interactive, a form asks for the name, title and
 refs, offers the existing timeline when the name is taken, and prints the command it equals.
+Under --json only --interactive opens it, and --no-input never does.
 
 ```
 coroner timeline create <name> [flags]

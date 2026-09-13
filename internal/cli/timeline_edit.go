@@ -25,7 +25,8 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 			"added; adding a ref it has, or removing one it lacks, changes nothing.\n\n" +
 			"On a terminal, without --name, --title, --add-ref or --remove-ref, or with --interactive, a\n" +
 			"form opens on the timeline, or on the current one when none is named, applies only what you\n" +
-			"change, and prints the command it equals.",
+			"change, and prints the command it equals. Under --json only --interactive opens it, and\n" +
+			"--no-input never does.",
 		Args:              oneArgOrNone,
 		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Annotations:       map[string]string{formatsAnnotation: "text,json"},

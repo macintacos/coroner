@@ -14,7 +14,7 @@ variable that is empty or not an absolute path.
 | `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is a false value such as `0` or `false` |
 | `CORONER_NO_INPUT` | Never open a form, picker or viewer, as `--no-input` does, unless it is a false value such as `0` or `false` |
 | `NO_COLOR`, `CORONER_NO_COLOR` | Any non-empty value disables color, as `--no-color` does |
-| `TERM` | `dumb` disables color, the interactive timeline viewer and the forms |
+| `TERM` | `dumb` disables color, the forms, the picker and the viewer |
 | `TZ` | The local time zone, used when neither `--tz` nor `default_timezone` names one |
 | `XDG_CONFIG_HOME` | The directory holding `coroner/config.toml` |
 | `XDG_DATA_HOME` | The directory holding `coroner/coroner.db` |

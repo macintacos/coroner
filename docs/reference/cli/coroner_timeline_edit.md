@@ -14,7 +14,8 @@ added; adding a ref it has, or removing one it lacks, changes nothing.
 
 On a terminal, without --name, --title, --add-ref or --remove-ref, or with --interactive, a
 form opens on the timeline, or on the current one when none is named, applies only what you
-change, and prints the command it equals.
+change, and prints the command it equals. Under --json only --interactive opens it, and
+--no-input never does.
 
 ```
 coroner timeline edit <name|id> [flags]

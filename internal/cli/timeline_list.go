@@ -21,8 +21,8 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 			"'coroner timeline use' selected.\n\n" +
 			"On a terminal it opens a picker that also shows each timeline's refs, event count and\n" +
 			"last event: / filters, enter makes the timeline under the cursor current, and q quits.\n" +
-			"--format text, --json or piping the output prints the list instead: a marker, the name\n" +
-			"and the title on each row, tab-separated when piped.",
+			"--format text, --json, --no-input, CORONER_NO_INPUT or piping the output prints the list\n" +
+			"instead: a marker, the name and the title on each row, tab-separated when piped.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example:     "  $ coroner timeline list\n  $ coroner timeline list --json",

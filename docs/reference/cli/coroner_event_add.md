@@ -17,7 +17,8 @@ Run 'coroner help time' for the times you can type.
 Pass - to read the text from stdin, which is never read otherwise.
 
 On a terminal, with no text or with --interactive, a form asks for each flag, previews the
-time as you type it, and prints the command each entry equals.
+time as you type it, and prints the command each entry equals. Under --json only --interactive
+opens it, and --no-input never does.
 
 ```
 coroner event add {<text> | -} [flags]
