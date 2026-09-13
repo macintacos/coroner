@@ -82,9 +82,9 @@ digraph coroner_rules_router {
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence, and the
   attachment blob directory beside the database: `internal/config`. JSON export types,
   envelope, encoder and JSONL decoder, and the Markdown, Mermaid and HTML exports'
-  renderers, with the HTML page's viewer and vendored vis-timeline under
-  `internal/export/html/`: `internal/export`, the JSON described by
-  [the export format reference](docs/reference/export-format.md). The terminal viewer
+  renderers: `internal/export`, the JSON described by
+  [the export format reference](docs/reference/export-format.md); the HTML page's viewer
+  and vendored vis-timeline live in `internal/export/html/`. The terminal viewer
   `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. `main.go`
   builds `cli.App` from the process; code below it takes everything from `cli.App`, never
   from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen` writes the CLI

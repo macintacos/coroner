@@ -3,7 +3,7 @@ package export
 import (
 	"bytes"
 	"cmp"
-	"embed"
+	_ "embed"
 	"fmt"
 	"io"
 	"slices"
@@ -11,8 +11,22 @@ import (
 	"time"
 )
 
-//go:embed html/index.html.tmpl html/viewer.css html/viewer.js html/vendor/vis-timeline-graph2d.min.js
-var htmlFiles embed.FS
+//go:embed html/index.html.tmpl
+var pageShell string
+
+//go:embed html/viewer.css
+var viewerCSS string
+
+//go:embed html/viewer.js
+var viewerJS string
+
+//go:embed html/vendor/vis-timeline-graph2d.min.js
+var visTimeline string
+
+// htmlPage is what the page shell interpolates.
+type htmlPage struct {
+	CSS, Export, Zone, Library, Viewer string
+}
 
 // pageZone is what the viewer needs to show times in the export's zone: its name, and its
 // offsets from UTC over the time the page covers.
@@ -22,45 +36,53 @@ type pageZone struct {
 }
 
 // zoneSpan is a stretch of time over which a zone keeps one offset and abbreviation. It lasts
-// until the next span's start, and the first span also stands for all time before it.
+// until the next span's start; the first span also stands for all time before it, and the
+// last for all time after.
 type zoneSpan struct {
 	// Start is in milliseconds since the Unix epoch, which JavaScript reads as a Date.
-	Start        int64  `json:"start"`
+	Start int64 `json:"start"`
+	// Offset is in seconds east of UTC.
 	Offset       int    `json:"offset"`
 	Abbreviation string `json:"abbreviation"`
 }
 
 // WriteHTML writes env's timeline to w as one self-contained HTML page: an interactive
 // timeline of its events with one row per source, showing times in zone (nil is UTC). The
-// page embeds env as the JSON Write encodes, with the viewer and its library inline, so it
-// loads nothing over the network. It fails, writing nothing, unless env holds one timeline.
+// page embeds env as the JSON Write encodes, its events by occurred at and seq, with the
+// viewer and its library inline, so it loads nothing over the network. It fails, writing
+// nothing, unless env holds one timeline and the event of every annotation.
 func WriteHTML(w io.Writer, env Envelope, zone *time.Location) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
 	}
+	env.Events = slices.SortedFunc(slices.Values(env.Events), compareEvents)
+	_, _, err := groupAnnotations(env.Annotations, env.Events)
+	if err != nil {
+		return err
+	}
 	zone = cmp.Or(zone, time.UTC)
 
 	var exported, zoneData bytes.Buffer
-	err := Write(&exported, env)
+	err = Write(&exported, env)
 	if err != nil {
 		return err
 	}
-	err = Write(&zoneData, pageZone{Name: zone.String(), Spans: zoneSpans(zone, pageInstants(env))})
+	err = Write(&zoneData, pageZone{Name: pageZoneName(zone), Spans: zoneSpans(zone, pageInstants(env))})
 	if err != nil {
 		return err
 	}
 
-	// text/template inlines each value as is. That is safe only because none holds text a
-	// person typed except as JSON, which Write escapes <, > and & in, and the files hold no
-	// </script: the viewer puts every string from the export on the page as text.
-	shell := template.Must(template.New("index.html.tmpl").Parse(htmlFile("index.html.tmpl")))
+	// text/template, not html/template: html/template would need template.JS and template.CSS
+	// conversions, which gosec flags, and lint is never suppressed. Nothing is escaped, so each
+	// value is JSON from Write, which escapes <, > and &, or an embedded file with no </script,
+	// </style or <!--; specs pin both.
+	shell, err := template.New("page").Parse(pageShell)
+	if err != nil {
+		return err
+	}
 	var b bytes.Buffer
-	err = shell.Execute(&b, map[string]string{
-		"CSS":     htmlFile("viewer.css"),
-		"Export":  exported.String(),
-		"Zone":    zoneData.String(),
-		"Library": htmlFile("vendor/vis-timeline-graph2d.min.js"),
-		"Viewer":  htmlFile("viewer.js"),
+	err = shell.Execute(&b, htmlPage{
+		CSS: viewerCSS, Export: exported.String(), Zone: zoneData.String(), Library: visTimeline, Viewer: viewerJS,
 	})
 	if err != nil {
 		return err
@@ -70,10 +92,14 @@ func WriteHTML(w io.Writer, env Envelope, zone *time.Location) error {
 	return err
 }
 
-func htmlFile(name string) string {
-	// Embedded files cannot fail to read.
-	b, _ := htmlFiles.ReadFile("html/" + name)
-	return string(b)
+// pageZoneName returns how the page names zone. The page is shared, so time.Local, named
+// Local, is named as the exporter's rather than read as the zone of whoever opens it.
+func pageZoneName(zone *time.Location) string {
+	if zone.String() == "Local" {
+		return "the exporter's local zone"
+	}
+
+	return zone.String()
 }
 
 // pageInstants returns every instant env records that a reader of the page may look at: when

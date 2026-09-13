@@ -2,6 +2,8 @@ package export_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
@@ -76,7 +78,7 @@ func unixMilli(value string) int64 {
 	return time.Time(utc(value)).UnixMilli()
 }
 
-// hostileExport carries hostile text in every string a person typed.
+// hostileExport carries hostile text in the typed strings the viewer shows.
 func hostileExport() export.Envelope {
 	return envelope(
 		export.Timeline{ID: "t1", Name: "hostile", Title: hostile, Refs: []string{hostile}},
@@ -89,7 +91,7 @@ func hostileExport() export.Envelope {
 		[]export.Annotation{
 			{
 				ID: "a1", EventID: new("e1"), Kind: timeline.AnnotationEvidence, Author: new(hostile), Body: hostile,
-				CreatedAt: utc("2026-09-12T09:00:00Z"),
+				URL: new(hostile), Source: new(hostile), CreatedAt: utc("2026-09-12T09:00:00Z"),
 			},
 		},
 	)
@@ -104,11 +106,12 @@ var _ = Describe("WriteHTML", func() {
 		matchGoldenFile(htmlGoldenDir, "hostile", ".html", elideAssets(page(hostileExport(), time.UTC)))
 	})
 
-	It("keeps every script element closing where it should, with the export intact in the data block", func() {
+	It("keeps every script and style element closing where it should, with the export intact in the data block", func() {
 		p := page(hostileExport(), time.UTC)
 
 		Expect(strings.Count(p, "<script")).To(Equal(4))
-		Expect(strings.Count(p, "</script>")).To(Equal(4))
+		Expect(regexp.MustCompile(`(?i)</script`).FindAllStringIndex(p, -1)).To(HaveLen(4))
+		Expect(regexp.MustCompile(`(?i)</style`).FindAllStringIndex(p, -1)).To(HaveLen(1))
 		Expect(p).NotTo(ContainSubstring("<img"))
 		Expect(p).NotTo(ContainSubstring("<!--"))
 		var got export.Envelope
@@ -117,6 +120,46 @@ var _ = Describe("WriteHTML", func() {
 		Expect(*got.Events[0].Source).To(Equal(hostile))
 		Expect(got.Events[0].Text).To(Equal(hostile))
 		Expect(got.Annotations[0].Body).To(Equal(hostile))
+	})
+
+	It("has a viewer that puts no export text on the page as HTML", func() {
+		viewer, err := os.ReadFile("html/viewer.js")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(string(viewer)).NotTo(MatchRegexp(`\b(innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser)\b|document\.write|\btitle\s*:`))
+	})
+
+	It("inlines the vendored library whose SHA-256 its README records", func() {
+		library, err := os.ReadFile("html/vendor/vis-timeline-graph2d.min.js")
+		Expect(err).NotTo(HaveOccurred())
+		readme, err := os.ReadFile("html/vendor/README.md")
+		Expect(err).NotTo(HaveOccurred())
+
+		sum := sha256.Sum256(library)
+		Expect(string(readme)).To(ContainSubstring(hex.EncodeToString(sum[:])))
+	})
+
+	It("embeds the events by occurred at and seq", func() {
+		var got export.Envelope
+		Expect(json.Unmarshal(jsonBlock(page(checkoutSpike(), time.UTC), "coroner-data"), &got)).To(Succeed())
+
+		Expect(got.Events).To(HaveExactElements(HaveField("ID", "e1"), HaveField("ID", "e2"), HaveField("ID", "e3"), HaveField("ID", "e4")))
+	})
+
+	It("names a local zone as the exporter's, not the reader's", func() {
+		// time.Local is named Local unless TZ names a zone.
+		z := zoneOf(page(checkoutSpike(), time.FixedZone("Local", 2*60*60)))
+
+		Expect(z.Name).To(Equal("the exporter's local zone"))
+	})
+
+	It("fails, writing nothing, when an annotation's event is not in the export", func() {
+		env := checkoutSpike()
+		env.Events = env.Events[:1]
+		var b bytes.Buffer
+
+		Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("e2")))
+		Expect(b.Len()).To(BeZero())
 	})
 
 	DescribeTable("links and loads nothing from the network",

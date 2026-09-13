@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"fmt"
-	"io/fs"
 	"slices"
 	"time"
 
@@ -100,13 +98,14 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 		return err
 	}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		input := exportInput{version: app.Version, exportedAt: now, filter: filter}
+	input := exportInput{version: app.Version, exportedAt: now, filter: filter}
+	var page store.EventPage
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		input.timeline, err = selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
 		}
-		page, err := s.ListEvents(ctx, input.timeline.ID, filter)
+		page, err = s.ListEvents(ctx, input.timeline.ID, filter)
 		if err != nil {
 			return err
 		}
@@ -116,32 +115,33 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 			return err
 		}
 		input.sources, err = s.Sources(ctx)
-		if err != nil {
-			return err
-		}
-		if bounds != "" {
-			err = o.notify("Events %s", bounds)
-			if err != nil {
-				return err
-			}
-		}
-
-		env := newExport(input)
-		err = o.writeTo(path, app.WriteFile, func(into output) error {
-			return writeExport(into, env, markdown, zone)
-		})
-		if err != nil {
-			return err
-		}
-		if o.format == formatMermaid || markdown.Diagram {
-			err = notifyLargeDiagram(o, env, zone)
-			if err != nil {
-				return err
-			}
-		}
-
-		return notifyTruncated(o, page)
+		return err
 	})
+	if err != nil {
+		return err
+	}
+	if bounds != "" {
+		err = o.notify("Events %s", bounds)
+		if err != nil {
+			return err
+		}
+	}
+
+	env := newExport(input)
+	err = o.writeTo(path, app.WriteFile, func(into output) error {
+		return writeExport(into, env, markdown, zone)
+	})
+	if err != nil {
+		return err
+	}
+	if o.format == formatMermaid || markdown.Diagram {
+		err = notifyLargeDiagram(o, env, zone)
+		if err != nil {
+			return err
+		}
+	}
+
+	return notifyTruncated(o, page)
 }
 
 // notifyLargeDiagram warns when env's diagram is longer than Mermaid draws by default.
@@ -196,8 +196,8 @@ func exportZone(flags *pflag.FlagSet, z zone) *time.Location {
 	return time.UTC
 }
 
-// outputPath returns the file -o names, - meaning stdout. --format html requires -o, so a
-// page of inlined script never reaches a terminal by accident.
+// outputPath returns the file -o names, - meaning stdout. --format html requires -o: writing
+// the page is explicit (OUT-8).
 func outputPath(flags *pflag.FlagSet, chosen format) (string, error) {
 	path, _ := flags.GetString("output")
 	switch {
@@ -208,28 +208,6 @@ func outputPath(flags *pflag.FlagSet, chosen format) (string, error) {
 	}
 
 	return path, nil
-}
-
-// writeTo runs write against o when path is -. Otherwise it runs write against o as piped
-// output into a buffer, writes the buffer to path with writeFile, and says so.
-func (o output) writeTo(path string, writeFile func(name string, data []byte, perm fs.FileMode) error, write func(output) error) error {
-	if path == "-" {
-		return write(o)
-	}
-
-	var file bytes.Buffer
-	piped := o
-	piped.out, piped.outTTY = &file, false
-	err := write(piped)
-	if err != nil {
-		return err
-	}
-	err = writeFile(path, file.Bytes(), 0o644)
-	if err != nil {
-		return err
-	}
-
-	return o.notify("Wrote %s", path)
 }
 
 // exportInput is what an export is made from, as the store returned it.

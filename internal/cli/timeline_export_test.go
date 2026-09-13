@@ -272,6 +272,15 @@ var _ = Describe("timeline export", func() {
 			Expect(out.String()).To(BeEmpty())
 			Expect(errOut.String()).To(ContainSubstring("-o"))
 		})
+
+		It("exits 2, naming the file, when its directory does not exist", func(ctx SpecContext) {
+			path := filepath.Join(home, "missing", "rca.json")
+
+			Expect(run(ctx, "timeline", "export", "--format", "json", "-o", path)).To(Equal(2))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring(path))
+		})
 	})
 
 	Describe("--format html", func() {

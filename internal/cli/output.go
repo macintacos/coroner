@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -18,7 +20,8 @@ const (
 	formatText  format = "text"
 	formatJSON  format = "json"
 	formatJSONL format = "jsonl"
-	// formatMarkdown and formatMermaid are not machine(), so errors under them print as text.
+	// formatMarkdown, formatMermaid and formatHTML are not machine(), so errors under them print
+	// as text.
 	formatMarkdown format = "md"
 	formatMermaid  format = "mermaid"
 	formatHTML     format = "html"
@@ -87,6 +90,31 @@ func (o output) notify(message string, args ...any) error {
 
 	_, err := fmt.Fprintf(o.errOut, message+"\n", args...)
 	return err
+}
+
+// writeTo runs write against o when path is -. Otherwise it runs write against o as piped
+// output into a buffer, writes the buffer to path with writeFile, and says so.
+func (o output) writeTo(path string, writeFile func(name string, data []byte, perm fs.FileMode) error, write func(output) error) error {
+	if path == "-" {
+		return write(o)
+	}
+
+	var file bytes.Buffer
+	piped := o
+	piped.out, piped.outTTY = &file, false
+	err := write(piped)
+	if err != nil {
+		return err
+	}
+	err = writeFile(path, file.Bytes(), 0o644)
+	if err != nil {
+		return &Error{
+			Kind: KindUsage, Message: "cannot write " + path, Err: err,
+			Hint: "Pass -o a file in a directory that exists and you can write to, or -o - for stdout.",
+		}
+	}
+
+	return o.notify("Wrote %s", path)
 }
 
 func (o output) json(v any) error {

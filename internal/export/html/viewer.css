@@ -84,10 +84,6 @@ header p {
   color: var(--ink);
 }
 
-#timeline .vis-item.vis-dot {
-  border-color: var(--accent);
-}
-
 #timeline .vis-item .vis-item-content {
   max-width: 24em;
   overflow: hidden;
@@ -96,7 +92,6 @@ header p {
 }
 
 #timeline .vis-item.vis-selected {
-  border-color: var(--accent);
   background: var(--well);
   box-shadow: 0 0 0 2px var(--accent);
 }

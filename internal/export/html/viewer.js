@@ -32,25 +32,49 @@
     return zone.spans[low];
   };
 
+  // atOffset returns the moment at ms, offset seconds east of UTC. keepMinutes stops moment
+  // reading an offset under 16 minutes as hours.
+  const atOffset = (ms, offset) => vis.moment(ms).utcOffset(offset / 60, false, true);
+
+  // vis-timeline steps its axis by cloning a moment and adding days or months to it, so a
+  // zone moment re-reads its offset after every change, the way moment-timezone does.
+  vis.moment.momentProperties.push("_coronerZone");
+  vis.moment.updateOffset = (moment, keepTime) => {
+    if (!moment._coronerZone) return;
+    const offset = spanAt(moment.valueOf()).offset / 60;
+    if (moment.utcOffset() !== offset) moment.utcOffset(offset, keepTime, true);
+  };
+
+  // vis-timeline calls this for every date it draws, so the axis follows the export zone.
   const inZone = (date) => {
     const ms = vis.moment(date).valueOf();
-    return vis.moment(ms).utcOffset(spanAt(ms).offset / 60);
+    const moment = atOffset(ms, spanAt(ms).offset);
+    moment._coronerZone = true;
+    return moment;
   };
 
   const fractionDigits = { millisecond: 3, microsecond: 6, nanosecond: 9 };
+  const clockLayouts = { hour: "HH:--", minute: "HH:mm" };
 
-  // when returns an instant at the event's precision in the export zone, labelled with the
-  // zone's abbreviation. Digits below the second come from the text, which keeps all nine.
-  const when = (text, event) => {
+  // when returns an instant at precision in the export zone, with the zone's abbreviation
+  // after a clock time. An hour shows its minutes when the zone puts it off the hour. Digits
+  // below the second come from the text, which keeps all nine.
+  const when = (text, precision) => {
     const moment = inZone(instant(text));
-    if (event.precision === "day") {
-      return vis.moment(moment.valueOf()).utcOffset((event.occurred_offset ?? 0) / 60).format("YYYY-MM-DD");
-    }
-    let shown = moment.format(["hour", "minute"].includes(event.precision) ? "YYYY-MM-DD HH:mm" : "YYYY-MM-DD HH:mm:ss");
-    const digits = fractionDigits[event.precision];
+    if (precision === "day") return moment.format("YYYY-MM-DD");
+    const clock = precision === "hour" && moment.minute() !== 0 ? "HH:mm" : clockLayouts[precision] ?? "HH:mm:ss";
+    let shown = moment.format("YYYY-MM-DD " + clock);
+    const digits = fractionDigits[precision];
     if (digits) shown += "." + text.match(/\.(\d+)/)[1].slice(0, digits);
     return shown + " " + spanAt(moment.valueOf()).abbreviation;
   };
+
+  // started returns when an event started; a day-precision event's date is the one it was
+  // recorded on, in its own offset.
+  const started = (event) =>
+    event.precision === "day"
+      ? atOffset(instant(event.occurred_at).valueOf(), event.occurred_offset ?? 0).format("YYYY-MM-DD")
+      : when(event.occurred_at, event.precision);
 
   const firstLine = (text) => text.split(/\r\n|\r|\n/)[0];
 
@@ -78,7 +102,7 @@
     const list = element("ul", undefined, "annotations");
     for (const annotation of annotations) {
       const kind = annotation.kind.charAt(0).toUpperCase() + annotation.kind.slice(1);
-      const item = element("li", undefined, annotation.kind);
+      const item = element("li");
       item.append(element("p", annotation.author === null ? kind : kind + " by " + annotation.author, "label"));
       item.append(element(annotation.kind === "evidence" ? "pre" : "p", annotation.body, "body"));
       if (annotation.url !== null) item.append(link(annotation.url));
@@ -95,15 +119,15 @@
   };
 
   const eventDetail = (event) => {
-    let heading = when(event.occurred_at, event);
-    if (event.ended_at !== null) heading += " to " + when(event.ended_at, event);
+    let heading = started(event);
+    if (event.ended_at !== null) heading += " to " + when(event.ended_at, event.precision);
     if (event.approximate) heading = "About " + heading;
     const nodes = [element("h2", heading), element("p", event.text, "text")];
 
     const fields = element("dl");
     if (event.seq !== null) field(fields, "Event", "#" + event.seq);
-    field(fields, "Source", event.source ?? "none");
-    field(fields, "Tags", event.tags.length ? event.tags.map((tag) => "#" + tag).join(" ") : "none");
+    field(fields, "Source", event.source ?? "(no source)");
+    field(fields, "Tags", event.tags.length ? event.tags.map((tag) => "#" + tag).join(" ") : "(untagged)");
     if (event.url !== null) field(fields, "URL", link(event.url));
     if (event.author !== null) field(fields, "Added by", event.author);
     nodes.push(fields);
@@ -134,19 +158,16 @@
   const detail = document.getElementById("detail");
   const show = (event) => detail.replaceChildren(...(event ? eventDetail(event) : timelineDetail()));
 
-  const keys = [];
-  for (const event of data.events) {
-    const key = event.source ?? "";
-    if (!keys.includes(key)) keys.push(key);
-  }
-  keys.sort((a, b) => (a === "") - (b === ""));
-  // Ids start at 1: vis-data treats a falsy id as missing.
-  const groups = keys.map((key, i) => ({ id: i + 1, order: i, content: element("span", key === "" ? "(no source)" : key) }));
+  const sources = [...new Set(data.events.map((event) => event.source))];
+  if (sources.includes(null)) sources.push(sources.splice(sources.indexOf(null), 1)[0]);
+  const groupOf = new Map(sources.map((source, i) => [source, i]));
+  const groups = sources.map((source, i) => ({ id: i, order: i, content: element("span", source ?? "(no source)") }));
 
-  const items = data.events.map((event, i) => {
+  const eventsById = new Map(data.events.map((event) => [event.id, event]));
+  const items = data.events.map((event) => {
     const item = {
-      id: i + 1,
-      group: keys.indexOf(event.source ?? "") + 1,
+      id: event.id,
+      group: groupOf.get(event.source),
       start: instant(event.occurred_at),
       content: element("span", (event.approximate ? "~" : "") + firstLine(event.text)),
       type: event.ended_at === null ? "point" : "range",
@@ -158,14 +179,14 @@
   const options = { moment: inZone, groupOrder: "order", showTooltips: false };
   if (items.length) {
     // A point's label runs right of its dot, so the last one needs room past its instant.
-    const times = items.flatMap((item) => [item.start, item.end ?? item.start]).map(Number);
-    const first = Math.min(...times);
-    const last = Math.max(...times);
+    const first = +items[0].start;
+    const last = items.reduce((latest, item) => Math.max(latest, +(item.end ?? item.start)), first);
+    // A lone instant still opens on a minute of axis, not a zero-width window.
     const span = Math.max(last - first, 60 * 1000);
     options.start = first - span * 0.05;
     options.end = last + span * 0.3;
   }
   const timeline = new vis.Timeline(document.getElementById("timeline"), items, groups, options);
-  timeline.on("select", ({ items: selected }) => show(selected.length ? data.events[selected[0] - 1] : null));
+  timeline.on("select", ({ items: selected }) => show(eventsById.get(selected[0]) ?? null));
   show(null);
 }

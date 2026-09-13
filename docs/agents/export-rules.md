@@ -89,8 +89,11 @@
    interpolates no text a person typed: `viewer.js` puts every string from the export on
    the page through `textContent` or an element it builds, never `innerHTML` or an HTML
    string handed to vis-timeline, and links only `http` and `https` URLs. A spec renders
-   hostile text in every typed field and fails when it reaches the markup or ends a script
-   element early. The page's layout is not a contract (`AGENTS.md` Rule 3); its goldens in
+   hostile text in the fields the viewer shows and fails when it reaches the markup or
+   ends a script or style element early; another fails when `viewer.js` names an HTML
+   sink, such as `innerHTML`, or a vis-timeline `title`, which it would parse as HTML; and
+   another when the bundle's SHA-256 is not the one its README records. The page's layout
+   is not a contract (`AGENTS.md` Rule 3); its goldens in
    `internal/export/testdata/html/`, with the inlined files elided, change only through
    `go test ./internal/export -update`. The bundle changes only by the steps in
    [its README](../../internal/export/html/vendor/README.md).
