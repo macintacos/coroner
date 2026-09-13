@@ -14,23 +14,19 @@ var _ = Describe("form fields", func() {
 	eventOptions := formChoices{options: map[string][]huh.Option[string]{
 		"event": {huh.NewOption("none (the whole timeline)", ""), huh.NewOption("#12  Primary stepped down", "12")},
 	}}
+	kinds := []huh.Option[string]{huh.NewOption("evidence", "evidence"), huh.NewOption("comment", "comment")}
+	kindOptions := formChoices{options: map[string][]huh.Option[string]{"kind": kinds}}
+	every := fieldValues{
+		"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "tz": {"America/New_York"},
+		"at": {"2026-09-11 03:14"}, "approximate": {"true"}, "source": {"mongod"},
+		"tag": {"election", "phase:detect"}, "dry-run": {"true"},
+	}
 
 	DescribeTable("give back the values they hold as the command line would give them",
 		func(def definition, in fieldValues, choices formChoices, want fieldValues) {
 			Expect(def.formValues(def.formFields(formCheckEnv(), in, choices))).To(Equal(want))
 		},
-		Entry("every value they open with", eventAddDefinition(),
-			fieldValues{
-				"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "tz": {"America/New_York"},
-				"at": {"2026-09-11 03:14"}, "approximate": {"true"}, "source": {"mongod"},
-				"tag": {"election", "phase:detect"}, "dry-run": {"true"},
-			},
-			formChoices{},
-			fieldValues{
-				"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "tz": {"America/New_York"},
-				"at": {"2026-09-11 03:14"}, "approximate": {"true"}, "source": {"mongod"},
-				"tag": {"election", "phase:detect"}, "dry-run": {"true"},
-			}),
+		Entry("every value they open with", eventAddDefinition(), every, formChoices{}, every),
 		Entry("only the non-blank lines of a repeatable field", eventAddDefinition(),
 			fieldValues{"tag": {"election", "", " ", "phase:detect"}}, formChoices{},
 			fieldValues{"tag": {"election", "phase:detect"}}),
@@ -42,18 +38,39 @@ var _ = Describe("form fields", func() {
 			fieldValues{}, eventOptions, fieldValues{}),
 		Entry("a select's chosen option", annotationAddDefinition(),
 			fieldValues{"event": {"12"}}, eventOptions, fieldValues{"event": {"12"}}),
+		Entry("a select's first option when it opens blank", annotationAddDefinition(),
+			fieldValues{}, kindOptions, fieldValues{"kind": {"evidence"}}),
+		Entry("an event no option holds, for its check to judge", annotationAddDefinition(),
+			fieldValues{"event": {"mongo-outage#12"}}, eventOptions, fieldValues{"event": {"mongo-outage#12"}}),
+		Entry("a kind no option holds, for its check to judge", annotationAddDefinition(),
+			fieldValues{"kind": {"Evidence"}}, kindOptions, fieldValues{"kind": {"Evidence"}}),
 		Entry("the positional argument as one value", annotationAddDefinition(),
 			fieldValues{"body": {"Step-down lands 5 s after the COLLSCAN burst"}}, formChoices{},
 			fieldValues{"body": {"Step-down lands 5 s after the COLLSCAN burst"}}),
 	)
 
 	It("mark a required field and refuse it blank", func() {
-		kind := namedField(annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, formChoices{}), "kind")
+		choices := formChoices{options: map[string][]huh.Option[string]{
+			"kind": append([]huh.Option[string]{huh.NewOption("choose…", "")}, kinds...),
+		}}
+		kind := namedField(annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "kind")
 
 		kind.Blur()
 
 		Expect(kind.Error()).To(SatisfyAll(HaveField("Kind", KindUsage), MatchError("kind is required")))
 		Expect(fieldView(kind)).To(ContainSubstring("kind (required)"))
+	})
+
+	It("read a line holding only spaces as no value, and check only the others", func() {
+		def := eventAddDefinition()
+		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+		tag := namedField(fields, "tag")
+		typeInto(tag, "election\n  ")
+
+		tag.Blur()
+
+		Expect(tag.Error()).NotTo(HaveOccurred())
+		Expect(def.formValues(fields)).To(Equal(fieldValues{"tag": {"election"}}))
 	})
 
 	It("pick from options in a select, and suggest in an input", func() {
@@ -150,6 +167,11 @@ func renderedDescription(formField huh.Field) string {
 }
 
 func fieldView(formField huh.Field) string {
-	view, _ := formField.WithWidth(400).(interface{ View() string })
+	GinkgoHelper()
+	view, ok := formField.WithWidth(400).(interface{ View() string })
+	if !ok {
+		Fail(fmt.Sprintf("form field %s has no view", formField.GetKey()))
+	}
+
 	return ansi.Strip(view.View())
 }

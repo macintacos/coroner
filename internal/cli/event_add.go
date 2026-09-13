@@ -55,7 +55,14 @@ func eventAddDefinition() definition {
 		tzField(),
 		{
 			name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt,
-			preview: func(at string, env checkEnv) string { return timePreview("--at", at, env) },
+			preview: func(at string, env checkEnv) string {
+				raw := &at
+				if at == "" {
+					raw = nil
+				}
+				r, err := resolveTime("--at", raw, env.now, env.zone.loc)
+				return timePreview(r, err, env.zone)
+			},
 		},
 		{
 			name: "ended", usage: "When it ended, as a `time`, for an event that lasted",
@@ -63,7 +70,13 @@ func eventAddDefinition() definition {
 				_, err := resolveEnded(ended, env, addedEndedHint)
 				return err
 			},
-			preview: func(ended string, env checkEnv) string { return timePreview("--ended", ended, env) },
+			preview: func(ended string, env checkEnv) string {
+				if ended == "" {
+					return ""
+				}
+				r, err := resolveEnded(ended, env, addedEndedHint)
+				return timePreview(r, err, env.zone)
+			},
 		},
 		{name: "approximate", typ: boolField, usage: "Mark the time as a guess, as a ~ or around prefix does"},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},

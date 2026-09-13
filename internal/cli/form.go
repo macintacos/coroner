@@ -18,7 +18,7 @@ type formChoices struct {
 }
 
 // formValues is the submit adapter: the fieldValues a form's fields hold, where an empty value,
-// a false confirm and a blank line are not given.
+// a false confirm and a blank line are not given. fields must come from d.formFields.
 func (d definition) formValues(fields []huh.Field) fieldValues {
 	values := fieldValues{}
 	for _, formField := range fields {
@@ -41,7 +41,7 @@ func (f field) formValue(value any) []string {
 		}
 	case string:
 		if f.typ == stringsField {
-			return slices.DeleteFunc(strings.Split(value, "\n"), func(line string) bool { return strings.TrimSpace(line) == "" })
+			return valueLines(value)
 		}
 		if value != "" {
 			return []string{value}
@@ -61,12 +61,17 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 	fields := make([]huh.Field, len(d.fields))
 	form := fieldForm{
 		// Read when a check or preview runs, so a zone typed into the form applies to its times.
-		env:      func() checkEnv { return typedZone(env, d, fields) },
-		bindings: bound,
-		choices:  choices,
+		env:     func() checkEnv { return typedZone(env, d, fields) },
+		choices: choices,
 	}
+	tz := slices.IndexFunc(d.fields, func(f field) bool { return f.name == "tz" })
 	for i, f := range d.fields {
-		fields[i] = f.formField(bound[i], form)
+		// A description re-renders when its own value or the zone its times are read in changes.
+		bindings := []*string{bound[i]}
+		if tz != -1 {
+			bindings = append(bindings, bound[tz])
+		}
+		fields[i] = f.formField(bound[i], bindings, form)
 	}
 
 	return fields
@@ -74,10 +79,8 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 
 // fieldForm is what each field of a form reads beyond its own value.
 type fieldForm struct {
-	env func() checkEnv
-	// bindings are every field's value, whose change re-renders a description.
-	bindings []*string
-	choices  formChoices
+	env     func() checkEnv
+	choices formChoices
 }
 
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
@@ -95,7 +98,7 @@ func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 	return env
 }
 
-func (f field) formField(value *string, form fieldForm) huh.Field {
+func (f field) formField(value *string, bindings []*string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
 	title := f.name
@@ -124,21 +127,31 @@ func (f field) formField(value *string, form fieldForm) huh.Field {
 		})
 	case form.choices.options[f.name] != nil:
 		selectField := huh.NewSelect[string]().Key(f.name).Title(title).Description(help).Value(value).
-			Options(form.choices.options[f.name]...).Validate(check)
+			Options(withGiven(form.choices.options[f.name], *value)...).Validate(check)
 		return selectField.DescriptionFunc(func() string {
 			return f.description(help, fmt.Sprint(selectField.GetValue()), form.env())
-		}, form.bindings)
+		}, bindings)
 	}
 
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(value).
 		Suggestions(form.choices.suggestions[f.name]).Validate(check)
 	return input.DescriptionFunc(func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
-	}, form.bindings)
+	}, bindings)
 }
 
-// description returns help, then what value previews as or, with no preview, the hint of the
-// check value fails; huh's own error line shows only the message.
+// withGiven returns options led by given when no option holds it, since a Select overwrites a value
+// none holds with its first option, and the field's check must judge it instead.
+func withGiven(options []huh.Option[string], given string) []huh.Option[string] {
+	if given == "" || slices.ContainsFunc(options, func(o huh.Option[string]) bool { return o.Value == given }) {
+		return options
+	}
+
+	return append([]huh.Option[string]{huh.NewOption(given, given)}, options...)
+}
+
+// description returns help, then value's preview or, with none, the hint of the check it fails;
+// huh's error line shows only the message.
 func (f field) description(help, value string, env checkEnv) string {
 	line := ""
 	switch {
@@ -156,18 +169,19 @@ func (f field) description(help, value string, env checkEnv) string {
 	return help + "\n" + line
 }
 
-// checkLines runs check on each line of text, where an empty text holds no values.
+// checkLines runs check on each value line of text.
 func checkLines(text string, check func(string) error) error {
-	if text == "" {
-		return nil
-	}
-
-	for line := range strings.Lines(text) {
-		err := check(strings.TrimSuffix(line, "\n"))
+	for _, line := range valueLines(text) {
+		err := check(line)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// valueLines returns the lines of text that hold a value: every one but those holding only white space.
+func valueLines(text string) []string {
+	return slices.DeleteFunc(strings.Split(text, "\n"), func(line string) bool { return strings.TrimSpace(line) == "" })
 }

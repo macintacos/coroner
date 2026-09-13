@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os/exec"
 	"path/filepath"
@@ -19,30 +21,41 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 var _ = Describe("add forms", func() {
-	DescribeTable("open on a terminal when --interactive asks or the positional argument is missing",
-		func(interactive, argGiven, terminal, wantOpen bool) {
-			open, err := formMode(interactive, argGiven, terminal)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(open).To(Equal(wantOpen))
+	DescribeTable("open on a terminal when --interactive asks or a required field is missing",
+		func(interactive, requiredGiven, terminal, wantOpen bool) {
+			Expect(formMode(interactive, requiredGiven, terminal)).To(Equal(wantOpen))
 		},
-		Entry("no argument on a terminal", false, false, true, true),
-		Entry("--interactive with the argument on a terminal", true, true, true, true),
-		Entry("--interactive without the argument on a terminal", true, false, true, true),
-		Entry("the argument on a terminal", false, true, true, false),
-		Entry("no argument off a terminal", false, false, false, false),
-		Entry("the argument off a terminal", false, true, false, false),
+		Entry("a required field missing on a terminal", false, false, true, true),
+		Entry("--interactive with every required field on a terminal", true, true, true, true),
+		Entry("--interactive with a required field missing on a terminal", true, false, true, true),
+		Entry("every required field on a terminal", false, true, true, false),
+		Entry("a required field missing off a terminal", false, false, false, false),
+		Entry("every required field off a terminal", false, true, false, false),
 	)
 
-	It("refuse --interactive off a terminal as usage", func() {
-		_, err := formMode(true, true, false)
+	DescribeTable("ask an entry again when the add rejects it as usage or not found, but not for its timeline",
+		func(err error, want bool) {
+			Expect(correctable(err)).To(Equal(want))
+		},
+		Entry("usage", &Error{Kind: KindUsage}, true),
+		Entry("an invalid time", &Error{Kind: KindInvalidTime}, true),
+		Entry("an event not found", &Error{Kind: KindEventNotFound}, true),
+		Entry("no timeline selected", &Error{Kind: KindTimelineRequired}, false),
+		Entry("a timeline not found", &Error{Kind: KindTimelineNotFound}, false),
+		Entry("a timeline that exists", &Error{Kind: KindTimelineExists}, false),
+		Entry("an error of no kind", errors.New("disk full"), false),
+	)
 
-		Expect(err).To(HaveField("Kind", KindUsage))
+	It("read times in the local zone when the config file's default_timezone is unknown", func() {
+		env := baseCheckEnv(formSession{app: App{Now: testNow}, cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}})
+
+		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
 
 	DescribeTable("find a terminal only when stdin and stdout are one and TERM can draw",
@@ -61,8 +74,9 @@ var _ = Describe("add forms", func() {
 
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
 		cancelled := false
-		filter := escCancels(&cancelled)
-		form := huh.NewForm(huh.NewGroup(huh.NewInput().Key("text")))
+		text := huh.NewInput().Key("text")
+		filter := escCancels(&cancelled, []huh.Field{text})
+		form := huh.NewForm(huh.NewGroup(text))
 		letter := tea.KeyPressMsg{Code: 'a', Text: "a"}
 
 		Expect(filter(nil, letter)).To(Equal(letter))
@@ -71,6 +85,19 @@ var _ = Describe("add forms", func() {
 		form.Update(filter(nil, tea.KeyPressMsg{Code: tea.KeyEscape}))
 		Expect(cancelled).To(BeTrue())
 		Expect(form.State).To(Equal(huh.StateAborted))
+	})
+
+	It("pass Esc through to a select filtering its options", func() {
+		cancelled := false
+		pick := huh.NewSelect[string]().Key("event").Options(huh.NewOptions("1", "2")...)
+		pick.WithKeyMap(huh.NewDefaultKeyMap())
+		pick.Focus()
+		pick.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+		Expect(pick.GetFiltering()).To(BeTrue())
+		esc := tea.KeyPressMsg{Code: tea.KeyEscape}
+
+		Expect(escCancels(&cancelled, []huh.Field{pick})(nil, esc)).To(Equal(esc))
+		Expect(cancelled).To(BeFalse())
 	})
 
 	It("carry forward everything but the fields another entry clears", func() {
@@ -95,13 +122,34 @@ var _ = Describe("add forms", func() {
 			asked       [][]huh.Field
 		)
 
-		run := func(ctx SpecContext, args ...string) int {
+		// runArgs runs exactly args through Run.
+		runArgs := func(ctx SpecContext, args ...string) int {
 			GinkgoHelper()
 			out.Reset()
 			errOut.Reset()
 			a := app
-			a.Args = append([]string{"--db", db}, args...)
+			a.Args = args
 			return Run(ctx, a)
+		}
+		run := func(ctx SpecContext, args ...string) int {
+			GinkgoHelper()
+			return runArgs(ctx, append([]string{"--db", db}, args...)...)
+		}
+
+		// eventOptions returns what the annotation form's event field picks from in mongo-outage.
+		eventOptions := func(ctx SpecContext) []huh.Option[string] {
+			GinkgoHelper()
+			var choices formChoices
+			Expect(withStorePath(ctx, app, db, func(s *store.Store) error {
+				t, err := s.TimelineByName(ctx, "mongo-outage")
+				if err != nil {
+					return err
+				}
+				choices, err = annotationChoices(ctx, s, t, zone{loc: time.UTC, label: "UTC"})
+				return err
+			})).To(Succeed())
+
+			return choices.options["event"]
 		}
 
 		// answers returns forms that answer each ask in turn with the next of answers, recording what
@@ -152,18 +200,11 @@ var _ = Describe("add forms", func() {
 			asked = nil
 			home := GinkgoT().TempDir()
 			db = filepath.Join(home, "coroner.db")
-			app = App{
-				Out: &out, Err: &errOut, InIsTTY: true, OutIsTTY: true,
-				LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-				ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-				Now:       testNow,
-				NewID: func() (uuid.UUID, error) {
-					ids++
-					return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-				},
-				OpenStore:         store.Open,
-				OpenStoreReadOnly: store.OpenReadOnly,
-			}
+			app = scratchApp(home, &out, &errOut, func() (uuid.UUID, error) {
+				ids++
+				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
+			})
+			app.InIsTTY, app.OutIsTTY = true, true
 
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})
@@ -190,9 +231,44 @@ var _ = Describe("add forms", func() {
 				Expect(runForm(ctx, command, "event", "add", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
 
-				Expect(run(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
+				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
 				Expect(withoutRecordKeys(out.Bytes())).To(Equal(written))
 				Expect(written).To(HaveKeyWithValue("text", "Primary stepped down"))
+			})
+
+			It("open when a required flag is missing, prefilled from the argument", func(ctx SpecContext) {
+				command := annotationAdd(ctx, answers(cancel, decline))
+
+				Expect(runForm(ctx, command, "annotation", "add", "replSetStepDown")).To(Succeed())
+
+				Expect(asked).NotTo(BeEmpty())
+				Expect(formValue(asked[0], "body")).To(Equal("replSetStepDown"))
+			})
+
+			It("open with no kind chosen", func(ctx SpecContext) {
+				command := annotationAdd(ctx, answers(cancel, decline))
+
+				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
+
+				Expect(formValue(asked[0], "kind")).To(BeEmpty())
+			})
+
+			It("keep an event given by id prefix, and write the annotation on it", func(ctx SpecContext) {
+				Expect(run(ctx, "event", "add", "Primary stepped down", "--json")).To(Equal(0), errOut.String())
+				var event struct {
+					ID string `json:"id"`
+				}
+				Expect(json.Unmarshal(out.Bytes(), &event)).To(Succeed())
+				prefix := event.ID[:8]
+				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+					Expect(formValue(fields, "event")).To(Equal(prefix))
+					return true, nil
+				}, decline))
+
+				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "-e", prefix, "--kind", "evidence", "body", "--json")).
+					To(Succeed())
+
+				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("event_id", event.ID))
 			})
 
 			It("write an annotation on the picked event and echo a command that dry-runs to the same one", func(ctx SpecContext) {
@@ -207,7 +283,7 @@ var _ = Describe("add forms", func() {
 				written := withoutRecordKeys(out.Bytes())
 
 				Expect(eventOptions).To(Equal([]string{"", "1"}))
-				Expect(run(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
+				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
 				Expect(withoutRecordKeys(out.Bytes())).To(Equal(written))
 				Expect(written).To(HaveKey("event_id"))
 			})
@@ -240,7 +316,6 @@ var _ = Describe("add forms", func() {
 				err := runForm(ctx, command, "event", "add")
 
 				Expect(err).To(HaveField("Kind", KindInterrupted))
-				Expect(KindInterrupted.ExitCode()).To(Equal(130))
 				Expect(run(ctx, "event", "list", "--json")).To(Equal(0), errOut.String())
 				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("total", 0.0))
 			})
@@ -263,6 +338,48 @@ var _ = Describe("add forms", func() {
 				Expect(errOut.String()).To(ContainSubstring("--ended"))
 				Expect(formValue(asked[1], "ended")).To(Equal("2026-09-11T03:00:00Z"))
 			})
+
+			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
+				app.Args = []string{"--db", db, "event", "add", "--json"}
+				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
+				command := eventAdd(ctx, answers(submit(entry), cancel, decline))
+
+				Expect(runForm(ctx, command, "event", "add", "--json")).To(Succeed())
+
+				Expect(errOut.String()).To(ContainSubstring("--ended"))
+				Expect(errOut.String()).NotTo(ContainSubstring(`"kind"`))
+			})
+		})
+
+		It("end without asking more when Esc cancels the timeline pick", func(ctx SpecContext) {
+			command := eventAdd(ctx, answers(cancel))
+
+			Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+			Expect(asked).To(HaveLen(1))
+		})
+
+		It("label each event to pick on one printable line", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "add", "\x1b[31mred\x1b[0m\r\nsecond line", "-t", "mongo-outage")).To(Equal(0), errOut.String())
+
+			label := eventOptions(ctx)[1].Key
+
+			Expect(label).NotTo(ContainSubstring("\x1b"))
+			Expect(label).NotTo(ContainSubstring("\r"))
+			Expect(label).To(HaveSuffix("red second line"))
+		})
+
+		It("pick from the last 200 events", func(ctx SpecContext) {
+			for i := range 201 {
+				at := fmt.Sprintf("2026-09-11T03:%02d:%02dZ", i/60, i%60)
+				Expect(run(ctx, "event", "add", "Probe", "-t", "mongo-outage", "--at", at)).To(Equal(0), errOut.String())
+			}
+
+			options := eventOptions(ctx)
+
+			Expect(options).To(HaveLen(201))
+			Expect(options[1].Value).To(Equal("2"))
+			Expect(options[200].Value).To(Equal("201"))
 		})
 
 		It("ask for the timeline when none is selected, and echo it", func(ctx SpecContext) {
@@ -278,7 +395,7 @@ var _ = Describe("add forms", func() {
 
 			Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-			Expect(errOut.String()).To(ContainSubstring("Equivalent command: coroner event add 'Pager fires' -t mongo-outage"))
+			Expect(errOut.String()).To(ContainSubstring(" event add 'Pager fires' -t mongo-outage"))
 		})
 
 		It("refuse --interactive off a terminal before opening anything", func(ctx SpecContext) {
@@ -293,14 +410,7 @@ var _ = Describe("add forms", func() {
 		func(ctx SpecContext, input string) {
 			var out, errOut bytes.Buffer
 			home := GinkgoT().TempDir()
-			app := App{
-				Out: &out, Err: &errOut,
-				LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-				ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-				Now:       testNow,
-				NewID:     func() (uuid.UUID, error) { return uuid.New(), nil },
-				OpenStore: store.Open,
-			}
+			app := scratchApp(home, &out, &errOut, func() (uuid.UUID, error) { return uuid.New(), nil })
 			db := filepath.Join(home, "coroner.db")
 			app.Args = []string{"--db", db, "timeline", "create", "mongo-outage"}
 			Expect(Run(ctx, app)).To(Equal(0), errOut.String())
@@ -314,7 +424,9 @@ var _ = Describe("add forms", func() {
 				Approximate bool   `json:"approximate"`
 			}
 			Expect(json.Unmarshal(out.Bytes(), &resolved)).To(Succeed())
-			preview := timePreview("--at", input, formCheckEnv())
+			def := eventAddDefinition()
+			at := def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == "at" })]
+			preview := at.preview(input, formCheckEnv())
 			occurredAt, err := timeline.ParseInstant(resolved.OccurredAt)
 			Expect(err).NotTo(HaveOccurred())
 			shown, err := time.Parse(time.RFC3339Nano, strings.TrimPrefix(strings.Fields(preview)[0], "~"))
@@ -330,6 +442,19 @@ var _ = Describe("add forms", func() {
 		Entry("epoch seconds", "1789096447"),
 	)
 })
+
+// scratchApp returns an App on home, with no config file, the fixed clock and a real store.
+func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, error)) App {
+	return App{
+		Out: out, Err: errOut,
+		LookupEnv:         func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
+		ReadFile:          func(string) ([]byte, error) { return nil, fs.ErrNotExist },
+		Now:               testNow,
+		NewID:             newID,
+		OpenStore:         store.Open,
+		OpenStoreReadOnly: store.OpenReadOnly,
+	}
+}
 
 // submit returns an answer that fills a form's fields with values and submits it.
 func submit(values map[string]string) func([]huh.Field) (bool, error) {

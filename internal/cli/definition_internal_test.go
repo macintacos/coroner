@@ -76,6 +76,26 @@ var _ = Describe("write command definitions", func() {
 		Expect(problems).To(BeEmpty())
 	})
 
+	It("return usage by flag for each required field left out", func(ctx SpecContext) {
+		given := map[string]string{"text": "Pager fires", "body": "Election timeout", "kind": "comment"}
+		for path, def := range writeDefinitions() {
+			for _, missing := range def.fields {
+				if !missing.required {
+					continue
+				}
+				args := strings.Fields(path)
+				for _, f := range def.fields {
+					if f.required && f.name != missing.name {
+						Expect(given).To(HaveKey(f.name), "no value to give coroner %s's required field", path)
+						args = append(args, fieldArg(f, given[f.name]))
+					}
+				}
+
+				Expect(flagError(ctx, args)).To(HaveField("Kind", KindUsage), "coroner %s", strings.Join(args, " "))
+			}
+		}
+	})
+
 	DescribeTable("reject a bad value the same way by flag and by form field",
 		func(ctx SpecContext, bad badValue) {
 			def, ok := writeDefinitions()[bad.path]
@@ -99,8 +119,8 @@ var _ = Describe("write command definitions", func() {
 		var missing []string
 		for path, def := range writeDefinitions() {
 			for _, f := range def.fields {
-				// -t's check rejects only an empty value, which a form reads as not given.
-				exempt := f.name == "timeline" && !f.arg
+				// -t's and --add-ref's checks reject only a blank value, which a form reads as not given.
+				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref"
 				if f.check != nil && !exempt && !covered[path+" "+f.name] {
 					missing = append(missing, path+" "+f.name)
 				}
@@ -301,7 +321,6 @@ func badValues() []badValue {
 	return []badValue{
 		{"timeline create", "name", "Mongo Outage", nil},
 		{"timeline edit", "name", "Bad Name", []string{"mongo-outage"}},
-		{"timeline edit", "add-ref", " ", []string{"mongo-outage"}},
 		{"event add", "text", " ", nil},
 		{"event add", "tz", "Mars/Olympus", []string{"Pager fires"}},
 		{"event add", "at", "2026-13-45", []string{"Pager fires"}},
@@ -350,11 +369,18 @@ func commandLine(def definition, bad badValue) []string {
 	args := append(strings.Fields(bad.path), bad.otherArgs...)
 	i := slices.IndexFunc(def.fields, func(f field) bool { return f.name == bad.field })
 	Expect(i).NotTo(Equal(-1), "%s has no field %s", bad.path, bad.field)
-	if def.fields[i].arg {
-		return append(args, bad.value)
+
+	return append(args, fieldArg(def.fields[i], bad.value))
+}
+
+// fieldArg returns the argument that gives f value: value itself for the positional argument, or
+// f's flag.
+func fieldArg(f field, value string) string {
+	if f.arg {
+		return value
 	}
 
-	return append(args, "--"+bad.field+"="+bad.value)
+	return "--" + f.name + "=" + value
 }
 
 // flagError runs args, with a store that fails the spec when opened, and returns the *Error it

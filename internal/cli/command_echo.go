@@ -38,8 +38,7 @@ func flagArgs(f field, value string) []string {
 	switch {
 	case f.typ == boolField && value == "true":
 		return []string{flag}
-	// A bool reads no separate value, a value led by - looks like a flag of its own, and pflag
-	// has no -t=value for an empty value.
+	// A bool takes no separate value, and a separate value led by - would read as a flag.
 	case f.typ == boolField || dashed(value):
 		return []string{"--" + f.name + "=" + value}
 	default:
@@ -52,6 +51,8 @@ func dashed(value string) bool {
 }
 
 // shellLine joins args into one line a POSIX shell reads back as args.
+// ponytail: the quoting is POSIX sh; fish reads \\ inside single quotes and zsh expands a bare
+// word starting with =. Quote per shell, if pasting there matters.
 func shellLine(args []string) string {
 	const bare = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@%+=:,./_-"
 	words := make([]string, 0, len(args))

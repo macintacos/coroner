@@ -104,23 +104,15 @@ func resolveTime(flag string, input *string, now time.Time, loc *time.Location) 
 	return r, err
 }
 
-// timePreview renders what input, as flag, resolves to as of env: the instant as the echo prints
-// it, the precision and whether it is approximate; or the rejection and its hint. No --at is now,
-// and no --ended previews nothing.
-func timePreview(flag, input string, env checkEnv) string {
-	if input == "" && flag == "--ended" {
-		return ""
-	}
-	raw := &input
-	if input == "" {
-		raw = nil
-	}
-
-	r, err := resolveTime(flag, raw, env.now, env.zone.loc)
+// timePreview renders a resolved time as the echo prints it, with its precision; or err and its hint.
+func timePreview(r timeparse.Resolved, err error, z zone) string {
 	if rejected, ok := errors.AsType[*Error](err); ok {
 		return rejected.Message + "\n" + rejected.Hint
 	}
-	preview := formatResolved(r, env.zone) + ", " + string(r.Precision) + " precision"
+	if err != nil {
+		return err.Error()
+	}
+	preview := formatResolved(r, z) + ", " + string(r.Precision) + " precision"
 	if r.Approximate {
 		preview += ", approximate"
 	}

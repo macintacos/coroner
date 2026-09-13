@@ -33,7 +33,8 @@ type field struct {
 	inherited bool
 	// check rejects a value no command could take; nil accepts any.
 	check func(value string, env checkEnv) error
-	// required marks the input the command cannot run without; its form field refuses a blank value.
+	// required marks an input the command cannot run without. Only a form reads it; each run
+	// function reports its own missing value.
 	required bool
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
 	preview func(value string, env checkEnv) string
@@ -120,9 +121,11 @@ func withoutEnv(check func(string) error) func(string, checkEnv) error {
 	}
 }
 
+type renderer interface{ render(o output) error }
+
 // writeRunE returns the RunE of a write command that prints only what run returns: it reads
 // def's fields from the command line, runs run against them and renders the result.
-func writeRunE[R interface{ render(o output) error }](
+func writeRunE[R renderer](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {

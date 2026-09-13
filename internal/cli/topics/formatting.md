@@ -8,7 +8,10 @@
 Text is the default, and it stays the default when output is piped: coroner never switches
 to JSON on its own. A command exits 2 when asked for a format it cannot print. On a
 terminal, `coroner timeline view` opens an interactive viewer; `--format text` or a pipe
-prints plain text instead.
+prints plain text instead. On a terminal, `coroner event add` and `coroner annotation add`
+open a form when their text, body or `--kind` is missing, or with `--interactive`.
+`--format` does not keep them from opening, so scripts pass every required value, or run
+without a terminal.
 
 - `text` is for people.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.

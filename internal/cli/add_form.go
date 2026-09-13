@@ -7,11 +7,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
@@ -19,8 +20,8 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// addForm is what an add command's form needs beyond its definition.
-type addForm[R interface{ render(o output) error }] struct {
+// addForm is an add command's definition and what its form needs besides.
+type addForm[R renderer] struct {
 	// path is the command below coroner, as in "event add".
 	path string
 	def  definition
@@ -41,42 +42,69 @@ type formSession struct {
 	cfg config.Config
 	o   output
 	ask askFunc
+	// global are the --db and --config args the command line gave, which each echoed command repeats.
+	global []string
+	style  errorStyle
 }
 
 const interactiveUsage = "Open a form to fill in, prefilled from the other flags (needs a terminal)"
 
-// attach makes cmd the add command f describes: its flags, --interactive, and a RunE that opens
-// the form forms builds when formMode says so, and otherwise runs the command line as writeRunE does.
+// attach registers f's flags and --interactive on cmd, and a RunE that asks through forms when
+// formMode opens the form, and otherwise runs writeRunE.
 func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
 	flagsOnly := writeRunE(ctx, app, f.def, f.run)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		interactive, _ := cmd.Flags().GetBool("interactive")
-		open, err := formMode(interactive, len(args) > 0, interactiveTerminal(app))
-		switch {
-		case err != nil:
-			return err
-		case !open:
+		terminal := interactiveTerminal(app)
+		if interactive && !terminal {
+			return &Error{
+				Kind: KindUsage, Message: "--interactive needs a terminal",
+				Hint: "Run '" + cmd.CommandPath() + " --help' for the flags it takes.",
+			}
+		}
+		in := f.def.read(cmd.Flags(), args)
+		if !formMode(interactive, requiredGiven(f.def, in), terminal) {
 			return flagsOnly(cmd, args)
 		}
 
-		o, err := newOutput(cmd, app)
+		s, err := newFormSession(cmd, app, forms)
 		if err != nil {
 			return err
 		}
-		cfg, err := resolveConfig(cmd, app)
-		if err != nil {
-			return err
-		}
-		noColor, _ := cmd.Flags().GetBool("no-color")
-		s := formSession{app: app, cfg: cfg, o: o, ask: forms(colorEnabled(app.OutIsTTY, noColor, app.LookupEnv))}
 
-		return f.session(ctx, s, f.def.read(cmd.Flags(), args))
+		return f.session(ctx, s, in)
 	}
 
 	f.def.addFlags(cmd.Flags())
 	cmd.Flags().Bool("interactive", false, interactiveUsage)
 
 	return cmd
+}
+
+// newFormSession returns the session cmd's form runs in, asking through forms.
+func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc) (formSession, error) {
+	o, err := newOutput(cmd, app)
+	if err != nil {
+		return formSession{}, err
+	}
+	cfg, err := resolveConfig(cmd, app)
+	if err != nil {
+		return formSession{}, err
+	}
+
+	var global []string
+	for _, name := range []string{"db", "config"} {
+		if value := changedString(cmd.Flags(), name); value != nil {
+			global = append(global, "--"+name, *value)
+		}
+	}
+	noColor, _ := cmd.Flags().GetBool("no-color")
+
+	return formSession{
+		app: app, cfg: cfg, o: o, ask: forms(colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)), global: global,
+		// A rejected entry is reported to the person at the form, never as a JSON envelope.
+		style: errorStyle{color: colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv)},
+	}, nil
 }
 
 // interactiveTerminal reports whether a command may take over the terminal: keys can arrive, and
@@ -87,89 +115,55 @@ func interactiveTerminal(app App) bool {
 }
 
 // formMode reports whether an add command opens its form: on a terminal, when --interactive asks
-// for it or its positional argument is missing. --interactive without a terminal is usage (A-6).
-func formMode(interactive, argGiven, terminal bool) (bool, error) {
-	if interactive && !terminal {
-		return false, &Error{
-			Kind:    KindUsage,
-			Message: "--interactive needs a terminal on stdin and stdout",
-			Hint:    "Pass the flags instead; --help lists them.",
-		}
-	}
+// for it or a field the command requires is missing.
+func formMode(interactive, requiredGiven, terminal bool) bool {
+	return terminal && (interactive || !requiredGiven)
+}
 
-	return terminal && (interactive || !argGiven), nil
+// requiredGiven reports whether in gives every field d requires.
+func requiredGiven(d definition, in fieldValues) bool {
+	return !slices.ContainsFunc(d.fields, func(f field) bool { return f.required && !in.given(f.name) })
 }
 
 // session asks for entries, prefilled from in, adding each one submitted, until no other is wanted.
 func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) error {
+	in, chosen, err := f.chooseTimeline(ctx, s, in)
+	if err != nil || !chosen {
+		return err
+	}
+
+	noun, _, _ := strings.Cut(f.path, " ")
 	for {
 		typed, err := f.entry(ctx, s, in)
 		if err != nil {
 			return err
 		}
 
-		noun, _, _ := strings.Cut(f.path, " ")
-		another := huh.NewConfirm().Title("Add another " + noun + "?").Value(new(true))
+		yes := true
+		another := huh.NewConfirm().Title("Add another " + noun + "?").Value(&yes)
 		submitted, err := s.ask(ctx, another)
-		if err != nil || !submitted || another.GetValue() != true {
-			return askError(ctx, err)
+		if err != nil {
+			return askError(err)
+		}
+		// Value can rebind the confirm, so read what it holds.
+		accepted, _ := another.GetValue().(bool)
+		if !submitted || !accepted {
+			return nil
 		}
 
 		in = carryForward(typed, f.cleared)
 	}
 }
 
-// entry asks for one entry, prefilled from in, and adds it once submitted, asking again with what was
-// typed while the add rejects it. It returns the values last typed, added or not.
-func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, error) {
-	env, err := baseCheckEnv(s)
-	if err != nil {
-		return in, err
-	}
-	in, choices, err := f.prepare(ctx, s, in, env)
-	if err != nil || in == nil {
-		return in, err
-	}
-
-	def := withoutField(f.def, "timeline")
-	for {
-		fields := def.formFields(env, in, choices)
-		submitted, err := s.ask(ctx, fields...)
-		if err != nil || !submitted {
-			return in, askError(ctx, err)
-		}
-
-		typed := def.formValues(fields)
-		if in.given("timeline") {
-			typed["timeline"] = in.values("timeline")
-		}
-		err = f.add(ctx, s, typed)
-		rejected, ok := errors.AsType[*Error](err)
-		if !ok || (rejected.Kind.ExitCode() != 2 && rejected.Kind.ExitCode() != 3) {
-			return typed, err
-		}
-
-		style, _ := errorStyleFor(s.app)
-		err = writeError(s.app.Err, rejected, style)
-		if err != nil {
-			return typed, err
-		}
-		in = typed
-	}
-}
-
-// prepare returns in with the timeline the entry goes to, asking for one when no layer selects it,
-// and what the entry's fields pick from. It returns nil values when the timeline ask was cancelled.
-func (f addForm[R]) prepare(ctx context.Context, s formSession, in fieldValues, env checkEnv) (fieldValues, formChoices, error) {
-	var choices formChoices
+// chooseTimeline returns in with the timeline the session adds to, asking for one when no layer
+// selects it, and whether there is one: Esc on that ask leaves none.
+func (f addForm[R]) chooseTimeline(ctx context.Context, s formSession, in fieldValues) (fieldValues, bool, error) {
+	var by selectedBy
 	var timelines []timeline.Timeline
 	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
-		t, by, err := lookupTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
-		switch {
-		case err != nil:
-			return err
-		case by != "":
-			choices, err = f.choices(ctx, st, t, env.zone)
+		var err error
+		_, by, err = lookupTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
+		if err != nil || by != "" {
 			return err
 		}
 
@@ -179,40 +173,107 @@ func (f addForm[R]) prepare(ctx context.Context, s formSession, in fieldValues, 
 		}
 		return err
 	})
-	if err != nil || timelines == nil {
-		return in, choices, err
+	switch {
+	case err != nil:
+		return in, false, err
+	case by != "":
+		return in, true, nil
 	}
 
-	picked, err := f.askTimeline(ctx, s, timelines, env)
-	if err != nil || picked == "" {
-		return nil, choices, err
-	}
-	in = maps.Clone(in)
-	in["timeline"] = []string{picked}
-
-	return f.prepare(ctx, s, in, env)
+	return f.askTimeline(ctx, s, in, timelines)
 }
 
-// askTimeline asks which of timelines the entry goes to, through the definition's own timeline
-// field, and returns its name, or "" when the ask was cancelled.
-func (f addForm[R]) askTimeline(ctx context.Context, s formSession, timelines []timeline.Timeline, env checkEnv) (string, error) {
+// askTimeline asks which of timelines in goes to, through the definition's own timeline field, and
+// returns in with it, and whether one was picked.
+func (f addForm[R]) askTimeline(
+	ctx context.Context, s formSession, in fieldValues, timelines []timeline.Timeline,
+) (fieldValues, bool, error) {
 	options := make([]huh.Option[string], 0, len(timelines))
 	for _, t := range timelines {
-		options = append(options, huh.NewOption(strings.TrimSpace(t.Name+"  "+t.Title), t.Name))
+		options = append(options, huh.NewOption(strings.TrimSpace(t.Name+"  "+pickerLabel(t.Title)), t.Name))
 	}
-	def := definition{fields: slices.DeleteFunc(slices.Clone(f.def.fields), func(f field) bool { return f.name != "timeline" })}
-	fields := def.formFields(env, fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
+	def := onlyField(f.def, "timeline")
+	fields := def.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
 	submitted, err := s.ask(ctx, fields...)
-	if err != nil || !submitted {
-		return "", askError(ctx, err)
+	switch {
+	case err != nil:
+		return in, false, askError(err)
+	case !submitted:
+		return in, false, nil
 	}
 
-	return def.formValues(fields).values("timeline")[0], nil
+	picked := maps.Clone(in)
+	picked["timeline"] = def.formValues(fields).values("timeline")
+
+	return picked, true, nil
+}
+
+// entry asks for one entry, prefilled from in, and adds it once submitted, asking again with what was
+// typed while the add rejects it as correctable. It returns the values last submitted, or in when
+// none was.
+func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, error) {
+	env := baseCheckEnv(s)
+	choices, err := f.entryChoices(ctx, s, in, env.zone)
+	if err != nil {
+		return in, err
+	}
+
+	def := withoutField(f.def, "timeline")
+	for {
+		fields := def.formFields(env, in, choices)
+		submitted, err := s.ask(ctx, fields...)
+		switch {
+		case err != nil:
+			return in, askError(err)
+		case !submitted:
+			return in, nil
+		}
+
+		typed := def.formValues(fields)
+		if in.given("timeline") {
+			typed["timeline"] = in.values("timeline")
+		}
+		err = f.add(ctx, s, typed)
+		if err == nil || !correctable(err) {
+			return typed, err
+		}
+
+		rejected, _ := errors.AsType[*Error](err)
+		err = writeError(s.app.Err, rejected, s.style)
+		if err != nil {
+			return typed, err
+		}
+		in = typed
+	}
+}
+
+// entryChoices returns what an entry's fields pick from in the timeline in selects, labelling times
+// in z.
+func (f addForm[R]) entryChoices(ctx context.Context, s formSession, in fieldValues, z zone) (formChoices, error) {
+	var choices formChoices
+	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+		t, err := selectTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		choices, err = f.choices(ctx, st, t, z)
+		return err
+	})
+
+	return choices, err
+}
+
+// correctable reports whether err rejects an entry the user can fix and submit again: usage, or a
+// record not found, except the timeline, which the entry has no field for.
+func correctable(err error) bool {
+	rejected, ok := errors.AsType[*Error](err)
+	return ok && (rejected.Kind.ExitCode() == 2 || rejected.Kind.ExitCode() == 3) &&
+		rejected.Kind != KindTimelineNotFound && rejected.Kind != KindTimelineRequired
 }
 
 // add runs the entry's values as the command line would, prints what it added and the
-// flags-only command that adds the same.
+// flags-only command that adds the same, to the same database.
 func (f addForm[R]) add(ctx context.Context, s formSession, values fieldValues) error {
 	result, err := f.run(ctx, s.app, s.cfg, values)
 	if err != nil {
@@ -223,22 +284,27 @@ func (f addForm[R]) add(ctx context.Context, s formSession, values fieldValues) 
 		return err
 	}
 
-	return s.o.notify("Equivalent command: %s", shellLine(commandArgs(f.path, f.def, values)))
+	args := commandArgs(f.path, f.def, values)
+	return s.o.notify("Equivalent command: %s", shellLine(slices.Concat(args[:1], s.global, args[1:])))
 }
 
 // baseCheckEnv is what a form's checks read time input against before a zone is typed into it:
-// now, in the config file's default_timezone.
-func baseCheckEnv(s formSession) (checkEnv, error) {
+// now, in the config file's default_timezone, or the local zone when that is invalid, which the
+// add reports where it reads it.
+func baseCheckEnv(s formSession) checkEnv {
 	now := s.app.Now()
 	z, err := timeZone(nil, s.cfg.DefaultTimezone, now.Location())
+	if err != nil {
+		z = zone{loc: now.Location(), label: "local"}
+	}
 
-	return checkEnv{now: now, zone: z}, err
+	return checkEnv{now: now, zone: z}
 }
 
-// askError returns err as the command reports it: Ctrl-C, or the end of ctx, is interrupted.
-func askError(ctx context.Context, err error) error {
-	if ctx.Err() != nil || errors.Is(err, huh.ErrUserAborted) {
-		return &Error{Kind: KindInterrupted, Message: "interrupted", Err: errors.Join(err, ctx.Err())}
+// askError returns err as the command reports it: Ctrl-C is interrupted.
+func askError(err error) error {
+	if errors.Is(err, huh.ErrUserAborted) {
+		return &Error{Kind: KindInterrupted, Message: "interrupted", Err: err}
 	}
 
 	return err
@@ -257,6 +323,11 @@ func withoutField(d definition, name string) definition {
 	return definition{fields: slices.DeleteFunc(slices.Clone(d.fields), func(f field) bool { return f.name == name })}
 }
 
+// onlyField returns d with only the field called name.
+func onlyField(d definition, name string) definition {
+	return definition{fields: slices.DeleteFunc(slices.Clone(d.fields), func(f field) bool { return f.name != name })}
+}
+
 // terminalForms returns the askFunc that runs forms on app's terminal, drawing in color when color
 // is true.
 func terminalForms(app App) func(color bool) askFunc {
@@ -271,7 +342,7 @@ func terminalForms(app App) func(color bool) askFunc {
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
 			err := huh.NewForm(huh.NewGroup(fields...)).WithInput(app.In).WithOutput(app.Out).
-				WithProgramOptions(tea.WithFilter(escCancels(&cancelled)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).
+				WithProgramOptions(tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).
 				RunWithContext(ctx)
 			if cancelled {
 				return false, nil
@@ -283,16 +354,25 @@ func terminalForms(app App) func(color bool) askFunc {
 }
 
 // escCancels returns a program filter that turns Esc into the form's own abort, so the form clears
-// itself from the screen, and records in cancelled that Esc, not Ctrl-C, ended it.
-func escCancels(cancelled *bool) func(tea.Model, tea.Msg) tea.Msg {
+// itself from the screen, and records in cancelled that Esc, not Ctrl-C, ended it. While one of
+// fields filters its options, Esc is that field's.
+func escCancels(cancelled *bool, fields []huh.Field) func(tea.Model, tea.Msg) tea.Msg {
 	return func(_ tea.Model, msg tea.Msg) tea.Msg {
-		if key, ok := msg.(tea.KeyPressMsg); ok && key.Code == tea.KeyEscape {
-			*cancelled = true
-			return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+		key, ok := msg.(tea.KeyPressMsg)
+		if !ok || key.Code != tea.KeyEscape || slices.ContainsFunc(fields, filtering) {
+			return msg
 		}
 
-		return msg
+		*cancelled = true
+		// ctrl+c is huh's Quit binding.
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	}
+}
+
+// filtering reports whether formField is a Select filtering its options.
+func filtering(formField huh.Field) bool {
+	f, ok := formField.(interface{ GetFiltering() bool })
+	return ok && f.GetFiltering()
 }
 
 func eventAddForm() addForm[eventAdded] {
@@ -335,15 +415,19 @@ func annotationChoices(ctx context.Context, s *store.Store, t timeline.Timeline,
 	if err != nil {
 		return choices, err
 	}
+	// ponytail: huh draws every option on each key, so only the last 200 events are offered; a
+	// filtered query replaces the cap when older ones need picking. A typed -e still reaches any.
+	events = events[max(0, len(events)-200):]
 
 	eventOptions := []huh.Option[string]{huh.NewOption("none (the whole timeline)", "")}
 	for _, e := range events {
 		seq := strconv.FormatInt(e.Seq, 10)
-		eventOptions = append(eventOptions, huh.NewOption("#"+seq+"  "+occurredText(e, z)+"  "+cut(e.Text, 60), seq))
+		eventOptions = append(eventOptions, huh.NewOption("#"+seq+"  "+occurredText(e, z)+"  "+pickerLabel(e.Text), seq))
 	}
 	choices.options = map[string][]huh.Option[string]{
 		"event": eventOptions,
 		"kind": {
+			huh.NewOption("choose evidence or comment", ""),
 			huh.NewOption(string(timeline.AnnotationEvidence), string(timeline.AnnotationEvidence)),
 			huh.NewOption(string(timeline.AnnotationComment), string(timeline.AnnotationComment)),
 		},
@@ -352,12 +436,16 @@ func annotationChoices(ctx context.Context, s *store.Store, t timeline.Timeline,
 	return choices, nil
 }
 
-// cut returns text's first line, shortened to at most n runes with an ellipsis.
-func cut(text string, n int) string {
-	line, _, _ := strings.Cut(text, "\n")
-	if utf8.RuneCountInString(line) <= n {
-		return line
-	}
+// pickerLabel returns stored text as one line a picker can draw, so it cannot move the cursor or
+// send the terminal a sequence: no escape sequences or control characters, white space collapsed,
+// at most 60 cells wide.
+func pickerLabel(text string) string {
+	printable := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, ansi.Strip(text))
 
-	return string([]rune(line)[:n-1]) + "…"
+	return ansi.Truncate(strings.Join(strings.Fields(printable), " "), 60, "…")
 }
