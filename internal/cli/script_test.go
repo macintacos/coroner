@@ -1,11 +1,14 @@
 package cli_test
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -65,6 +68,7 @@ func hermeticEnv(env *testscript.Env) error {
 	// A DST zone, and an evening instant whose UTC date is the next day, so local/UTC mix-ups fail.
 	env.Setenv("TZ", "America/New_York")
 	env.Setenv("CORONER_TEST_NOW", "2026-09-12T21:30:00-04:00")
+	env.Setenv("CORONER_TEST_IDS", filepath.Join(env.WorkDir, ".coroner-test-ids"))
 	return nil
 }
 
@@ -105,7 +109,7 @@ func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
 	ts.Check(errors.Join(err, db.Close()))
 }
 
-// runCoroner is coroner as scripts run it: main.go's App with the clock pinned.
+// runCoroner is coroner as scripts run it: main.go's App with the clock and IDs pinned.
 func runCoroner() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
@@ -130,6 +134,9 @@ func runCoroner() {
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
 	})
+	if err == nil {
+		app, err = withTestIDs(app)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		// Distinct from coroner's exit codes, so an exact exit-code assertion tells a broken harness from a coroner failure.
@@ -174,5 +181,95 @@ var _ = Describe("withTestClock", func() {
 		_, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("yesterday"), Now: time.Now})
 
 		Expect(err).To(MatchError(ContainSubstring("CORONER_TEST_NOW")))
+	})
+})
+
+// withTestIDs numbers app's IDs from the counter file CORONER_TEST_IDS names, so the coroner
+// processes of one script continue a single sequence.
+// ponytail: the counter file is unlocked, so a script must not run coroner in the background.
+func withTestIDs(app cli.App) (cli.App, error) {
+	path, _ := app.LookupEnv("CORONER_TEST_IDS")
+	if path == "" {
+		return app, errors.New("CORONER_TEST_IDS is not set")
+	}
+
+	millis := app.Now().UnixMilli()
+	readFile := app.ReadFile
+	app.NewID = func() (uuid.UUID, error) {
+		n, err := nextCount(readFile, path)
+		return testID(millis, n), err
+	}
+	return app, nil
+}
+
+// nextCount increments the count stored in the file at path, which starts at 0 when missing.
+func nextCount(readFile func(string) ([]byte, error), path string) (uint64, error) {
+	data, err := readFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return 0, err
+	}
+
+	n, err := strconv.ParseUint(cmp.Or(string(data), "0"), 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	n++
+	return n, os.WriteFile(path, []byte(strconv.FormatUint(n, 10)), 0o600)
+}
+
+// testID returns the UUIDv7 whose timestamp is millis and whose random bits hold n.
+func testID(millis int64, n uint64) uuid.UUID {
+	var id uuid.UUID
+	binary.BigEndian.PutUint64(id[:8], uint64(max(millis, 0))<<16)
+	binary.BigEndian.PutUint64(id[8:], n)
+	id[6] = 0x70
+	id[8] = id[8]&0x3f | 0x80
+	return id
+}
+
+var _ = Describe("withTestIDs", func() {
+	pinned := func() time.Time { return time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC) }
+	fakeLookupEnv := func(value string) func(string) (string, bool) {
+		return func(key string) (string, bool) {
+			return value, key == "CORONER_TEST_IDS"
+		}
+	}
+
+	It("gives UUIDv7 IDs stamped with App.Now's millisecond and numbered from 1", func() {
+		app, err := withTestIDs(cli.App{
+			LookupEnv: fakeLookupEnv(filepath.Join(GinkgoT().TempDir(), "ids")), Now: pinned, ReadFile: os.ReadFile, NewID: uuid.NewV7,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		first, err := app.NewID()
+		Expect(err).NotTo(HaveOccurred())
+		second, err := app.NewID()
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(first.String()).To(Equal("01a09862-b1c0-7000-8000-000000000001"))
+		Expect(second.String()).To(Equal("01a09862-b1c0-7000-8000-000000000002"))
+		Expect(first.Version()).To(Equal(uuid.Version(7)))
+		Expect(first.Variant()).To(Equal(uuid.RFC4122))
+	})
+
+	It("continues the numbering across apps sharing CORONER_TEST_IDS, as a script's coroner processes do", func() {
+		lookupEnv := fakeLookupEnv(filepath.Join(GinkgoT().TempDir(), "ids"))
+		earlier, err := withTestIDs(cli.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile, NewID: uuid.NewV7})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = earlier.NewID()
+		Expect(err).NotTo(HaveOccurred())
+
+		later, err := withTestIDs(cli.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile, NewID: uuid.NewV7})
+		Expect(err).NotTo(HaveOccurred())
+		id, err := later.NewID()
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(id.String()).To(Equal("01a09862-b1c0-7000-8000-000000000002"))
+	})
+
+	It("rejects an unset CORONER_TEST_IDS", func() {
+		_, err := withTestIDs(cli.App{LookupEnv: fakeLookupEnv(""), Now: pinned, ReadFile: os.ReadFile, NewID: uuid.NewV7})
+
+		Expect(err).To(MatchError(ContainSubstring("CORONER_TEST_IDS")))
 	})
 })
