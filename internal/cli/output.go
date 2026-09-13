@@ -62,7 +62,7 @@ func outputFormat(cmd *cobra.Command) (format, error) {
 type output struct {
 	format        format
 	quiet, outTTY bool
-	out, err      io.Writer
+	out, errOut   io.Writer
 }
 
 func newOutput(cmd *cobra.Command, app App) (output, error) {
@@ -72,16 +72,16 @@ func newOutput(cmd *cobra.Command, app App) (output, error) {
 	}
 	quiet, _ := cmd.Flags().GetBool("quiet")
 
-	return output{format: chosen, quiet: quiet, outTTY: app.OutIsTTY, out: app.Out, err: app.Err}, nil
+	return output{format: chosen, quiet: quiet, outTTY: app.OutIsTTY, out: app.Out, errOut: app.Err}, nil
 }
 
-// notify writes a message meant for people, and a newline, to o.err unless --quiet was given.
+// notify writes a message meant for people, and a newline, to o.errOut unless --quiet was given.
 func (o output) notify(message string, args ...any) error {
 	if o.quiet {
 		return nil
 	}
 
-	_, err := fmt.Fprintf(o.err, message+"\n", args...)
+	_, err := fmt.Fprintf(o.errOut, message+"\n", args...)
 	return err
 }
 
