@@ -44,7 +44,8 @@
    nothing marshals an `internal/store/sqlcgen` type to JSON, because JSON output is a
    contract (`AGENTS.md` Rule 3) and a generated model changes whenever the schema does.
    No exported store method takes or returns one either: they speak `internal/timeline`
-   types.
+   types. The `sqlcgen-private` depguard rule in [`.golangci.yml`](../../.golangci.yml)
+   fails any import of `sqlcgen` outside `internal/store`.
 6. **A store method's function passed to `Store.write` or `read` uses only the
    `sqlcgen.Queries` it is given:** calling another `Store` method from inside `write`
    waits on the transaction's own write lock until `ErrBusy`. A store method's writes

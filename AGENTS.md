@@ -21,8 +21,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run test` runs the Ginkgo suites, and through them the testscript end-to-end
   scripts and the rapid properties; a package pattern narrows it, and `--focus <regexp>`
   narrows Ginkgo specs only, so plain `Test*` functions such as `TestScripts` still run.
-- `mise run preflight` runs lint, test and build. It is the gate before declaring work
-  done (Rule 7).
+- `mise run preflight` runs lint, test and build, then `golangci-lint config verify`. It
+  is the gate before declaring work done (Rule 7).
 
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, and `pre-push` runs `mise run test` when Go files, `go.mod` or
@@ -84,7 +84,7 @@ digraph coroner_rules_router {
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not
-  here. Layering checks are not in the repo yet (EXC-1328).
+  here.
 
 ## Rules
 

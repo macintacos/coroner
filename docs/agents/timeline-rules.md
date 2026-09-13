@@ -2,9 +2,10 @@
 
 *Audience: coding agents whose change `AGENTS.md` routes here.*
 
-1. **The package is pure:** `internal/timeline` imports the standard library only and
-   never reads a clock, generates a UUID or does I/O. IDs and instants arrive as field
-   values the caller fills.
+1. **The package is pure:** lint holds `internal/timeline` to the standard library without
+   `os`, `database/sql` or `time.Now` (the `timeline-pure` depguard rule and forbidigo in
+   [`.golangci.yml`](../../.golangci.yml)). Beyond that, it never generates a UUID or does
+   I/O: IDs and instants arrive as field values the caller fills.
 2. **`FormatInstant` is the only producer of the canonical instant text** (fixed width,
    UTC, nine fractional digits). Never store or export an instant formatted with
    `time.RFC3339Nano`, and never hand a `time.Time` to the SQLite driver: both break
