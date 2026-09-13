@@ -67,11 +67,11 @@ func formatOptionalInstant(t *time.Time) *string {
 	return new(timeline.FormatInstant(*t))
 }
 
-// displayOptionalInstant is displayInstant, or "-" for nil.
-func displayOptionalInstant(t *time.Time) string {
+// displayOptionalInstant renders t in z to the second, or "-" for nil.
+func displayOptionalInstant(t *time.Time, z zone) string {
 	if t == nil {
 		return "-"
 	}
 
-	return displayInstant(*t)
+	return displayTime(*t, timeline.PrecisionSecond, z)
 }

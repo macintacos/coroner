@@ -65,7 +65,7 @@ var _ = Describe("Sources", func() {
 
 		It("keeps a source whose events were all deleted, with no counts and no occurred at", func(ctx SpecContext) {
 			Expect(s.AddEvent(ctx, newEvent(10, at(20), "slack"), uuid(20))).Error().NotTo(HaveOccurred())
-			Expect(s.DeleteEvent(ctx, uuid(10))).To(Succeed())
+			Expect(s.DeleteEvents(ctx, uuid(10))).To(Succeed())
 
 			Expect(s.SourceUsages(ctx)).To(Equal([]store.SourceUsage{
 				{ID: uuid(20), Name: "slack", CreatedAt: created},
