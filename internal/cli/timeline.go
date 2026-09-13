@@ -208,13 +208,13 @@ func lookupTimeline(
 // one it is timeline_required, with a hint listing the timelines.
 func selectTimeline(
 	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
-) (timeline.Timeline, selectedBy, error) {
+) (timeline.Timeline, error) {
 	t, by, err := lookupTimeline(ctx, s, flag, lookupEnv)
 	if err == nil && by == "" {
-		return t, by, timelineRequiredError(ctx, s)
+		return t, timelineRequiredError(ctx, s)
 	}
 
-	return t, by, err
+	return t, err
 }
 
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines

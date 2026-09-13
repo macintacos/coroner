@@ -80,7 +80,7 @@ func addEvent(ctx context.Context, cmd *cobra.Command, app App, args []string) e
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
 		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
-		t, _, err := selectTimeline(ctx, s, flag, app.LookupEnv)
+		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
 		}
