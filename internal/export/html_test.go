@@ -108,8 +108,8 @@ func literalBody(name string) string {
 // keysAt returns, in order, the keys on the lines of body indented by exactly indent.
 func keysAt(body, indent string) []string {
 	var keys []string
-	for _, m := range regexp.MustCompile(`(?m)^`+indent+`([a-z_]+)(?::|,$)`).FindAllStringSubmatch(body, -1) {
-		keys = append(keys, m[1])
+	for _, match := range regexp.MustCompile(`(?m)^`+indent+`([a-z_]+)(?::|,$)`).FindAllStringSubmatch(body, -1) {
+		keys = append(keys, match[1])
 	}
 
 	return keys
@@ -204,10 +204,10 @@ var _ = Describe("WriteHTML", func() {
 	)
 
 	It("has an annotations header whose query writes the export query's keys in order", func() {
-		query := regexp.MustCompile(`(?ms)^    query: \{$(.*?)^    \},$`).FindStringSubmatch(literalBody("annotationsHeader"))
-		Expect(query).To(HaveLen(2), "no query literal in annotationsHeader")
+		match := regexp.MustCompile(`(?ms)^    query: \{$(.*?)^    \},$`).FindStringSubmatch(literalBody("annotationsHeader"))
+		Expect(match).To(HaveLen(2), "no query literal in annotationsHeader")
 
-		Expect(keysAt(query[1], "      ")).To(Equal(jsonKeys(reflect.TypeFor[export.Query]())))
+		Expect(keysAt(match[1], "      ")).To(Equal(jsonKeys(reflect.TypeFor[export.Query]())))
 	})
 
 	It("has a page-exported annotations sample that validates, as a header and comments with UUIDv7 IDs and nine-digit instants", func() {

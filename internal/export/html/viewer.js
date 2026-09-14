@@ -253,8 +253,8 @@
   // editing is the open comment form: its event, the draft it edits or null for a new comment, and
   // the text typed into it, undefined until the author types.
   let editing = null;
-  // pendingComment is the event whose Add comment asked for the author's name first.
-  let pendingComment = null;
+  // pendingEventId is the event whose Add comment asked for the author's name first.
+  let pendingEventId = null;
   let lastExport = null; // { filename, versions: Map<draft id, updatedAt> }
 
   const draftsOn = (eventId) => drafts.filter((draft) => draft.eventId === eventId);
@@ -286,14 +286,14 @@
   const commentForm = (open, draft) => {
     const form = element("form", undefined, draft ? "comment" : "comment new-comment");
     const label = element("label", draft ? "Edit your comment" : "Your comment");
-    const body = element("textarea");
-    body.rows = 4;
-    body.required = true;
-    body.value = open.text ?? draft?.body ?? "";
-    body.addEventListener("input", () => {
-      open.text = body.value;
+    const bodyInput = element("textarea");
+    bodyInput.rows = 4;
+    bodyInput.required = true;
+    bodyInput.value = open.text ?? draft?.body ?? "";
+    bodyInput.addEventListener("input", () => {
+      open.text = bodyInput.value;
     });
-    label.append(body);
+    label.append(bodyInput);
     const save = element("button", "Save draft");
     save.type = "submit";
     const actions = element("p", undefined, "actions");
@@ -301,14 +301,14 @@
     form.append(label, actions);
     form.addEventListener("submit", (submitted) => {
       submitted.preventDefault();
-      if (!filled(body)) return;
+      if (!filled(bodyInput)) return;
       const now = Date.now();
       if (draft) {
         // Another tab may have discarded the draft; the edit keeps it rather than lose the text.
-        const edited = { ...draft, body: body.value, updatedAt: canonicalInstant(now) };
+        const edited = { ...draft, body: bodyInput.value, updatedAt: canonicalInstant(now) };
         changeDrafts((fresh) => (fresh.some((other) => other.id === draft.id) ? fresh.map((other) => (other.id === draft.id ? edited : other)) : [...fresh, edited]));
       } else {
-        changeDrafts((fresh) => [...fresh, newDraft(open.eventId, body.value, now, crypto.getRandomValues(new Uint8Array(10)))]);
+        changeDrafts((fresh) => [...fresh, newDraft(open.eventId, bodyInput.value, now, crypto.getRandomValues(new Uint8Array(10)))]);
       }
       editing = null;
       refresh();
@@ -991,7 +991,7 @@
 
   const openComment = (eventId, draftId) => {
     if (author === null) {
-      pendingComment = eventId;
+      pendingEventId = eventId;
       askName();
       return;
     }
@@ -1007,7 +1007,7 @@
   document.getElementById("change-name").addEventListener("click", askName);
   document.getElementById("cancel-name").addEventListener("click", () => {
     nameForm.hidden = true;
-    pendingComment = null;
+    pendingEventId = null;
   });
   nameForm.addEventListener("submit", (submitted) => {
     submitted.preventDefault();
@@ -1021,8 +1021,8 @@
       // A draft being edited was the previous author's; a new comment being typed carries over.
       if (editing?.draftId !== null) editing = null;
     }
-    if (pendingComment !== null) editing = { eventId: pendingComment, draftId: null };
-    pendingComment = null;
+    if (pendingEventId !== null) editing = { eventId: pendingEventId, draftId: null };
+    pendingEventId = null;
     nameForm.hidden = true;
     refresh();
   });
