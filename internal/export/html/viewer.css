@@ -410,6 +410,10 @@ pre.body {
     margin: 0;
   }
 
+  #print .time {
+    white-space: nowrap;
+  }
+
   #print .source {
     overflow-wrap: anywhere;
   }
