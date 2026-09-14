@@ -48,15 +48,15 @@ minute is placed after something that happened within that minute.
 
 Approximate is separate from precision. `~10:15`, or `around 10:15`, marks a time as a
 guess, such as a time recalled from memory, without claiming it is less exact. JSON keeps
-both, and the Markdown, Mermaid and SVG exports mark approximate times, so a reader can
-tell a precise log line from a recollection.
+both, and the Markdown, Mermaid, HTML and SVG exports all mark approximate times, so a
+reader can tell a precise log line from a recollection.
 
 ## The order of events
 
-Events are ordered by occurred at, then by timeline, then by seq. The timeline breaks ties
-only between events of different timelines in an overlay, and seq, the order events were
-added, breaks the rest. When a record was created never decides the order, since evidence
-is often found long after it happened.
+Events are ordered by occurred at, then by timeline ID, then by seq. The timeline ID
+breaks ties only between events of different timelines in an overlay, and seq, the order
+events were added, breaks the rest. When a record was created never decides the order,
+since evidence is often found long after it happened.
 
 ## Reading the zone of a typed time
 
@@ -68,12 +68,14 @@ because a copied log line that states its offset is the most exact evidence ther
 says where you usually are.
 
 A wall-clock time that a daylight saving change skips or repeats in its zone is rejected,
-with an error naming the zone and both offsets. `01:30` on the night clocks go back
-happens twice; picking one would silently misorder the event by an hour, so coroner asks
-for the offset instead.
+with an error that names the zone and suggests the time written with the offset in force
+before the change and with the one after it. `01:30` on the night clocks go back happens
+twice; picking one would silently misorder the event by an hour, so coroner asks for the
+offset instead.
 
-Every command that writes a time echoes the instant it resolved, and `--dry-run` shows it
-without writing, so a misread time is caught before it is on the timeline.
+A misread time is cheap to catch before it lands and costly once it has reordered a
+timeline, so every command that writes a time echoes what it resolved, as
+[time input](../reference/cli/coroner_help_time.md) describes.
 
 ## Showing times
 

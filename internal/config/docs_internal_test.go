@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,7 +16,8 @@ var _ = Describe("the configuration reference", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		for _, field := range reflect.VisibleFields(reflect.TypeFor[fileConfig]()) {
-			key := field.Tag.Get("toml")
+			key, _, _ := strings.Cut(field.Tag.Get("toml"), ",")
+			Expect(key).NotTo(BeEmpty(), field.Name)
 			Expect(string(page)).To(ContainSubstring("`"+key+"`"), key)
 		}
 	})

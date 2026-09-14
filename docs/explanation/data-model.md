@@ -14,9 +14,9 @@ glossary coroner uses for every name in its commands, JSON and docs.
 erDiagram
   TIMELINE ||--o{ EVENT : "is the home of"
   TIMELINE ||--o{ ANNOTATION : "holds"
-  EVENT ||--o{ ANNOTATION : "is annotated by"
-  EVENT ||--o{ ATTACHMENT : "keeps"
-  ANNOTATION ||--o{ ATTACHMENT : "keeps"
+  EVENT |o--o{ ANNOTATION : "is annotated by"
+  EVENT |o--o{ ATTACHMENT : "keeps"
+  ANNOTATION |o--o{ ATTACHMENT : "keeps"
   SOURCE |o--o{ EVENT : "reported"
   SOURCE |o--o{ ANNOTATION : "supplied"
   ATTACHMENT }o--|| BLOB : "stores its bytes in"
@@ -24,14 +24,12 @@ erDiagram
 
 ### A timeline contains events
 
-A timeline is one investigation's chronology, with a unique name such as `mongo-outage`, a
-title, and refs: the issue-tracker keys or URLs it belongs to, kept as written.
-
-Each event belongs to exactly one timeline, its home. An event is a claim about the past
-as a source reported it, so it lives where the investigation that recorded it lives. To
-read several investigations side by side, such as a database failover and the checkout
-latency it caused, you overlay their timelines. An overlay is a query, not a record: it
-merges the timelines' events into one chronology and changes none of them.
+Each event belongs to exactly one [timeline](#glossary), its home, because the claim an
+event makes is part of the investigation that recorded it. Commands name a timeline by its
+unique name, such as `mongo-failover`. To read several investigations side by side, such
+as a database failover and the checkout latency it caused, you overlay their timelines. An
+overlay is a query, not a record: it merges the timelines' events into one chronology and
+changes none of them.
 
 ```sh
 coroner event list -t mongo-failover -t checkout-latency
@@ -42,54 +40,59 @@ a second copy of itself, and deleting one timeline never touches another.
 
 ### Annotations back events up
 
-An annotation is material attached to an event, or to the whole timeline when it concerns
-no single event. Its kind says what it holds: `evidence` for raw material kept verbatim,
-such as a log line or a chat message, and `comment` for an investigator's commentary.
+An [annotation](#glossary) is either on one event or on the whole timeline, and its kind
+says what it holds: `evidence` or `comment`.
 
 Evidence and commentary are one entity with a kind, rather than two, because they attach
 the same way, list together under their event and export as one record type. The kind
 keeps them apart where it matters: an evidence body is the source's words, and a comment
 is yours.
 
-An annotation has no time of its own on the chronology. Only events are placed in time, so
-what happened stays separate from what someone later found or thought about it.
+Only events are placed on the chronology, so what happened stays separate from what
+someone later found or thought about it.
 
 ### Sources, tags and refs
 
-A source is the system, service or person an event or annotation came from, such as
-`slack` or `db-2/mongod`. Sources are global to the database rather than owned by a
-timeline, and naming a new one in `--source` creates it. The same `db-2/mongod` then means
-the same thing on every timeline, which is what lets `coroner source list` count its use
-and an export match sources across databases by name.
+[Sources](#glossary) are global to the database rather than owned by a timeline, and
+naming a new one in `--source` creates it. Each event or annotation names at most one
+source. The same `db-2/mongod` then means the same thing on every timeline, which is what
+lets `coroner source list` count its use and an import match sources across databases by
+name.
 
-A tag is a free lowercase keyword on an event, such as `election`. A colon marks a shared
-convention, as in `phase:detect`. Tags carry no schema: agree on the conventions you need
-within your team.
+[Tags](#glossary) are on events only, and carry no schema: agree on the conventions you
+need, such as `phase:detect`, within your team.
+
+A timeline's [refs](#glossary) are kept as text coroner never parses, so an `OPS-42` key
+and a URL from another tracker sit side by side on one timeline.
 
 ### Attachments and blobs
 
-An attachment is a file, such as a screenshot, kept with one event or annotation. Its
-bytes are a blob, stored once under their SHA-256 in the blob directory beside the
-database, so attaching the same screenshot twice keeps two attachments and one copy of the
-bytes. An export carries each attachment's metadata and hash, and copies the files beside
-it when it writes into a directory.
+An [attachment](#glossary) is kept with exactly one event or one annotation, never both.
+Its bytes are addressed by their SHA-256 rather than by the attachment, so the same
+screenshot attached twice costs one copy of the bytes. An export carries each attachment's
+metadata and hash, and a Markdown or JSONL export written into a directory also copies the
+files beside it.
 
 ### IDs and seqs
 
-Every record has an ID, a UUIDv7: unique across every database, so an import keeps each
-record's ID and a colleague's export merges into yours without renumbering. A UUIDv7 also
-starts with the time it was made, so IDs made later sort later.
+Every timeline, event, annotation and attachment has an ID, a UUIDv7: unique across every
+database, so an import keeps each of their IDs and a colleague's export merges into yours
+without two records sharing one. Sources are the exception: each database gives a source
+its own ID, and an import matches sources by name. A UUIDv7 also starts with the time it
+was made, so IDs made later sort later.
 
-People do not type UUIDs. Each event also gets a seq when it is added: the next value of
-its timeline's counter, shown as `#12`. The counter only increases, so a deleted event's
-seq is never reused, and `#12` in last week's chat message still means the event it meant
-then, or no event at all.
+People do not type UUIDs, so each event also gets a [seq](#glossary), shown as `#12`. Seqs
+follow the order events were added to their timeline, not when they happened: an event
+backdated to last week still gets the next seq. The counter only increases, so a deleted
+event's seq is never reused, and `#12` in last week's chat message still means the event
+it meant then, or no event at all.
 
 ## Glossary
 
-These are the names coroner uses in its commands, flags, JSON and docs. Each entry lists
-the words to avoid for the same idea. The glossary is the repository's
-[`CONTEXT.md`](https://github.com/macintacos/coroner/blob/main/CONTEXT.md), word for word.
+These are the names coroner uses in its commands, flags, JSON and docs. Most entries list
+the words to avoid for the same idea. This glossary and the prior art below are the
+repository's [`CONTEXT.md`](https://github.com/macintacos/coroner/blob/main/CONTEXT.md)
+from its Language section on, word for word.
 
 ### The record
 

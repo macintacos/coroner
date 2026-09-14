@@ -11,13 +11,17 @@ import (
 
 var _ = Describe("the data model page", func() {
 	It("carries CONTEXT.md's glossary and prior art word for word", func() {
-		context := readRepoFile("CONTEXT.md")
-		_, glossary, found := strings.Cut(context, "\n## Language\n")
-		Expect(found).To(BeTrue(), "CONTEXT.md has a Language section")
+		// The page splits each _Avoid_ line into its own paragraph, since the docs site
+		// renders a hard-break backslash literally; comparing words ignores that layout.
+		glossary := strings.ReplaceAll(after(readRepoFile("CONTEXT.md"), "\n## Language\n"), "\\\n", "\n")
+		page := after(after(readRepoFile("docs", "explanation", "data-model.md"), "\n## Glossary\n"), "\n### ")
+		pageWords := words("### " + page)
 
-		page := readRepoFile("docs", "explanation", "data-model.md")
-
-		Expect(words(page)).To(ContainSubstring(words(glossary)))
+		for entry := range strings.SplitSeq(strings.TrimSpace(glossary), "\n\n") {
+			firstLine, _, _ := strings.Cut(entry, "\n")
+			Expect(pageWords).To(ContainSubstring(words(entry)), firstLine)
+		}
+		Expect(pageWords).To(Equal(words(glossary)))
 	})
 })
 
@@ -29,8 +33,14 @@ func readRepoFile(path ...string) string {
 	return string(content)
 }
 
-// words joins text's lines, dropping the backslash that ends a Markdown hard line break,
-// which the docs site renders literally.
+func after(text, separator string) string {
+	GinkgoHelper()
+	_, rest, found := strings.Cut(text, separator)
+	Expect(found).To(BeTrue(), "missing %q", separator)
+
+	return rest
+}
+
 func words(text string) string {
-	return strings.Join(strings.Fields(strings.ReplaceAll(text, "\\\n", "\n")), " ")
+	return strings.Join(strings.Fields(text), " ")
 }

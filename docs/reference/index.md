@@ -12,13 +12,12 @@ way it does, see the [explanation pages](../explanation/index.md).
   encoded and how it evolves, for scripts and importers. Its machine-readable twin is the
   [JSON Schema](/coroner/schema/export-v1.schema.json).
 - [Exit codes](cli/coroner_help_exit-codes.md): what each exit code and error kind means,
-  and the JSON error envelope. `coroner help exit-codes` prints the same page.
+  and the JSON error envelope.
 - [Environment variables](cli/coroner_help_environment.md): every variable coroner reads.
-  `coroner help environment` prints the same page.
 - [Time input](cli/coroner_help_time.md): the times you can type, the zone they are read
-  in, and how they are checked. `coroner help time` prints the same page.
+  in, and how they are checked.
 - [Output formats](cli/coroner_help_formatting.md): the formats commands print and what
-  scripts can rely on in JSON output. `coroner help formatting` prints the same page.
+  scripts can rely on in JSON output.
 - [Configuration](configuration.md): the config file, its keys, and how flags, environment
   variables and the file take precedence.
 - [CLI](cli/coroner.md): every command and flag, generated from coroner itself.

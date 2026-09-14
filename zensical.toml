@@ -1,9 +1,10 @@
 [project]
 site_name        = "coroner"
 site_description = "A command-line tool for building root-cause investigation timelines."
-site_url         = "https://macintacos.github.io/coroner/"
-repo_url         = "https://github.com/macintacos/coroner"
-repo_name        = "macintacos/coroner"
+# Pages link the copied export schema under this URL's path, as /coroner/schema/.
+site_url  = "https://macintacos.github.io/coroner/"
+repo_url  = "https://github.com/macintacos/coroner"
+repo_name = "macintacos/coroner"
 
 # Unlisted pages, such as every command page but coroner.md, are still built and searchable.
 nav = [

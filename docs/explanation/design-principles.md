@@ -46,7 +46,9 @@ come.
 
 A command acts on the timeline named by the first of: `-t`, then `CORONER_TIMELINE`, then
 the current timeline `coroner timeline use` stored. With none of them, the command stops
-with an error that lists your timelines, rather than guessing one.
+with an error that lists your timelines, rather than guessing one. `coroner event list`
+and `coroner timeline export` read several timelines at once and take `-t` more than once
+to overlay them; every other command refuses a second `-t`.
 
 ```sh
 coroner event list -t mongo-outage
@@ -66,8 +68,9 @@ coroner's code reaches the outside world only at its edge. `main.go` builds one 
 holding the process's arguments, streams, environment, file system, clock and ID
 generator, and every command receives what it needs from that value rather than reading
 the process itself. Beneath the commands, the domain model and the time parser are pure:
-they take the clock, the zone and their inputs as parameters and do no I/O, and lint rules
-reject the imports that would break that.
+they take their inputs, including the current time and the zone, as parameters and do no
+I/O, and lint rejects a clock read or process access outside `main.go`, the tests and the
+dev tools.
 
 A function whose signature is its whole contract can be read on its own and tested without
 staging a world around it. That is why coroner's end-to-end tests can pin the clock and
