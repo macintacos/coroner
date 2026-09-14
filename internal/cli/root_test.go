@@ -56,7 +56,7 @@ var _ = Describe("Run", func() {
 			code := cli.Run(ctx, newApp("version", "--format", "json"))
 
 			Expect(code).To(Equal(0))
-			Expect(out.String()).To(Equal(`{"coroner_version":"v1.2.3"}` + "\n"))
+			Expect(out.String()).To(HavePrefix(`{"coroner_version":"v1.2.3","format_versions":[`))
 		})
 
 		It("indents JSON when Out is a terminal", func(ctx SpecContext) {
@@ -65,14 +65,14 @@ var _ = Describe("Run", func() {
 
 			cli.Run(ctx, app)
 
-			Expect(out.String()).To(Equal("{\n  \"coroner_version\": \"v1.2.3\"\n}\n"))
+			Expect(out.String()).To(HavePrefix("{\n  \"coroner_version\": \"v1.2.3\",\n  \"format_versions\": [\n"))
 		})
 
 		It("is also printed by --version", func(ctx SpecContext) {
 			code := cli.Run(ctx, newApp("--version", "--json"))
 
 			Expect(code).To(Equal(0))
-			Expect(out.String()).To(Equal(`{"coroner_version":"v1.2.3"}` + "\n"))
+			Expect(out.String()).To(HavePrefix(`{"coroner_version":"v1.2.3","format_versions":[`))
 		})
 
 		It("exits 1 with kind internal and a way to report it when Out cannot be written", func(ctx SpecContext) {

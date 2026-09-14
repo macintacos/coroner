@@ -203,6 +203,19 @@ func checkSupported(format, formatVersion string) error {
 	return nil
 }
 
+// FormatVersions returns every format_version up to FormatVersion within its major, oldest
+// first: the versions whose exports this coroner reads in full.
+func FormatVersions() []string {
+	major, minor, _ := strings.Cut(FormatVersion, ".")
+	latest, _ := strconv.Atoi(minor)
+	versions := make([]string, 0, latest+1)
+	for m := range latest + 1 {
+		versions = append(versions, major+"."+strconv.Itoa(m))
+	}
+
+	return versions
+}
+
 // plain rewords a json/v2 semantic error, whose text names Go types, by the key it is at.
 func plain(err error) error {
 	semantic, ok := errors.AsType[*json.SemanticError](err)
