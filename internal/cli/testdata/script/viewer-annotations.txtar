@@ -1,0 +1,29 @@
+# A colleague commented on the HTML page of inc-4821.jsonl and exported their comments; the
+# investigator, who has the timeline, previews the file and imports it. Both archive files
+# are real: the first from timeline export, the second downloaded from that export's page.
+env CORONER_DB=$WORK/investigator.db
+exits 0 coroner import inc-4821.jsonl
+
+exits 0 coroner import inc-4821-annotations-Priya-Shah.jsonl --dry-run --json
+stdout '"annotations":\{"inserted":2,"identical":0,"conflicting":0\}'
+
+exits 0 coroner import inc-4821-annotations-Priya-Shah.jsonl
+stderr '^Imported annotations: 2 inserted, 0 identical, 0 conflicting$'
+
+# The comments keep the IDs, author and times the page gave them.
+exits 0 coroner annotation list -t inc-4821 --json
+cmp stdout annotations.json
+
+-- inc-4821.jsonl --
+{"type":"header","format":"coroner.export","format_version":"1.2","coroner_version":"(devel)","exported_at":"2026-09-14T14:56:28.265827000Z","query":{"timelines":["inc-4821"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}
+{"type":"timeline","id":"01a0a06b-64fe-7278-9670-b9317fa36e42","name":"inc-4821","title":"Mongo primary election","refs":["INC-4821"],"created_at":"2026-09-14T14:56:27.902177000Z"}
+{"type":"source","id":"01a0a06b-6580-7200-9020-d8aa627c140f","name":"mongod","created_at":"2026-09-14T14:56:28.032111000Z"}
+{"type":"source","id":"01a0a06b-65f4-7280-bcb0-517850527b2a","name":"pagerduty","created_at":"2026-09-14T14:56:28.148144000Z"}
+{"type":"event","id":"01a0a06b-6580-71ff-9f9a-453f55f0b52c","timeline_id":"01a0a06b-64fe-7278-9670-b9317fa36e42","seq":1,"occurred_at":"2026-09-11T03:14:07.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-11T03:14:07Z","ended_at":null,"source":"mongod","tags":["election"],"text":"Primary stepped down","url":null,"author":"julian","created_at":"2026-09-14T14:56:28.032111000Z","updated_at":"2026-09-14T14:56:28.032111000Z"}
+{"type":"event","id":"01a0a06b-65f4-727c-9126-19d9409843b9","timeline_id":"01a0a06b-64fe-7278-9670-b9317fa36e42","seq":2,"occurred_at":"2026-09-11T03:15:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-11T03:15:00Z","ended_at":null,"source":"pagerduty","tags":[],"text":"Pager fires for db-2","url":null,"author":"julian","created_at":"2026-09-14T14:56:28.148144000Z","updated_at":"2026-09-14T14:56:28.148144000Z"}
+-- inc-4821-annotations-Priya-Shah.jsonl --
+{"type":"header","format":"coroner.export","format_version":"1.2","coroner_version":"(devel)","exported_at":"2026-09-14T14:56:51.524000000Z","query":{"timelines":["inc-4821"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}
+{"type":"annotation","id":"01a0a06b-a990-7923-bc77-3ec0d451bcd4","timeline_id":"01a0a06b-64fe-7278-9670-b9317fa36e42","event_id":"01a0a06b-6580-71ff-9f9a-453f55f0b52c","kind":"comment","body":"The step-down came 53s before the page.\nWas the election timeout raised in the last deploy?","author":"Priya Shah","source":null,"url":null,"created_at":"2026-09-14T14:56:45.456000000Z","updated_at":"2026-09-14T14:56:45.456000000Z"}
+{"type":"annotation","id":"01a0a06b-b56a-7358-bbd6-69b5c9950506","timeline_id":"01a0a06b-64fe-7278-9670-b9317fa36e42","event_id":"01a0a06b-65f4-727c-9126-19d9409843b9","kind":"comment","body":"Paged 53s after the step-down; the alert delay looks right.","author":"Priya Shah","source":null,"url":null,"created_at":"2026-09-14T14:56:48.490000000Z","updated_at":"2026-09-14T14:56:50.623000000Z"}
+-- annotations.json --
+{"annotations":[{"id":"01a0a06b-a990-7923-bc77-3ec0d451bcd4","timeline_id":"01a0a06b-64fe-7278-9670-b9317fa36e42","event_id":"01a0a06b-6580-71ff-9f9a-453f55f0b52c","kind":"comment","body":"The step-down came 53s before the page.\nWas the election timeout raised in the last deploy?","author":"Priya Shah","source":null,"url":null,"created_at":"2026-09-14T14:56:45.456000000Z","updated_at":"2026-09-14T14:56:45.456000000Z","attachments":[]},{"id":"01a0a06b-b56a-7358-bbd6-69b5c9950506","timeline_id":"01a0a06b-64fe-7278-9670-b9317fa36e42","event_id":"01a0a06b-65f4-727c-9126-19d9409843b9","kind":"comment","body":"Paged 53s after the step-down; the alert delay looks right.","author":"Priya Shah","source":null,"url":null,"created_at":"2026-09-14T14:56:48.490000000Z","updated_at":"2026-09-14T14:56:50.623000000Z","attachments":[]}]}

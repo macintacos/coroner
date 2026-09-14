@@ -8,11 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/rogpeppe/go-internal/txtar"
 
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -76,6 +79,17 @@ func zoneOf(page string) pageZone {
 
 func unixMilli(value string) int64 {
 	return time.Time(utc(value)).UnixMilli()
+}
+
+// archiveFile returns the content of the file named name in the txtar archive at path.
+func archiveFile(path, name string) []byte {
+	GinkgoHelper()
+	archive, err := txtar.ParseFile(path)
+	Expect(err).NotTo(HaveOccurred())
+	i := slices.IndexFunc(archive.Files, func(f txtar.File) bool { return f.Name == name })
+	Expect(i).NotTo(Equal(-1), "no "+name+" in "+path)
+
+	return archive.Files[i].Data
 }
 
 // hostileExport carries hostile text in the typed strings the viewer shows.
@@ -144,6 +158,32 @@ var _ = Describe("WriteHTML", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(string(viewer)).NotTo(MatchRegexp(`\b(innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser)\b|document\.write|\btitle\s*:`))
+	})
+
+	It("has a viewer whose annotations export validates, as a header and comments with UUIDv7 IDs and nine-digit instants", func() {
+		// A reviewer downloaded this from the page; the script beside it imports it.
+		data := archiveFile("../cli/testdata/script/viewer-annotations.txtar", "inc-4821-annotations-Priya-Shah.jsonl")
+		expectValidJSONL(exportSchemas(), data)
+		nineDigits := MatchRegexp(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)
+
+		lines := slices.Collect(bytes.Lines(data))
+		Expect(len(lines)).To(BeNumerically(">", 1))
+		var header map[string]any
+		Expect(json.Unmarshal(lines[0], &header)).To(Succeed())
+		Expect(header).To(And(HaveKeyWithValue("type", "header"), HaveKeyWithValue("exported_at", nineDigits)))
+		for _, line := range lines[1:] {
+			var record map[string]any
+			Expect(json.Unmarshal(line, &record)).To(Succeed())
+			Expect(record).To(And(
+				HaveKeyWithValue("type", "annotation"), HaveKeyWithValue("kind", "comment"), HaveKeyWithValue("author", BeAssignableToTypeOf("")),
+				HaveKeyWithValue("created_at", nineDigits), HaveKeyWithValue("updated_at", nineDigits),
+			))
+			text, _ := record["id"].(string)
+			id, err := uuid.Parse(text)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(id.Version()).To(Equal(uuid.Version(7)), text)
+			Expect(id.Variant()).To(Equal(uuid.RFC4122), text)
+		}
 	})
 
 	It("has a stylesheet that paints only with the theme's tokens", func() {
