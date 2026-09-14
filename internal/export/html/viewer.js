@@ -471,15 +471,15 @@
   if (sources.includes(null)) sources.push(sources.splice(sources.indexOf(null), 1)[0]);
   const groupOf = new Map(sources.map((source, i) => [source, i]));
   // A source's colour is its place in the export's first appearances, cycling through the palette.
-  const sourceColors = Number(document.body.dataset.sourceColors);
+  const sourceColorCount = Number(document.body.dataset.sourceColors);
   const groups = sources.map((source, i) => ({
     id: i,
     order: i,
     content: element("span", source ?? "(no source)"),
-    className: source === null ? "source-none" : "source-" + (i % sourceColors),
+    className: source === null ? "source-none" : "source-" + (i % sourceColorCount),
   }));
 
-  const coarse = new Set(["day", "hour", "minute"]);
+  const coarsePrecisions = new Set(["day", "hour", "minute"]);
   const eventsById = new Map(data.events.map((event) => [event.id, event]));
   const items = data.events.map((event) => {
     const item = {
@@ -488,7 +488,7 @@
       start: instant(event.occurred_at),
       content: element("span", (event.approximate ? "~" : "") + firstLine(event.text)),
       type: event.ended_at === null ? "point" : "range",
-      className: [event.approximate && "approximate", coarse.has(event.precision) && "coarse"].filter(Boolean).join(" "),
+      className: [event.approximate && "approximate", coarsePrecisions.has(event.precision) && "coarse"].filter(Boolean).join(" "),
     };
     if (event.ended_at !== null) item.end = instant(event.ended_at);
     return item;
