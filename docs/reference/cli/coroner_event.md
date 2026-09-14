@@ -4,14 +4,14 @@ title: coroner event
 
 ## coroner event
 
-Add, list, view, edit and delete events
+Add, list, view, edit, delete and link events
 
 ### Synopsis
 
 An event is something that happened at a moment or over an interval, as a source reported
 it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else
-the one 'coroner timeline use' picked. view, edit and delete also take an event's id, from
-any timeline. list takes -t more than once to overlay several timelines.
+the one 'coroner timeline use' picked. view, edit, delete, link and unlink also take an
+event's id, from any timeline. list takes -t more than once to overlay several timelines.
 
 ```
 coroner event [flags]
@@ -51,6 +51,8 @@ coroner event [flags]
 * [coroner event add](coroner_event_add.md)	 - Add an event to the current timeline
 * [coroner event delete](coroner_event_delete.md)	 - Delete events and their annotations
 * [coroner event edit](coroner_event_edit.md)	 - Change an event's text, time, source, tags or other fields
+* [coroner event link](coroner_event_link.md)	 - Link one event to another, in any timeline
 * [coroner event list](coroner_event_list.md)	 - List a timeline's events, filtered
-* [coroner event view](coroner_event_view.md)	 - Show an event and its annotations
+* [coroner event unlink](coroner_event_unlink.md)	 - Remove the link of a kind from one event to another
+* [coroner event view](coroner_event_view.md)	 - Show an event, its annotations and its links
 
