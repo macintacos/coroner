@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -33,6 +34,10 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
+// This file belongs to the contract suite: weakening what it requires is a contract change.
+
+const exportFixtures = "../../testdata/export"
+
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 func TestExportImportRoundTrip(t *testing.T) {
 	runs := t.TempDir()
@@ -43,88 +48,111 @@ func TestExportImportRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = checkRoundTrip(t.Context(), dir, roundTripModel().Draw(t, "model"), seen)
+		first, err := checkRoundTrip(t.Context(), dir, roundTripModel().Draw(t, "model"))
+		if err == nil {
+			err = observe(seen, first)
+		}
 		if err != nil {
 			// rapid shrinks a failure only while its message repeats, and every run has its own directory.
 			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
 		}
+		err = os.RemoveAll(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 
-	// Fewer checks than rapid's default, as when debugging, draw too few models to cover everything.
+	// With fewer checks than rapid's default 100, as when debugging, or under -short, which runs a
+	// fifth of them, too few models are drawn to cover every key.
 	checks, _ := strconv.Atoi(flag.Lookup("rapid.checks").Value.String())
-	if missing := unseen(seen); checks >= 100 && len(missing) > 0 {
+	if missing := unseen(seen); checks >= 100 && !testing.Short() && len(missing) > 0 {
 		t.Errorf("no generated export held %s", strings.Join(missing, ", "))
 	}
 }
 
 var _ = Describe("Frozen export fixtures", func() {
-	paths, _ := filepath.Glob(filepath.Join("..", "..", "testdata", "export", "v*", "*"))
+	names, globErr := fs.Glob(os.DirFS(exportFixtures), "v*/*")
 	var entries []TableEntry
-	for _, path := range paths {
-		if !strings.HasPrefix(filepath.Base(path), ".") {
-			entries = append(entries, Entry(filepath.Join(filepath.Base(filepath.Dir(path)), filepath.Base(path)), path))
+	for _, name := range names {
+		if !strings.HasPrefix(filepath.Base(name), ".") {
+			entries = append(entries, Entry(name, name))
 		}
 	}
 
-	DescribeTable("round-trip through import into an empty store, exporting the current version's fixture of that name",
-		func(ctx SpecContext, path string) {
+	It("finds the frozen fixtures", func() {
+		Expect(globErr).NotTo(HaveOccurred())
+		Expect(entries).NotTo(BeEmpty())
+	})
+
+	DescribeTable("round-trip through import into an empty database, exporting the current version's fixture of that name",
+		func(ctx SpecContext, name string) {
 			dir := GinkgoT().TempDir()
-			records, importable := importableFixture(dir, path)
+			f := importableFixture(dir, name)
 			writeSidecars(dir)
-			db := filepath.Join(dir, "coroner.db")
-			_, err := coroner{home: dir}.run(ctx, "--db", db, "import", importable)
+			_, err := coroner{home: dir}.run(ctx, "--db", filepath.Join(dir, "coroner.db"), "import", f.file)
 			Expect(err).NotTo(HaveOccurred())
 
-			want, err := os.ReadFile(filepath.Join(filepath.Dir(filepath.Dir(path)), "v"+export.FormatVersion, filepath.Base(path)))
+			want, err := os.ReadFile(currentFixture(name))
 			Expect(err).NotTo(HaveOccurred())
-			Expect(reexport(ctx, db, strings.TrimPrefix(filepath.Ext(path), "."), records)).To(Equal(string(want)))
+			Expect(reexport(ctx, dir, f)).To(Equal(string(want)))
 		},
 		entries,
 	)
 })
 
-// checkRoundTrip writes m into dir/a.db and round-trips it, recording in seen what its export
-// held.
-func checkRoundTrip(ctx context.Context, dir string, m model, seen map[string]bool) error {
+// checkRoundTrip writes m into dir/a.db and round-trips it, returning its first export.
+func checkRoundTrip(ctx context.Context, dir string, m model) ([]byte, error) {
 	err := seedStore(ctx, filepath.Join(dir, "a.db"), m)
 	if err != nil {
-		return err
-	}
-	first, err := roundTrip(ctx, dir, m.names())
-	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return observe(seen, first)
+	return roundTrip(ctx, dir, m.names())
 }
 
-// importableFixture returns the records of the fixture at path, and a JSONL file in dir that import
-// reads them from: a link to the fixture itself, or a JSON document's records.
-func importableFixture(dir, path string) ([]export.Record, string) {
+// fixture is a frozen fixture as import reads it: its records, in a JSONL file.
+type fixture struct {
+	format, file string
+	records      []export.Record
+}
+
+func currentFixture(name string) string {
+	return filepath.Join(exportFixtures, "v"+export.FormatVersion, filepath.Base(name))
+}
+
+// importableFixture reads the fixture name and writes its records as a JSONL file in dir, beside
+// the attachments/ import reads sidecars from.
+func importableFixture(dir, name string) fixture {
 	GinkgoHelper()
-	data, err := os.ReadFile(filepath.Clean(path))
+	path := filepath.Clean(filepath.Join(exportFixtures, name))
+	data, err := os.ReadFile(path)
 	Expect(err).NotTo(HaveOccurred())
-	importable := filepath.Join(dir, "fixture.jsonl")
+	f := fixture{format: strings.TrimPrefix(filepath.Ext(name), "."), file: filepath.Join(dir, "fixture.jsonl")}
 
-	if filepath.Ext(path) == ".jsonl" {
-		records, err := export.Decode(bytes.NewReader(data))
+	if f.format == "json" {
+		var env export.Envelope
+		Expect(json.Unmarshal(data, &env)).To(Succeed())
+		f.records, err = export.Records(env)
 		Expect(err).NotTo(HaveOccurred())
-		fixture, err := filepath.Abs(path)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.Symlink(fixture, importable)).To(Succeed())
+		var jsonl bytes.Buffer
+		Expect(export.WriteRecords(&jsonl, f.records)).To(Succeed())
+		Expect(os.WriteFile(f.file, jsonl.Bytes(), 0o600)).To(Succeed())
 
-		return records, importable
+		return f
 	}
 
-	var env export.Envelope
-	Expect(json.Unmarshal(data, &env)).To(Succeed())
-	records, err := export.Records(env)
+	f.records, err = export.Decode(bytes.NewReader(data))
 	Expect(err).NotTo(HaveOccurred())
-	var jsonl bytes.Buffer
-	Expect(export.WriteRecords(&jsonl, records)).To(Succeed())
-	Expect(os.WriteFile(importable, jsonl.Bytes(), 0o600)).To(Succeed())
+	src, err := os.Open(path)
+	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(src.Close)
+	dst, err := os.Create(f.file)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = io.Copy(dst, src)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(dst.Close()).To(Succeed())
 
-	return records, importable
+	return f
 }
 
 // writeSidecars writes each file export-fixtures.txtar archives, which the fixtures' attachments
@@ -142,12 +170,12 @@ func writeSidecars(dir string) {
 	}
 }
 
-// reexport returns what exporting db as format writes again for each header in records, in
-// order: the header's timelines, at its exported at, by its coroner version.
-func reexport(ctx context.Context, db, format string, records []export.Record) string {
+// reexport returns what exporting dir/coroner.db as f's format writes for each header in f's
+// records, in order: the header's timelines, at its exported_at, as its coroner_version.
+func reexport(ctx context.Context, dir string, f fixture) string {
 	GinkgoHelper()
 	var out strings.Builder
-	for _, record := range records {
+	for _, record := range f.records {
 		header, ok := record.(export.Header)
 		if !ok {
 			continue
@@ -156,11 +184,11 @@ func reexport(ctx context.Context, db, format string, records []export.Record) s
 		filters.Timelines = nil
 		Expect(filters).To(Equal(export.Query{Sources: []string{}, Tags: []string{}, Order: "asc"}), "reexport passes on a query's timelines only")
 
-		args := []string{"--db", db, "timeline", "export", "--format", format}
+		args := []string{"--db", filepath.Join(dir, "coroner.db"), "timeline", "export", "--format", f.format}
 		for _, name := range header.Query.Timelines {
 			args = append(args, "-t", name)
 		}
-		c := coroner{home: filepath.Dir(db), now: time.Time(header.ExportedAt), version: header.CoronerVersion}
+		c := coroner{home: dir, now: time.Time(header.ExportedAt), version: header.CoronerVersion}
 		stdout, err := c.run(ctx, args...)
 		Expect(err).NotTo(HaveOccurred())
 		out.WriteString(stdout)
@@ -180,17 +208,18 @@ type eventDraft struct {
 	timeline.Event
 
 	newSourceID string
-	files       []file
+	attachments []attachmentDraft
+	deleted     bool
 }
 
 type annotationDraft struct {
 	timeline.Annotation
 
 	newSourceID string
-	files       []file
+	attachments []attachmentDraft
 }
 
-type file struct {
+type attachmentDraft struct {
 	id, name string
 	created  time.Time
 	content  []byte
@@ -205,6 +234,17 @@ func (m model) names() []string {
 	return names
 }
 
+func (m model) deletedEventIDs() []string {
+	var ids []string
+	for _, e := range m.events {
+		if e.deleted {
+			ids = append(ids, e.ID)
+		}
+	}
+
+	return ids
+}
+
 // seedStore writes m into a new database at path through the store API.
 func seedStore(ctx context.Context, path string, m model) error {
 	s, err := store.Open(ctx, path)
@@ -215,6 +255,8 @@ func seedStore(ctx context.Context, path string, m model) error {
 	return errors.Join(writeModel(ctx, s, m), s.Close())
 }
 
+// writeModel deletes events last, so seqs have gaps and annotations, attachments and sources can
+// lose what named them.
 func writeModel(ctx context.Context, s *store.Store, m model) error {
 	for _, t := range m.timelines {
 		err := s.CreateTimeline(ctx, t)
@@ -223,42 +265,48 @@ func writeModel(ctx context.Context, s *store.Store, m model) error {
 		}
 	}
 	for _, e := range m.events {
-		_, err := s.AddEvent(ctx, e.Event, e.newSourceID, newAttachments(e.files)...)
+		_, err := s.AddEvent(ctx, e.Event, e.newSourceID, newAttachments(e.attachments)...)
 		if err != nil {
 			return err
 		}
 	}
 	for _, a := range m.annotations {
-		err := s.AddAnnotation(ctx, a.Annotation, a.newSourceID, newAttachments(a.files)...)
+		err := s.AddAnnotation(ctx, a.Annotation, a.newSourceID, newAttachments(a.attachments)...)
 		if err != nil {
 			return err
 		}
 	}
 
-	return nil
+	return s.DeleteEvents(ctx, m.deletedEventIDs()...)
 }
 
-func newAttachments(files []file) []store.NewAttachment {
-	attachments := make([]store.NewAttachment, 0, len(files))
-	for _, f := range files {
-		attachments = append(attachments, store.NewAttachment{ID: f.id, Filename: f.name, CreatedAt: f.created, Content: bytes.NewReader(f.content)})
+func newAttachments(drafts []attachmentDraft) []store.NewAttachment {
+	attachments := make([]store.NewAttachment, 0, len(drafts))
+	for _, d := range drafts {
+		attachments = append(attachments, store.NewAttachment{ID: d.id, Filename: d.name, CreatedAt: d.created, Content: bytes.NewReader(d.content)})
 	}
 
 	return attachments
 }
 
-// roundTrip exports the timelines names from dir/a.db into dir/a/, imports that export into an
-// empty dir/b.db, and exports b.db into dir/b/. It returns the first export, and an error unless
+// roundTrip exports the timelines named names from dir/a.db into dir/a/, imports that export into
+// an empty dir/b.db, and exports b.db into dir/b/. It returns the first export, and an error unless
 // both directories hold the same bytes.
 func roundTrip(ctx context.Context, dir string, names []string) ([]byte, error) {
 	c := coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
-	jsonl := strings.Join(names, "+") + ".jsonl"
 
 	_, err := c.run(ctx, exportArgs(filepath.Join(dir, "a.db"), names, filepath.Join(dir, "a")+string(filepath.Separator))...)
 	if err != nil {
 		return nil, err
 	}
-	_, err = c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", filepath.Join(dir, "a", jsonl))
+	jsonl, err := filepath.Glob(filepath.Join(dir, "a", "*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	if len(jsonl) != 1 {
+		return nil, fmt.Errorf("the export wrote %d JSONL files into %s, not one", len(jsonl), filepath.Join(dir, "a"))
+	}
+	_, err = c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", jsonl[0])
 	if err != nil {
 		return nil, err
 	}
@@ -268,11 +316,14 @@ func roundTrip(ctx context.Context, dir string, names []string) ([]byte, error) 
 	}
 
 	differences, err := dirDiff(filepath.Join(dir, "a"), filepath.Join(dir, "b"))
-	if err != nil || differences != "" {
-		return nil, errors.Join(err, fmt.Errorf("the export changed on its way through import:\n%s", differences))
+	if err != nil {
+		return nil, err
+	}
+	if differences != "" {
+		return nil, fmt.Errorf("the export changed on its way through import:\n%s", differences)
 	}
 
-	return os.ReadFile(filepath.Clean(filepath.Join(dir, "a", jsonl)))
+	return os.ReadFile(filepath.Clean(jsonl[0]))
 }
 
 func exportArgs(db string, names []string, into string) []string {
@@ -285,7 +336,7 @@ func exportArgs(db string, names []string, into string) []string {
 }
 
 // coroner runs commands as the binary would, against real files, with a fixed clock and
-// version and IDs numbered from 1.
+// version and IDs numbered from 1 on every command.
 type coroner struct {
 	home    string
 	now     time.Time
@@ -342,7 +393,11 @@ func dirDiff(a, b string) (string, error) {
 		dataA, inA := filesA[name]
 		dataB, inB := filesB[name]
 		if inA != inB {
-			fmt.Fprintf(&out, "%s is only in %s\n", name, map[bool]string{true: a, false: b}[inA])
+			only := b
+			if inA {
+				only = a
+			}
+			fmt.Fprintf(&out, "%s is only in %s\n", name, only)
 		}
 		if !bytes.Equal(dataA, dataB) {
 			out.Write(diff.Diff(filepath.Join(a, name), dataA, filepath.Join(b, name), dataB))
@@ -355,11 +410,12 @@ func dirDiff(a, b string) (string, error) {
 // readTree returns the content of every file under dir, by its path relative to dir.
 func readTree(dir string) (map[string][]byte, error) {
 	files := map[string][]byte{}
-	err := fs.WalkDir(os.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
+	fsys := os.DirFS(dir)
+	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		files[path], err = fs.ReadFile(os.DirFS(dir), path)
+		files[path], err = fs.ReadFile(fsys, path)
 		return err
 	})
 
@@ -389,8 +445,8 @@ func observe(seen map[string]bool, jsonl []byte) error {
 	return nil
 }
 
-// unseen returns what seen lacks of every record type and, for each pointer field of its export
-// type, its key both null and set. An exported event always has a seq.
+// unseen returns what seen lacks of the five record types besides the header and, for each
+// nullable key of its export type, that key both null and set.
 func unseen(seen map[string]bool) []string {
 	var missing []string
 	for typ, record := range map[string]any{
@@ -398,11 +454,8 @@ func unseen(seen map[string]bool) []string {
 		"annotation": export.Annotation{}, "attachment": export.Attachment{},
 	} {
 		want := []string{typ}
-		for field := range reflect.TypeOf(record).Fields() {
-			key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-			if field.Type.Kind() == reflect.Pointer && typ+"."+key != "event.seq" {
-				want = append(want, typ+"."+key+"=null", typ+"."+key+"=set")
-			}
+		for _, key := range nullableKeys(typ, record) {
+			want = append(want, key+"=null", key+"=set")
 		}
 		for _, w := range want {
 			if !seen[w] {
@@ -413,6 +466,20 @@ func unseen(seen map[string]bool) []string {
 	slices.Sort(missing)
 
 	return missing
+}
+
+// nullableKeys returns typ.key for each pointer field of record, an export type. An exported event
+// always has a seq.
+func nullableKeys(typ string, record any) []string {
+	var keys []string
+	for field := range reflect.TypeOf(record).Fields() {
+		key, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if field.Type.Kind() == reflect.Pointer && typ+"."+key != "event.seq" {
+			keys = append(keys, typ+"."+key)
+		}
+	}
+
+	return keys
 }
 
 // roundTripModel draws 1–3 timelines with events, annotations and attachments that every
@@ -429,32 +496,47 @@ func roundTripModel() *rapid.Generator[model] {
 
 		var m model
 		for _, name := range rapid.SliceOfNDistinct(timelineName(), 1, 3, rapid.ID).Draw(t, "names") {
-			tl := timeline.Timeline{
-				ID: nextID(), Name: name, Title: rapid.OneOf(rapid.Just(""), text()).Draw(t, "title"),
-				Refs: rapid.SliceOfNDistinct(text(), 0, 3, rapid.ID).Draw(t, "refs"), CreatedAt: instant().Draw(t, "created"),
-			}
-			tl.UpdatedAt = tl.CreatedAt
-			m.timelines = append(m.timelines, tl)
-
-			var eventIDs []string
-			for range rapid.IntRange(0, 6).Draw(t, "events") {
-				e := event(sources).Draw(t, "event")
-				e.ID, e.TimelineID = nextID(), tl.ID
-				eventIDs = append(eventIDs, e.ID)
-				m.events = append(m.events, eventDraft{Event: e, newSourceID: nextID(), files: files(nextID).Draw(t, "files")})
-			}
-			for range rapid.IntRange(0, 4).Draw(t, "annotations") {
-				a := annotation(sources, eventIDs).Draw(t, "annotation")
-				a.ID, a.TimelineID = nextID(), tl.ID
-				m.annotations = append(m.annotations, annotationDraft{Annotation: a, newSourceID: nextID(), files: files(nextID).Draw(t, "files")})
-			}
+			one := timelineModel(name, sources, nextID).Draw(t, "timeline")
+			m.timelines = append(m.timelines, one.timelines...)
+			m.events = append(m.events, one.events...)
+			m.annotations = append(m.annotations, one.annotations...)
 		}
 
 		return m
 	})
 }
 
-// event draws an event without ids, its occurred at the start of its precision window in its
+// timelineModel draws the timeline name with its events and annotations.
+func timelineModel(name string, sources []string, nextID func() string) *rapid.Generator[model] {
+	return rapid.Custom(func(t *rapid.T) model {
+		tl := timeline.Timeline{
+			ID: nextID(), Name: name, Title: blankable().Draw(t, "title"),
+			Refs: rapid.SliceOfNDistinct(text(), 0, 3, rapid.ID).Draw(t, "refs"), CreatedAt: instant().Draw(t, "created"),
+		}
+		tl.UpdatedAt = tl.CreatedAt
+		m := model{timelines: []timeline.Timeline{tl}}
+
+		var eventIDs []string
+		for range rapid.IntRange(0, 6).Draw(t, "events") {
+			e := event(sources).Draw(t, "event")
+			e.ID, e.TimelineID = nextID(), tl.ID
+			eventIDs = append(eventIDs, e.ID)
+			m.events = append(m.events, eventDraft{
+				Event: e, newSourceID: nextID(), attachments: attachmentDrafts(nextID).Draw(t, "attachments"),
+				deleted: rapid.Bool().Draw(t, "deleted"),
+			})
+		}
+		for range rapid.IntRange(0, 4).Draw(t, "annotations") {
+			a := annotation(sources, eventIDs).Draw(t, "annotation")
+			a.ID, a.TimelineID = nextID(), tl.ID
+			m.annotations = append(m.annotations, annotationDraft{Annotation: a, newSourceID: nextID(), attachments: attachmentDrafts(nextID).Draw(t, "attachments")})
+		}
+
+		return m
+	})
+}
+
+// event draws an event without ids, its occurred_at at the start of its precision window in its
 // offset.
 func event(sources []string) *rapid.Generator[timeline.Event] {
 	return rapid.Custom(func(t *rapid.T) timeline.Event {
@@ -465,12 +547,12 @@ func event(sources []string) *rapid.Generator[timeline.Event] {
 			}).Draw(t, "precision"),
 			OccurredOffset: rapid.Ptr(rapid.IntRange(-86400, 86400), true).Draw(t, "offset"),
 			Approximate:    rapid.Bool().Draw(t, "approximate"),
-			OccurredRaw:    rapid.Ptr(text(), true).Draw(t, "raw"),
+			OccurredRaw:    rapid.Ptr(blankable(), true).Draw(t, "raw"),
 			Source:         optionalSource(sources).Draw(t, "source"),
 			Tags:           rapid.SliceOfNDistinct(tag(), 0, 4, rapid.ID).Draw(t, "tags"),
 			Text:           text().Draw(t, "text"),
-			URL:            rapid.Ptr(text(), true).Draw(t, "url"),
-			Author:         rapid.Ptr(text(), true).Draw(t, "author"),
+			URL:            rapid.Ptr(blankable(), true).Draw(t, "url"),
+			Author:         rapid.Ptr(blankable(), true).Draw(t, "author"),
 			CreatedAt:      instant().Draw(t, "created"),
 			UpdatedAt:      instant().Draw(t, "updated"),
 		}
@@ -493,9 +575,9 @@ func annotation(sources, eventIDs []string) *rapid.Generator[timeline.Annotation
 		a := timeline.Annotation{
 			Kind:      rapid.SampledFrom([]timeline.AnnotationKind{timeline.AnnotationEvidence, timeline.AnnotationComment}).Draw(t, "kind"),
 			Body:      text().Draw(t, "body"),
-			Author:    rapid.Ptr(text(), true).Draw(t, "author"),
+			Author:    rapid.Ptr(blankable(), true).Draw(t, "author"),
 			Source:    optionalSource(sources).Draw(t, "source"),
-			URL:       rapid.Ptr(text(), true).Draw(t, "url"),
+			URL:       rapid.Ptr(blankable(), true).Draw(t, "url"),
 			CreatedAt: instant().Draw(t, "created"),
 			UpdatedAt: instant().Draw(t, "updated"),
 		}
@@ -507,13 +589,13 @@ func annotation(sources, eventIDs []string) *rapid.Generator[timeline.Annotation
 	})
 }
 
-// files draws up to two attachment files, whose content often repeats so attachments share a blob.
-func files(nextID func() string) *rapid.Generator[[]file] {
-	return rapid.Custom(func(t *rapid.T) []file {
-		var out []file
+// attachmentDrafts draws up to two attachments, whose content often repeats so they share a blob.
+func attachmentDrafts(nextID func() string) *rapid.Generator[[]attachmentDraft] {
+	return rapid.Custom(func(t *rapid.T) []attachmentDraft {
+		var out []attachmentDraft
 		for range rapid.IntRange(0, 2).Draw(t, "count") {
-			out = append(out, file{
-				id: nextID(), name: text().Draw(t, "filename"), created: instant().Draw(t, "attached"),
+			out = append(out, attachmentDraft{
+				id: nextID(), name: blankable().Draw(t, "filename"), created: instant().Draw(t, "attached"),
 				content: rapid.OneOf(rapid.SampledFrom([][]byte{{}, []byte("shared\n")}), rapid.SliceOfN(rapid.Byte(), 0, 64)).Draw(t, "content"),
 			})
 		}
@@ -554,6 +636,11 @@ func text() *rapid.Generator[string] {
 		trimmed := strings.TrimSpace(s)
 		return trimmed != "" && trimmed[0] != 0
 	})
+}
+
+// blankable draws text for a field with no not-blank rule, often empty or only whitespace.
+func blankable() *rapid.Generator[string] {
+	return rapid.OneOf(rapid.SampledFrom([]string{"", " ", "\t\n"}), text())
 }
 
 // instant draws an instant, usually in one of four seconds so instants tie, at a random precision

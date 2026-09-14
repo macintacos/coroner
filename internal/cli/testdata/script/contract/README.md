@@ -1,6 +1,7 @@
 # Contract scripts
 
-*Audience: anyone, human or agent, adding or changing a testscript under this directory.*
+*Audience: anyone, human or agent, adding or changing a testscript under this directory or
+`internal/cli/roundtrip_test.go`.*
 
 Scripts here pin coroner's machine-facing contract: `--format json` and `jsonl` shapes,
 exit codes, and every command's `--help` output, in `help.txtar`. Changing one is a
@@ -52,12 +53,13 @@ A fixture failure that is not an export format change, such as renumbered IDs, i
 the script, for example by giving the new command its own section or pre-seeding that
 section's counter file, never in the fixture.
 
-`TestExportImportRoundTrip` in [`roundtrip_test.go`](../../../roundtrip_test.go) belongs
-to this suite, so changing it is a contract change too. It exports rapid-generated
-databases as JSONL, imports each export into an empty database and requires exporting that
-database to give the same bytes. A spec beside it imports every fixture and requires the
-export to equal the current `format_version`'s fixture of the same name, taking attachment
-files from those `export-fixtures.txtar` archives. rapid saves a failing case under
-`internal/cli/testdata/rapid/` and replays it at the start of every later run, or alone
-with the `-rapid.failfile` it prints. Git ignores those files, and rapid skips one another
-rapid version wrote, so a fix pins its bug with a named spec instead.
+[`roundtrip_test.go`](../../../roundtrip_test.go) belongs to this suite, so changing what
+it requires is a contract change too. Its `TestExportImportRoundTrip` exports
+rapid-generated databases as JSONL, imports each export into an empty database and
+requires exporting that database to give the same bytes. A spec beside it imports every
+fixture and requires the export to equal the current `format_version`'s fixture of the
+same name, taking attachment files from those `export-fixtures.txtar` archives. rapid
+saves a failing case under `internal/cli/testdata/rapid/` and replays it at the start of
+every later run, or alone with the `-rapid.failfile` it prints. Git ignores those files,
+and rapid skips a file that another rapid version wrote, so a fix pins its bug with a
+named spec instead.
