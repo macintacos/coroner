@@ -6,6 +6,7 @@ set -euo pipefail
 uv run --locked zensical build --clean --strict
 
 # Zensical publishes only files under docs/, and a symlink there empties the build,
-# so copy the generated schema in.
+# so copy the generated schema in. Pages link the copy by its absolute path under
+# site_url, /coroner/schema/, since Zensical rewrites a relative link out of docs/.
 mkdir -p site/schema
 cp schema/*.json site/schema/

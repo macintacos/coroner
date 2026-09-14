@@ -39,7 +39,7 @@ An *instant*, in the tables below, is a string in coroner's canonical time forma
 ([§ Encoding rules](#encoding-rules)). An *importer* is any program that reads exports.
 
 This page is version **1.1** of the format. The
-[JSON Schema](../../schema/export-v1.schema.json) describes the same objects and is
+[JSON Schema](/coroner/schema/export-v1.schema.json) describes the same objects and is
 generated from the Go types in `internal/export`.
 
 ## The envelope
@@ -358,7 +358,7 @@ Further rules:
 
 ## The schema
 
-[`schema/export-v1.schema.json`](../../schema/export-v1.schema.json) is a JSON Schema,
+[`schema/export-v1.schema.json`](/coroner/schema/export-v1.schema.json) is a JSON Schema,
 draft 2020-12, with the `$id`
 `https://raw.githubusercontent.com/macintacos/coroner/main/schema/export-v1.schema.json`.
 It describes the envelope at its root and each record under `$defs`. It is open: it lists
