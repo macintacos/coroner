@@ -393,16 +393,16 @@
   }
   const allTimesWindow = { start: options.start, end: options.end };
 
-  const named = sources.filter((source) => source !== null);
+  const namedSources = sources.filter((source) => source !== null);
   const tags = [...new Set(data.events.flatMap((event) => event.tags))].sort();
-  const view = readHash(location.hash, { sources: named, tags, events: eventsById });
+  const view = readHash(location.hash, { sources: namedSources, tags, events: eventsById });
 
   const sourceBoxes = document.getElementById("sources");
   const tagBoxes = document.getElementById("tags");
   const search = document.getElementById("q");
   const since = document.getElementById("since");
   const until = document.getElementById("until");
-  checkboxes(sourceBoxes, named, view.filter.sources);
+  checkboxes(sourceBoxes, namedSources, view.filter.sources);
   checkboxes(tagBoxes, tags, view.filter.tags);
   search.value = view.filter.q;
   const showBounds = () => {
@@ -426,10 +426,10 @@
   const timeline = new vis.Timeline(document.getElementById("timeline"), visibleItems, visibleGroups, options);
 
   // WebKit throws after 100 replaceState calls in 10 seconds, which typing a search reaches.
-  let hashWrite;
+  let hashWriteTimer;
   const writeHash = () => {
-    clearTimeout(hashWrite);
-    hashWrite = setTimeout(
+    clearTimeout(hashWriteTimer);
+    hashWriteTimer = setTimeout(
       () => history.replaceState(null, "", location.href.split("#")[0] + hashOf(view.filter, view.selected)),
       250,
     );
