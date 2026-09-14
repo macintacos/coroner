@@ -619,8 +619,10 @@
   const update = (changes) => {
     view.filter = ordered({ ...view.filter, ...changes });
     showBounds();
-    visibleItems.refresh();
+    // Groups first: re-adding items redraws, and the redraw orders every group the filter now
+    // keeps, so one not added back yet throws.
     visibleGroups.refresh();
+    visibleItems.refresh();
     if (view.selected !== null && !visibleItems.get(view.selected)) select(null);
     showPrintListAfterPause();
     writeHash();
