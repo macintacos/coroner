@@ -70,7 +70,8 @@ For a stable or candidate-stable element, each of these is a breaking change:
 - Changing filter semantics, such as inclusive or exclusive bounds, or AND or OR.
 - Removing, renaming or retyping a JSON key, or changing its nullability.
 - Changing the timestamp format or the shape of an envelope.
-- Changing the meaning of an exit code or an error kind.
+- Changing the meaning of an error kind. An exit code's meaning never changes at all
+  ([§ Exit codes](#exit-codes)).
 - Changing the default sort order.
 - Rejecting input that used to be accepted.
 
@@ -109,8 +110,9 @@ list what each may do.
 ## Exit codes
 
 coroner exits 0 on success and non-zero on failure. A script **must** treat an exit code
-it does not know as a failure: new codes may be added. `coroner help exit-codes` lists
-every code and the error kinds under it.
+it does not know as a failure: new codes may be added. A code's meaning never changes, not
+even through [§ Deprecation](#deprecation): a new meaning gets a new code.
+`coroner help exit-codes` lists every code and the error kinds under it.
 
 ## Deprecation
 
