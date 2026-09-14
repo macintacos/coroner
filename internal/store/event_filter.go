@@ -169,8 +169,8 @@ func buildEventCount(f EventFilter) (string, []any) {
 // eventWhere returns the conditions selecting the events f keeps, and their args. Every value
 // is an arg, never SQL text.
 func eventWhere(f EventFilter) (string, []any) {
-	timelines, args := inList(f.TimelineIDs)
-	where := []string{"e.timeline_id " + timelines}
+	timelineIn, args := inList(f.TimelineIDs)
+	where := []string{"e.timeline_id " + timelineIn}
 
 	if f.Since != nil {
 		where = append(where, "e.occurred_at >= ?")
@@ -181,8 +181,8 @@ func eventWhere(f EventFilter) (string, []any) {
 		args = append(args, timeline.FormatInstant(*f.Until))
 	}
 	if len(f.Sources) > 0 {
-		sources, sourceArgs := inList(f.Sources)
-		where = append(where, "src.name "+sources)
+		sourceIn, sourceArgs := inList(f.Sources)
+		where = append(where, "src.name "+sourceIn)
 		args = append(args, sourceArgs...)
 	}
 	for _, tag := range f.Tags {
