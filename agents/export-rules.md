@@ -61,13 +61,17 @@
    filename is only the text, and goes through the escaper, not `escape`, whose unescaped
    URLs could hold a `]`. An event's attachments are list items beside its annotations,
    and an annotation's attachments follow its text on its line, so neither nests a third
-   level. Specs parse every golden in `internal/export/testdata/markdown/` with goldmark
-   to check there is no raw HTML, lists are at most two levels deep and no heading repeats
-   under one parent, and run `rumdl check` on them with MD013 off. Its MD057 needs every
-   relative link to resolve, so `attachments/` there holds an empty file for each
-   attachment hash the goldens link, as an `-o` directory export would. `rumdl fmt` skips
-   that directory, so a golden changes only through `go test ./internal/export -update`,
-   with its diff read before committing.
+   level. An overlay of several timelines lists each under a `Timelines` metadata bullet
+   and labels every event, and every annotation on a whole timeline, with its timeline's
+   name as a code span; an export of one timeline carries no label, so its goldens stay
+   byte for byte as they are. Specs parse every golden in
+   `internal/export/testdata/markdown/` with goldmark to check there is no raw HTML, lists
+   are at most two levels deep and no heading repeats under one parent, and run
+   `rumdl check` on them with MD013 off. Its MD057 needs every relative link to resolve,
+   so `attachments/` there holds an empty file for each attachment hash the goldens link,
+   as an `-o` directory export would. `rumdl fmt` skips that directory, so a golden
+   changes only through `go test ./internal/export -update`, with its diff read before
+   committing.
 9. **The Mermaid export has one writer:** render it only through `export.WriteMermaid`, or
    `export.WriteMarkdown` with `Diagram`, from the same `Envelope`, so the diagram shows
    the events every other format exports. Its layout is not a contract (`AGENTS.md` Rule
@@ -83,15 +87,19 @@
    text is silently dropped, starts a section, replaces the title or fails to parse. A bar
    is written as its start and a duration in seconds, `:<start>, <N>s`, never an end date:
    on the night a zone falls back, a wall-clock end can come before its start, and Mermaid
-   silently draws no bar. Mermaid dates carry no offset, and a location named `Local` says
-   nothing to a reader, so the title names the zone by the abbreviations its times carry
-   on the zone's wall clock, such as `(EDT/EST)`, as the Markdown export labels times. A
-   diagram over `export.MermaidMaxTextSize` is still written whole, with a warning on
-   stderr, because cutting it would silently drop events. The escaper and the guard were
-   checked by rendering in Mermaid 11.12.0 and 10.2.4, and the keyword list follows
-   11.12.0's `gantt.jison`; a change to the escaper or the diagram's syntax is checked by
-   rendering `internal/export/testdata/mermaid/hostile.mmd` in both. Those goldens change
-   only through `go test ./internal/export -update`, with the diff read before committing.
+   silently draws no bar. An overlay's sections are `<timeline>/<source>`, or
+   `<timeline>/(no source)`, in order of first appearance, escaped like any other text, so
+   a source such as `k8s:events` cannot end the section early; a timeline name holds no
+   `/`, so the pair is unambiguous. Mermaid dates carry no offset, and a location named
+   `Local` says nothing to a reader, so the title names the zone by the abbreviations its
+   times carry on the zone's wall clock, such as `(EDT/EST)`, as the Markdown export
+   labels times. A diagram over `export.MermaidMaxTextSize` is still written whole, with a
+   warning on stderr, because cutting it would silently drop events. The escaper and the
+   guard were checked by rendering in Mermaid 11.12.0 and 10.2.4, and the keyword list
+   follows 11.12.0's `gantt.jison`; a change to the escaper or the diagram's syntax is
+   checked by rendering `internal/export/testdata/mermaid/hostile.mmd` in both. Those
+   goldens change only through `go test ./internal/export -update`, with the diff read
+   before committing.
 10. **The HTML export has one writer:** render it only through `export.WriteHTML`, from
     the
    same `Envelope`. The page embeds that envelope only as `export.Write` encodes it, in

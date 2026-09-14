@@ -28,11 +28,13 @@ closed: a command line missing a required value exits 2 instead of asking.
   UTC unless `--tz` names another zone, each labelled with its zone. Attachments show as
   images or links. Pasting it uploads none of them, so to share them, export into a
   directory with `-o rca/`, which writes the outline and an `attachments/` directory
-  beside it, then commit or zip that directory.
+  beside it, then commit or zip that directory. Given `-t` more than once, it labels each
+  event with its timeline.
 - `mermaid` is a Mermaid gantt diagram of the events, a section per source, for GitHub,
   GitLab, Linear, Obsidian or Notion to draw, in the same zone as `md`. `--diagram`
   appends it to `md`. Past 50,000 characters, which most hosts refuse to draw, coroner
-  warns on stderr.
+  warns on stderr. Given `-t` more than once, it draws a section per timeline and source,
+  such as `mongo-failover/mongod`.
 - `html` is one self-contained page to open in a browser or attach to a ticket: the events
   on a timeline with a row per source, and an event's full text and annotations when you
   select it. Its source, tag, text and time filters select what `coroner event list`'s
