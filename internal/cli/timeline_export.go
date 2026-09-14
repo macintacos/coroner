@@ -21,7 +21,7 @@ import (
 
 func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "export --format {json | jsonl | md | mermaid | html} [-o {<file> | <directory>/}]",
+		Use:   "export --format {json | jsonl | md | mermaid | html | svg} [-o {<file> | <directory>/}]",
 		Short: "Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML",
 		Long: "Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its\n" +
 			"events, their annotations, the sources they name and their attachments. --format json\n" +
@@ -32,6 +32,8 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"the same zone as md; --diagram appends that diagram to --format md.\n\n" +
 			"--format html writes one self-contained page that shows the events on a timeline in a\n" +
 			"browser, in the same zone as md, and needs -o.\n\n" +
+			"--format svg writes a static SVG picture of the events, one lane per source, in the same\n" +
+			"zone as md, for documents and slides that draw neither Mermaid nor HTML.\n\n" +
 			"The filter flags mean what they do on event list, and annotations on the events they\n" +
 			"leave out are left out too. --order picks which end --limit keeps events from; exported\n" +
 			"events are always in the order they happened.\n\n" +
@@ -45,14 +47,15 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"its images.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html"},
+		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html,svg"},
 		Example: "  $ coroner timeline export -t mongo-outage --format json > rca.json\n" +
 			"  $ coroner timeline export --format jsonl --since \"2026-09-11T03:00Z\" --source mongod > mongod.jsonl\n" +
 			"  $ coroner timeline export --format md --tz America/New_York > rca.md\n" +
 			"  $ coroner timeline export --format mermaid --source mongod > timeline.mmd\n" +
 			"  $ coroner timeline export --format md --diagram > rca.md\n" +
 			"  $ coroner timeline export -t inc-4821 --format md -o rca/\n" +
-			"  $ coroner timeline export --format html -o inc-4821.html",
+			"  $ coroner timeline export --format html -o inc-4821.html\n" +
+			"  $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg",
 		PreRunE: requireFormat,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return exportTimeline(ctx, cmd, app)
@@ -80,7 +83,7 @@ func requireFormat(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	return &Error{Kind: KindUsage, Message: "--format is required", Hint: "Pass --format json, --format jsonl, --format md, --format mermaid or --format html."}
+	return &Error{Kind: KindUsage, Message: "--format is required", Hint: "Pass --format json, --format jsonl, --format md, --format mermaid, --format html or --format svg."}
 }
 
 func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
@@ -226,7 +229,7 @@ func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.Ma
 	return opts, nil
 }
 
-// exportZone returns the zone md, mermaid and html show times in: z when --tz was given, and
+// exportZone returns the zone md, mermaid, html and svg show times in: z when --tz was given, and
 // otherwise UTC, so a shared document never depends on the zone of whoever exported it.
 func exportZone(flags *pflag.FlagSet, z zone) *time.Location {
 	if flags.Changed("tz") {
@@ -431,8 +434,8 @@ func newExportQuery(timelineName string, f store.EventFilter) export.Query {
 }
 
 // writeExport writes env as o's format asks: json as one document, indented on a terminal,
-// jsonl as records, md through export.WriteMarkdown with the markdown options, and mermaid
-// and html in zone.
+// jsonl as records, md through export.WriteMarkdown with the markdown options, and mermaid,
+// html and svg in zone.
 func writeExport(o output, env export.Envelope, markdown export.MarkdownOptions, zone *time.Location) error {
 	switch o.format {
 	case formatMarkdown:
@@ -441,6 +444,8 @@ func writeExport(o output, env export.Envelope, markdown export.MarkdownOptions,
 		return export.WriteMermaid(o.out, env, zone)
 	case formatHTML:
 		return export.WriteHTML(o.out, env, zone)
+	case formatSVG:
+		return export.WriteSVG(o.out, env, zone)
 	case formatJSON:
 		if o.outTTY {
 			return export.Write(o.out, env, jsontext.WithIndent("  "))
@@ -457,6 +462,6 @@ func writeExport(o output, env export.Envelope, markdown export.MarkdownOptions,
 	case formatText:
 	}
 
-	// Unreachable: the formats annotation admits json, jsonl, md, mermaid and html only.
+	// Unreachable: the formats annotation admits json, jsonl, md, mermaid, html and svg only.
 	return fmt.Errorf("timeline export cannot write --format %s", o.format)
 }

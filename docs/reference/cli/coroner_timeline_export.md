@@ -20,6 +20,9 @@ the same zone as md; --diagram appends that diagram to --format md.
 --format html writes one self-contained page that shows the events on a timeline in a
 browser, in the same zone as md, and needs -o.
 
+--format svg writes a static SVG picture of the events, one lane per source, in the same
+zone as md, for documents and slides that draw neither Mermaid nor HTML.
+
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
 events are always in the order they happened.
@@ -36,7 +39,7 @@ its images.
 --group-by is experimental and may change before 1.0.
 
 ```
-coroner timeline export --format {json | jsonl | md | mermaid | html} [-o {<file> | <directory>/}] [flags]
+coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o {<file> | <directory>/}] [flags]
 ```
 
 ### Examples
@@ -49,6 +52,7 @@ coroner timeline export --format {json | jsonl | md | mermaid | html} [-o {<file
   $ coroner timeline export --format md --diagram > rca.md
   $ coroner timeline export -t inc-4821 --format md -o rca/
   $ coroner timeline export --format html -o inc-4821.html
+  $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg
 ```
 
 ### Options
