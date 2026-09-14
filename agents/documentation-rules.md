@@ -27,7 +27,7 @@ digraph coroner_docs_router {
     "Edit internal/export/html/vendor/README.md" [shape=box];
     "Edit CONTEXT.md" [shape=box];
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
-    "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
+    "Edit the docs site: docs/ and zensical.toml" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
     "Edit docs/reference/export-format.md" [shape=box];
     "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [shape=box];
@@ -45,7 +45,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
-    "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
+    "Which doc does the change affect?" -> "Edit the docs site: docs/ and zensical.toml" [label="user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav"];
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
     "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
@@ -84,8 +84,15 @@ digraph coroner_docs_router {
   JSON and docs.
 - **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the
   deprecation mechanics.
-- **The docs site pages** (not in the repo yet) — the site itself (EXC-1300), the tutorial
-  and how-to guides (EXC-1301), and the reference and explanation pages (EXC-1302).
+- **The docs site** (human-facing) — every file under [`docs/`](../docs/), built by
+  Zensical with `mise run docs:build` from [`zensical.toml`](../zensical.toml), whose
+  `nav` lists the pages, and deployed to GitHub Pages when a `v*` tag is pushed. The
+  [landing page](../docs/index.md) says what coroner is and demos it; `tutorial/`,
+  `how-to/`, `reference/`, `explanation/` and `contributing/` are its Diátaxis sections.
+  The tutorial and how-to guides (not in the repo yet — EXC-1301) and the reference and
+  explanation pages (not in the repo yet — EXC-1302) join those sections and the nav. A
+  page links a file outside `docs/` by its GitHub URL, since a relative one breaks on the
+  site.
 - **[`docs/reference/cli/`](../docs/reference/cli/)** (human-facing) — the CLI reference,
   one page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run the project's checks before pushing / opening a PR"
-#MISE depends=["lint", "test", "build"]
+#MISE depends=["lint", "test", "build", "docs:build"]
 
 set -euo pipefail
 

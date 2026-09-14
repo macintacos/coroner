@@ -16,13 +16,16 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run format` runs every formatter in write mode, plus `go mod tidy`,
   `sqlc generate`, the CLI reference generator and the export schema generator.
 - `mise run lint` runs the linters without writing, then fails if the CLI reference or the
-  export schema is stale. It does not check YAML, TOML, shell or Pkl formatting,
+  export schema is stale. It does not check YAML, TOML, shell, Pkl or Python formatting,
   `go mod tidy` or `sqlc generate`; only `mise run format` and `pre-commit` apply those.
 - `mise run test` runs the Ginkgo suites, and through them the testscript end-to-end
   scripts and the rapid properties; a package pattern narrows it, and `--focus <regexp>`
   narrows Ginkgo specs only, so plain `Test*` functions such as `TestScripts` still run.
-- `mise run preflight` runs lint, test and build. It is the gate before declaring work
-  done (Rule 7).
+- `mise run docs:serve` serves the docs site locally and rebuilds it on change.
+  `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing on any
+  warning such as a broken link, and copies the export schema in.
+- `mise run preflight` runs lint, test, build and docs:build. It is the gate before
+  declaring work done (Rule 7).
 
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, regenerating the CLI reference when a help topic or the Go code
@@ -31,9 +34,15 @@ rejects a message that is not a Conventional Commit (Rule 5); and `pre-push` run
 `mise run test` when Go files, `go.mod` or `go.sum` change.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request and
-push to `main`: `mise run lint`, `go run ./internal/tools/docgen --check`,
-`mise run test`, then `mise run format` failing on any diff, so a commit made with
-`--no-verify` still gets a red check.
+push to `main`: `mise run lint`, `mise run test`, `mise run docs:build`, then
+`mise run format` failing on any diff, so a commit made with `--no-verify` still gets a
+red check. The docs gate
+([`.github/workflows/docs-gate.yml`](.github/workflows/docs-gate.yml)) fails a pull
+request that changes a non-test file under `internal/cli/` without changing a page under
+`docs/` outside `docs/reference/cli/`, unless it has the `docs-not-needed` label;
+[`.github/scripts/docs-gate`](.github/scripts/docs-gate) holds the rule and reads changed
+paths on stdin. Pushing a `v*` tag deploys the docs site to GitHub Pages
+([`.github/workflows/docs.yml`](.github/workflows/docs.yml)).
 
 ## Routing
 
@@ -67,7 +76,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md (not in the repo yet — EXC-1303)" [label="JSON output, exports or another contract (Rule 3)"];
     "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
-    "What does the change touch?" -> "Load agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
+    "What does the change touch?" -> "Load agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, an agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
@@ -136,6 +145,12 @@ digraph coroner_rules_router {
 - Examples: [`internal/cli/examples_test.go`](internal/cli/examples_test.go) parses every
   `coroner` line in every command's `Example` against the command tree, without running
   it.
+- Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,
+  `reference/`, `explanation/` and `contributing/`, with its nav in
+  [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
+  [`pyproject.toml`](pyproject.toml), locked by `uv.lock`. Every file under `docs/` is
+  published, so agent-facing rules live in [`agents/`](agents/), never under `docs/`, and
+  a published page links a file outside `docs/` by its GitHub URL.
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not
@@ -167,8 +182,9 @@ digraph coroner_rules_router {
    fixture that does not exist yet; before the first release that ships export, a fixture
    is regenerated by deleting it first. `CHANGELOG.md` (not in the repo yet — EXC-1304) is
    written at release by `git cliff --tag vX.Y.Z -o CHANGELOG.md` from
-   [`cliff.toml`](cliff.toml). Each issue that adds a generated artifact adds its path and
-   how to regenerate it here.
+   [`cliff.toml`](cliff.toml). `uv.lock` is rewritten by `uv lock`, or by `uv add` when a
+   dependency changes. Each issue that adds a generated artifact adds its path and how to
+   regenerate it here.
 3. **JSON output is a contract:** change it by editing the Go types, regenerating the
    schema and adding a fixture; an additive change bumps `format_version` minor, and any
    other change needs the maintainer's explicit approval and a major bump. Export fixtures
@@ -176,7 +192,9 @@ digraph coroner_rules_router {
    format change adds its version's directory beside them; human text and the Markdown,
    Mermaid, HTML and SVG layouts are not contracts.
 4. **User-visible behaviour changes docs in the same PR:** update the relevant how-to or
-   reference page, and the stability document when a contract is affected.
+   reference page, and the stability document when a contract is affected. The docs gate
+   is only a backstop for CLI changes; label a pull request `docs-not-needed` only when
+   nothing a user sees changed.
 5. **Commit messages are
    [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):** use `feat!:`
    or `BREAKING CHANGE:` only with the maintainer's approval. Before 1.0, breaks are
