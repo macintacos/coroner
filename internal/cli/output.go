@@ -93,8 +93,8 @@ func (o output) notify(message string, args ...any) error {
 	return err
 }
 
-// printID writes a created record's id on its own line to o.out when --quiet asks for text, so a
-// script can capture it; under --json the record's object carries it.
+// printID writes the id of the record a create made or found on its own line to o.out when --quiet
+// asks for text; under --json the object carries it.
 func (o output) printID(id string) error {
 	if !o.quiet || o.format != formatText {
 		return nil

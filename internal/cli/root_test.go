@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/export"
 )
 
 var _ = Describe("Run", func() {
@@ -52,11 +53,14 @@ var _ = Describe("Run", func() {
 	})
 
 	Describe("version", func() {
+		versions := export.FormatVersions()
+		compact := `{"coroner_version":"v1.2.3","format_versions":["` + strings.Join(versions, `","`) + "\"]}\n"
+
 		It("prints compact JSON when Out is not a terminal", func(ctx SpecContext) {
 			code := cli.Run(ctx, newApp("version", "--format", "json"))
 
 			Expect(code).To(Equal(0))
-			Expect(out.String()).To(HavePrefix(`{"coroner_version":"v1.2.3","format_versions":[`))
+			Expect(out.String()).To(Equal(compact))
 		})
 
 		It("indents JSON when Out is a terminal", func(ctx SpecContext) {
@@ -65,14 +69,15 @@ var _ = Describe("Run", func() {
 
 			cli.Run(ctx, app)
 
-			Expect(out.String()).To(HavePrefix("{\n  \"coroner_version\": \"v1.2.3\",\n  \"format_versions\": [\n"))
+			Expect(out.String()).To(Equal("{\n  \"coroner_version\": \"v1.2.3\",\n  \"format_versions\": [\n    \"" +
+				strings.Join(versions, "\",\n    \"") + "\"\n  ]\n}\n"))
 		})
 
 		It("is also printed by --version", func(ctx SpecContext) {
 			code := cli.Run(ctx, newApp("--version", "--json"))
 
 			Expect(code).To(Equal(0))
-			Expect(out.String()).To(HavePrefix(`{"coroner_version":"v1.2.3","format_versions":[`))
+			Expect(out.String()).To(Equal(compact))
 		})
 
 		It("exits 1 with kind internal and a way to report it when Out cannot be written", func(ctx SpecContext) {

@@ -583,13 +583,15 @@ Each --attach copies a file, such as a screenshot, into the blob directory besid
 database, and prints its id, sha256, size and type. Every file is read before anything is
 added, so one that cannot be read adds nothing.
 
---id gives the event an id of your own, so running the same command again adds nothing and
-exits 0, and the same id with anything else changed exits 4.
+--id with --at, and --author when USER may differ, gives the event an id and time of your
+own, so running the same command again adds nothing and exits 0, while the same id with
+different content exits 4.
 
 --from-file adds a JSONL file of event records, as 'coroner timeline export --format jsonl'
-writes them, in one transaction, to the timeline every record's timeline_id must name. Every
-record is checked first, so one bad record adds nothing. A record carries its own id and
-RFC 3339 times, so running the same file again adds nothing.
+writes them, in one transaction, to the timeline -t, CORONER_TIMELINE or 'coroner timeline
+use' selects, which every record's timeline_id must name. Every record is checked first, so
+one bad record adds nothing. A record carries its own id and RFC 3339 times, so running the
+same file again adds nothing.
 
 On a terminal, with no text or with --interactive, a form asks for each flag, previews the
 time as you type it, and prints the command each entry equals. Under --json only --interactive
@@ -597,7 +599,7 @@ opens it, and --no-input never does.
 ~~~
 
 ~~~text
-coroner event add {<text> | -} [flags]
+coroner event add {<text> | - | --from-file {<file> | -}} [flags]
 ~~~
 
 Examples:
@@ -625,7 +627,7 @@ Flags:
       --dry-run          Show the event as it would be added, and add nothing
       --ended time       When it ended, as a time, for an event that lasted
       --from-file file   Add every event record in this JSONL file, or - to read them from stdin, in one transaction
-      --id uuid          The event's id, as a lowercase UUIDv7 uuid, so running the same command again adds nothing
+      --id uuid          The event's id, as a lowercase UUIDv7 uuid
       --interactive      Open a form to fill in, prefilled from the other flags (needs a terminal)
       --source source    System, service or person it came from, as a source, created on first use
       --tag tag          Keyword such as phase:detect, as a tag; repeat for more

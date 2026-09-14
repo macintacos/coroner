@@ -88,7 +88,7 @@ func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues
 
 func (u timelineUsed) render(o output) error {
 	if o.format == formatJSON {
-		err := o.json(u.timelineJSON())
+		err := o.json(u.object())
 		if err != nil {
 			return err
 		}
@@ -106,8 +106,8 @@ func (u timelineUsed) render(o output) error {
 	return o.notify("Now using timeline `%s`.", u.timeline.Name)
 }
 
-// timelineJSON returns the timeline's object, or nil, which encodes as null, when none is current.
-func (u timelineUsed) timelineJSON() *timelineJSON {
+// object returns the timeline's object, or nil, which encodes as null, for --clear.
+func (u timelineUsed) object() *timelineJSON {
 	if u.timeline == nil {
 		return nil
 	}

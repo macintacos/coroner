@@ -4,7 +4,7 @@
 # coroner_version holds the build's version, so a pattern matches it.
 
 # 0: success. stdout is valid JSON and stderr is empty. format_versions lists every export
-# format version this coroner reads.
+# format version this coroner reads in full.
 exits 0 coroner version --format json
 jsonvalid stdout
 stdout '^\{"coroner_version":"[^"]*","format_versions":\["1\.0","1\.1","1\.2"\]\}$'

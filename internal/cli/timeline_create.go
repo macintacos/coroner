@@ -184,7 +184,11 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 
 	created := timelineCreated{timeline: t, dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		err := addTimeline(ctx, s, t, dryRun)
+		if dryRun {
+			err = timelineNameFree(ctx, s, t.Name)
+		} else {
+			err = s.CreateTimeline(ctx, t)
+		}
 		switch {
 		case errors.Is(err, store.ErrConflict) && ifNotExists:
 			created.timeline, err = s.TimelineByName(ctx, t.Name)
@@ -200,14 +204,9 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	return created, err
 }
 
-// addTimeline stores t or, when dryRun, only checks that no timeline has its name. Either
-// returns an error wrapping store.ErrConflict when one does.
-func addTimeline(ctx context.Context, s *store.Store, t timeline.Timeline, dryRun bool) error {
-	if !dryRun {
-		return s.CreateTimeline(ctx, t)
-	}
-
-	_, err := s.TimelineByName(ctx, t.Name)
+// timelineNameFree returns store.ErrConflict when a timeline is called name.
+func timelineNameFree(ctx context.Context, s *store.Store, name string) error {
+	_, err := s.TimelineByName(ctx, name)
 	switch {
 	case err == nil:
 		return store.ErrConflict

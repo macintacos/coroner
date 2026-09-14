@@ -51,6 +51,13 @@ exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-800
 cmp stdout with-id.json
 exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --json
 cmp stdout with-id.json
+# Under -q the retry prints only the id, and a dry run prints nothing.
+exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod -q
+stdout '\A01a0a07c-0000-7000-8000-000000000001\n\z'
+! stderr .
+exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --dry-run -q
+! stdout .
+! stderr .
 exits 0 coroner event list --json
 jsonvalid stdout
 stdout '"total":3\}$'

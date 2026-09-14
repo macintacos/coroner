@@ -154,6 +154,11 @@ is added. Leave `seq` null, and coroner numbers the events in the order of the f
    Would add 3 events to timeline `checkout-latency`
    ```
 
+   Under `--json` the result holds `dry_run`, `timelines`, which names the timeline,
+   `inserted`, the events it adds, and `identical`, those it already holds unchanged. A
+   dry run's inserted events have a null `seq`, since coroner numbers them only as it adds
+   them. Added again, a file lists every event under `identical`.
+
 2. Run the same command without `--dry-run`:
 
    ```console
@@ -161,16 +166,23 @@ is added. Leave `seq` null, and coroner numbers the events in the order of the f
    Added 3 events to timeline `checkout-latency`
    ```
 
-   `--from-file -` reads the records from stdin instead.
+   `--from-file -` reads the records from stdin instead. With `-q` it prints the id of
+   every event in the file, whether it added it or already held it.
 
 Adding the same file again adds nothing and exits 0, so a script that stopped halfway can
 simply run the command again. A record whose id coroner already holds with other content,
 such as edited text, stops the whole file: nothing is added, and the command exits 4.
 
 To make a single `coroner event add` safe to run again, give the event an id with `--id`,
-and its time with `--at`, since a time left to default to now differs on every run:
+its time with `--at` and its author with `--author`:
 
 ```console
-$ coroner event add "nginx upstream timeouts on web-2" --id 01a0a07c-0000-7000-8000-000000000201 --at 2026-09-10T23:58:12-05:00 --source web-2/nginx -q
+$ coroner event add "nginx upstream timeouts on web-2" --id 01a0a07c-0000-7000-8000-000000000201 --at 2026-09-10T23:58:12-05:00 --author julian --source web-2/nginx -q
 01a0a07c-0000-7000-8000-000000000201
 ```
+
+Running it again adds nothing and prints the same id. A retry must repeat every value as
+it was, or it exits 4. A time left to default to now differs on every run, and an author
+left to default to the config file or `USER` differs when someone else retries. coroner
+keeps `--at` as you typed it, so repeat it exactly: the same instant written another way
+differs too.

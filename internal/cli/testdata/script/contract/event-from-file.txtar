@@ -25,7 +25,8 @@ cmp stdout again.json
 exits 0 coroner event list --json
 stdout '"total":3\}$'
 
-# - reads the records from stdin, and -q prints the id of each event in the batch.
+# - reads the records from stdin, and -q prints the id of each event in the batch in file order,
+# stored or new.
 stdin more.jsonl
 exits 0 coroner event add --from-file - -q
 cmp stdout more-ids.txt
@@ -60,16 +61,33 @@ exits 2 coroner event add --from-file annotation.jsonl --json
 ! stdout .
 stderr '^\{"error":\{"kind":"invalid_input","message":"[^\n]*coroner import[^\n]*",[^\n]+\}\}\n\z'
 
-# A file with no event records is refused.
+# A file with no event records is refused, and stdin with none is named as stdin.
 exits 2 coroner event add --from-file empty.jsonl --json
 ! stdout .
 stderr '^\{"error":\{"kind":"invalid_input",[^\n]+\}\}\n\z'
+stdin empty.jsonl
+exits 2 coroner event add --from-file - --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"stdin [^\n]+\}\}\n\z'
 
-# --from-file takes every field from its records, so event text or a field's flag exits 2.
+# A file that cannot be read exits 2, kind usage, with how to fix it, and so does an empty value,
+# naming --from-file and - for stdin.
+exits 2 coroner event add --from-file missing.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]*missing.jsonl[^\n]*","hint":"[^\n]*you can read[^\n]*"\}\}\n\z'
+exits 2 coroner event add --from-file '' --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]*--from-file[^\n]*","hint":"[^\n]* - to read[^\n]*"\}\}\n\z'
+
+# --from-file takes every field from its records, so event text, a field's flag or --interactive
+# exits 2.
 exits 2 coroner event add 'Primary stepped down' --from-file batch.jsonl --json
 ! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 exits 2 coroner event add --from-file batch.jsonl --source mongod --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event add --from-file batch.jsonl --interactive --json
 ! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 exits 0 coroner event list --json
@@ -81,8 +99,10 @@ stdout '"total":4\}$'
 {"type":"event","id":"01a0a07c-0000-7000-8000-000000000102","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-3/mongod","tags":[],"text":"Election timeout on db-3","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
 {"type":"event","id":"01a0a07c-0000-7000-8000-000000000103","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:15:02.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":["phase:detect"],"text":"Pager fires for checkout","url":"https://pager.example.com/i/88","author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
 -- more.jsonl --
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":["election"],"text":"Primary stepped down: replSetStepDown","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
 {"type":"event","id":"01a0a07c-0000-7000-8000-000000000104","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:16:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"db-2 rejoins as secondary","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
 -- more-ids.txt --
+01a0a07c-0000-7000-8000-000000000101
 01a0a07c-0000-7000-8000-000000000104
 -- changed.jsonl --
 {"type":"event","id":"01a0a07c-0000-7000-8000-000000000105","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:17:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Checkout recovers","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}

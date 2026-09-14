@@ -3,6 +3,8 @@ package cli
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -28,7 +30,7 @@ const missingTextHint = "Pass the text, or - to read it from stdin:\n" +
 
 func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add {<text> | -}",
+		Use:   "add {<text> | - | --from-file {<file> | -}}",
 		Short: "Add an event to the current timeline",
 		Long: "Add an event to the current timeline, and print the time it resolved to.\n\n" +
 			"A time with no offset is read in --tz, then the config file's default_timezone, then the\n" +
@@ -38,12 +40,14 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
 			"database, and prints its id, sha256, size and type. Every file is read before anything is\n" +
 			"added, so one that cannot be read adds nothing.\n\n" +
-			"--id gives the event an id of your own, so running the same command again adds nothing and\n" +
-			"exits 0, and the same id with anything else changed exits 4.\n\n" +
+			"--id with --at, and --author when USER may differ, gives the event an id and time of your\n" +
+			"own, so running the same command again adds nothing and exits 0, while the same id with\n" +
+			"different content exits 4.\n\n" +
 			"--from-file adds a JSONL file of event records, as 'coroner timeline export --format jsonl'\n" +
-			"writes them, in one transaction, to the timeline every record's timeline_id must name. Every\n" +
-			"record is checked first, so one bad record adds nothing. A record carries its own id and\n" +
-			"RFC 3339 times, so running the same file again adds nothing.\n\n" +
+			"writes them, in one transaction, to the timeline -t, CORONER_TIMELINE or 'coroner timeline\n" +
+			"use' selects, which every record's timeline_id must name. Every record is checked first, so\n" +
+			"one bad record adds nothing. A record carries its own id and RFC 3339 times, so running the\n" +
+			"same file again adds nothing.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
 			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
 			"opens it, and --no-input never does.",
@@ -63,6 +67,8 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 
 	eventAddForm().attach(ctx, cmd, app, terminalForms(app))
 	cmd.Flags().String("from-file", "", fromFileUsage)
+	// A file of records needs no form, so --from-file branches before the form gate and stays
+	// outside the definition.
 	withForm := cmd.RunE
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if !cmd.Flags().Changed("from-file") {
@@ -113,7 +119,7 @@ func eventAddDefinition() definition {
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
 		attachField(),
 		{
-			name: "id", usage: "The event's id, as a lowercase UUIDv7 `uuid`, so running the same command again adds nothing",
+			name: "id", usage: "The event's id, as a lowercase UUIDv7 `uuid`",
 			check: withoutEnv(checkEventID),
 		},
 		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
@@ -175,15 +181,22 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		}
 		switch {
 		case added.existed:
+			// Nothing is attached, so result lists the stored attachments and reports none as added.
 			req = attachRequest{}
 		case !req.dryRun:
-			added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
+			var stored timeline.Event
+			stored, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
 			if errors.Is(err, store.ErrConflict) && in.given("id") {
-				return idConflictError(added.event.ID, "another write added it while this one ran", err)
+				conflict := err
+				stored, added.existed, err = storedSameEvent(ctx, s, added.event, req.files)
+				if err == nil && !added.existed {
+					err = conflict
+				}
 			}
 			if err != nil {
 				return err
 			}
+			added.event = stored
 		}
 
 		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &added.event.ID}, cfg.DBPath)
@@ -210,7 +223,7 @@ func storedSameEvent(ctx context.Context, s *store.Store, e timeline.Event, file
 	}
 
 	keys := changedEventKeys(stored, e)
-	if !slices.Equal(sortedSHA256s(attachments), sortedSHA256s(describeAttachments(files, timeline.AttachmentOwner{}, time.Time{}))) {
+	if !slices.Equal(sortedSHA256s(attachments), fileSHA256s(files)) {
 		keys = append(keys, "attachments")
 	}
 	if len(keys) > 0 {
@@ -225,7 +238,7 @@ func storedSameEvent(ctx context.Context, s *store.Store, e timeline.Event, file
 func changedEventKeys(stored, draft timeline.Event) []string {
 	compared := func(e timeline.Event) export.Event {
 		e.Seq, e.CreatedAt, e.UpdatedAt = 0, time.Time{}, time.Time{}
-		e.Tags = append([]string{}, sortedUnique(e.Tags)...)
+		e.Tags = sortedUnique(e.Tags)
 		return export.NewEvent(e)
 	}
 
@@ -236,6 +249,17 @@ func sortedSHA256s(attachments []timeline.Attachment) []string {
 	sums := make([]string, 0, len(attachments))
 	for _, a := range attachments {
 		sums = append(sums, a.SHA256)
+	}
+	slices.Sort(sums)
+
+	return sums
+}
+
+func fileSHA256s(files []attachFile) []string {
+	sums := make([]string, 0, len(files))
+	for _, f := range files {
+		sum := sha256.Sum256(f.content)
+		sums = append(sums, hex.EncodeToString(sum[:]))
 	}
 	slices.Sort(sums)
 
@@ -266,7 +290,7 @@ func checkEventID(id string) error {
 func (a eventAdded) render(o output) error {
 	if a.existed {
 		err := printEvent(o, a.event, a.attach.objects)
-		if err == nil {
+		if err == nil && !a.dryRun {
 			err = o.printID(a.event.ID)
 		}
 		if err != nil {

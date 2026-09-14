@@ -325,9 +325,9 @@ cat a.jsonl b.jsonl | jq 'select(.type=="event")'
 ```
 
 `coroner import` reads every record type in a stream. `coroner event add --from-file`
-reads only `event` records, and skips headers, to add a batch of events a script wrote to
-one timeline: every record, with its own `id`, belongs to the timeline the command
-selects.
+accepts only `event` records, skipping headers, and exits 2 on any other record type. It
+adds a batch of events a script wrote to one timeline: every record, with its own `id`,
+belongs to the timeline the command selects.
 
 ## Attachment files
 
