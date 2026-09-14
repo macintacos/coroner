@@ -472,6 +472,7 @@ var _ = Describe("WriteMarkdown", func() {
 		},
 		Entry("a timeline with sources, intervals and annotations", checkoutSpike()),
 		Entry("hostile labels, backtick runs included", hostileLabels()),
+		Entry("an overlay of two timelines", overlay()),
 	)
 
 	It("outlines a timeline with no title, refs, events or annotations as its name and counts", func() {
