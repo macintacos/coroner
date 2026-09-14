@@ -647,7 +647,6 @@ func (idx sourceIndex) add(s timeline.Source) {
 	}
 }
 
-// withoutKey returns keys without key.
 func withoutKey(keys []string, key string) []string {
 	return slices.DeleteFunc(keys, func(k string) bool { return k == key })
 }

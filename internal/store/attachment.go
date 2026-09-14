@@ -194,7 +194,6 @@ func (s *Store) writeStaged(ctx context.Context, staged []stagedAttachment, fn f
 	})
 }
 
-// discardStaged removes each staged file.
 func discardStaged(staged []stagedAttachment) {
 	for _, a := range staged {
 		// Once insertAttachments has renamed or discarded the file, the error is expected.

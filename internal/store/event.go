@@ -222,7 +222,6 @@ func addTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []str
 	return nil
 }
 
-// replaceTags replaces the tags of the event with eventID with tags.
 func replaceTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []string) error {
 	stored, err := q.ListEventTags(ctx, eventID)
 	if err != nil {
