@@ -70,7 +70,7 @@ digraph coroner_rules_router {
     "Load .golangci.yml" [shape=box];
     "Load CONTEXT.md" [shape=box];
     "Load STABILITY.md" [shape=box];
-    "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
+    "Load skills/coroner/SKILL.md" [shape=box];
     "Load agents/documentation-rules.md" [shape=box];
     "Load agents/timeline-rules.md" [shape=box];
     "Load agents/store-rules.md" [shape=box];
@@ -84,7 +84,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md" [label="JSON output, exports or another contract (Rule 3)"];
-    "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
+    "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command the agent skill uses (Rule 6)"];
     "What does the change touch?" -> "Load agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, an agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
@@ -190,9 +190,17 @@ digraph coroner_rules_router {
   `testdata/export/compat/` holds hand-written exports of other versions.
 - Examples: [`internal/cli/examples_test.go`](internal/cli/examples_test.go) parses every
   `coroner` line in every command's `Example`, and in the `sh`, `bash`, `shell` and `zsh`
-  code blocks and the `$` lines of `console` blocks on every page under `docs/`, against
-  the command tree, without running it. A line where `coroner` is not a command word, as
-  in `brew uninstall --cask coroner`, is reported as skipped.
+  code blocks and the `$` lines of `console` blocks on every page under `docs/` and
+  `skills/`, against the command tree, without running it. A line where `coroner` is not a
+  command word, as in `brew uninstall --cask coroner`, is reported as skipped.
+- Agent skill: [`skills/coroner/`](skills/coroner/SKILL.md) holds the Agent Skill and its
+  `references/`, with spec front matter keys only. Go cannot embed a parent directory, so
+  [`skills/skills.go`](skills/skills.go) embeds `SKILL.md`, `main.go` passes it in as
+  `App.Skill`, and `coroner agent skill` ([`agent.go`](internal/cli/agent.go)) prints it;
+  a spec fails when the output differs from the file. `agent skill` names the document it
+  prints rather than a verb, as `help <topic>` does. The repository is its own Claude Code
+  plugin marketplace: [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)
+  offers `skills/` as a plugin holding only this skill.
 - Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,
   `reference/`, `explanation/` and `contributing/`, with its nav in
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
@@ -264,7 +272,8 @@ digraph coroner_rules_router {
    non-conventional message (git's own merge, revert and reapply subjects pass; merges are
    left out of the changelog), and git-cliff builds the changelog from the history, so a
    commit's type picks its heading.
-6. **Keep the agent skill in sync:** when a command used in `skills/coroner/SKILL.md` (not
-   in the repo yet) changes, update the skill in the same PR, or its examples test fails.
+6. **Keep the agent skill in sync:** when a command used in
+   [`skills/coroner/SKILL.md`](skills/coroner/SKILL.md) or its references changes, update
+   the skill in the same PR, or its examples test fails.
 7. **Run `mise run preflight` before declaring work done:** it runs lint, test, build and
    docs:build ([`.mise/tasks/preflight`](.mise/tasks/preflight)).

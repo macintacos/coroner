@@ -35,7 +35,7 @@ digraph coroner_docs_router {
     "Edit docs/reference/configuration.md" [shape=box];
     "Regenerate CHANGELOG.md (committed by the first release)" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
-    "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
+    "Edit skills/coroner/SKILL.md" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
     "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
@@ -56,7 +56,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/reference/configuration.md" [label="a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule"];
     "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (committed by the first release)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
     "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site"];
-    "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
+    "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md" [label="a command the agent skill uses changed"];
 }
 ```
 
@@ -153,8 +153,14 @@ digraph coroner_docs_router {
   input and Output formats pages, so a topic's title or structure changes a published
   reference page. Specs pin the `exit-codes` table and the `environment` variables to the
   code.
-- **`skills/coroner/SKILL.md`** (not in the repo yet — EXC-1277) — the agent skill that
-  ships with coroner, with its references.
+- **[`skills/coroner/SKILL.md`](../skills/coroner/SKILL.md)** (coding agents that drive
+  coroner) — the Agent Skill: the rules for running coroner from an agent and a recipe per
+  investigation step, with `references/jsonl-events.md` for `event add --from-file`
+  records and `references/log-sources.md` for reading log and Slack times. It teaches only
+  stable surfaces and points to `coroner help reference` for the rest.
+  `coroner agent skill` prints the copy embedded in the binary, and the examples test
+  fails when a `coroner` line in its shell code blocks, or its references', stops parsing.
+  [The how-to](../docs/how-to/use-with-ai-agents.md) documents installing it.
 
 ## Audience, stated at the top of every new doc
 
