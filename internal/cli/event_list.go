@@ -83,6 +83,10 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
+		attachments, err := s.TimelineAttachments(ctx, t.ID)
+		if err != nil {
+			return err
+		}
 		if bounds != "" {
 			err = o.notify("Events %s", bounds)
 			if err != nil {
@@ -90,7 +94,8 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 			}
 		}
 
-		return printEventPage(o, z, page, noEventsMessage(filter))
+		listing := eventListing{page: page, attached: attachmentsByOwner(attachments, cfg.DBPath)}
+		return printEventPage(o, z, listing, noEventsMessage(filter))
 	})
 }
 
@@ -222,24 +227,30 @@ type eventLineJSON struct {
 	eventJSON
 }
 
-func newEventListJSON(page store.EventPage) eventListJSON {
-	events := make([]eventJSON, 0, len(page.Events))
-	for _, e := range page.Events {
-		events = append(events, newEventJSON(e))
-	}
-
-	return eventListJSON{Events: events, Truncated: page.Truncated, Total: page.Total}
+// eventListing is a page of events with their attachments' objects, keyed by event id.
+type eventListing struct {
+	page     store.EventPage
+	attached map[string][]attachmentJSON
 }
 
-// printEventPage prints page in o's format, with text times in z and noEvents on stderr
-// when it is empty, then says on stderr when its limit left events out.
-func printEventPage(o output, z zone, page store.EventPage, noEvents string) error {
-	err := writeEventPage(o, z, page, noEvents)
+func newEventListJSON(l eventListing) eventListJSON {
+	events := make([]eventJSON, 0, len(l.page.Events))
+	for _, e := range l.page.Events {
+		events = append(events, newEventJSON(e, l.attached[e.ID]))
+	}
+
+	return eventListJSON{Events: events, Truncated: l.page.Truncated, Total: l.page.Total}
+}
+
+// printEventPage prints l in o's format, with text times in z and noEvents on stderr when it
+// is empty, then says on stderr when its limit left events out.
+func printEventPage(o output, z zone, l eventListing, noEvents string) error {
+	err := writeEventPage(o, z, l, noEvents)
 	if err != nil {
 		return err
 	}
 
-	return notifyTruncated(o, page)
+	return notifyTruncated(o, l.page)
 }
 
 // notifyTruncated says on stderr when page's limit left events out.
@@ -251,13 +262,14 @@ func notifyTruncated(o output, page store.EventPage) error {
 	return o.notify("Showing %d of %d events; raise --limit, or leave it out, to see them all.", len(page.Events), page.Total)
 }
 
-func writeEventPage(o output, z zone, page store.EventPage, noEvents string) error {
+func writeEventPage(o output, z zone, l eventListing, noEvents string) error {
+	page := l.page
 	switch o.format {
 	case formatJSON:
-		return o.json(newEventListJSON(page))
+		return o.json(newEventListJSON(l))
 	case formatJSONL:
 		for _, e := range page.Events {
-			err := writeJSON(o.out, false, eventLineJSON{Type: "event", eventJSON: newEventJSON(e)})
+			err := writeJSON(o.out, false, eventLineJSON{Type: "event", eventJSON: newEventJSON(e, l.attached[e.ID])})
 			if err != nil {
 				return err
 			}

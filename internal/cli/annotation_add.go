@@ -58,10 +58,11 @@ func annotationAddDefinition() definition {
 // annotationAdded is the annotation add stored or, with --dry-run, would store, with the
 // timeline and the event, if any, it is attached to.
 type annotationAdded struct {
-	annotation timeline.Annotation
-	timeline   timeline.Timeline
-	event      *timeline.Event
-	dryRun     bool
+	annotation  timeline.Annotation
+	timeline    timeline.Timeline
+	event       *timeline.Event
+	attachments []attachmentJSON
+	dryRun      bool
 }
 
 func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationAdded, error) {
@@ -108,10 +109,10 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 func (a annotationAdded) render(o output) error {
 	target := annotationTarget(a.timeline, a.event)
 	if a.dryRun {
-		return previewAnnotation(o, a.annotation, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+		return previewAnnotation(o, a.annotation, a.attachments, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
 	}
 
-	err := printAnnotation(o, a.annotation)
+	err := printAnnotation(o, a.annotation, a.attachments)
 	if err != nil {
 		return err
 	}

@@ -36,11 +36,14 @@ const (
 	KindEventNotFound      Kind = "event_not_found"
 	KindAnnotationNotFound Kind = "annotation_not_found"
 	KindSourceNotFound     Kind = "source_not_found"
+	KindAttachmentNotFound Kind = "attachment_not_found"
 
 	KindTimelineExists Kind = "timeline_exists"
 	KindSourceExists   Kind = "source_exists"
 	// KindIDConflict means a record with that ID already exists with different content.
 	KindIDConflict Kind = "id_conflict"
+	// KindFileExists means the file a command would write is already there.
+	KindFileExists Kind = "file_exists"
 
 	KindDBBusy       Kind = "db_busy"
 	KindDBUnreadable Kind = "db_unreadable"
@@ -75,10 +78,12 @@ func exitCodes() map[Kind]int {
 		KindEventNotFound:      3,
 		KindAnnotationNotFound: 3,
 		KindSourceNotFound:     3,
+		KindAttachmentNotFound: 3,
 
 		KindTimelineExists: 4,
 		KindSourceExists:   4,
 		KindIDConflict:     4,
+		KindFileExists:     4,
 
 		KindDBBusy:       5,
 		KindDBUnreadable: 5,

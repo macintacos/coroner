@@ -104,7 +104,8 @@ var _ = Describe("annotation", func() {
 				"source": "mongod",
 				"url": "https://logs.example.com/l/1",
 				"created_at": "2026-09-13T01:30:05.250000000Z",
-				"updated_at": "2026-09-13T01:30:05.250000000Z"
+				"updated_at": "2026-09-13T01:30:05.250000000Z",
+				"attachments": []
 			}`))
 			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(HaveField("EventID", HaveValue(Equal(stepDownID)))))
 		})
@@ -408,7 +409,8 @@ var _ = Describe("annotation", func() {
 				"source": "slack",
 				"url": "https://chat.example.com/p/9",
 				"created_at": "` + created + `",
-				"updated_at": "2026-09-13T02:30:05.250000000Z"
+				"updated_at": "2026-09-13T02:30:05.250000000Z",
+				"attachments": []
 			}`))
 			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(SatisfyAll(
 				HaveField("Kind", timeline.AnnotationComment), HaveField("Source", HaveValue(Equal("slack"))))))

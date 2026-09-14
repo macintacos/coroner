@@ -54,10 +54,13 @@ type eventJSON struct {
 	Author         *string  `json:"author"`
 	CreatedAt      string   `json:"created_at"`
 	UpdatedAt      string   `json:"updated_at"`
+	// Never nil, so no attachments encode as [] rather than null.
+	Attachments []attachmentJSON `json:"attachments"`
 }
 
-// newEventJSON returns e's JSON object; seq is null until the store allocates one.
-func newEventJSON(e timeline.Event) eventJSON {
+// newEventJSON returns e's JSON object, with attachments; seq is null until the store
+// allocates one.
+func newEventJSON(e timeline.Event, attachments []attachmentJSON) eventJSON {
 	j := eventJSON{
 		ID:             e.ID,
 		TimelineID:     e.TimelineID,
@@ -68,12 +71,13 @@ func newEventJSON(e timeline.Event) eventJSON {
 		OccurredRaw:    e.OccurredRaw,
 		Source:         e.Source,
 		// Never nil, so no tags encodes as [] rather than null.
-		Tags:      append([]string{}, e.Tags...),
-		Text:      e.Text,
-		URL:       e.URL,
-		Author:    e.Author,
-		CreatedAt: timeline.FormatInstant(e.CreatedAt),
-		UpdatedAt: timeline.FormatInstant(e.UpdatedAt),
+		Tags:        append([]string{}, e.Tags...),
+		Text:        e.Text,
+		URL:         e.URL,
+		Author:      e.Author,
+		CreatedAt:   timeline.FormatInstant(e.CreatedAt),
+		UpdatedAt:   timeline.FormatInstant(e.UpdatedAt),
+		Attachments: append([]attachmentJSON{}, attachments...),
 	}
 	if e.Seq > 0 {
 		j.Seq = &e.Seq

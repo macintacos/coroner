@@ -109,8 +109,9 @@ type eventEdited struct {
 	timeline timeline.Timeline
 	zone     zone
 	// when is the edit's resolved times as the command echoes them, or "" when it sets none.
-	when   string
-	dryRun bool
+	when        string
+	attachments []attachmentJSON
+	dryRun      bool
 }
 
 func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventEdited, error) {
@@ -151,15 +152,18 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 			return err
 		}
 		edited.event, edited.timeline = e, t
-		if dryRun {
-			return nil
+		if !dryRun {
+			err = s.UpdateEvent(ctx, e, edit.newSourceID)
+			if errors.Is(err, store.ErrNotFound) {
+				return eventNotFoundError("another coroner deleted the event first", err)
+			}
+			if err != nil {
+				return err
+			}
 		}
 
-		err = s.UpdateEvent(ctx, e, edit.newSourceID)
-		if errors.Is(err, store.ErrNotFound) {
-			return eventNotFoundError("another coroner deleted the event first", err)
-		}
-
+		attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
+		edited.attachments = newAttachmentJSONs(attachments, cfg.DBPath)
 		return err
 	})
 
@@ -168,7 +172,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 
 func (e eventEdited) render(o output) error {
 	if e.dryRun {
-		err := previewEventEdit(o, e.zone, e.event, e.timeline)
+		err := previewEventEdit(o, e.zone, e.event, e.attachments, e.timeline)
 		if err != nil {
 			return err
 		}
@@ -176,7 +180,7 @@ func (e eventEdited) render(o output) error {
 		return o.notify("Would edit event #%d in timeline `%s`%s", e.event.Seq, e.timeline.Name, e.when)
 	}
 
-	err := printEvent(o, e.event)
+	err := printEvent(o, e.event, e.attachments)
 	if err != nil {
 		return err
 	}
@@ -366,10 +370,11 @@ func checkEditedEvent(ev timeline.Event, z zone) error {
 	return nil
 }
 
-// previewEventEdit prints ev as the edit would store it: its JSON object, or its summary.
-func previewEventEdit(o output, z zone, ev timeline.Event, t timeline.Timeline) error {
+// previewEventEdit prints ev as the edit would store it: its JSON object with attachments, or
+// its summary.
+func previewEventEdit(o output, z zone, ev timeline.Event, attachments []attachmentJSON, t timeline.Timeline) error {
 	if o.format == formatJSON {
-		return o.json(newEventJSON(ev))
+		return o.json(newEventJSON(ev, attachments))
 	}
 
 	_, err := io.WriteString(o.out, eventSummary(ev, t, z))

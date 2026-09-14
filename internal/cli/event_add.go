@@ -95,8 +95,9 @@ type eventAdded struct {
 	event    timeline.Event
 	timeline timeline.Timeline
 	// when is the event's resolved time as the command prints it.
-	when   string
-	dryRun bool
+	when        string
+	attachments []attachmentJSON
+	dryRun      bool
 }
 
 func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {
@@ -139,10 +140,10 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 
 func (a eventAdded) render(o output) error {
 	if a.dryRun {
-		return previewEvent(o, a.timeline, a.event, a.when)
+		return previewEvent(o, a.timeline, a.event, a.attachments, a.when)
 	}
 
-	err := printEvent(o, a.event)
+	err := printEvent(o, a.event, a.attachments)
 	if err != nil {
 		return err
 	}
@@ -410,19 +411,21 @@ func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
 	return times, nil
 }
 
-// printEvent prints e when o asks for JSON; text output leaves it to the command's message.
-func printEvent(o output, e timeline.Event) error {
+// printEvent prints e with attachments when o asks for JSON; text output leaves it to the
+// command's message.
+func printEvent(o output, e timeline.Event, attachments []attachmentJSON) error {
 	if o.format != formatJSON {
 		return nil
 	}
 
-	return o.json(newEventJSON(e))
+	return o.json(newEventJSON(e, attachments))
 }
 
-// previewEvent prints e as it would be added to t at when: its JSON object, or a description.
-func previewEvent(o output, t timeline.Timeline, e timeline.Event, when string) error {
+// previewEvent prints e as it would be added to t at when: its JSON object with attachments, or
+// a description.
+func previewEvent(o output, t timeline.Timeline, e timeline.Event, attachments []attachmentJSON, when string) error {
 	if o.format == formatJSON {
-		return o.json(newEventJSON(e))
+		return o.json(newEventJSON(e, attachments))
 	}
 
 	var b strings.Builder

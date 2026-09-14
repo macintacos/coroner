@@ -111,7 +111,8 @@ var _ = Describe("event add", func() {
 				"url": "https://logs.example.com/l/1",
 				"author": "julian",
 				"created_at": "2026-09-13T01:30:05.250000000Z",
-				"updated_at": "2026-09-13T01:30:05.250000000Z"
+				"updated_at": "2026-09-13T01:30:05.250000000Z",
+				"attachments": []
 			}`))
 			Expect(storedEvents(ctx)).To(ConsistOf(SatisfyAll(
 				HaveField("Seq", int64(1)),

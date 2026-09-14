@@ -57,20 +57,23 @@ type annotationJSON struct {
 	URL        *string `json:"url"`
 	CreatedAt  string  `json:"created_at"`
 	UpdatedAt  string  `json:"updated_at"`
+	// Never nil, so no attachments encode as [] rather than null.
+	Attachments []attachmentJSON `json:"attachments"`
 }
 
-func newAnnotationJSON(a timeline.Annotation) annotationJSON {
+func newAnnotationJSON(a timeline.Annotation, attachments []attachmentJSON) annotationJSON {
 	return annotationJSON{
-		ID:         a.ID,
-		TimelineID: a.TimelineID,
-		EventID:    a.EventID,
-		Kind:       string(a.Kind),
-		Body:       a.Body,
-		Author:     a.Author,
-		Source:     a.Source,
-		URL:        a.URL,
-		CreatedAt:  timeline.FormatInstant(a.CreatedAt),
-		UpdatedAt:  timeline.FormatInstant(a.UpdatedAt),
+		ID:          a.ID,
+		TimelineID:  a.TimelineID,
+		EventID:     a.EventID,
+		Kind:        string(a.Kind),
+		Body:        a.Body,
+		Author:      a.Author,
+		Source:      a.Source,
+		URL:         a.URL,
+		CreatedAt:   timeline.FormatInstant(a.CreatedAt),
+		UpdatedAt:   timeline.FormatInstant(a.UpdatedAt),
+		Attachments: append([]attachmentJSON{}, attachments...),
 	}
 }
 
@@ -78,29 +81,32 @@ type annotationListJSON struct {
 	Annotations []annotationJSON `json:"annotations"`
 }
 
-func newAnnotationListJSON(annotations []timeline.Annotation) annotationListJSON {
+// newAnnotationListJSON returns annotations' objects, each with its attachments from attached,
+// keyed by annotation id.
+func newAnnotationListJSON(annotations []timeline.Annotation, attached map[string][]attachmentJSON) annotationListJSON {
 	listed := make([]annotationJSON, 0, len(annotations))
 	for _, a := range annotations {
-		listed = append(listed, newAnnotationJSON(a))
+		listed = append(listed, newAnnotationJSON(a, attached[a.ID]))
 	}
 
 	return annotationListJSON{Annotations: listed}
 }
 
-// printAnnotation prints a when o asks for JSON; text output leaves it to the command's message.
-func printAnnotation(o output, a timeline.Annotation) error {
+// printAnnotation prints a with attachments when o asks for JSON; text output leaves it to the
+// command's message.
+func printAnnotation(o output, a timeline.Annotation, attachments []attachmentJSON) error {
 	if o.format != formatJSON {
 		return nil
 	}
 
-	return o.json(newAnnotationJSON(a))
+	return o.json(newAnnotationJSON(a, attachments))
 }
 
-// previewAnnotation prints a as a dry run would store it: its JSON object, or heading and a
-// description.
-func previewAnnotation(o output, a timeline.Annotation, heading string) error {
+// previewAnnotation prints a as a dry run would store it: its JSON object with attachments, or
+// heading and a description.
+func previewAnnotation(o output, a timeline.Annotation, attachments []attachmentJSON, heading string) error {
 	if o.format == formatJSON {
-		return o.json(newAnnotationJSON(a))
+		return o.json(newAnnotationJSON(a, attachments))
 	}
 
 	var b strings.Builder

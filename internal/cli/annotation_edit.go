@@ -47,9 +47,10 @@ func annotationEditDefinition() definition {
 // annotationEdited is the annotation as edit stored it or, with --dry-run, would store it, with
 // its timeline.
 type annotationEdited struct {
-	annotation timeline.Annotation
-	timeline   timeline.Timeline
-	dryRun     bool
+	annotation  timeline.Annotation
+	timeline    timeline.Timeline
+	attachments []attachmentJSON
+	dryRun      bool
 }
 
 func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationEdited, error) {
@@ -85,33 +86,44 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		}
 		a = edit.apply(a, app.Now())
 		edited.annotation, edited.timeline = a, t
-		if dryRun {
-			return nil
+		if !dryRun {
+			err = updateAnnotation(ctx, s, app, a)
+			if err != nil {
+				return err
+			}
 		}
 
-		// UpdateAnnotation resolves a.Source by name even when --source did not change it, so it
-		// always needs a fallback id.
-		sourceID, err := newSourceID(a.Source, app.NewID)
-		if err != nil {
-			return err
-		}
-		err = s.UpdateAnnotation(ctx, a, sourceID)
-		if errors.Is(err, store.ErrNotFound) {
-			return annotationNotFoundError("no annotation has an id starting "+a.ID, err)
-		}
-
+		attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{AnnotationID: &a.ID})
+		edited.attachments = newAttachmentJSONs(attachments, cfg.DBPath)
 		return err
 	})
 
 	return edited, err
 }
 
-func (e annotationEdited) render(o output) error {
-	if e.dryRun {
-		return previewAnnotation(o, e.annotation, "Would edit annotation "+e.annotation.ID+" to")
+// updateAnnotation stores a, reporting an annotation another command deleted first as
+// annotation_not_found.
+func updateAnnotation(ctx context.Context, s *store.Store, app App, a timeline.Annotation) error {
+	// UpdateAnnotation resolves a.Source by name even when --source did not change it, so it
+	// always needs a fallback id.
+	sourceID, err := newSourceID(a.Source, app.NewID)
+	if err != nil {
+		return err
+	}
+	err = s.UpdateAnnotation(ctx, a, sourceID)
+	if errors.Is(err, store.ErrNotFound) {
+		return annotationNotFoundError("no annotation has an id starting "+a.ID, err)
 	}
 
-	err := printAnnotation(o, e.annotation)
+	return err
+}
+
+func (e annotationEdited) render(o output) error {
+	if e.dryRun {
+		return previewAnnotation(o, e.annotation, e.attachments, "Would edit annotation "+e.annotation.ID+" to")
+	}
+
+	err := printAnnotation(o, e.annotation, e.attachments)
 	if err != nil {
 		return err
 	}

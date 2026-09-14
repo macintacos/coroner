@@ -61,10 +61,12 @@ func eventDeleteDefinition() definition {
 	}}
 }
 
-// eventsDeleted are the events delete removed or, with --dry-run, would remove.
+// eventsDeleted are the events delete removed or, with --dry-run, would remove, with their
+// attachments' objects keyed by event id.
 type eventsDeleted struct {
-	found  foundEvents
-	dryRun bool
+	found    foundEvents
+	attached map[string][]attachmentJSON
+	dryRun   bool
 }
 
 func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventsDeleted, error) {
@@ -92,8 +94,10 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 			return err
 		}
 		deleted.found = found
-		if dryRun {
-			return nil
+		attachments, err := ownersAttachments(ctx, s, found.owners())
+		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+		if err != nil || dryRun {
+			return err
 		}
 
 		err = s.DeleteEvents(ctx, found.ids()...)
@@ -109,7 +113,7 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 
 // render prints the events as they were, with times in z, and says what happened to them.
 func (d eventsDeleted) render(o output, z zone) error {
-	err := writeDeletion(o, z, d.found)
+	err := writeDeletion(o, z, d.found, d.attached)
 	if err != nil {
 		return err
 	}
@@ -152,11 +156,20 @@ func (f foundEvents) ids() []string {
 	return ids
 }
 
-// writeDeletion prints the events f holds as they were: the event list's JSON, or a summary
-// of each.
-func writeDeletion(o output, z zone, f foundEvents) error {
+func (f foundEvents) owners() []timeline.AttachmentOwner {
+	owners := make([]timeline.AttachmentOwner, 0, len(f.events))
+	for _, e := range f.events {
+		owners = append(owners, timeline.AttachmentOwner{EventID: &e.ID})
+	}
+
+	return owners
+}
+
+// writeDeletion prints the events f holds as they were: the event list's JSON, with attachments
+// from attached keyed by event id, or a summary of each.
+func writeDeletion(o output, z zone, f foundEvents, attached map[string][]attachmentJSON) error {
 	if o.format == formatJSON {
-		return o.json(newEventListJSON(store.EventPage{Events: f.events, Total: len(f.events)}))
+		return o.json(newEventListJSON(eventListing{page: store.EventPage{Events: f.events, Total: len(f.events)}, attached: attached}))
 	}
 
 	summaries := make([]string, 0, len(f.events))
