@@ -1,0 +1,135 @@
+The HTML viewer's theme writes every colour as #rrggbb in both themes
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 accent on paper, light
+#1f5f8b on #f6f7f5: 6.37:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 accent on selected, light
+#1f5f8b on #dce7ef: 5.45:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 accent on surface, light
+#1f5f8b on #eaecea: 5.76:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 ink on paper, light
+#1b1f22 on #f6f7f5: 15.44:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 ink on selected, light
+#1b1f22 on #dce7ef: 13.21:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 ink on surface, light
+#1b1f22 on #eaecea: 13.97:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 muted on paper, light
+#545c63 on #f6f7f5: 6.33:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 muted on selected, light
+#545c63 on #dce7ef: 5.41:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 muted on surface, light
+#545c63 on #eaecea: 5.73:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 accent on paper, dark
+#7fb6dc on #121517: 8.41:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 accent on selected, dark
+#7fb6dc on #1d3140: 6.15:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 accent on surface, dark
+#7fb6dc on #1b1f22: 7.61:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 ink on paper, dark
+#e3e7e9 on #121517: 14.73:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 ink on selected, dark
+#e3e7e9 on #1d3140: 10.78:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 ink on surface, dark
+#e3e7e9 on #1b1f22: 13.33:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 muted on paper, dark
+#9ba4ab on #121517: 7.24:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 muted on selected, dark
+#9ba4ab on #1d3140: 5.30:1
+The HTML viewer's theme gives text at least WCAG AA contrast, 4.5:1 muted on surface, dark
+#9ba4ab on #1b1f22: 6.55:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-0 on paper, light
+#0b6aa8 on #f6f7f5: 5.37:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-0 on selected, light
+#0b6aa8 on #dce7ef: 4.59:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-0 on surface, light
+#0b6aa8 on #eaecea: 4.86:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-1 on paper, light
+#b35c00 on #f6f7f5: 4.39:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-1 on selected, light
+#b35c00 on #dce7ef: 3.76:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-1 on surface, light
+#b35c00 on #eaecea: 3.98:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-2 on paper, light
+#1f7a4d on #f6f7f5: 4.95:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-2 on selected, light
+#1f7a4d on #dce7ef: 4.23:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-2 on surface, light
+#1f7a4d on #eaecea: 4.48:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-3 on paper, light
+#b0306e on #f6f7f5: 5.59:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-3 on selected, light
+#b0306e on #dce7ef: 4.79:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-3 on surface, light
+#b0306e on #eaecea: 5.06:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-4 on paper, light
+#6a4fb0 on #f6f7f5: 5.82:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-4 on selected, light
+#6a4fb0 on #dce7ef: 4.98:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-4 on surface, light
+#6a4fb0 on #eaecea: 5.27:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-5 on paper, light
+#00797a on #f6f7f5: 4.87:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-5 on selected, light
+#00797a on #dce7ef: 4.16:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-5 on surface, light
+#00797a on #eaecea: 4.40:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-6 on paper, light
+#876a00 on #f6f7f5: 4.78:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-6 on selected, light
+#876a00 on #dce7ef: 4.09:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-6 on surface, light
+#876a00 on #eaecea: 4.32:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-7 on paper, light
+#b3261e on #f6f7f5: 6.08:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-7 on selected, light
+#b3261e on #dce7ef: 5.20:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-7 on surface, light
+#b3261e on #eaecea: 5.50:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-0 on paper, dark
+#5aaef0 on #121517: 7.64:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-0 on selected, dark
+#5aaef0 on #1d3140: 5.59:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-0 on surface, dark
+#5aaef0 on #1b1f22: 6.91:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-1 on paper, dark
+#f0a050 on #121517: 8.60:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-1 on selected, dark
+#f0a050 on #1d3140: 6.29:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-1 on surface, dark
+#f0a050 on #1b1f22: 7.78:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-2 on paper, dark
+#5cc28e on #121517: 8.35:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-2 on selected, dark
+#5cc28e on #1d3140: 6.11:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-2 on surface, dark
+#5cc28e on #1b1f22: 7.56:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-3 on paper, dark
+#e97fb4 on #121517: 7.12:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-3 on selected, dark
+#e97fb4 on #1d3140: 5.21:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-3 on surface, dark
+#e97fb4 on #1b1f22: 6.45:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-4 on paper, dark
+#a996f0 on #121517: 7.25:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-4 on selected, dark
+#a996f0 on #1d3140: 5.31:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-4 on surface, dark
+#a996f0 on #1b1f22: 6.56:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-5 on paper, dark
+#4fc4c4 on #121517: 8.75:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-5 on selected, dark
+#4fc4c4 on #1d3140: 6.40:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-5 on surface, dark
+#4fc4c4 on #1b1f22: 7.92:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-6 on paper, dark
+#d8b64a on #121517: 9.35:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-6 on selected, dark
+#d8b64a on #1d3140: 6.84:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-6 on surface, dark
+#d8b64a on #1b1f22: 8.46:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-7 on paper, dark
+#f28b82 on #121517: 7.68:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-7 on selected, dark
+#f28b82 on #1d3140: 5.61:1
+The HTML viewer's theme gives each source colour at least WCAG's non-text contrast, 3:1 source-7 on surface, dark
+#f28b82 on #1b1f22: 6.95:1
+Ran 67 of 274 Specs in 0.004 seconds
+SUCCESS! -- 67 Passed | 0 Failed | 1 Pending | 206 Skipped
