@@ -9,9 +9,15 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// AddAnnotation adds a. When no source is called a.Source yet, it creates one with id
-// newSourceID.
-func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string) error {
+// AddAnnotation adds a with attachments. When no source is called a.Source yet, it creates
+// one with id newSourceID.
+func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
+	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments)
+	if err != nil {
+		return err
+	}
+	defer discard()
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		err := checkTarget(ctx, q, a.TimelineID, a.EventID)
 		if err != nil {
@@ -34,7 +40,11 @@ func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSou
 			CreatedAt:  timeline.FormatInstant(a.CreatedAt),
 			UpdatedAt:  timeline.FormatInstant(a.UpdatedAt),
 		})
-		return err
+		if err != nil {
+			return err
+		}
+
+		return insertAttachments(ctx, q, s.blobDir, staged)
 	})
 }
 
@@ -75,9 +85,15 @@ func (s *Store) EventAnnotations(ctx context.Context, eventID string) ([]timelin
 	})
 }
 
-// UpdateAnnotation stores a's kind, body, author, source, URL and updated at. When no
-// source is called a.Source yet, it creates one with id newSourceID.
-func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string) error {
+// UpdateAnnotation stores a's kind, body, author, source, URL and updated at, and adds
+// attachments. When no source is called a.Source yet, it creates one with id newSourceID.
+func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
+	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments)
+	if err != nil {
+		return err
+	}
+	defer discard()
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, a.Source, newSourceID, a.UpdatedAt)
 		if err != nil {
@@ -93,7 +109,11 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 			UpdatedAt: timeline.FormatInstant(a.UpdatedAt),
 			ID:        a.ID,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+
+		return insertAttachments(ctx, q, s.blobDir, staged)
 	})
 }
 

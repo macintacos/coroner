@@ -74,13 +74,16 @@
    deletes a blob:** `AddAttachment` streams the content into a synced temporary file in
    the blob directory outside any transaction, then, inside one `Store.write`, checks the
    owner, renames the file to its SHA-256 and inserts the row, so a missing owner leaves
-   nothing. `GarbageCollectBlobs` deletes unreferenced blobs inside `Store.write` too, so
-   the write lock keeps it from deleting a blob between an add's rename and its insert. A
-   crash leaves at most an unreferenced blob or a staged `.tmp-*` file, which garbage
-   collection leaves, never a row without its blob. Nothing else deletes a blob, not
-   `Open`, a delete or a migration. A `<db>.pre-v<N>.bak` backup copies the database file
-   only: restored to the database's own path, it finds its blobs until
-   `GarbageCollectBlobs` deletes those whose rows were removed.
+   nothing. `AddEvent`, `UpdateEvent`, `AddAnnotation` and `UpdateAnnotation` stage their
+   attachments the same way, and name the blobs and insert the rows after the owner's row
+   in the owner's own `Store.write`, so the owner and its attachments commit together.
+   `GarbageCollectBlobs` deletes unreferenced blobs inside `Store.write` too, so the write
+   lock keeps it from deleting a blob between an add's rename and its insert. A crash
+   leaves at most an unreferenced blob or a staged `.tmp-*` file, which garbage collection
+   leaves, never a row without its blob. Nothing else deletes a blob, not `Open`, a delete
+   or a migration. A `<db>.pre-v<N>.bak` backup copies the database file only: restored to
+   the database's own path, it finds its blobs until `GarbageCollectBlobs` deletes those
+   whose rows were removed.
 10. **The blob directory comes from `config.BlobDir`, and a filename is never a path:**
     `Open` and `OpenReadOnly` derive the directory from the database path, so two
     databases never share one and one's garbage collection never deletes another's blobs.

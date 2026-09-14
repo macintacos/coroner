@@ -9,11 +9,20 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// AddEvent adds e to its timeline under the timeline's next seq and returns e with that
-// Seq. When no source is called e.Source yet, it creates one with id newSourceID.
-func (s *Store) AddEvent(ctx context.Context, e timeline.Event, newSourceID string) (timeline.Event, error) {
+// AddEvent adds e to its timeline under the timeline's next seq, with attachments, and
+// returns e with that Seq. When no source is called e.Source yet, it creates one with id
+// newSourceID.
+func (s *Store) AddEvent(
+	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
+) (timeline.Event, error) {
+	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments)
+	if err != nil {
+		return timeline.Event{}, err
+	}
+	defer discard()
+
 	var seq int64
-	err := s.write(ctx, func(q *sqlcgen.Queries) error {
+	err = s.write(ctx, func(q *sqlcgen.Queries) error {
 		var err error
 		seq, err = q.AllocateSeq(ctx, e.TimelineID)
 		if err != nil {
@@ -45,8 +54,12 @@ func (s *Store) AddEvent(ctx context.Context, e timeline.Event, newSourceID stri
 		if err != nil {
 			return err
 		}
+		err = addTags(ctx, q, e.ID, e.Tags)
+		if err != nil {
+			return err
+		}
 
-		return addTags(ctx, q, e.ID, e.Tags)
+		return insertAttachments(ctx, q, s.blobDir, staged)
 	})
 	if err != nil {
 		return timeline.Event{}, err
@@ -112,9 +125,15 @@ func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event
 }
 
 // UpdateEvent stores every field of e but its timeline, seq and created at, and replaces
-// its tags with e.Tags. When no source is called e.Source yet, it creates one with id
-// newSourceID.
-func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string) error {
+// its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
+// creates one with id newSourceID.
+func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
+	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments)
+	if err != nil {
+		return err
+	}
+	defer discard()
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, e.Source, newSourceID, e.UpdatedAt)
 		if err != nil {
@@ -149,8 +168,12 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 				return err
 			}
 		}
+		err = addTags(ctx, q, e.ID, e.Tags)
+		if err != nil {
+			return err
+		}
 
-		return addTags(ctx, q, e.ID, e.Tags)
+		return insertAttachments(ctx, q, s.blobDir, staged)
 	})
 }
 

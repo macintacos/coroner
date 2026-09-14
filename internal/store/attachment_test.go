@@ -50,6 +50,7 @@ var _ = Describe("Attachments", func() {
 	var (
 		s       *store.Store
 		dir     string
+		dbPath  string
 		blobDir string
 	)
 
@@ -75,10 +76,10 @@ var _ = Describe("Attachments", func() {
 
 	BeforeEach(func(ctx SpecContext) {
 		dir = GinkgoT().TempDir()
-		path := filepath.Join(dir, "coroner.db")
-		blobDir = config.BlobDir(path)
+		dbPath = filepath.Join(dir, "coroner.db")
+		blobDir = config.BlobDir(dbPath)
 		var err error
-		s, err = store.Open(ctx, path)
+		s, err = store.Open(ctx, dbPath)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)
 		Expect(s.CreateTimeline(ctx, incident)).To(Succeed())
@@ -97,7 +98,7 @@ var _ = Describe("Attachments", func() {
 			Expect(added).To(Equal(want))
 			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{want}))
 
-			blob := filepath.Join(blobDir, want.SHA256)
+			blob := store.BlobPath(dbPath, want.SHA256)
 			Expect(os.ReadFile(filepath.Clean(blob))).To(Equal(screenshot))
 			Expect(permissions(blob)).To(Equal(os.FileMode(0o600)))
 			Expect(permissions(blobDir)).To(Equal(os.FileMode(0o700)))
@@ -128,11 +129,11 @@ var _ = Describe("Attachments", func() {
 			blob := filepath.Join(blobDir, onEvent.SHA256)
 			Expect(os.ReadDir(blobDir)).To(HaveExactElements(HaveField("Name()", onEvent.SHA256)))
 
-			Expect(s.RemoveAttachment(ctx, onEvent.ID)).To(Succeed())
+			Expect(s.DeleteAttachments(ctx, onEvent.ID)).To(Succeed())
 			Expect(s.GarbageCollectBlobs(ctx)).To(BeEmpty())
 			Expect(blob).To(BeAnExistingFile())
 
-			Expect(s.RemoveAttachment(ctx, onAnnotation.ID)).To(Succeed())
+			Expect(s.DeleteAttachments(ctx, onAnnotation.ID)).To(Succeed())
 			Expect(s.GarbageCollectBlobs(ctx)).To(Equal([]string{onEvent.SHA256}))
 			Expect(blob).NotTo(BeAnExistingFile())
 		})
@@ -231,8 +232,104 @@ var _ = Describe("Attachments", func() {
 		Expect(os.ReadDir(blobDir)).To(HaveExactElements(HaveField("Name()", added.SHA256)))
 	})
 
-	It("reports removing an attachment that does not exist with ErrNotFound", func(ctx SpecContext) {
-		Expect(s.RemoveAttachment(ctx, uuid(99))).To(MatchError(store.ErrNotFound))
+	It("deletes none of the attachments when any id does not exist, reporting ErrNotFound", func(ctx SpecContext) {
+		added := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
+
+		Expect(s.DeleteAttachments(ctx, added.ID, uuid(99))).To(MatchError(store.ErrNotFound))
+		Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{added}))
+	})
+
+	Describe("written with their owner", func() {
+		newFile := func(n int, filename string, content []byte) store.NewAttachment {
+			return store.NewAttachment{
+				ID: uuid(n), Filename: filename, CreatedAt: created.Add(time.Duration(n) * time.Second), Content: bytes.NewReader(content),
+			}
+		}
+		trace := []byte("%PDF-1.7 trace of the election")
+		described := func(n int, owner timeline.AttachmentOwner, filename, mime string, content []byte) timeline.Attachment {
+			a := newAttachment(n, owner, filename)
+			a.MIME, a.SHA256, a.Size = mime, sha256Hex(content), int64(len(content))
+			return a
+		}
+
+		It("adds an event and its attachments together", func(ctx SpecContext) {
+			stepDown := pager
+			stepDown.ID = uuid(20)
+			owner := timeline.AttachmentOwner{EventID: new(stepDown.ID)}
+
+			_, err := s.AddEvent(ctx, stepDown, uuid(9), newFile(21, "grafana.png", screenshot), newFile(22, "trace.pdf", trace))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.ListAttachments(ctx, owner)).To(Equal([]timeline.Attachment{
+				described(21, owner, "grafana.png", "image/png", screenshot),
+				described(22, owner, "trace.pdf", "application/pdf", trace),
+			}))
+			Expect(store.BlobPath(dbPath, sha256Hex(trace))).To(BeAnExistingFile())
+		})
+
+		It("adds neither the event nor its attachments when the event's row cannot be written", func(ctx SpecContext) {
+			_, err := s.AddEvent(ctx, pager, uuid(9), newFile(21, "grafana.png", screenshot))
+
+			Expect(err).To(MatchError(store.ErrConflict))
+			Expect(s.ListAttachments(ctx, onPager)).To(BeEmpty())
+			Expect(os.ReadDir(blobDir)).To(BeEmpty())
+		})
+
+		It("adds no event when an attachment's content cannot be read", func(ctx SpecContext) {
+			boom := errors.New("boom")
+			stepDown := pager
+			stepDown.ID = uuid(20)
+			unreadable := newFile(22, "trace.pdf", nil)
+			unreadable.Content = iotest.ErrReader(boom)
+
+			_, err := s.AddEvent(ctx, stepDown, uuid(9), newFile(21, "grafana.png", screenshot), unreadable)
+
+			Expect(err).To(MatchError(boom))
+			Expect(s.Event(ctx, stepDown.ID)).Error().To(MatchError(store.ErrNotFound))
+			Expect(os.ReadDir(blobDir)).To(BeEmpty())
+		})
+
+		It("adds attachments to an event it updates and an annotation it adds or updates", func(ctx SpecContext) {
+			Expect(s.UpdateEvent(ctx, pager, uuid(9), newFile(21, "grafana.png", screenshot))).To(Succeed())
+			Expect(s.UpdateAnnotation(ctx, evidence, uuid(9), newFile(22, "trace.pdf", trace))).To(Succeed())
+			comment := evidence
+			comment.ID, comment.Kind = uuid(30), timeline.AnnotationComment
+			onComment := timeline.AttachmentOwner{AnnotationID: new(comment.ID)}
+			Expect(s.AddAnnotation(ctx, comment, uuid(9), newFile(31, "trace.pdf", trace))).To(Succeed())
+
+			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{
+				described(21, onPager, "grafana.png", "image/png", screenshot),
+			}))
+			Expect(s.ListAttachments(ctx, onEvidence)).To(Equal([]timeline.Attachment{
+				described(22, onEvidence, "trace.pdf", "application/pdf", trace),
+			}))
+			Expect(s.ListAttachments(ctx, onComment)).To(Equal([]timeline.Attachment{
+				described(31, onComment, "trace.pdf", "application/pdf", trace),
+			}))
+		})
+	})
+
+	It("lists a timeline's attachments on its events and annotations, oldest first, and no other timeline's",
+		func(ctx SpecContext) {
+			other := timeline.Timeline{ID: uuid(40), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+			elsewhere := pager
+			elsewhere.ID, elsewhere.TimelineID = uuid(41), other.ID
+			Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+			Expect(s.AddEvent(ctx, elsewhere, uuid(9))).Error().NotTo(HaveOccurred())
+			onEvidenceFile := add(ctx, newAttachment(12, onEvidence, "stepdown.log"), []byte("election timeout\n"))
+			onPagerFile := add(ctx, newAttachment(11, onPager, "grafana.png"), screenshot)
+			add(ctx, newAttachment(10, timeline.AttachmentOwner{EventID: new(elsewhere.ID)}, "other.png"), screenshot)
+
+			Expect(s.TimelineAttachments(ctx, incident.ID)).To(Equal([]timeline.Attachment{onPagerFile, onEvidenceFile}))
+		})
+
+	It("finds attachments by id prefix, in id order, up to a limit", func(ctx SpecContext) {
+		first := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
+		second := add(ctx, newAttachment(11, onPager, "trace.png"), screenshot)
+
+		Expect(s.AttachmentsByIDPrefix(ctx, "0199a1b2", 1)).To(Equal([]timeline.Attachment{first}))
+		Expect(s.AttachmentsByIDPrefix(ctx, uuid(11), 10)).To(Equal([]timeline.Attachment{second}))
+		Expect(s.AttachmentsByIDPrefix(ctx, "*", 10)).Error().To(HaveOccurred())
 	})
 
 	DescribeTable("rejects an owner that is not exactly one event or annotation, writing no blob",

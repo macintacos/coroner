@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -151,10 +152,15 @@ func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
 	return deleted, nil
 }
 
-// detectMIME sniffs head, the content's first bytes, and falls back to filename's extension
+// BlobPath returns the file the database at dbPath keeps the blob whose SHA-256 is hash in.
+func BlobPath(dbPath, hash string) string {
+	return filepath.Join(config.BlobDir(dbPath), hash)
+}
+
+// DetectMIME sniffs head, the content's first bytes, and falls back to filename's extension
 // when sniffing finds only bytes or text, which it reports for any UTF-8 such as JSON. The
 // table is fixed because mime.TypeByExtension also reads the host's mime.types files.
-func detectMIME(head []byte, filename string) string {
+func DetectMIME(head []byte, filename string) string {
 	detected := http.DetectContentType(head)
 	if detected != "application/octet-stream" && !strings.HasPrefix(detected, "text/plain") {
 		return detected
