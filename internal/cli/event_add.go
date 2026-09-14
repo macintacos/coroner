@@ -32,6 +32,9 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.\n" +
 			"Run 'coroner help time' for the times you can type.\n\n" +
 			"Pass - to read the text from stdin, which is never read otherwise.\n\n" +
+			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
+			"database, and prints its id, sha256, size and type. Every file is read before anything is\n" +
+			"added, so one that cannot be read adds nothing.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
 			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
 			"opens it, and --no-input never does.",
@@ -39,6 +42,7 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
 			"      --source mongod --tag election\n" +
+			"  $ coroner event add \"Dashboard at peak\" --at 14:02 --attach ./p99.png --attach ./cpu.png\n" +
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
 			"      --ended \"2026-09-11 14:20\" --dry-run --json\n" +
@@ -84,6 +88,7 @@ func eventAddDefinition() definition {
 		{name: "tag", typ: stringsField, usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		attachField(),
 		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
 	}}
 }
@@ -95,7 +100,9 @@ type eventAdded struct {
 	event    timeline.Event
 	timeline timeline.Timeline
 	// when is the event's resolved time as the command prints it.
-	when        string
+	when string
+	// attached are the event's attachments, which a dry run describes without ids.
+	attached    []timeline.Attachment
 	attachments []attachmentJSON
 	dryRun      bool
 }
@@ -111,13 +118,27 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	if err != nil {
 		return eventAdded{}, err
 	}
+	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	if err != nil {
+		return eventAdded{}, err
+	}
 	draft, err := draftEvent(in, app, cfg, env)
 	if err != nil {
 		return eventAdded{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
+	owner := timeline.AttachmentOwner{EventID: &draft.event.ID}
 
 	added := eventAdded{event: draft.event, when: draft.when, dryRun: dryRun}
+	var newFiles []store.NewAttachment
+	if dryRun {
+		added.attached = describeAttachments(files, owner, now)
+	} else {
+		newFiles, err = newAttachments(files, app.NewID, now)
+		if err != nil {
+			return eventAdded{}, err
+		}
+	}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
 		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
@@ -131,19 +152,34 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 			return nil
 		}
 
-		added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID)
+		added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, newFiles...)
+		if err != nil {
+			return err
+		}
+		stored, err := s.ListAttachments(ctx, owner)
+		added.attached = addedAttachments(stored, newFiles)
 		return err
 	})
+	added.attachments = newAttachmentJSONs(added.attached, cfg.DBPath)
 
 	return added, err
 }
 
 func (a eventAdded) render(o output) error {
 	if a.dryRun {
-		return previewEvent(o, a.timeline, a.event, a.attachments, a.when)
+		err := previewEvent(o, a.timeline, a.event, a.attachments, a.when)
+		if err != nil {
+			return err
+		}
+
+		return notifyAttached(o, a.attached)
 	}
 
 	err := printEvent(o, a.event, a.attachments)
+	if err != nil {
+		return err
+	}
+	err = notifyAttached(o, a.attached)
 	if err != nil {
 		return err
 	}

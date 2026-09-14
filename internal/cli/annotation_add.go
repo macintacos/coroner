@@ -25,6 +25,8 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"trailing newline and is never read otherwise.\n\n" +
 			"-e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or\n" +
 			"unique id prefix. The event must be in the timeline the annotation goes to.\n\n" +
+			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
+			"database, and prints its id, sha256, size and type.\n\n" +
 			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks\n" +
 			"the event from the timeline, and prints the command each entry equals. Under --json only\n" +
 			"--interactive opens it, and --no-input never does.",
@@ -32,6 +34,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +
 			"  $ coroner annotation add \"Step-down lands 5 s after the COLLSCAN burst\" -e 12 --kind comment\n" +
+			"  $ coroner annotation add \"Grafana panel at the step-down\" -e 12 --kind evidence --attach ./panel.png\n" +
 			"  $ coroner annotation add \"Root cause: undersized oplog\" --kind comment --dry-run --json\n" +
 			"  $ coroner annotation add --interactive -e 12",
 	}
@@ -51,6 +54,7 @@ func annotationAddDefinition() definition {
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		attachField(),
 		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
 	}}
 }
@@ -58,9 +62,11 @@ func annotationAddDefinition() definition {
 // annotationAdded is the annotation add stored or, with --dry-run, would store, with the
 // timeline and the event, if any, it is attached to.
 type annotationAdded struct {
-	annotation  timeline.Annotation
-	timeline    timeline.Timeline
-	event       *timeline.Event
+	annotation timeline.Annotation
+	timeline   timeline.Timeline
+	event      *timeline.Event
+	// attached are the annotation's attachments, which a dry run describes without ids.
+	attached    []timeline.Attachment
 	attachments []attachmentJSON
 	dryRun      bool
 }
@@ -74,13 +80,27 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if err != nil {
 		return annotationAdded{}, err
 	}
+	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	if err != nil {
+		return annotationAdded{}, err
+	}
 	draft, err := draftAnnotation(in, app, cfg)
 	if err != nil {
 		return annotationAdded{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
+	owner := timeline.AttachmentOwner{AnnotationID: &draft.annotation.ID}
 
 	added := annotationAdded{dryRun: dryRun}
+	var newFiles []store.NewAttachment
+	if dryRun {
+		added.attached = describeAttachments(files, owner, draft.annotation.CreatedAt)
+	} else {
+		newFiles, err = newAttachments(files, app.NewID, draft.annotation.CreatedAt)
+		if err != nil {
+			return annotationAdded{}, err
+		}
+	}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
 		if err != nil {
@@ -100,8 +120,15 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 			return nil
 		}
 
-		return s.AddAnnotation(ctx, a, draft.newSourceID)
+		err = s.AddAnnotation(ctx, a, draft.newSourceID, newFiles...)
+		if err != nil {
+			return err
+		}
+		stored, err := s.ListAttachments(ctx, owner)
+		added.attached = addedAttachments(stored, newFiles)
+		return err
 	})
+	added.attachments = newAttachmentJSONs(added.attached, cfg.DBPath)
 
 	return added, err
 }
@@ -109,10 +136,18 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 func (a annotationAdded) render(o output) error {
 	target := annotationTarget(a.timeline, a.event)
 	if a.dryRun {
-		return previewAnnotation(o, a.annotation, a.attachments, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+		err := previewAnnotation(o, a.annotation, a.attachments, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+		if err != nil {
+			return err
+		}
+
+		return notifyAttached(o, a.attached)
 	}
 
 	err := printAnnotation(o, a.annotation, a.attachments)
+	if err == nil {
+		err = notifyAttached(o, a.attached)
+	}
 	if err != nil {
 		return err
 	}

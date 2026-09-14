@@ -35,6 +35,17 @@ stdout '^#2\t2026-09-10T23:15:00-04:00\t\+52\.588s\tslack\tPager fires for db-2$
 exec coroner event list --tag election
 cmp stdout election.tsv
 
+# --attach says what it copied, with the id to delete or export it by, before the event it added.
+exec coroner event add 'Dashboard at peak' --at 2026-09-11T03:16:00Z --attach p99.gif
+! stdout .
+stderr '\AAttached p99\.gif as [0-9a-f-]{36} \(sha256 [0-9a-f]{8}…, 25 B, image/gif\)\nAdded event #3 '
+exec coroner event add 'Dashboard at peak' --attach p99.gif --dry-run
+stderr '^Would attach p99\.gif \(sha256 [0-9a-f]{8}…, 25 B, image/gif\)$'
+exec coroner event edit 3 --attach p99.gif
+stderr '\AAttached p99\.gif as [0-9a-f-]{36} .*\nEdited event #3 '
+
+-- p99.gif --
+GIF89a p99 latency panel
 -- slack.txt --
 Pager fires for db-2
 -- election.tsv --

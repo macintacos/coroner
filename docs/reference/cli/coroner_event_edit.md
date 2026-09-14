@@ -12,7 +12,8 @@ Change the fields of an event. --at and --ended are read as 'coroner event add' 
 and the times they resolve to are printed on stderr. Tags are removed before they are
 added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to
 --source, --url, --author or --ended to clear it. Pass --text - to read the text from
-stdin, which is never read otherwise.
+stdin, which is never read otherwise. --attach adds a file to the event's attachments;
+'coroner attachment delete' removes one.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
@@ -26,6 +27,7 @@ coroner event edit <event> [flags]
 
 ```
   $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run
+  $ coroner event edit 12 --attach ./grafana-p99.png
   $ coroner event edit mongo-outage-2026-09-11#12 --at "2026-09-11T03:14:07.412Z" --source none
 ```
 
@@ -35,6 +37,7 @@ coroner event edit <event> [flags]
       --add-tag tag      Add a tag; repeat for more
       --approximate      Mark the time as a guess; --approximate=false unmarks it
       --at time          When it happened, as a time
+      --attach file      Copy this file in as an attachment; repeat for more
       --author name      Who added it, as a name, or none
       --dry-run          Show the edited event, and change nothing
       --ended time       When it ended, as a time, or none

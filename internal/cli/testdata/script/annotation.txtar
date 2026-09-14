@@ -30,6 +30,12 @@ stdout '^Body: +Election timeout$'
 exec coroner annotation list
 stdout '\A[0-9a-f-]{36}\tcomment\tsam\t-\tRoot cause: undersized oplog\n[0-9a-f-]{36}\tevidence\tjulian\t#1\t\[conn42\] stepping down\n\z'
 
+# --attach says what it copied before the annotation it added.
+exec coroner annotation add 'Grafana panel' -e 1 --kind evidence --attach p99.gif
+stderr '\AAttached p99\.gif as [0-9a-f-]{36} \(sha256 [0-9a-f]{8}…, 25 B, image/gif\)\nAdded evidence annotation '
+
+-- p99.gif --
+GIF89a p99 latency panel
 -- stepdown.log --
 [conn42] stepping down
 	retrying

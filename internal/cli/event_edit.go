@@ -23,7 +23,7 @@ const clearKeyword = "none"
 
 // eventEditFlags are the flags that change a field; edit needs at least one.
 func eventEditFlags() []string {
-	return []string{"text", "at", "ended", "approximate", "source", "add-tag", "remove-tag", "url", "author"}
+	return []string{"text", "at", "ended", "approximate", "source", "add-tag", "remove-tag", "url", "author", "attach"}
 }
 
 func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
@@ -35,10 +35,12 @@ func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
 			"and the times they resolve to are printed on stderr. Tags are removed before they are\n" +
 			"added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to\n" +
 			"--source, --url, --author or --ended to clear it. Pass --text - to read the text from\n" +
-			"stdin, which is never read otherwise.\n\n" + eventRefHelp,
+			"stdin, which is never read otherwise. --attach adds a file to the event's attachments;\n" +
+			"'coroner attachment delete' removes one.\n\n" + eventRefHelp,
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run\n" +
+			"  $ coroner event edit 12 --attach ./grafana-p99.png\n" +
 			"  $ coroner event edit mongo-outage-2026-09-11#12 --at \"2026-09-11T03:14:07.412Z\" --source none",
 		RunE: writeRunE(ctx, app, def, editEvent),
 	}
@@ -70,6 +72,7 @@ func eventEditDefinition() definition {
 		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more"},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("--url")},
 		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("--author")},
+		attachField(),
 		{name: "dry-run", typ: boolField, usage: "Show the edited event, and change nothing"},
 		tzField(),
 	}}
@@ -109,7 +112,9 @@ type eventEdited struct {
 	timeline timeline.Timeline
 	zone     zone
 	// when is the edit's resolved times as the command echoes them, or "" when it sets none.
-	when        string
+	when string
+	// attached are the attachments the edit added, which a dry run describes without ids.
+	attached    []timeline.Attachment
 	attachments []attachmentJSON
 	dryRun      bool
 }
@@ -133,11 +138,22 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	if err != nil {
 		return eventEdited{}, err
 	}
+	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	if err != nil {
+		return eventEdited{}, err
+	}
 	edit, err := readEventEdit(in, app, env)
 	if err != nil {
 		return eventEdited{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
+	var newFiles []store.NewAttachment
+	if !dryRun {
+		newFiles, err = newAttachments(files, app.NewID, now)
+		if err != nil {
+			return eventEdited{}, err
+		}
+	}
 
 	edited := eventEdited{zone: z, when: edit.when, dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
@@ -153,7 +169,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 		}
 		edited.event, edited.timeline = e, t
 		if !dryRun {
-			err = s.UpdateEvent(ctx, e, edit.newSourceID)
+			err = s.UpdateEvent(ctx, e, edit.newSourceID, newFiles...)
 			if errors.Is(err, store.ErrNotFound) {
 				return eventNotFoundError("another coroner deleted the event first", err)
 			}
@@ -162,8 +178,15 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 			}
 		}
 
-		attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
-		edited.attachments = newAttachmentJSONs(attachments, cfg.DBPath)
+		owner := timeline.AttachmentOwner{EventID: &e.ID}
+		stored, err := s.ListAttachments(ctx, owner)
+		if dryRun {
+			edited.attached = describeAttachments(files, owner, now)
+			stored = append(stored, edited.attached...)
+		} else {
+			edited.attached = addedAttachments(stored, newFiles)
+		}
+		edited.attachments = newAttachmentJSONs(stored, cfg.DBPath)
 		return err
 	})
 
@@ -173,6 +196,9 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 func (e eventEdited) render(o output) error {
 	if e.dryRun {
 		err := previewEventEdit(o, e.zone, e.event, e.attachments, e.timeline)
+		if err == nil {
+			err = notifyAttached(o, e.attached)
+		}
 		if err != nil {
 			return err
 		}
@@ -181,6 +207,9 @@ func (e eventEdited) render(o output) error {
 	}
 
 	err := printEvent(o, e.event, e.attachments)
+	if err == nil {
+		err = notifyAttached(o, e.attached)
+	}
 	if err != nil {
 		return err
 	}

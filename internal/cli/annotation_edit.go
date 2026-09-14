@@ -17,13 +17,15 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 	def := annotationEditDefinition()
 	cmd := &cobra.Command{
 		Use:   "edit <id>",
-		Short: "Change an annotation's body, kind, source or URL",
+		Short: "Change an annotation's body, kind, source or URL, or attach files",
 		Long: "Change an annotation's body, kind, source or URL. Its author, event and timeline never\n" +
 			"change. <id> is a full id or a unique id prefix, in any timeline. --body - reads the body\n" +
-			"from stdin, which loses one trailing newline.",
+			"from stdin, which loses one trailing newline. --attach adds a file to the annotation's\n" +
+			"attachments; 'coroner attachment delete' removes one.",
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation edit 0199a1b2-7c1e --kind comment\n" +
+			"  $ coroner annotation edit 0199a1b2-7c1e --attach ./stepdown-trace.pdf\n" +
 			"  $ coroner annotation edit 0199a1b2-7c1e --body - --dry-run --json < stepdown.log",
 		RunE: writeRunE(ctx, app, def, editAnnotation),
 	}
@@ -40,6 +42,7 @@ func annotationEditDefinition() definition {
 		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "url", usage: "New permalink, as a `url`", check: notBlank("--url")},
+		attachField(),
 		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
 	}}
 }
@@ -47,8 +50,10 @@ func annotationEditDefinition() definition {
 // annotationEdited is the annotation as edit stored it or, with --dry-run, would store it, with
 // its timeline.
 type annotationEdited struct {
-	annotation  timeline.Annotation
-	timeline    timeline.Timeline
+	annotation timeline.Annotation
+	timeline   timeline.Timeline
+	// attached are the attachments the edit added, which a dry run describes without ids.
+	attached    []timeline.Attachment
 	attachments []attachmentJSON
 	dryRun      bool
 }
@@ -66,11 +71,23 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return annotationEdited{}, err
 	}
+	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	if err != nil {
+		return annotationEdited{}, err
+	}
 	edit, err := readAnnotationEdit(in, app)
 	if err != nil {
 		return annotationEdited{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
+	now := app.Now()
+	var newFiles []store.NewAttachment
+	if !dryRun {
+		newFiles, err = newAttachments(files, app.NewID, now)
+		if err != nil {
+			return annotationEdited{}, err
+		}
+	}
 
 	edited := annotationEdited{dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
@@ -84,33 +101,40 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		if err != nil {
 			return err
 		}
-		a = edit.apply(a, app.Now())
+		a = edit.apply(a, now)
 		edited.annotation, edited.timeline = a, t
 		if !dryRun {
-			err = updateAnnotation(ctx, s, app, a)
+			err = updateAnnotation(ctx, s, app, a, newFiles...)
 			if err != nil {
 				return err
 			}
 		}
 
-		attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{AnnotationID: &a.ID})
-		edited.attachments = newAttachmentJSONs(attachments, cfg.DBPath)
+		owner := timeline.AttachmentOwner{AnnotationID: &a.ID}
+		stored, err := s.ListAttachments(ctx, owner)
+		if dryRun {
+			edited.attached = describeAttachments(files, owner, now)
+			stored = append(stored, edited.attached...)
+		} else {
+			edited.attached = addedAttachments(stored, newFiles)
+		}
+		edited.attachments = newAttachmentJSONs(stored, cfg.DBPath)
 		return err
 	})
 
 	return edited, err
 }
 
-// updateAnnotation stores a, reporting an annotation another command deleted first as
-// annotation_not_found.
-func updateAnnotation(ctx context.Context, s *store.Store, app App, a timeline.Annotation) error {
+// updateAnnotation stores a with newFiles, reporting an annotation another command deleted first
+// as annotation_not_found.
+func updateAnnotation(ctx context.Context, s *store.Store, app App, a timeline.Annotation, newFiles ...store.NewAttachment) error {
 	// UpdateAnnotation resolves a.Source by name even when --source did not change it, so it
 	// always needs a fallback id.
 	sourceID, err := newSourceID(a.Source, app.NewID)
 	if err != nil {
 		return err
 	}
-	err = s.UpdateAnnotation(ctx, a, sourceID)
+	err = s.UpdateAnnotation(ctx, a, sourceID, newFiles...)
 	if errors.Is(err, store.ErrNotFound) {
 		return annotationNotFoundError("no annotation has an id starting "+a.ID, err)
 	}
@@ -120,10 +144,18 @@ func updateAnnotation(ctx context.Context, s *store.Store, app App, a timeline.A
 
 func (e annotationEdited) render(o output) error {
 	if e.dryRun {
-		return previewAnnotation(o, e.annotation, e.attachments, "Would edit annotation "+e.annotation.ID+" to")
+		err := previewAnnotation(o, e.annotation, e.attachments, "Would edit annotation "+e.annotation.ID+" to")
+		if err != nil {
+			return err
+		}
+
+		return notifyAttached(o, e.attached)
 	}
 
 	err := printAnnotation(o, e.annotation, e.attachments)
+	if err == nil {
+		err = notifyAttached(o, e.attached)
+	}
 	if err != nil {
 		return err
 	}
@@ -141,8 +173,8 @@ type annotationEdit struct {
 // readAnnotationEdit returns the edit in asks for. It reads stdin last, so a bad field never
 // waits on it.
 func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
-	if !slices.ContainsFunc([]string{"body", "kind", "source", "url"}, in.given) {
-		return annotationEdit{}, &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass --body, --kind, --source or --url."}
+	if !slices.ContainsFunc([]string{"body", "kind", "source", "url", "attach"}, in.given) {
+		return annotationEdit{}, &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass --body, --kind, --source, --url or --attach."}
 	}
 
 	edit := annotationEdit{fields: readAnnotationFields(in)}

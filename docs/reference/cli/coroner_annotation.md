@@ -42,6 +42,6 @@ coroner annotation [flags]
 * [coroner](coroner.md)	 - Build root-cause investigation timelines
 * [coroner annotation add](coroner_annotation_add.md)	 - Attach evidence or a comment to an event or the timeline
 * [coroner annotation delete](coroner_annotation_delete.md)	 - Delete annotations
-* [coroner annotation edit](coroner_annotation_edit.md)	 - Change an annotation's body, kind, source or URL
+* [coroner annotation edit](coroner_annotation_edit.md)	 - Change an annotation's body, kind, source or URL, or attach files
 * [coroner annotation list](coroner_annotation_list.md)	 - List a timeline's annotations
 

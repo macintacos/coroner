@@ -1,12 +1,140 @@
 package cli
 
 import (
+	"bytes"
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"path/filepath"
+	"slices"
+	"time"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
 
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
+
+// attachField is the --attach field of the commands that add or edit an event or annotation.
+func attachField() field {
+	return field{
+		name: "attach", typ: stringsField, list: true, check: withoutEnv(checkAttachPath),
+		usage: "Copy this `file` in as an attachment; repeat for more",
+	}
+}
+
+// checkAttachPath rejects -, since stdin has no filename to attach it under, and a file whose
+// name is not UTF-8, which JSON would change.
+func checkAttachPath(path string) error {
+	switch {
+	case path == "-":
+		return &Error{
+			Kind: KindUsage, Message: "--attach - is not supported: stdin has no filename to attach it under",
+			Hint: "Save it to a file first, then pass --attach <file>.",
+		}
+	case !utf8.ValidString(filepath.Base(path)):
+		return &Error{Kind: KindUsage, Message: "--attach needs a file whose name is UTF-8", Hint: "Rename the file, then attach it."}
+	}
+
+	return nil
+}
+
+// attachFile is a file --attach read, not yet stored.
+type attachFile struct {
+	filename string
+	content  []byte
+}
+
+// readAttachFiles reads each file paths names, so a command rejects one it cannot read before it
+// writes anything. The filename kept is the path's last element, for display only.
+// ponytail: each file is read whole into memory; stream through an App.Open if large attachments
+// matter.
+func readAttachFiles(paths []string, readFile func(string) ([]byte, error)) ([]attachFile, error) {
+	files := make([]attachFile, 0, len(paths))
+	for _, path := range paths {
+		content, err := readFile(path)
+		if err != nil {
+			return nil, &Error{
+				Kind: KindUsage, Message: "cannot read --attach " + path, Hint: "Pass a file that exists and you can read.", Err: err,
+			}
+		}
+		files = append(files, attachFile{filename: filepath.Base(path), content: content})
+	}
+
+	return files, nil
+}
+
+// newAttachments returns files as the store adds them, each with a new id, attached at now.
+func newAttachments(files []attachFile, newID func() (uuid.UUID, error), now time.Time) ([]store.NewAttachment, error) {
+	attachments := make([]store.NewAttachment, 0, len(files))
+	for _, f := range files {
+		id, err := newID()
+		if err != nil {
+			return nil, err
+		}
+		attachments = append(attachments, store.NewAttachment{
+			ID: id.String(), Filename: f.filename, CreatedAt: now, Content: bytes.NewReader(f.content),
+		})
+	}
+
+	return attachments, nil
+}
+
+// describeAttachments returns files as attachments of owner at now would be stored, with no id:
+// what a dry run shows.
+func describeAttachments(files []attachFile, owner timeline.AttachmentOwner, now time.Time) []timeline.Attachment {
+	described := make([]timeline.Attachment, 0, len(files))
+	for _, f := range files {
+		sum := sha256.Sum256(f.content)
+		described = append(described, timeline.Attachment{
+			Owner: owner, Filename: f.filename, MIME: store.DetectMIME(f.content, f.filename),
+			SHA256: hex.EncodeToString(sum[:]), Size: int64(len(f.content)), CreatedAt: now,
+		})
+	}
+
+	return described
+}
+
+// addedAttachments returns the attachments among stored that added gave the store.
+func addedAttachments(stored []timeline.Attachment, added []store.NewAttachment) []timeline.Attachment {
+	return slices.DeleteFunc(slices.Clone(stored), func(a timeline.Attachment) bool {
+		return !slices.ContainsFunc(added, func(n store.NewAttachment) bool { return n.ID == a.ID })
+	})
+}
+
+// notifyAttached says on stderr what each of attachments is: attached, with the id to delete or
+// export it by, or, with no id, what a dry run would attach.
+func notifyAttached(o output, attachments []timeline.Attachment) error {
+	for _, a := range attachments {
+		details := fmt.Sprintf("(sha256 %s…, %s, %s)", a.SHA256[:8], formatSize(a.Size), a.MIME)
+		var err error
+		if a.ID == "" {
+			err = o.notify("Would attach %s %s", a.Filename, details)
+		} else {
+			err = o.notify("Attached %s as %s %s", a.Filename, a.ID, details)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// formatSize returns size, in bytes, as people read it: in B, KB, MB or GB, rounded.
+func formatSize(size int64) string {
+	units := []string{"B", "KB", "MB", "GB"}
+	value, unit := float64(size), 0
+	for value >= 1000 && unit < len(units)-1 {
+		value /= 1000
+		unit++
+	}
+
+	return fmt.Sprintf("%.0f %s", value, units[unit])
+}
 
 // attachmentJSON is the canonical attachment object's keys, every one always present. id and
 // path are null for an attachment a dry run describes, which has neither yet.

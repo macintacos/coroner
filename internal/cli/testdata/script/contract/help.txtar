@@ -206,7 +206,7 @@ USAGE
 COMMANDS
   add          Attach evidence or a comment to an event or the timeline
   delete       Delete annotations
-  edit         Change an annotation's body, kind, source or URL
+  edit         Change an annotation's body, kind, source or URL, or attach files
   list         List a timeline's annotations
 
 EXAMPLES
@@ -235,6 +235,9 @@ trailing newline and is never read otherwise.
 -e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or
 unique id prefix. The event must be in the timeline the annotation goes to.
 
+Each --attach copies a file, such as a screenshot, into the blob directory beside the
+database, and prints its id, sha256, size and type.
+
 On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks
 the event from the timeline, and prints the command each entry equals. Under --json only
 --interactive opens it, and --no-input never does.
@@ -245,10 +248,12 @@ USAGE
 EXAMPLES
   $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log
   $ coroner annotation add "Step-down lands 5 s after the COLLSCAN burst" -e 12 --kind comment
+  $ coroner annotation add "Grafana panel at the step-down" -e 12 --kind evidence --attach ./panel.png
   $ coroner annotation add "Root cause: undersized oplog" --kind comment --dry-run --json
   $ coroner annotation add --interactive -e 12
 
 FLAGS
+      --attach file        Copy this file in as an attachment; repeat for more
       --author name        Who is adding it, as a name (default: config author, then USER)
       --dry-run            Show the annotation as it would be added, and add nothing
   -e, --event ref          Event to attach it to, as a ref: seq, timeline#seq or id (default: the timeline)
@@ -306,16 +311,19 @@ LEARN MORE
 -- coroner_annotation_edit.txt --
 Change an annotation's body, kind, source or URL. Its author, event and timeline never
 change. <id> is a full id or a unique id prefix, in any timeline. --body - reads the body
-from stdin, which loses one trailing newline.
+from stdin, which loses one trailing newline. --attach adds a file to the annotation's
+attachments; 'coroner attachment delete' removes one.
 
 USAGE
   coroner annotation edit <id> [flags]
 
 EXAMPLES
   $ coroner annotation edit 0199a1b2-7c1e --kind comment
+  $ coroner annotation edit 0199a1b2-7c1e --attach ./stepdown-trace.pdf
   $ coroner annotation edit 0199a1b2-7c1e --body - --dry-run --json < stepdown.log
 
 FLAGS
+      --attach file     Copy this file in as an attachment; repeat for more
       --body body       New body, or - to read it from stdin
       --dry-run         Show the edited annotation, and change nothing
       --kind kind       New annotation kind: {evidence | comment}
@@ -616,6 +624,10 @@ Run 'coroner help time' for the times you can type.
 
 Pass - to read the text from stdin, which is never read otherwise.
 
+Each --attach copies a file, such as a screenshot, into the blob directory beside the
+database, and prints its id, sha256, size and type. Every file is read before anything is
+added, so one that cannot be read adds nothing.
+
 On a terminal, with no text or with --interactive, a form asks for each flag, previews the
 time as you type it, and prints the command each entry equals. Under --json only --interactive
 opens it, and --no-input never does.
@@ -626,6 +638,7 @@ USAGE
 EXAMPLES
   $ coroner event add "Primary stepped down: replSetStepDown" --at 2026-09-11T03:14:07.412Z \
       --source mongod --tag election
+  $ coroner event add "Dashboard at peak" --at 14:02 --attach ./p99.png --attach ./cpu.png
   $ pbpaste | coroner event add - --source slack --at "yesterday 23:02"
   $ coroner event add "Deploy started" --at "around 2026-09-11 14:00" \
       --ended "2026-09-11 14:20" --dry-run --json
@@ -634,6 +647,7 @@ EXAMPLES
 FLAGS
       --approximate     Mark the time as a guess, as a ~ or around prefix does
       --at time         When it happened, as a time (default: now)
+      --attach file     Copy this file in as an attachment; repeat for more
       --author name     Who is adding it, as a name (default: config author, then USER)
       --dry-run         Show the event as it would be added, and add nothing
       --ended time      When it ended, as a time, for an event that lasted
@@ -700,7 +714,8 @@ Change the fields of an event. --at and --ended are read as 'coroner event add' 
 and the times they resolve to are printed on stderr. Tags are removed before they are
 added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to
 --source, --url, --author or --ended to clear it. Pass --text - to read the text from
-stdin, which is never read otherwise.
+stdin, which is never read otherwise. --attach adds a file to the event's attachments;
+'coroner attachment delete' removes one.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
@@ -711,12 +726,14 @@ USAGE
 
 EXAMPLES
   $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run
+  $ coroner event edit 12 --attach ./grafana-p99.png
   $ coroner event edit mongo-outage-2026-09-11#12 --at "2026-09-11T03:14:07.412Z" --source none
 
 FLAGS
       --add-tag tag      Add a tag; repeat for more
       --approximate      Mark the time as a guess; --approximate=false unmarks it
       --at time          When it happened, as a time
+      --attach file      Copy this file in as an attachment; repeat for more
       --author name      Who added it, as a name, or none
       --dry-run          Show the edited event, and change nothing
       --ended time       When it ended, as a time, or none

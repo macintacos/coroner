@@ -15,6 +15,9 @@ trailing newline and is never read otherwise.
 -e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or
 unique id prefix. The event must be in the timeline the annotation goes to.
 
+Each --attach copies a file, such as a screenshot, into the blob directory beside the
+database, and prints its id, sha256, size and type.
+
 On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks
 the event from the timeline, and prints the command each entry equals. Under --json only
 --interactive opens it, and --no-input never does.
@@ -28,6 +31,7 @@ coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
 ```
   $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log
   $ coroner annotation add "Step-down lands 5 s after the COLLSCAN burst" -e 12 --kind comment
+  $ coroner annotation add "Grafana panel at the step-down" -e 12 --kind evidence --attach ./panel.png
   $ coroner annotation add "Root cause: undersized oplog" --kind comment --dry-run --json
   $ coroner annotation add --interactive -e 12
 ```
@@ -35,6 +39,7 @@ coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
 ### Options
 
 ```
+      --attach file        Copy this file in as an attachment; repeat for more
       --author name        Who is adding it, as a name (default: config author, then USER)
       --dry-run            Show the annotation as it would be added, and add nothing
   -e, --event ref          Event to attach it to, as a ref: seq, timeline#seq or id (default: the timeline)
