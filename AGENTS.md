@@ -145,6 +145,12 @@ digraph coroner_rules_router {
   fails when a command with `--interactive`, or `timeline view` or `timeline list`, which
   it lists by name, has no run there; a new command that opens a viewer or picker joins
   that list.
+- `import` ([`internal/cli/import.go`](internal/cli/import.go)) reads JSONL only through
+  `export.Decode`, and decides what to insert, skip or replace in `planImport`
+  ([`import_plan.go`](internal/cli/import_plan.go)), which does no I/O; `Store.Import`
+  ([`internal/store/import.go`](internal/store/import.go)) writes that plan in one
+  transaction. It takes a file rather than typed values, so it declares plain flags and no
+  `definition`, and opens no form.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
   the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract

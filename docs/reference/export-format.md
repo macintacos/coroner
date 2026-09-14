@@ -290,7 +290,8 @@ An attachment's content travels beside an export, never inside it. Given a direc
 `--format md -o rca/` writes `rca/<timeline>.md`; both copy each exported attachment's
 content into `rca/attachments/`. An overlay's file is named after its timelines joined by
 `+`, as in `rca/mongo-failover+checkout-latency.jsonl`. An attachment file's name up to
-its first `.` is the attachment's `sha256`: an importer finds the file by that name and
+its first `.` is the attachment's `sha256`: an importer, such as `coroner import`, which
+reads `attachments/` beside the JSONL file it imports, finds the file by that name and
 checks the content against the hash. The rest of the name is an extension following
 `mime`, such as `.png` for `image/png`, or `.bin`, so the same content attached with two
 media types can be two files with one hash. `text/html` and `text/xml` get `.txt`, so a

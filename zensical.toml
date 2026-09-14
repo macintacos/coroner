@@ -12,6 +12,7 @@ nav = [
   { "How-to guides" = [
     "how-to/index.md",
     { "Install coroner" = "how-to/install.md" },
+    { "Import a colleague's export" = "how-to/import.md" },
   ] },
   { "Reference" = [
     { "Export format" = "reference/export-format.md" },
