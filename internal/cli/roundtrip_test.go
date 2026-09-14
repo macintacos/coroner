@@ -43,19 +43,10 @@ func TestExportImportRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m := roundTripModel().Draw(t, "model")
-		err = seedStore(t.Context(), filepath.Join(dir, "a.db"), m)
+		err = checkRoundTrip(t.Context(), dir, roundTripModel().Draw(t, "model"), seen)
 		if err != nil {
-			t.Fatal(err)
-		}
-
-		first, err := roundTrip(t.Context(), dir, m.names())
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = observe(seen, first)
-		if err != nil {
-			t.Fatal(err)
+			// rapid shrinks a failure only while its message repeats, and every run has its own directory.
+			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
 		}
 	})
 
@@ -91,6 +82,21 @@ var _ = Describe("Frozen export fixtures", func() {
 		entries,
 	)
 })
+
+// checkRoundTrip writes m into dir/a.db and round-trips it, recording in seen what its export
+// held.
+func checkRoundTrip(ctx context.Context, dir string, m model, seen map[string]bool) error {
+	err := seedStore(ctx, filepath.Join(dir, "a.db"), m)
+	if err != nil {
+		return err
+	}
+	first, err := roundTrip(ctx, dir, m.names())
+	if err != nil {
+		return err
+	}
+
+	return observe(seen, first)
+}
 
 // importableFixture returns the records of the fixture at path, and a JSONL file in dir that import
 // reads them from: a link to the fixture itself, or a JSON document's records.
@@ -335,9 +341,11 @@ func dirDiff(a, b string) (string, error) {
 	for _, name := range slices.Sorted(maps.Keys(either)) {
 		dataA, inA := filesA[name]
 		dataB, inB := filesB[name]
-		if inA != inB || !bytes.Equal(dataA, dataB) {
+		if inA != inB {
+			fmt.Fprintf(&out, "%s is only in %s\n", name, map[bool]string{true: a, false: b}[inA])
+		}
+		if !bytes.Equal(dataA, dataB) {
 			out.Write(diff.Diff(filepath.Join(a, name), dataA, filepath.Join(b, name), dataB))
-			fmt.Fprintf(&out, "(%s in the first: %t, in the second: %t)\n", name, inA, inB)
 		}
 	}
 
