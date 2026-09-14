@@ -13,6 +13,17 @@
 <p class="meta" id="meta"></p>
 </header>
 <main>
+<form id="filters">
+<fieldset id="sources"><legend>Sources</legend></fieldset>
+<fieldset id="tags"><legend>Tags</legend></fieldset>
+<label class="search">Search text <input type="search" id="q"></label>
+<fieldset class="range"><legend>Time</legend>
+<label>Since <input type="datetime-local" step="1" id="since"></label>
+<label>Until <input type="datetime-local" step="1" id="until"></label>
+<button type="button" id="all-times">All times</button>
+</fieldset>
+<button type="button" id="export-png">Export PNG</button>
+</form>
 <div id="timeline"></div>
 <section id="detail" aria-live="polite"></section>
 </main>
