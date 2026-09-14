@@ -128,3 +128,14 @@
     points spanning less than 5 minutes, with no range in its row whose midpoint falls
     within that span, ends included. The 5 minutes are the terminal viewer's
     `gapThreshold`, so a change to one changes both.
+13. **The SVG export has one writer:** render it only through `export.WriteSVG`, from the
+    same `Envelope`. `layoutSVG` computes every coordinate, and the `text/template` in
+    `internal/export/svg/` only prints them, with no `<style>`, script, link or external
+    reference. `text/template` escapes nothing, so every string from the export goes
+    through the template's `text` func, `xml.EscapeText`, which also writes U+FFFD for the
+    control characters and invalid UTF-8 that XML cannot hold; a spec parses every golden
+    with `encoding/xml` and renders hostile text in the title, refs, a source and event
+    text. Output is byte-deterministic: coordinates print with two decimals, and the only
+    timestamp is the export's. The picture's layout is not a contract (`AGENTS.md` Rule
+    3); its goldens in `internal/export/testdata/svg/` change only through
+    `go test ./internal/export -update`, with the diff read before committing.

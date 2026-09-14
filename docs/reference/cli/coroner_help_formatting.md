@@ -8,7 +8,7 @@ title: coroner help formatting
 
 ## Choosing a format
 
-`--format text|json|jsonl` picks the format, plus `md`, `mermaid` and `html` on
+`--format text|json|jsonl` picks the format, plus `md`, `mermaid`, `html` and `svg` on
 `coroner timeline export`, and `--json` is short for `--format json`. Text is the default,
 and it stays the default when output is piped: coroner never switches to JSON on its own.
 A command exits 2 when asked for a format it cannot print. On a terminal,
@@ -43,6 +43,10 @@ closed: a command line missing a required value exits 2 instead of asking.
   dark theme until you pick one, which the browser remembers, and prints the filtered
   events as a list, a day at a time. It loads nothing over the network, shows times in the
   zone `md` does, and is written to the file `-o` names, or to stdout with `-o -`.
+- `svg` is a static picture of the events for documents, slides and tickets whose hosts,
+  such as Confluence, draw neither Mermaid nor HTML: a lane per source on a time axis,
+  with guessed times and times known only to their minute, hour or day drawn fuzzy. It
+  shows times in the zone `md` does, and goes to stdout or the file `-o` names.
 
 ## What JSON output promises
 
@@ -67,8 +71,8 @@ closed: a command line missing a required value exits 2 instead of asking.
 
 - Ignore keys you don't know: new ones are added over time.
 - Tolerate enum values you don't know, such as a new `type` or error `kind`.
-- Never parse text output or the layout of exported Markdown, Mermaid or HTML. None of
-  them is a contract. An HTML export's `coroner-data` script element holds its `json`
+- Never parse text output or the layout of exported Markdown, Mermaid, HTML or SVG. None
+  of them is a contract. An HTML export's `coroner-data` script element holds its `json`
   export, which is.
 - Read errors from the exit code and, under `json` and `jsonl`, from the JSON error
   envelope on the last line of stderr. See `coroner help exit-codes`.
