@@ -147,8 +147,8 @@
   const foldASCII = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 
   // keeps selects what eventWhere in internal/store/event_filter.go does; keep them in step:
-  // any checked source, every checked tag, text containing q folding ASCII only (SQLite's
-  // lower()), and occurred at in [since, until).
+  // any checked source, every checked tag, and text containing q folding ASCII only
+  // (SQLite's lower()).
   const keeps = (event, filter) => {
     if (filter.sources.size && !filter.sources.has(event.source)) return false;
     if (![...filter.tags].every((tag) => event.tags.includes(tag))) return false;
