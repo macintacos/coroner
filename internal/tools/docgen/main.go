@@ -1,6 +1,7 @@
 // Command docgen writes coroner's CLI reference into docs/reference/cli, one Markdown file
 // per command and per help topic. With --check it lists how that directory drifts from the
-// commands and topics instead, and exits 1 on any drift. Run it from the module root.
+// commands and topics instead, and exits 1 on any drift. With --man <dir> it writes a man
+// page per command into dir instead, which a release packs. Run it from the module root.
 package main
 
 import (
@@ -27,10 +28,11 @@ const outDir = "docs/reference/cli"
 
 func main() {
 	checkOnly := flag.Bool("check", false, "list drift from "+outDir+" and exit 1 on any, writing nothing")
+	manDir := flag.String("man", "", "write a man page per command into `dir` instead of "+outDir)
 	flag.Parse()
 
-	if flag.NArg() > 0 {
-		fmt.Fprintln(os.Stderr, "usage: go run ./internal/tools/docgen [--check]")
+	if flag.NArg() > 0 || (*checkOnly && *manDir != "") {
+		fmt.Fprintln(os.Stderr, "usage: go run ./internal/tools/docgen [--check | --man <dir>]")
 		os.Exit(2)
 	}
 
@@ -38,9 +40,12 @@ func main() {
 	ref := reference{root: cli.NewRoot(context.Background(), cli.App{}), topics: cli.HelpTopics()}
 
 	var err error
-	if *checkOnly {
+	switch {
+	case *checkOnly:
 		err = check(ref, outDir, os.Stderr)
-	} else {
+	case *manDir != "":
+		err = writeMan(ref.root, *manDir)
+	default:
 		err = write(ref, outDir)
 	}
 
@@ -58,17 +63,35 @@ type reference struct {
 
 // write replaces dir with the reference, so pages of removed commands go with it.
 func write(ref reference, dir string) error {
-	err := os.RemoveAll(dir)
-	if err != nil {
-		return err
-	}
-
-	err = os.MkdirAll(dir, 0o750)
+	err := emptyDir(dir)
 	if err != nil {
 		return err
 	}
 
 	return generate(ref, dir)
+}
+
+// writeMan replaces dir with a man page per command. cobra dates each page from
+// SOURCE_DATE_EPOCH when it is set, so a release can rebuild the pages byte for byte.
+func writeMan(root *cobra.Command, dir string) error {
+	err := emptyDir(dir)
+	if err != nil {
+		return err
+	}
+
+	root.DisableAutoGenTag = true
+
+	// cobra fills an empty Source with its generation tag before children inherit DisableAutoGenTag.
+	return doc.GenManTree(root, &doc.GenManHeader{Source: root.Name()}, dir)
+}
+
+func emptyDir(dir string) error {
+	err := os.RemoveAll(dir)
+	if err != nil {
+		return err
+	}
+
+	return os.MkdirAll(dir, 0o750)
 }
 
 // check prints an added, changed or removed line to out for each page dir that differs

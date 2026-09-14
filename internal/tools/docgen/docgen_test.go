@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -83,6 +84,42 @@ var _ = Describe("docgen", func() {
 		Expect(write(newReference(), dir)).To(Succeed())
 
 		Expect(check(newReference(), dir, &bytes.Buffer{})).To(Succeed())
+	})
+
+	Describe("man pages", func() {
+		var manDir string
+
+		BeforeEach(func() {
+			manDir = filepath.Join(GinkgoT().TempDir(), "man")
+			GinkgoT().Setenv("SOURCE_DATE_EPOCH", "1700000000")
+			Expect(writeMan(newReference().root, manDir)).To(Succeed())
+		})
+
+		It("writes one section 1 page per command, carrying no generation tag", func() {
+			entries, err := os.ReadDir(manDir)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(entries).To(HaveLen(2))
+
+			for _, name := range []string{"tool.1", "tool-sub.1"} {
+				content, err := fs.ReadFile(os.DirFS(manDir), name)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(content)).NotTo(ContainSubstring("Auto generated"), name)
+			}
+		})
+
+		It("dates every page from SOURCE_DATE_EPOCH, so a release rebuilds them byte for byte", func() {
+			content, err := fs.ReadFile(os.DirFS(manDir), "tool-sub.1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(content)).To(ContainSubstring(`"Nov 2023"`))
+		})
+
+		It("drops the pages of removed commands", func() {
+			Expect(os.WriteFile(filepath.Join(manDir, "tool-gone.1"), nil, 0o600)).To(Succeed())
+
+			Expect(writeMan(newReference().root, manDir)).To(Succeed())
+
+			Expect(filepath.Join(manDir, "tool-gone.1")).NotTo(BeAnExistingFile())
+		})
 	})
 
 	Describe("help topics", func() {
