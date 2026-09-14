@@ -152,7 +152,8 @@ func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
 	return deleted, nil
 }
 
-// BlobPath returns the file the database at dbPath keeps the blob whose SHA-256 is hash in.
+// BlobPath returns the path of the blob whose SHA-256 is hash, in the blob directory of the
+// database at dbPath.
 func BlobPath(dbPath, hash string) string {
 	return filepath.Join(config.BlobDir(dbPath), hash)
 }

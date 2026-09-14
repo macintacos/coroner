@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	"errors"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -43,7 +43,8 @@ func main() {
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
-		WriteNewFile:      writeNewFile,
+		OpenFile:          openFile,
+		RemoveFile:        os.Remove,
 		Now:               time.Now,
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
@@ -52,12 +53,6 @@ func main() {
 	os.Exit(code)
 }
 
-func writeNewFile(name string, data []byte, perm os.FileMode) error {
-	f, err := os.OpenFile(filepath.Clean(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-
-	return errors.Join(err, f.Close())
+func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
+	return os.OpenFile(filepath.Clean(name), flag, perm)
 }

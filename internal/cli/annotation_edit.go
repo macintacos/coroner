@@ -52,10 +52,8 @@ func annotationEditDefinition() definition {
 type annotationEdited struct {
 	annotation timeline.Annotation
 	timeline   timeline.Timeline
-	// attached are the attachments the edit added, which a dry run describes without ids.
-	attached    []timeline.Attachment
-	attachments []attachmentJSON
-	dryRun      bool
+	attach     attachResult
+	dryRun     bool
 }
 
 func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationEdited, error) {
@@ -71,7 +69,7 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return annotationEdited{}, err
 	}
-	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	req, err := readAttachRequest(in, app.ReadFile)
 	if err != nil {
 		return annotationEdited{}, err
 	}
@@ -79,17 +77,13 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return annotationEdited{}, err
 	}
-	dryRun, _ := in.boolean("dry-run")
 	now := app.Now()
-	var newFiles []store.NewAttachment
-	if !dryRun {
-		newFiles, err = newAttachments(files, app.NewID, now)
-		if err != nil {
-			return annotationEdited{}, err
-		}
+	req, err = req.staged(app.NewID, now)
+	if err != nil {
+		return annotationEdited{}, err
 	}
 
-	edited := annotationEdited{dryRun: dryRun}
+	edited := annotationEdited{dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// annotation is overwritten; apply the edit inside one store write if that matters.
@@ -103,22 +97,14 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		}
 		a = edit.apply(a, now)
 		edited.annotation, edited.timeline = a, t
-		if !dryRun {
-			err = updateAnnotation(ctx, s, app, a, newFiles...)
+		if !req.dryRun {
+			err = updateAnnotation(ctx, s, app, a, req.add...)
 			if err != nil {
 				return err
 			}
 		}
 
-		owner := timeline.AttachmentOwner{AnnotationID: &a.ID}
-		stored, err := s.ListAttachments(ctx, owner)
-		if dryRun {
-			edited.attached = describeAttachments(files, owner, now)
-			stored = append(stored, edited.attached...)
-		} else {
-			edited.attached = addedAttachments(stored, newFiles)
-		}
-		edited.attachments = newAttachmentJSONs(stored, cfg.DBPath)
+		edited.attach, err = req.result(ctx, s, timeline.AttachmentOwner{AnnotationID: &a.ID}, cfg.DBPath)
 		return err
 	})
 
@@ -144,17 +130,17 @@ func updateAnnotation(ctx context.Context, s *store.Store, app App, a timeline.A
 
 func (e annotationEdited) render(o output) error {
 	if e.dryRun {
-		err := previewAnnotation(o, e.annotation, e.attachments, "Would edit annotation "+e.annotation.ID+" to")
-		if err != nil {
-			return err
+		err := previewAnnotation(o, e.annotation, e.attach.objects, "Would edit annotation "+e.annotation.ID+" to")
+		if err == nil {
+			err = e.attach.notify(o)
 		}
 
-		return notifyAttached(o, e.attached)
+		return err
 	}
 
-	err := printAnnotation(o, e.annotation, e.attachments)
+	err := printAnnotation(o, e.annotation, e.attach.objects)
 	if err == nil {
-		err = notifyAttached(o, e.attached)
+		err = e.attach.notify(o)
 	}
 	if err != nil {
 		return err

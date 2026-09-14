@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -46,6 +48,10 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 	if err != nil {
 		return err
 	}
+	writeFile := newFileWriter(app.OpenFile, app.RemoveFile)
+	if force, _ := cmd.Flags().GetBool("force"); force {
+		writeFile = app.WriteFile
+	}
 	if path == "-" && app.OutIsTTY {
 		return &Error{
 			Kind: KindUsage, Message: "attachment export writes the file's bytes, and stdout is a terminal",
@@ -69,20 +75,31 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 	// error from either as the database's.
 	content, err := app.ReadFile(store.BlobPath(cfg.DBPath, a.SHA256))
 	if err != nil {
-		return fmt.Errorf("read the stored file of attachment %s: %w", a.ID, err)
+		return fmt.Errorf("read the blob of attachment %s: %w", a.ID, err)
 	}
 
-	return writeAttachment(o, path, content, attachmentWriter(cmd, app))
+	return writeAttachment(o, path, content, writeFile)
 }
 
-// attachmentWriter returns the file writer --force selects: one that overwrites, or one that
-// refuses a file that exists.
-func attachmentWriter(cmd *cobra.Command, app App) func(string, []byte, fs.FileMode) error {
-	if force, _ := cmd.Flags().GetBool("force"); force {
-		return app.WriteFile
-	}
+// newFileWriter returns a function that creates name with open and writes data to it, failing
+// with an error that wraps fs.ErrExist when name exists, and removing name with remove when
+// writing fails.
+func newFileWriter(
+	open func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error), remove func(name string) error,
+) func(name string, data []byte, perm fs.FileMode) error {
+	return func(name string, data []byte, perm fs.FileMode) error {
+		f, err := open(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+		if err != nil {
+			return err
+		}
+		_, err = f.Write(data)
+		err = errors.Join(err, f.Close())
+		if err != nil {
+			return errors.Join(err, remove(name))
+		}
 
-	return app.WriteNewFile
+		return nil
+	}
 }
 
 // writeAttachment writes content to path with writeFile, or to o when path is -, reporting a

@@ -15,14 +15,8 @@ import (
 func (s *Store) AddEvent(
 	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
 ) (timeline.Event, error) {
-	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments)
-	if err != nil {
-		return timeline.Event{}, err
-	}
-	defer discard()
-
 	var seq int64
-	err = s.write(ctx, func(q *sqlcgen.Queries) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		var err error
 		seq, err = q.AllocateSeq(ctx, e.TimelineID)
 		if err != nil {
@@ -54,12 +48,8 @@ func (s *Store) AddEvent(
 		if err != nil {
 			return err
 		}
-		err = addTags(ctx, q, e.ID, e.Tags)
-		if err != nil {
-			return err
-		}
 
-		return insertAttachments(ctx, q, s.blobDir, staged)
+		return addTags(ctx, q, e.ID, e.Tags)
 	})
 	if err != nil {
 		return timeline.Event{}, err
@@ -128,13 +118,7 @@ func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event
 // its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
 // creates one with id newSourceID.
 func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
-	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments)
-	if err != nil {
-		return err
-	}
-	defer discard()
-
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, e.Source, newSourceID, e.UpdatedAt)
 		if err != nil {
 			return err
@@ -168,13 +152,10 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 				return err
 			}
 		}
-		err = addTags(ctx, q, e.ID, e.Tags)
-		if err != nil {
-			return err
-		}
 
-		return insertAttachments(ctx, q, s.blobDir, staged)
+		return addTags(ctx, q, e.ID, e.Tags)
 	})
+	return err
 }
 
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of

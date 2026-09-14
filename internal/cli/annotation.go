@@ -224,7 +224,7 @@ func findEventIn(
 // parseAnnotationRef returns ref as an annotation id prefix, lowercased: hex digits and dashes,
 // starting with a hex digit.
 func parseAnnotationRef(ref string) (string, error) {
-	prefix, ok := idPrefix(ref)
+	prefix, ok := parseIDPrefix(ref)
 	if !ok {
 		return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an annotation id", ref), Hint: listAnnotationsHint}
 	}
@@ -232,9 +232,9 @@ func parseAnnotationRef(ref string) (string, error) {
 	return prefix, nil
 }
 
-// idPrefix returns ref lowercased, and whether that is an id prefix: hex digits and dashes,
+// parseIDPrefix returns ref lowercased, and whether that is an id prefix: hex digits and dashes,
 // starting with a hex digit.
-func idPrefix(ref string) (string, bool) {
+func parseIDPrefix(ref string) (string, bool) {
 	prefix := strings.ToLower(ref)
 	return prefix, prefix != "" && strings.ContainsRune("0123456789abcdef", rune(prefix[0])) &&
 		strings.Trim(prefix, "0123456789abcdef-") == ""

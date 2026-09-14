@@ -100,11 +100,9 @@ type eventAdded struct {
 	event    timeline.Event
 	timeline timeline.Timeline
 	// when is the event's resolved time as the command prints it.
-	when string
-	// attached are the event's attachments, which a dry run describes without ids.
-	attached    []timeline.Attachment
-	attachments []attachmentJSON
-	dryRun      bool
+	when   string
+	attach attachResult
+	dryRun bool
 }
 
 func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {
@@ -118,7 +116,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	if err != nil {
 		return eventAdded{}, err
 	}
-	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	req, err := readAttachRequest(in, app.ReadFile)
 	if err != nil {
 		return eventAdded{}, err
 	}
@@ -126,19 +124,12 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	if err != nil {
 		return eventAdded{}, err
 	}
-	dryRun, _ := in.boolean("dry-run")
-	owner := timeline.AttachmentOwner{EventID: &draft.event.ID}
-
-	added := eventAdded{event: draft.event, when: draft.when, dryRun: dryRun}
-	var newFiles []store.NewAttachment
-	if dryRun {
-		added.attached = describeAttachments(files, owner, now)
-	} else {
-		newFiles, err = newAttachments(files, app.NewID, now)
-		if err != nil {
-			return eventAdded{}, err
-		}
+	req, err = req.staged(app.NewID, now)
+	if err != nil {
+		return eventAdded{}, err
 	}
+
+	added := eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
 		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
@@ -148,38 +139,34 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		}
 		added.timeline = t
 		added.event.TimelineID = t.ID
-		if dryRun {
-			return nil
+		if !req.dryRun {
+			added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.add...)
+			if err != nil {
+				return err
+			}
 		}
 
-		added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, newFiles...)
-		if err != nil {
-			return err
-		}
-		stored, err := s.ListAttachments(ctx, owner)
-		added.attached = addedAttachments(stored, newFiles)
+		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &added.event.ID}, cfg.DBPath)
 		return err
 	})
-	added.attachments = newAttachmentJSONs(added.attached, cfg.DBPath)
 
 	return added, err
 }
 
 func (a eventAdded) render(o output) error {
 	if a.dryRun {
-		err := previewEvent(o, a.timeline, a.event, a.attachments, a.when)
-		if err != nil {
-			return err
+		err := previewEvent(o, a.timeline, a.event, a.attach.objects, a.when)
+		if err == nil {
+			err = a.attach.notify(o)
 		}
 
-		return notifyAttached(o, a.attached)
-	}
-
-	err := printEvent(o, a.event, a.attachments)
-	if err != nil {
 		return err
 	}
-	err = notifyAttached(o, a.attached)
+
+	err := printEvent(o, a.event, a.attach.objects)
+	if err == nil {
+		err = a.attach.notify(o)
+	}
 	if err != nil {
 		return err
 	}

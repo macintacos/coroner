@@ -8,7 +8,7 @@ Delete attachments
 
 ### Synopsis
 
-Delete attachments by full id or unique id prefix, in any timeline, and the stored files no
+Delete attachments by full id or unique id prefix, in any timeline, and the blobs no
 attachment uses any more. Every id is checked before anything is deleted, so an id that
 matches nothing deletes none. --dry-run shows what would be deleted instead.
 

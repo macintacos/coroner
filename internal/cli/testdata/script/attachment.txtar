@@ -40,6 +40,28 @@ exists $WORK/.local/share/coroner/blobs/bf0bb1ac33c15d55e0dc526f817f161105402113
 exec coroner timeline delete mongo-outage --yes
 ! exists $WORK/.local/share/coroner/blobs/bf0bb1ac33c15d55e0dc526f817f1611054021131c22c47fa378adac3139aade
 
+# A delete that cannot delete the blobs no attachment uses any more still deletes, and says so last.
+exec coroner timeline create replica-lag
+exec coroner timeline use replica-lag
+exec coroner event add 'Lag alert' --attach p99.gif
+exec coroner annotation add 'Lag graph' --kind evidence
+exec coroner timeline create failover-drill
+exec coroner event add 'Failover' -t failover-drill --attach trace.pdf
+chmod 500 $WORK/.local/share/coroner/blobs
+exec coroner event delete 1
+stderr '^Deleted 1 event from timeline `replica-lag`\.$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+exec coroner annotation delete 0
+stderr '^Deleted evidence annotation [0-9a-f-]{36} from timeline `replica-lag`$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+exec coroner timeline delete replica-lag --yes
+stderr '^Deleted timeline `replica-lag`\.$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+exec coroner attachment delete 0
+stderr '^Deleted attachment [0-9a-f-]{36} \(trace\.pdf\) from timeline `failover-drill`$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+chmod 700 $WORK/.local/share/coroner/blobs
+
 -- p99.gif --
 GIF89a p99 latency panel
 -- trace.pdf --

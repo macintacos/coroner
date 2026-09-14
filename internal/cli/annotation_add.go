@@ -65,10 +65,8 @@ type annotationAdded struct {
 	annotation timeline.Annotation
 	timeline   timeline.Timeline
 	event      *timeline.Event
-	// attached are the annotation's attachments, which a dry run describes without ids.
-	attached    []timeline.Attachment
-	attachments []attachmentJSON
-	dryRun      bool
+	attach     attachResult
+	dryRun     bool
 }
 
 func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationAdded, error) {
@@ -80,7 +78,7 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if err != nil {
 		return annotationAdded{}, err
 	}
-	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	req, err := readAttachRequest(in, app.ReadFile)
 	if err != nil {
 		return annotationAdded{}, err
 	}
@@ -88,19 +86,12 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if err != nil {
 		return annotationAdded{}, err
 	}
-	dryRun, _ := in.boolean("dry-run")
-	owner := timeline.AttachmentOwner{AnnotationID: &draft.annotation.ID}
-
-	added := annotationAdded{dryRun: dryRun}
-	var newFiles []store.NewAttachment
-	if dryRun {
-		added.attached = describeAttachments(files, owner, draft.annotation.CreatedAt)
-	} else {
-		newFiles, err = newAttachments(files, app.NewID, draft.annotation.CreatedAt)
-		if err != nil {
-			return annotationAdded{}, err
-		}
+	req, err = req.staged(app.NewID, draft.annotation.CreatedAt)
+	if err != nil {
+		return annotationAdded{}, err
 	}
+
+	added := annotationAdded{dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
 		if err != nil {
@@ -116,19 +107,16 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 			a.EventID = &e.ID
 		}
 		added.annotation, added.timeline, added.event = a, t, e
-		if dryRun {
-			return nil
+		if !req.dryRun {
+			err = s.AddAnnotation(ctx, a, draft.newSourceID, req.add...)
+			if err != nil {
+				return err
+			}
 		}
 
-		err = s.AddAnnotation(ctx, a, draft.newSourceID, newFiles...)
-		if err != nil {
-			return err
-		}
-		stored, err := s.ListAttachments(ctx, owner)
-		added.attached = addedAttachments(stored, newFiles)
+		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{AnnotationID: &a.ID}, cfg.DBPath)
 		return err
 	})
-	added.attachments = newAttachmentJSONs(added.attached, cfg.DBPath)
 
 	return added, err
 }
@@ -136,17 +124,17 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 func (a annotationAdded) render(o output) error {
 	target := annotationTarget(a.timeline, a.event)
 	if a.dryRun {
-		err := previewAnnotation(o, a.annotation, a.attachments, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
-		if err != nil {
-			return err
+		err := previewAnnotation(o, a.annotation, a.attach.objects, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+		if err == nil {
+			err = a.attach.notify(o)
 		}
 
-		return notifyAttached(o, a.attached)
+		return err
 	}
 
-	err := printAnnotation(o, a.annotation, a.attachments)
+	err := printAnnotation(o, a.annotation, a.attach.objects)
 	if err == nil {
-		err = notifyAttached(o, a.attached)
+		err = a.attach.notify(o)
 	}
 	if err != nil {
 		return err

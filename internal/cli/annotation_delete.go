@@ -17,9 +17,9 @@ func newAnnotationDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>...",
 		Short: "Delete annotations",
-		Long: "Delete annotations by full id or unique id prefix, in any timeline. Every id is checked\n" +
-			"before anything is deleted, so an id that matches nothing deletes none. --dry-run shows\n" +
-			"what would be deleted instead.",
+		Long: "Delete annotations by full id or unique id prefix, in any timeline, with their attachments\n" +
+			"and the blobs no other attachment uses. Every id is checked before anything is deleted, so\n" +
+			"an id that matches nothing deletes none. --dry-run shows what would be deleted instead.",
 		Args:        cobra.MinimumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation delete 0199a1b2-7c1e --dry-run\n" +
@@ -43,12 +43,14 @@ func annotationDeleteDefinition() definition {
 }
 
 // annotationsDeleted are the annotations delete removed or, with --dry-run, would remove, with
-// their timelines' names by timeline id and their attachments' objects by annotation id.
+// their timelines' names by timeline id, their attachments' objects by annotation id, and why
+// the blobs they left unused were not deleted.
 type annotationsDeleted struct {
 	annotations   []timeline.Annotation
 	timelineNames map[string]string
 	attached      map[string][]attachmentJSON
 	dryRun        bool
+	blobsErr      error
 }
 
 func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationsDeleted, error) {
@@ -99,23 +101,29 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 		if err != nil {
 			return err
 		}
-		_, err = s.GarbageCollectBlobs(ctx)
+		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
 
-		return err
+		return nil
 	})
 
 	return deleted, err
 }
 
 func (d annotationsDeleted) render(o output) error {
-	if o.format == formatJSON {
-		return o.json(newAnnotationListJSON(d.annotations, d.attached))
-	}
-	if d.dryRun {
+	var err error
+	switch {
+	case o.format == formatJSON:
+		err = o.json(newAnnotationListJSON(d.annotations, d.attached))
+	case d.dryRun:
 		return previewAnnotationDeletion(o, d.annotations, d.timelineNames)
+	default:
+		err = reportAnnotationDeletion(o, d.annotations, d.timelineNames)
+	}
+	if err != nil || d.blobsErr == nil {
+		return err
 	}
 
-	return reportAnnotationDeletion(o, d.annotations, d.timelineNames)
+	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
 }
 
 // findAnnotations returns the annotation each id prefix names, in order and once each.

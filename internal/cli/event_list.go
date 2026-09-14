@@ -83,9 +83,13 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
-		attachments, err := s.TimelineAttachments(ctx, t.ID)
-		if err != nil {
-			return err
+		listing := eventListing{page: page}
+		if o.format.machine() {
+			attachments, err := s.TimelineAttachments(ctx, t.ID)
+			if err != nil {
+				return err
+			}
+			listing.attached = attachmentsByOwner(attachments, cfg.DBPath)
 		}
 		if bounds != "" {
 			err = o.notify("Events %s", bounds)
@@ -94,7 +98,6 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 			}
 		}
 
-		listing := eventListing{page: page, attached: attachmentsByOwner(attachments, cfg.DBPath)}
 		return printEventPage(o, z, listing, noEventsMessage(filter))
 	})
 }

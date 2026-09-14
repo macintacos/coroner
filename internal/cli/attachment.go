@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -53,7 +54,7 @@ func newAttachmentCommand(ctx context.Context, app App) *cobra.Command {
 
 // parseAttachmentRef returns ref as an attachment id prefix, lowercased.
 func parseAttachmentRef(ref string) (string, error) {
-	prefix, ok := idPrefix(ref)
+	prefix, ok := parseIDPrefix(ref)
 	if !ok {
 		return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an attachment id", ref), Hint: listAttachmentsHint}
 	}
@@ -98,6 +99,13 @@ func findAttachment(ctx context.Context, s *store.Store, prefix string) (timelin
 
 type attachmentListJSON struct {
 	Attachments []attachmentJSON `json:"attachments"`
+	Truncated   bool             `json:"truncated"`
+	Total       int              `json:"total"`
+}
+
+// newAttachmentListJSON returns objects as a whole collection: nothing cuts one short yet.
+func newAttachmentListJSON(objects []attachmentJSON) attachmentListJSON {
+	return attachmentListJSON{Attachments: objects, Truncated: false, Total: len(objects)}
 }
 
 // attachField is the --attach field of the commands that add or edit an event or annotation.
@@ -187,13 +195,74 @@ func addedAttachments(stored []timeline.Attachment, added []store.NewAttachment)
 	})
 }
 
-// notifyAttached says on stderr what each of attachments is: attached, with the id to delete or
-// export it by, or, with no id, what a dry run would attach.
-func notifyAttached(o output, attachments []timeline.Attachment) error {
-	for _, a := range attachments {
+// attachRequest is what --attach asks an add or edit to attach.
+type attachRequest struct {
+	files []attachFile
+	// add is files as the store adds them, once staged; nil in a dry run.
+	add    []store.NewAttachment
+	now    time.Time
+	dryRun bool
+}
+
+// readAttachRequest reads every file --attach names, which a command does before it reads stdin
+// or opens the store.
+func readAttachRequest(in fieldValues, readFile func(string) ([]byte, error)) (attachRequest, error) {
+	files, err := readAttachFiles(in.values("attach"), readFile)
+	dryRun, _ := in.boolean("dry-run")
+
+	return attachRequest{files: files, dryRun: dryRun}, err
+}
+
+// staged returns r attaching at now, with a new id for each file unless it is a dry run. A
+// command stages after drafting its record, so the record's ids come first.
+func (r attachRequest) staged(newID func() (uuid.UUID, error), now time.Time) (attachRequest, error) {
+	r.now = now
+	if r.dryRun {
+		return r, nil
+	}
+
+	var err error
+	r.add, err = newAttachments(r.files, newID, now)
+	return r, err
+}
+
+// result returns what r attached to owner, or would attach, read after the owner's write.
+func (r attachRequest) result(
+	ctx context.Context, s *store.Store, owner timeline.AttachmentOwner, dbPath string,
+) (attachResult, error) {
+	stored, err := s.ListAttachments(ctx, owner)
+	if err != nil {
+		return attachResult{}, err
+	}
+	objects := newAttachmentJSONs(stored, dbPath)
+	if !r.dryRun {
+		return attachResult{added: addedAttachments(stored, r.add), objects: objects}, nil
+	}
+
+	described := describeAttachments(r.files, owner, r.now)
+	for _, a := range described {
+		objects = append(objects, describedAttachmentJSON(a))
+	}
+
+	return attachResult{added: described, objects: objects, dryRun: true}, nil
+}
+
+// attachResult is what an add or edit prints about attachments.
+type attachResult struct {
+	// added is what the command attached, or would attach.
+	added []timeline.Attachment
+	// objects are every attachment the owner has afterwards, then those a dry run describes.
+	objects []attachmentJSON
+	dryRun  bool
+}
+
+// notify says on stderr what each added attachment is: attached, with the id to delete or export
+// it by, or what a dry run would attach.
+func (r attachResult) notify(o output) error {
+	for _, a := range r.added {
 		details := fmt.Sprintf("(sha256 %s…, %s, %s)", a.SHA256[:8], formatSize(a.Size), a.MIME)
 		var err error
-		if a.ID == "" {
+		if r.dryRun {
 			err = o.notify("Would attach %s %s", a.Filename, details)
 		} else {
 			err = o.notify("Attached %s as %s %s", a.Filename, a.ID, details)
@@ -210,7 +279,7 @@ func notifyAttached(o output, attachments []timeline.Attachment) error {
 func formatSize(size int64) string {
 	units := []string{"B", "KB", "MB", "GB"}
 	value, unit := float64(size), 0
-	for value >= 1000 && unit < len(units)-1 {
+	for math.Round(value) >= 1000 && unit < len(units)-1 {
 		value /= 1000
 		unit++
 	}
@@ -218,8 +287,8 @@ func formatSize(size int64) string {
 	return fmt.Sprintf("%.0f %s", value, units[unit])
 }
 
-// attachmentJSON is the canonical attachment object's keys, every one always present. id and
-// path are null for an attachment a dry run describes, which has neither yet.
+// attachmentJSON is the CLI's attachment object's keys, every one always present; id and path are
+// null for an attachment a dry run describes.
 type attachmentJSON struct {
 	ID           *string `json:"id"`
 	EventID      *string `json:"event_id"`
@@ -232,37 +301,48 @@ type attachmentJSON struct {
 	CreatedAt    string  `json:"created_at"`
 }
 
-// newAttachmentJSONs returns the objects of attachments, never nil, each stored one with its
-// blob's path beside the database at dbPath. An attachment with no ID is one a dry run describes.
+// newAttachmentJSONs returns the objects of stored attachments, never nil, as newAttachmentJSON
+// does.
 func newAttachmentJSONs(attachments []timeline.Attachment, dbPath string) []attachmentJSON {
 	objects := make([]attachmentJSON, 0, len(attachments))
 	for _, a := range attachments {
-		j := attachmentJSON{
-			EventID:      a.Owner.EventID,
-			AnnotationID: a.Owner.AnnotationID,
-			Filename:     a.Filename,
-			MIME:         a.MIME,
-			SHA256:       a.SHA256,
-			Size:         a.Size,
-			CreatedAt:    timeline.FormatInstant(a.CreatedAt),
-		}
-		if a.ID != "" {
-			j.ID = new(a.ID)
-			j.Path = new(store.BlobPath(dbPath, a.SHA256))
-		}
-		objects = append(objects, j)
+		objects = append(objects, newAttachmentJSON(a, dbPath))
 	}
 
 	return objects
 }
 
-// attachmentsByOwner returns the objects of attachments, as newAttachmentJSONs does, keyed by
-// the id of the event or annotation each belongs to.
+// newAttachmentJSON returns the object of stored attachment a, with its blob's path beside the
+// database at dbPath.
+func newAttachmentJSON(a timeline.Attachment, dbPath string) attachmentJSON {
+	j := describedAttachmentJSON(a)
+	j.ID = new(a.ID)
+	j.Path = new(store.BlobPath(dbPath, a.SHA256))
+
+	return j
+}
+
+// describedAttachmentJSON returns the object of an attachment a dry run describes, which has no
+// id or path.
+func describedAttachmentJSON(a timeline.Attachment) attachmentJSON {
+	return attachmentJSON{
+		EventID:      a.Owner.EventID,
+		AnnotationID: a.Owner.AnnotationID,
+		Filename:     a.Filename,
+		MIME:         a.MIME,
+		SHA256:       a.SHA256,
+		Size:         a.Size,
+		CreatedAt:    timeline.FormatInstant(a.CreatedAt),
+	}
+}
+
+// attachmentsByOwner returns the objects of stored attachments keyed by the id of the event or
+// annotation each belongs to.
 func attachmentsByOwner(attachments []timeline.Attachment, dbPath string) map[string][]attachmentJSON {
 	byOwner := map[string][]attachmentJSON{}
-	for i, a := range attachments {
+	for _, a := range attachments {
 		owner := *cmp.Or(a.Owner.EventID, a.Owner.AnnotationID)
-		byOwner[owner] = append(byOwner[owner], newAttachmentJSONs(attachments[i:i+1], dbPath)...)
+		byOwner[owner] = append(byOwner[owner], newAttachmentJSON(a, dbPath))
 	}
 
 	return byOwner

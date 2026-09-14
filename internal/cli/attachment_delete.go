@@ -17,7 +17,7 @@ func newAttachmentDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>...",
 		Short: "Delete attachments",
-		Long: "Delete attachments by full id or unique id prefix, in any timeline, and the stored files no\n" +
+		Long: "Delete attachments by full id or unique id prefix, in any timeline, and the blobs no\n" +
 			"attachment uses any more. Every id is checked before anything is deleted, so an id that\n" +
 			"matches nothing deletes none. --dry-run shows what would be deleted instead.",
 		Args:        cobra.MinimumNArgs(1),
@@ -49,6 +49,7 @@ type attachmentsDeleted struct {
 	objects       []attachmentJSON
 	timelineNames map[string]string
 	dryRun        bool
+	blobsErr      error
 }
 
 func deleteAttachments(ctx context.Context, app App, cfg config.Config, in fieldValues) (attachmentsDeleted, error) {
@@ -95,19 +96,29 @@ func deleteAttachments(ctx context.Context, app App, cfg config.Config, in field
 		if err != nil {
 			return err
 		}
-		_, err = s.GarbageCollectBlobs(ctx)
+		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
 
-		return err
+		return nil
 	})
 	deleted.objects = newAttachmentJSONs(deleted.attachments, cfg.DBPath)
 
 	return deleted, err
 }
 
-// render prints the attachments as JSON, or says for each what was, or would be, deleted.
+// render prints the attachments as JSON, or says for each what was, or would be, deleted, then
+// says when the blobs they leave unused could not be deleted.
 func (d attachmentsDeleted) render(o output) error {
+	err := d.write(o)
+	if err != nil || d.blobsErr == nil {
+		return err
+	}
+
+	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
+}
+
+func (d attachmentsDeleted) write(o output) error {
 	if o.format == formatJSON {
-		return o.json(attachmentListJSON{Attachments: d.objects})
+		return o.json(newAttachmentListJSON(d.objects))
 	}
 
 	for _, a := range d.attachments {

@@ -33,9 +33,10 @@ type App struct {
 	ReadFile func(name string) ([]byte, error)
 	// WriteFile creates or truncates the file at name, as os.WriteFile does.
 	WriteFile func(name string, data []byte, perm fs.FileMode) error
-	// WriteNewFile creates name and writes data to it, failing with an error that wraps
-	// fs.ErrExist, and writing nothing, when name already exists.
-	WriteNewFile func(name string, data []byte, perm fs.FileMode) error
+	// OpenFile opens name as os.OpenFile does.
+	OpenFile func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
+	// RemoveFile removes name as os.Remove does.
+	RemoveFile func(name string) error
 	// Now returns the time in the local zone, which is where time input with no zone is read
 	// when neither --tz nor the config file names one.
 	Now func() time.Time

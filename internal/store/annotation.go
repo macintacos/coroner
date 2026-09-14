@@ -12,13 +12,7 @@ import (
 // AddAnnotation adds a with attachments. When no source is called a.Source yet, it creates
 // one with id newSourceID.
 func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
-	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments)
-	if err != nil {
-		return err
-	}
-	defer discard()
-
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		err := checkTarget(ctx, q, a.TimelineID, a.EventID)
 		if err != nil {
 			return err
@@ -40,12 +34,9 @@ func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSou
 			CreatedAt:  timeline.FormatInstant(a.CreatedAt),
 			UpdatedAt:  timeline.FormatInstant(a.UpdatedAt),
 		})
-		if err != nil {
-			return err
-		}
-
-		return insertAttachments(ctx, q, s.blobDir, staged)
+		return err
 	})
+	return err
 }
 
 // Annotation returns the annotation with id.
@@ -88,13 +79,7 @@ func (s *Store) EventAnnotations(ctx context.Context, eventID string) ([]timelin
 // UpdateAnnotation stores a's kind, body, author, source, URL and updated at, and adds
 // attachments. When no source is called a.Source yet, it creates one with id newSourceID.
 func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
-	staged, discard, err := stageAttachments(s.blobDir, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments)
-	if err != nil {
-		return err
-	}
-	defer discard()
-
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, a.Source, newSourceID, a.UpdatedAt)
 		if err != nil {
 			return err
@@ -109,12 +94,9 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 			UpdatedAt: timeline.FormatInstant(a.UpdatedAt),
 			ID:        a.ID,
 		})
-		if err != nil {
-			return err
-		}
-
-		return insertAttachments(ctx, q, s.blobDir, staged)
+		return err
 	})
+	return err
 }
 
 // AnnotationsByIDPrefix returns up to limit annotations, in any timeline, whose id starts

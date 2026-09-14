@@ -245,7 +245,8 @@ func runCoroner() {
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
-		WriteNewFile:      writeNewFile,
+		OpenFile:          openFile,
+		RemoveFile:        os.Remove,
 		Now:               time.Now,
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
@@ -262,15 +263,8 @@ func runCoroner() {
 	os.Exit(cli.Run(ctx, app))
 }
 
-// writeNewFile is main.go's App.WriteNewFile.
-func writeNewFile(name string, data []byte, perm os.FileMode) error {
-	f, err := os.OpenFile(filepath.Clean(name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-
-	return errors.Join(err, f.Close())
+func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
+	return os.OpenFile(filepath.Clean(name), flag, perm)
 }
 
 func withTestClock(app cli.App) (cli.App, error) {

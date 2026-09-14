@@ -112,11 +112,9 @@ type eventEdited struct {
 	timeline timeline.Timeline
 	zone     zone
 	// when is the edit's resolved times as the command echoes them, or "" when it sets none.
-	when string
-	// attached are the attachments the edit added, which a dry run describes without ids.
-	attached    []timeline.Attachment
-	attachments []attachmentJSON
-	dryRun      bool
+	when   string
+	attach attachResult
+	dryRun bool
 }
 
 func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventEdited, error) {
@@ -138,7 +136,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	if err != nil {
 		return eventEdited{}, err
 	}
-	files, err := readAttachFiles(in.values("attach"), app.ReadFile)
+	req, err := readAttachRequest(in, app.ReadFile)
 	if err != nil {
 		return eventEdited{}, err
 	}
@@ -146,16 +144,12 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	if err != nil {
 		return eventEdited{}, err
 	}
-	dryRun, _ := in.boolean("dry-run")
-	var newFiles []store.NewAttachment
-	if !dryRun {
-		newFiles, err = newAttachments(files, app.NewID, now)
-		if err != nil {
-			return eventEdited{}, err
-		}
+	req, err = req.staged(app.NewID, now)
+	if err != nil {
+		return eventEdited{}, err
 	}
 
-	edited := eventEdited{zone: z, when: edit.when, dryRun: dryRun}
+	edited := eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// event is overwritten; apply the edit inside one store write if that matters.
@@ -168,8 +162,8 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 			return err
 		}
 		edited.event, edited.timeline = e, t
-		if !dryRun {
-			err = s.UpdateEvent(ctx, e, edit.newSourceID, newFiles...)
+		if !req.dryRun {
+			err = s.UpdateEvent(ctx, e, edit.newSourceID, req.add...)
 			if errors.Is(err, store.ErrNotFound) {
 				return eventNotFoundError("another coroner deleted the event first", err)
 			}
@@ -178,15 +172,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 			}
 		}
 
-		owner := timeline.AttachmentOwner{EventID: &e.ID}
-		stored, err := s.ListAttachments(ctx, owner)
-		if dryRun {
-			edited.attached = describeAttachments(files, owner, now)
-			stored = append(stored, edited.attached...)
-		} else {
-			edited.attached = addedAttachments(stored, newFiles)
-		}
-		edited.attachments = newAttachmentJSONs(stored, cfg.DBPath)
+		edited.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &e.ID}, cfg.DBPath)
 		return err
 	})
 
@@ -195,9 +181,9 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 
 func (e eventEdited) render(o output) error {
 	if e.dryRun {
-		err := previewEventEdit(o, e.zone, e.event, e.attachments, e.timeline)
+		err := previewEventEdit(o, e.zone, e.event, e.attach.objects, e.timeline)
 		if err == nil {
-			err = notifyAttached(o, e.attached)
+			err = e.attach.notify(o)
 		}
 		if err != nil {
 			return err
@@ -206,9 +192,9 @@ func (e eventEdited) render(o output) error {
 		return o.notify("Would edit event #%d in timeline `%s`%s", e.event.Seq, e.timeline.Name, e.when)
 	}
 
-	err := printEvent(o, e.event, e.attachments)
+	err := printEvent(o, e.event, e.attach.objects)
 	if err == nil {
-		err = notifyAttached(o, e.attached)
+		err = e.attach.notify(o)
 	}
 	if err != nil {
 		return err

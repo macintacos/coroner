@@ -60,34 +60,36 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 			return err
 		}
 		if o.format == formatJSON {
-			return o.json(attachmentListJSON{Attachments: newAttachmentJSONs(attachments, cfg.DBPath)})
+			return o.json(newAttachmentListJSON(newAttachmentJSONs(attachments, cfg.DBPath)))
+		}
+		if ref == nil && len(attachments) > 0 {
+			events, err = s.Events(ctx, t.ID)
+			if err != nil {
+				return err
+			}
 		}
 
 		return printAttachments(o, attachments, orderEvents(events))
 	})
 }
 
-// readAttachments returns the attachments on t's events and annotations, or on the event ref
-// names when set, with the events whose seqs their rows show.
+// readAttachments returns the attachments on t's events and annotations or, when ref is set, on
+// the event it names, with that event.
 func readAttachments(
 	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef, selection timelineSelection,
 ) ([]timeline.Attachment, []timeline.Event, error) {
-	if ref != nil {
-		e, err := findEventIn(ctx, s, t, *ref, selection)
-		if err != nil {
-			return nil, nil, err
-		}
-		attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
-		return attachments, []timeline.Event{e}, err
-	}
-
-	attachments, err := s.TimelineAttachments(ctx, t.ID)
-	if err != nil || len(attachments) == 0 {
+	if ref == nil {
+		attachments, err := s.TimelineAttachments(ctx, t.ID)
 		return attachments, nil, err
 	}
-	events, err := s.Events(ctx, t.ID)
 
-	return attachments, events, err
+	e, err := findEventIn(ctx, s, t, *ref, selection)
+	if err != nil {
+		return nil, nil, err
+	}
+	attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
+
+	return attachments, []timeline.Event{e}, err
 }
 
 // printAttachments prints a row per attachment: its id, the seq of its event from order or the

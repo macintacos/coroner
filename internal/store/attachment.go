@@ -12,8 +12,7 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// NewAttachment is a file to attach to the event or annotation it is written with: the
-// attachment's ID, Filename and CreatedAt, and its content.
+// NewAttachment is a file to attach to the event or annotation it is written with.
 type NewAttachment struct {
 	ID, Filename string
 	CreatedAt    time.Time
@@ -37,27 +36,16 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 		return timeline.Attachment{}, err
 	}
 
-	staged, discard, err := stageAttachments(s.blobDir, a.Owner, []NewAttachment{
+	rows, err := s.writeWithAttachments(ctx, a.Owner, []NewAttachment{
 		{ID: a.ID, Filename: a.Filename, CreatedAt: a.CreatedAt, Content: content},
-	})
-	if err != nil {
-		return timeline.Attachment{}, err
-	}
-	defer discard()
-
-	err = s.write(ctx, func(q *sqlcgen.Queries) error {
-		err := checkOwner(ctx, q, a.Owner)
-		if err != nil {
-			return err
-		}
-
-		return insertAttachments(ctx, q, s.blobDir, staged)
+	}, func(q *sqlcgen.Queries) error {
+		return checkOwner(ctx, q, a.Owner)
 	})
 	if err != nil {
 		return timeline.Attachment{}, err
 	}
 
-	return staged[0].row, nil
+	return rows[0], nil
 }
 
 // ListAttachments returns the attachments of owner, oldest first.
@@ -153,6 +141,38 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 	}
 
 	return deleted, nil
+}
+
+// writeWithAttachments stages attachments as owner's outside any transaction, then, in one
+// write, runs fn and names their blobs and inserts their rows after it, so a failed fn
+// names no blob. It returns the rows it inserted.
+func (s *Store) writeWithAttachments(
+	ctx context.Context, owner timeline.AttachmentOwner, attachments []NewAttachment, fn func(*sqlcgen.Queries) error,
+) ([]timeline.Attachment, error) {
+	staged, discard, err := stageAttachments(s.blobDir, owner, attachments)
+	if err != nil {
+		return nil, err
+	}
+	defer discard()
+
+	err = s.write(ctx, func(q *sqlcgen.Queries) error {
+		err := fn(q)
+		if err != nil {
+			return err
+		}
+
+		return insertAttachments(ctx, q, s.blobDir, staged)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]timeline.Attachment, len(staged))
+	for i, a := range staged {
+		rows[i] = a.row
+	}
+
+	return rows, nil
 }
 
 // stageAttachments stages the content of each of attachments, owned by owner, outside any
