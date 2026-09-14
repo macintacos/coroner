@@ -1,20 +1,33 @@
 package export
 
 import (
+	"bytes"
+	"cmp"
+	_ "embed"
+	"encoding/xml"
+	"fmt"
+	"io"
 	"slices"
+	"strconv"
 	"strings"
+	"text/template"
 	"time"
 	"unicode/utf8"
 
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
+//go:embed svg/timeline.svg.tmpl
+var svgShell string
+
 const (
-	svgWidth  = 1200.0
-	svgGutter = 200.0
-	svgMargin = 24.0
-	// svgPlotWidth is the width of the time axis, between the lane labels and the right margin.
-	svgPlotWidth   = svgWidth - svgGutter - svgMargin
+	svgHeaderRunes = 110
+	svgWidth       = 1224.0
+	svgGutter      = 200.0
+	svgMargin      = 24.0
+	// svgPlotWidth is the width of the time axis, between the lane labels and a right margin
+	// wide enough for half a tick's date.
+	svgPlotWidth   = svgWidth - svgGutter - 2*svgMargin
 	svgAxisHeight  = 40.0
 	svgRowHeight   = 22.0
 	svgLanePadding = 6.0
@@ -27,6 +40,106 @@ const (
 	// svgMuted colours the lane of events with no source.
 	svgMuted = "#6b7280"
 )
+
+// svgPicture is what the SVG template prints: a header, then the plot, translated down to
+// PlotY, or a note at NoteY when there are no events.
+type svgPicture struct {
+	Width, Height, PlotY, NoteY, AxisY float64
+	// Title is cut to fit the header; FullTitle names the picture.
+	Title, FullTitle string
+	Header           []svgText
+	Plot             svgLayout
+}
+
+// svgText is a line of header text with its baseline.
+type svgText struct {
+	Y    float64
+	Text string
+}
+
+// WriteSVG writes env's timeline to w as a static SVG picture: a header naming the timeline,
+// its refs, the zone and when it was exported, then a time axis over the export's window with
+// ticks on zone's wall clock (nil is UTC), and a lane per source in order of first appearance,
+// then (no source), with each event in its own row. It fails, writing nothing, unless env
+// holds one timeline.
+func WriteSVG(w io.Writer, env Envelope, zone *time.Location) error {
+	if len(env.Timelines) != 1 {
+		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
+	}
+
+	// text/template escapes nothing, so every string from the export goes through text.
+	shell, err := template.New("svg").Funcs(template.FuncMap{"text": xmlText, "num": svgNumber, "add": add}).Parse(svgShell)
+	if err != nil {
+		return err
+	}
+	var picture bytes.Buffer
+	err = shell.Execute(&picture, newSVGPicture(env, cmp.Or(zone, time.UTC)))
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(picture.Bytes())
+	return err
+}
+
+// newSVGPicture returns what the template prints for env in zone.
+func newSVGPicture(env Envelope, zone *time.Location) svgPicture {
+	t := env.Timelines[0]
+	title := flatten(t.Name)
+	if strings.TrimSpace(t.Title) != "" {
+		title = flatten(t.Title) + " (" + flatten(t.Name) + ")"
+	}
+
+	var header []string
+	if len(t.Refs) > 0 {
+		header = append(header, flatten(strings.Join(t.Refs, ", ")))
+	}
+	exported := time.Time(env.ExportedAt).In(zone)
+	header = append(header,
+		"Times in "+pageZoneName(zone),
+		"Exported "+exported.Format("2006-01-02 15:04")+" "+zoneName(exported)+" by coroner "+flatten(env.CoronerVersion),
+	)
+
+	picture := svgPicture{Width: svgWidth, AxisY: svgAxisHeight, Title: truncate(title, svgHeaderRunes), FullTitle: title}
+	y := 58.0
+	for _, line := range header {
+		picture.Header = append(picture.Header, svgText{Y: y, Text: truncate(line, svgHeaderRunes)})
+		y += 18
+	}
+
+	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
+	picture.PlotY, picture.NoteY = y+4, y+10
+	picture.Plot = layoutSVG(events, exportWindow(env.Query, events), zone)
+	picture.Height = picture.PlotY + picture.Plot.Height + svgMargin
+	if len(events) == 0 {
+		picture.Height = picture.NoteY + svgMargin
+	}
+
+	return picture
+}
+
+// xmlText escapes s as XML text or attribute content, writing U+FFFD for what XML cannot hold,
+// such as control characters and invalid UTF-8.
+func xmlText(s string) (string, error) {
+	var b strings.Builder
+	err := xml.EscapeText(&b, []byte(s))
+
+	return b.String(), err
+}
+
+// svgNumber formats a coordinate to two decimals, so output never depends on float printing.
+func svgNumber(v float64) string {
+	return strconv.FormatFloat(v, 'f', 2, 64)
+}
+
+func add(a, b float64) float64 {
+	return a + b
+}
+
+// flatten returns s on one line, trimmed.
+func flatten(s string) string {
+	return strings.TrimSpace(strings.Join(lines(s), " "))
+}
 
 // svgWindow is the stretch of time the axis spans.
 type svgWindow struct{ From, To time.Time }
@@ -172,7 +285,7 @@ func (axis svgAxis) mark(e Event, zone *time.Location, y float64) svgMark {
 		shape = svgPoint
 	}
 
-	text := svgWhen(e, zone) + " " + strings.TrimSpace(strings.Join(lines(e.Text), " "))
+	text := svgWhen(e, zone) + " " + flatten(e.Text)
 	m := svgMark{
 		X: axis.x(start), Y: y, Shape: shape, Fuzzy: e.Approximate || precisionWindow(e.Precision) > 0,
 		Label: truncate(text, svgLabelRunes), Title: text,

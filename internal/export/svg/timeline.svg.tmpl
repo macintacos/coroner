@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="{{num .Width}}" height="{{num .Height}}" viewBox="0 0 {{num .Width}} {{num .Height}}" font-family="system-ui, sans-serif" font-size="12" role="img">
+<title>{{text .FullTitle}}</title>
+<rect width="{{num .Width}}" height="{{num .Height}}" fill="#ffffff"/>
+<text x="24" y="34" font-size="18" font-weight="600" fill="#1e2328">{{text .Title}}</text>
+{{- range .Header}}
+<text x="24" y="{{num .Y}}" fill="#5c6670">{{text .Text}}</text>
+{{- end}}
+{{- if not .Plot.Lanes}}
+<text x="24" y="{{num .NoteY}}" fill="#1e2328">No events.</text>
+{{- else}}
+<g transform="translate(0 {{num .PlotY}})">
+{{- range .Plot.Ticks}}
+<line x1="{{num .X}}" y1="{{num $.AxisY}}" x2="{{num .X}}" y2="{{num $.Plot.Height}}" stroke="#d6dbdf"/>
+{{- if .Date}}
+<text x="{{num .X}}" y="14" text-anchor="middle" font-size="11" fill="#5c6670">{{text .Date}}</text>
+{{- end}}
+{{- if .Time}}
+<text x="{{num .X}}" y="30" text-anchor="middle" font-size="11" fill="#5c6670">{{text .Time}}</text>
+{{- end}}
+{{- end}}
+<line x1="0" y1="{{num $.AxisY}}" x2="{{num $.Width}}" y2="{{num $.AxisY}}" stroke="#d6dbdf"/>
+{{- range .Plot.Lanes}}
+{{- $color := .Color}}
+<g>
+<title>{{text .Title}}</title>
+<text x="24" y="{{num (add .Y 21)}}" font-weight="600" fill="{{$color}}">{{text .Label}}</text>
+</g>
+{{- range .Marks}}
+<g>
+<title>{{text .Title}}</title>
+{{- if eq .Shape "bar"}}
+<rect x="{{num .X}}" y="{{num (add .Y -5)}}" width="{{num .Width}}" height="10" rx="2" fill="{{$color}}" stroke="{{$color}}"{{if .Fuzzy}} fill-opacity="0.12" stroke-dasharray="3 2"{{else}} fill-opacity="0.35"{{end}}/>
+{{- else}}
+{{- if eq .Shape "band"}}
+<rect x="{{num .X}}" y="{{num (add .Y -7)}}" width="{{num .Width}}" height="14" fill="{{$color}}" fill-opacity="0.15"/>
+{{- end}}
+<circle cx="{{num .X}}" cy="{{num .Y}}" r="4"{{if .Fuzzy}} fill="#ffffff" stroke="{{$color}}" stroke-width="1.5" stroke-dasharray="2 1.5"{{else}} fill="{{$color}}"{{end}}/>
+{{- end}}
+<text x="{{num .LabelX}}" y="{{num (add .Y 4)}}" text-anchor="{{.Anchor}}" font-size="11" fill="#1e2328">{{text .Label}}</text>
+</g>
+{{- end}}
+<line x1="0" y1="{{num (add .Y .Height)}}" x2="{{num $.Width}}" y2="{{num (add .Y .Height)}}" stroke="#d6dbdf"/>
+{{- end}}
+</g>
+{{- end}}
+</svg>
