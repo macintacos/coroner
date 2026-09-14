@@ -20,7 +20,8 @@ is missing, `coroner timeline edit` when no change is given, and each with
 `CORONER_NO_INPUT` keeps every form, the `coroner timeline list` picker and the viewer
 closed: a command line missing a required value exits 2 instead of asking.
 
-- `text` is for people.
+- `text` is for people. With `-q`, a command that creates a timeline, event, annotation,
+  link or overlay prints only the id of what it created, on its own line, for `$(...)`.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.
 - `jsonl` is one JSON object per line. `-o rca/` writes it into a directory with its
   attachments' files, as for `md`.
@@ -57,6 +58,9 @@ closed: a command line missing a required value exits 2 instead of asking.
 
 - Keys are snake_case, and every key is always present: an empty value is `null`, never a
   missing key.
+- Every command that writes takes `--dry-run`, and under `json` prints what it wrote, or
+  would write, with its ids, so a script never lists to learn one. `coroner version` names
+  the export `format_versions` it reads.
 - Under `json`, a collection is wrapped in an object that says whether it was cut short
   (`truncated`) and how many items matched (`total`).
 - Under `jsonl`, each item of a collection is its own line, with no wrapping object. A
