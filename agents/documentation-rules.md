@@ -101,12 +101,14 @@ digraph coroner_docs_router {
   `how-to/`, `reference/`, `explanation/` and `contributing/` are its Diátaxis sections.
   [The tutorial](../docs/tutorial/first-timeline.md) and
   [the how-to guides](../docs/how-to/index.md) are in those sections and the nav
-  (`docs/how-to/install.md` keeps its own entry), and the examples test fails when a
-  `coroner` line in their shell code blocks stops parsing, so a changed command or flag
-  updates them in the same change. The reference and explanation pages (not in the repo
-  yet — EXC-1302) join those sections and the nav. A page links a file outside `docs/` by
-  its GitHub URL, since a relative one breaks on the site and `mise run docs:build` does
-  not catch it.
+  (`docs/how-to/install.md` keeps its own entry). The reference and explanation pages (not
+  in the repo yet — EXC-1302) join those sections and the nav. The examples test fails
+  when a `coroner` line in the shell code blocks of any page under `docs/` stops parsing,
+  so a changed command or flag updates those pages in the same change. The output shown
+  under a `console` prompt is pasted from real runs and is not checked, so a change to a
+  command's text output updates it on those pages in the same change. A page links a file
+  outside `docs/` by its GitHub URL, since a relative one breaks on the site and
+  `mise run docs:build` does not catch it.
 - **[`docs/reference/cli/`](../docs/reference/cli/)** (human-facing) — the CLI reference,
   one page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never

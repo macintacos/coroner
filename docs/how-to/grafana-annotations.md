@@ -65,26 +65,34 @@ You need jq, curl, and a Grafana service account token that can write annotation
    {"dashboardUID":"checkout-overview","time":1789096448123,"tags":["coroner","mongod"],"text":"db-2 elected primary"}
    ```
 
+   Grafana keeps milliseconds, so events less than a millisecond apart get the same
+   `time`, like the two at 1789096447412.
+
 To add organization annotations instead, which any dashboard can show by querying the
-Grafana annotations data source by tag, delete the `dashboardUID` line and drop
-`--arg dashboard checkout-overview`.
+Grafana annotations data source by tag, delete the `dashboardUID: $dashboard,` line from
+`grafana.jq` and drop `--arg dashboard checkout-overview`.
 
 ## Send them to Grafana
 
-Put the Grafana address and token in the environment, then send one request per body:
+Set the Grafana address, then paste the token when `read -rs` waits for it, so it stays
+out of your shell history. The header goes in a file only you can read, which keeps the
+token off curl's command line. Send one request per body, then delete the file:
 
 ```sh
-export GRAFANA_URL=https://grafana.example.com
-export GRAFANA_TOKEN=glsa_...   # your service account token
+GRAFANA_URL=https://grafana.example.com
+read -rs GRAFANA_TOKEN
+(umask 077; printf 'Authorization: Bearer %s\n' "$GRAFANA_TOKEN" > grafana.headers)
 
 jq -c --arg dashboard checkout-overview -f grafana.jq rca.jsonl |
   while read -r body; do
     curl -sS --fail-with-body -X POST "$GRAFANA_URL/api/annotations" \
-      -H "Authorization: Bearer $GRAFANA_TOKEN" \
+      -H @grafana.headers \
       -H "Content-Type: application/json" \
       -d "$body"
     echo
   done
+
+rm grafana.headers
 ```
 
 Grafana answers each request with a message and the new annotation's ID, such as:

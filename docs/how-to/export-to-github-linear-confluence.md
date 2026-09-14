@@ -3,9 +3,10 @@
 *Audience: people who use coroner and want to paste a timeline into a ticket, a wiki page
 or a chat.*
 
-The Markdown export is written to be pasted. It uses headings, bullets, bold and inline
-code, with no tables and no front matter, so most destinations keep its structure. This
-page lists what survives in each one.
+The Markdown export is written to be pasted. It uses headings, bullets, bold, italics,
+inline code, a fenced code block for evidence of more than one line, and links to
+attachments, with no tables and no front matter, so most destinations keep its structure.
+This page lists what survives in each one.
 
 ## Copy the export
 
@@ -63,10 +64,13 @@ Slack's message composer understands only part of Markdown: headings appear as l
 characters, and tables are dropped. The export uses bullets rather than tables for this
 reason, so the events and annotations stay readable.
 
+Paste the export into a message. For a long timeline, upload `rca.md` as a file instead.
+
 ## Attachments
 
-Pasting Markdown uploads none of its images or files, in any of these destinations. The
-export links each attachment to a file on your machine, and says so on stderr.
+Attachments are the files added with `--attach`. Pasting Markdown uploads none of them, in
+any of these destinations. The export links each attachment to a file on your machine, and
+says so on stderr.
 
 To share attachments, export into a directory. coroner writes the Markdown and every
 attachment beside it, linked by relative paths:
@@ -77,5 +81,6 @@ Wrote rca/checkout-latency.md
 Wrote 1 attachment file to rca/attachments
 ```
 
-Commit the directory to a repository, where GitHub and GitLab show its images, or upload
-the files from `rca/attachments/` by hand wherever you pasted the Markdown.
+For GitHub and GitLab, commit `rca/` to a repository and open `rca/checkout-latency.md`
+there, where its images show. For Confluence and other destinations, attach the files from
+`rca/attachments/` to the page by hand.

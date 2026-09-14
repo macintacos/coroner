@@ -18,9 +18,9 @@ nav = [
     { "Import a colleague's export" = "how-to/import.md" },
     { "Capture Slack messages" = "how-to/capture-slack-messages.md" },
     { "Add log lines" = "how-to/add-log-lines.md" },
-    { "Share a timeline" = "how-to/export-to-github-linear-confluence.md" },
-    { "Query with jq" = "how-to/query-with-jq.md" },
-    { "Grafana annotations" = "how-to/grafana-annotations.md" },
+    { "Share a timeline in GitHub, Linear, Confluence and chat" = "how-to/export-to-github-linear-confluence.md" },
+    { "Query a timeline with jq" = "how-to/query-with-jq.md" },
+    { "Show a timeline's events on a Grafana dashboard" = "how-to/grafana-annotations.md" },
   ] },
   { "Reference" = [
     { "Export format" = "reference/export-format.md" },

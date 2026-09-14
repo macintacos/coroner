@@ -15,17 +15,17 @@ coroner keeps every timeline in one SQLite file. So that this tutorial starts fr
 and leaves your real timelines alone, point coroner at a new file for this terminal:
 
 ```sh
-export CORONER_DB=coroner-tutorial.db
+export CORONER_DB="$PWD/coroner-tutorial.db"
 ```
 
-coroner creates `coroner-tutorial.db` in the current directory the first time a command
-writes to it.
+coroner creates `coroner-tutorial.db` in this directory the first time a command writes to
+it, and keeps using it even if you change directory.
 
 ## Create a timeline
 
 A timeline is the record of one investigation. Its name is how you refer to it in
-commands; its title is free text; its refs are the tickets it belongs to. Create one with
-two refs:
+commands; its title is free text; its refs are the ticket keys or URLs it belongs to.
+Create one with two refs:
 
 ```console
 $ coroner timeline create checkout-latency --title "Checkout latency spike" --ref INC-4821 --ref https://tracker.example.com/INC-4821
@@ -57,8 +57,8 @@ Added event #3 to timeline `checkout-latency` at 2026-09-11T00:02:30Z (+00:00 lo
 ```
 
 Each line coroner prints is the time it stored, in UTC, then the same time in your local
-zone. The third event lasted three minutes, so it has an end as well as a start. `#1`,
-`#2` and `#3` are the events' seqs: the numbers you use to refer to them later.
+zone. The third event lasted just over three minutes, so it has an end as well as a start.
+`#1`, `#2` and `#3` are the events' seqs: the numbers you use to refer to them later.
 
 Times people tell you are rarely exact. Type those the way you would say them:
 
@@ -69,10 +69,12 @@ $ coroner event add "Rolled back deploy 812" --at "3 hours ago" --source deploy-
 Added event #5 to timeline `checkout-latency` at 2026-09-14T02:00:00Z (+00:00 local: 02:00:00)
 ```
 
-This page was run on 2026-09-14 at 05:11 UTC, in the UTC zone. Your dates for these two
-events are yesterday and three hours before you ran the command, and your local times are
-in your own zone. Check the echoed time each time you type one like this: it is how you
-catch a phrase that meant something other than you intended.
+This page was run on 2026-09-14 at 05:11 UTC, in the UTC zone. "3 hours ago" is precise to
+the hour, so coroner stored the start of that hour, which is why the echo shows 02:00:00
+and not 02:11:00. Your dates for these two events are yesterday and three hours before you
+ran the command, and your local times are in your own zone. Check the echoed time each
+time you type one like this: it is how you catch a phrase that meant something other than
+you intended.
 
 ## Attach evidence and a comment
 
@@ -92,7 +94,9 @@ $ coroner annotation add "The election starts 4 minutes after the alert, so it i
 Added comment annotation 01a09e53-fc99-7d61-aa27-9b21cf27597b to event #3 in timeline `checkout-latency`
 ```
 
-Your annotation IDs will differ from the ones shown here.
+Your output will differ from this page in a few more places: the annotation IDs above, the
+timeline's ID and creation time in the text view below, and the export time and coroner
+version in the Markdown export.
 
 ## View the timeline
 
@@ -103,9 +107,9 @@ coroner timeline view
 ```
 
 The viewer lists the events in the order they happened, grouped by day, with a line
-showing the time between one event and the next. Those gaps are the stretches nobody has
-explained yet. Move with the arrow keys, press `enter` on event 2 to see its evidence,
-press `?` to list every key, and press `q` to quit.
+marking each silence of five minutes or more between events. Those are the stretches your
+timeline does not explain yet. Move with the arrow keys, press `enter` on event 2 to see
+its evidence, press `?` to list every key, and press `q` to quit.
 
 To print the same timeline as plain text instead, add `--format text`:
 
@@ -128,7 +132,7 @@ Annotations: 2
 #5  2026-09-14T02:00:00Z  +11h55m0s  deploy-bot  Rolled back deploy 812
 ```
 
-The column after each time is the gap since the event before it.
+The column after each time is the time since the event before it started.
 
 ## Export the timeline
 
@@ -178,6 +182,6 @@ You created a timeline for an incident, added events from exact and remembered t
 attached evidence and a comment, found the gaps in the viewer, and exported the result.
 
 To stop using the tutorial database, run `unset CORONER_DB`, then delete
-`coroner-tutorial.db` and `coroner-tutorial.db.lock`. For the jobs you do during a real
-investigation, such as capturing Slack messages and log lines or sharing the export, see
-the [how-to guides](../how-to/index.md).
+`coroner-tutorial.db` and `coroner-tutorial.db.lock` from the directory you started in.
+For the jobs you do during a real investigation, such as capturing Slack messages and log
+lines or sharing the export, see the [how-to guides](../how-to/index.md).

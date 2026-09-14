@@ -75,8 +75,9 @@ $ coroner event add "nginx upstream timeouts on web-2" --at "Sep 10 23:58:12" --
 Added event #2 to timeline `checkout-latency` at 2026-09-11T04:58:12Z (-05:00 America/Chicago: 23:58:12)
 ```
 
-coroner gives a yearless stamp the latest year that does not put it in the future. A day
-padded with a space, as in `Sep  9`, reads the same as `Sep 9`.
+coroner gives a yearless stamp the latest year that does not put it after the moment you
+run the command. A day padded to two characters with a space reads the same as one
+without.
 
 ## Java and Python application logs
 
@@ -122,4 +123,5 @@ of:
 
 coroner does not remember a zone per source, so pass `--tz` for every line from a host
 whose zone differs from your default, and check the zone in the time coroner echoes.
-`coroner help time` lists every time format coroner reads.
+[How coroner reads the times you type](../reference/cli/coroner_help_time.md) lists every
+time format coroner reads.

@@ -15,11 +15,11 @@ the link and the text, and write the event's text yourself.
 2. Take the digits after `p`. They are the time the message was posted, as microseconds
    since the Unix epoch.
 
-3. Add the event with those digits after `@` as its time, the link as its URL, and `slack`
-   as its source:
+3. Add the event with those digits as its time, the link as its URL, and `slack` as its
+   source:
 
    ```console
-   $ coroner event add "On-call reports checkout p99 at 4s" --at @1789084692123456 --url https://acme.slack.com/archives/C024BE91L/p1789084692123456 --source slack
+   $ coroner event add "On-call reports checkout p99 at 4s" --at 1789084692123456 --url https://acme.slack.com/archives/C024BE91L/p1789084692123456 --source slack
    Added event #1 to timeline `checkout-latency` at 2026-09-10T23:58:12.123456Z (+00:00 local: 23:58:12)
    ```
 

@@ -3,9 +3,10 @@
 *Audience: people who use coroner and want to answer questions about a timeline with
 [jq](https://jqlang.org/).*
 
-A JSONL export holds one JSON record per line: the header, the timeline, its sources, and
-its events, each followed by its attachments and annotations. A record's `type` key names
-which it is, so each recipe below starts by selecting the records it needs. The
+A JSONL export holds one JSON record per line: the header, the timeline, the annotations
+on the whole timeline, its sources, and its events, each followed by its attachments and
+annotations. A record's `type` key names which it is, so each recipe below starts by
+selecting the records it needs. The
 [export format reference](../reference/export-format.md) lists every key and the record
 order.
 
@@ -68,10 +69,11 @@ jq -r 'select(.type == "event" and .occurred_at >= "2026-09-11T03:10" and .occur
 
 ## Show each piece of evidence with its event
 
-An annotation names its event by `event_id`, so index the events by `id` first:
+An annotation names its event by `event_id`, so index the events by `id` first. Evidence
+on the whole timeline has a null `event_id` and prints as `(timeline)`:
 
 ```sh
-jq -r -s 'INDEX(.[] | select(.type == "event"); .id) as $events | .[] | select(.type == "annotation" and .kind == "evidence") | "#\($events[.event_id].seq) \($events[.event_id].text): \(.body)"' rca.jsonl
+jq -r -s 'INDEX(.[] | select(.type == "event"); .id) as $events | .[] | select(.type == "annotation" and .kind == "evidence") | "\(if .event_id then "#\($events[.event_id].seq) \($events[.event_id].text)" else "(timeline)" end): \(.body)"' rca.jsonl
 ```
 
 ```text
@@ -82,10 +84,12 @@ jq -r -s 'INDEX(.[] | select(.type == "event"); .id) as $events | .[] | select(.
 
 jq's `fromdateiso8601` rejects fractional seconds
 ([jqlang/jq#2224](https://github.com/jqlang/jq/issues/2224)), so strip the fraction before
-converting a time to Unix seconds. This recipe prints every gap of ten minutes or more:
+converting a time to Unix seconds. A gap runs from the latest time an earlier event
+covers, its `ended_at` or else its `occurred_at`, to the next event. This recipe prints
+every gap of ten minutes or more:
 
 ```sh
-jq -r -s 'map(select(.type == "event") | .epoch = (.occurred_at | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) | range(1; length) as $i | select(.[$i].epoch - .[$i - 1].epoch >= 600) | "\((.[$i].epoch - .[$i - 1].epoch) / 60 | floor) min before #\(.[$i].seq) \(.[$i].text)"' rca.jsonl
+jq -r -s 'def secs: sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601; map(select(.type == "event")) | foreach .[] as $e ({}; ($e.occurred_at | secs) as $at | .gap = $at - (.covered // $at) | .covered = ([.covered // $at, $at, ($e.ended_at // empty | secs)] | max); select(.gap >= 600) | "\(.gap / 60 | floor) min before #\($e.seq) \($e.text)")' rca.jsonl
 ```
 
 ```text
@@ -95,8 +99,16 @@ jq -r -s 'map(select(.type == "event") | .epoch = (.occurred_at | sub("\\.[0-9]+
 
 ## Query several exports at once
 
-JSONL exports concatenate: each one keeps its own `header` and `timeline` records, and
-every event carries its `timeline_id`. Pipe several through one recipe:
+For timelines in your own database, name each with `-t`. One export holds them all, with
+their events already merged in order:
+
+```sh
+coroner timeline export -t checkout-latency -t mongo-failover --format jsonl > overlay.jsonl
+```
+
+For exports someone sent you, JSONL exports concatenate: each one keeps its own `header`
+and `timeline` records, and every event carries its `timeline_id`. Pipe several through
+one recipe:
 
 ```sh
 cat db.jsonl api.jsonl | jq -r 'select(.type == "event") | "\(.occurred_at) \(.text)"'

@@ -46,12 +46,23 @@ var _ = Describe("exampleLines", func() {
 			HaveField("Text", "coroner timeline export --format md -o rca/")))
 	})
 
-	It("ignores comments, and lines where coroner is not a command word", func() {
+	DescribeTable("starts a line at coroner after a shell keyword or a prefix command",
+		func(line, text string) {
+			Expect(exampleLines("s", line)).To(ConsistOf(SatisfyAll(HaveField("Text", text), HaveField("Skipped", BeEmpty()))))
+		},
+		Entry("a loop body", `while read -r l; do coroner event add "$l"; done`, `coroner event add "$l"; done`),
+		Entry("a condition", "if coroner status; then coroner version; fi", "coroner status; then coroner version; fi"),
+		Entry("an else branch", "else coroner version", "coroner version"),
+		Entry("sudo", "sudo coroner version", "coroner version"),
+		Entry("time", "time coroner version", "coroner version"),
+		Entry("env with an assignment", "env CORONER_DB=x.db coroner status", "coroner status"),
+		Entry("a negation", "! coroner status", "coroner status"),
+	)
+
+	It("ignores comments, and lines where coroner is not a word", func() {
 		text := "  # coroner timeline list\n" +
 			"  $ cp coroner.fish ~/.config/fish/completions/coroner.fish\n" +
-			"  $ ls \"${fpath[1]}/_coroner\"\n" +
-			"install -m 0755 coroner ~/.local/bin/coroner\n" +
-			"brew uninstall --cask coroner"
+			"  $ ls \"${fpath[1]}/_coroner\""
 
 		Expect(exampleLines("s", text)).To(BeEmpty())
 	})
@@ -74,6 +85,9 @@ var _ = Describe("exampleLines", func() {
 		},
 		Entry("command substitution", "  $ coroner timeline use $(coroner timeline list | head -1)"),
 		Entry("a backtick", "  $ coroner timeline use `cat name`"),
+		Entry("coroner as an argument", "install -m 0755 coroner ~/.local/bin/coroner"),
+		Entry("coroner as a package name", "brew uninstall --cask coroner"),
+		Entry("coroner after a command other than a prefix command", "mkdir coroner && cd coroner"),
 	)
 })
 
@@ -102,6 +116,31 @@ var _ = Describe("markdownExampleLines", func() {
 		page := "```markdown\ncoroner nosuch\n```\n\n```text\ncoroner nosuch\n```\n\n```\ncoroner nosuch\n```\n"
 
 		Expect(markdownExampleLines("s", page)).To(BeEmpty())
+	})
+
+	It("reads a block's language from the first word of its info string", func() {
+		page := "```sh title=\"bulk.sh\"\ncoroner version\n```\n"
+
+		Expect(markdownExampleLines("s", page)).To(ConsistOf(HaveField("Text", "coroner version")))
+	})
+
+	It("reads a tilde fence, closed by a longer one", func() {
+		page := "~~~sh\ncoroner version\n~~~~\n\n```text\ncoroner nosuch\n```\n"
+
+		Expect(markdownExampleLines("s", page)).To(ConsistOf(HaveField("Text", "coroner version")))
+	})
+
+	It("closes a block only on a bare fence of its own character at least as long as the opening one", func() {
+		page := "````markdown\n" +
+			"```sh\ncoroner nosuch\n```\n" +
+			"````\n" +
+			"````sh\n" +
+			"cat > notes.md <<'EOF'\n```text\n~~~~\n```\nEOF\n" +
+			"coroner version\n" +
+			"````\n"
+
+		Expect(markdownExampleLines("s", page)).To(ConsistOf(SatisfyAll(
+			HaveField("Number", 12), HaveField("Text", "coroner version"))))
 	})
 })
 
@@ -205,17 +244,13 @@ var _ = Describe("checkInvocation", func() {
 })
 
 var _ = Describe("checkExamples", func() {
-	newRoot := func(ctx SpecContext) func() *cobra.Command {
-		return func() *cobra.Command { return cli.NewRoot(ctx, cli.App{}) }
-	}
-
 	It("names the command, the line and the parse error of each broken example", func(ctx SpecContext) {
 		tree := cli.NewRoot(ctx, cli.App{})
 		create, _, err := tree.Find([]string{"timeline", "create"})
 		Expect(err).NotTo(HaveOccurred())
 		create.Example = "  $ coroner timeline create mongo\n  $ coroner timeline create mongo --sorce\n  $ coroner timeline create 'mongo"
 
-		Expect(checkExamples(tree, newRoot(ctx)).Broken).To(ConsistOf(
+		Expect(checkExamples(tree, freshRoots(ctx)).Broken).To(ConsistOf(
 			"coroner timeline create:2: coroner timeline create mongo --sorce: unknown flag: --sorce",
 			"coroner timeline create:3: coroner timeline create 'mongo: unterminated ' quote",
 		))
@@ -228,7 +263,7 @@ var _ = Describe("checkExamples", func() {
 			Example: "  $ coroner nosuch\n  $ coroner timeline use $(coroner timeline list | head -1)",
 		})
 
-		found := checkExamples(tree, newRoot(ctx))
+		found := checkExamples(tree, freshRoots(ctx))
 
 		Expect(found.Broken).To(ConsistOf(HavePrefix("coroner legacy:1: coroner nosuch: ")))
 		Expect(found.Skipped).To(ConsistOf(HavePrefix("coroner legacy:2: ")))
@@ -238,87 +273,92 @@ var _ = Describe("checkExamples", func() {
 		tree := cli.NewRoot(ctx, cli.App{})
 		tree.AddCommand(&cobra.Command{Use: "legacy", Example: "  $ corner timeline list"})
 
-		Expect(checkExamples(tree, newRoot(ctx)).Skipped).To(ConsistOf("coroner legacy: no coroner line"))
+		Expect(checkExamples(tree, freshRoots(ctx)).Skipped).To(ConsistOf("coroner legacy: no coroner line"))
+	})
+
+	It("counts each line it parsed under every command, broken or not, and no skipped line", func(ctx SpecContext) {
+		tree := &cobra.Command{Use: "coroner"}
+		tree.AddCommand(&cobra.Command{
+			Use:     "legacy",
+			Example: "  $ coroner nosuch\n  $ coroner timeline use $(coroner timeline list | head -1)",
+		})
+
+		Expect(checkExamples(tree, freshRoots(ctx)).Checked).To(Equal(1))
 	})
 
 	It("finds no broken example among coroner's commands", func(ctx SpecContext) {
-		found := checkExamples(cli.NewRoot(ctx, cli.App{}), newRoot(ctx))
+		found := checkExamples(cli.NewRoot(ctx, cli.App{}), freshRoots(ctx))
 
 		for _, line := range found.Skipped {
 			AddReportEntry("skipped example", line)
 		}
 		Expect(found.Broken).To(BeEmpty())
+		Expect(found.Checked).To(BeNumerically(">", 0))
 	})
 })
 
 var _ = Describe("checkDocExamples", func() {
-	newRoot := func(ctx SpecContext) func() *cobra.Command {
-		return func() *cobra.Command { return cli.NewRoot(ctx, cli.App{}) }
-	}
-
-	It("names the page, the line and the parse error of each broken example under dirs", func(ctx SpecContext) {
+	It("names the page, the line and the parse error of each broken example", func(ctx SpecContext) {
 		docs := fstest.MapFS{
+			"index.md":          {Data: []byte("```console\n$ coroner nosuch\n```\n")},
 			"how-to/logs.md":    {Data: []byte("# Logs\n\n```sh\ncoroner version\ncoroner event add x --sorce slack\n```\n")},
-			"how-to/index.md":   {Data: []byte("```console\n$ coroner nosuch\n```\n")},
-			"reference/x.md":    {Data: []byte("```sh\ncoroner nosuch\n```\n")},
 			"how-to/logs.jsonl": {Data: []byte("coroner nosuch\n")},
 		}
 
-		found, err := checkDocExamples(docs, []string{"how-to"}, newRoot(ctx))
+		found, err := checkDocExamples(docs, freshRoots(ctx))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Broken).To(ConsistOf(
 			"how-to/logs.md:5: coroner event add x --sorce slack: unknown flag: --sorce",
-			HavePrefix("how-to/index.md:2: coroner nosuch: "),
+			HavePrefix("index.md:2: coroner nosuch: "),
 		))
 	})
 
-	It("fails on a directory that does not exist", func(ctx SpecContext) {
-		_, err := checkDocExamples(fstest.MapFS{}, []string{"tutorial"}, newRoot(ctx))
-
-		Expect(err).To(MatchError(fs.ErrNotExist))
-	})
-
-	It("finds no broken example in the tutorial and how-to guides", func(ctx SpecContext) {
-		found, err := checkDocExamples(os.DirFS("../../docs"), []string{"tutorial", "how-to"}, newRoot(ctx))
+	It("finds no broken example on any docs page", func(ctx SpecContext) {
+		found, err := checkDocExamples(os.DirFS("../../docs"), freshRoots(ctx))
 
 		Expect(err).NotTo(HaveOccurred())
 		for _, line := range found.Skipped {
 			AddReportEntry("skipped example", line)
 		}
 		Expect(found.Broken).To(BeEmpty())
+		Expect(found.Checked).To(BeNumerically(">", 0))
 	})
 })
 
-// exampleReport is what checkExamples or checkDocExamples found. Each entry reads
+// freshRoots returns a func that builds a new coroner root command on each call.
+func freshRoots(ctx SpecContext) func() *cobra.Command {
+	return func() *cobra.Command { return cli.NewRoot(ctx, cli.App{}) }
+}
+
+// exampleReport is what a check of example lines found. Each entry reads
 // "<source>:<line>: <text>: <reason>".
 type exampleReport struct {
 	Broken  []string
 	Skipped []string
+	// Checked is the number of lines parsed.
+	Checked int
 }
 
-// checkDocExamples checks each coroner line in the shell code blocks of every Markdown page
-// under dirs of docs, labelled with its path in docs, as checkLines does.
-func checkDocExamples(docs fs.FS, dirs []string, newRoot func() *cobra.Command) (exampleReport, error) {
+// checkDocExamples checks the coroner lines of every Markdown page in docs, each labelled with
+// its path, as checkLines does.
+func checkDocExamples(docs fs.FS, newRoot func() *cobra.Command) (exampleReport, error) {
 	var lines []exampleLine
-
-	for _, dir := range dirs {
-		err := fs.WalkDir(docs, dir, func(name string, entry fs.DirEntry, err error) error {
-			if err != nil || entry.IsDir() || path.Ext(name) != ".md" {
-				return err
-			}
-
-			page, err := fs.ReadFile(docs, name)
-			lines = append(lines, markdownExampleLines(name, string(page))...)
-
+	err := fs.WalkDir(docs, ".", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() || path.Ext(name) != ".md" {
 			return err
-		})
-		if err != nil {
-			return exampleReport{}, err
 		}
-	}
 
-	return checkLines(lines, newRoot), nil
+		page, err := fs.ReadFile(docs, name)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, markdownExampleLines(name, string(page))...)
+
+		return nil
+	})
+
+	return checkLines(lines, newRoot), err
 }
 
 // checkExamples checks each coroner line in the Example of tree and every command under it,
@@ -335,13 +375,15 @@ func checkExamples(tree *cobra.Command, newRoot func() *cobra.Command) exampleRe
 		under := checkExamples(child, newRoot)
 		found.Broken = append(found.Broken, under.Broken...)
 		found.Skipped = append(found.Skipped, under.Skipped...)
+		found.Checked += under.Checked
 	}
 
 	return found
 }
 
-// checkLines checks each of lines that is not skipped against a fresh tree from newRoot, one
-// per line, because a tree keeps the flag values it parsed.
+// checkLines parses each line against a fresh tree from newRoot, one per line because a tree
+// keeps the flag values it parsed, reports a line with Skipped set as skipped, and counts what
+// it parsed.
 func checkLines(lines []exampleLine, newRoot func() *cobra.Command) exampleReport {
 	var found exampleReport
 
@@ -356,6 +398,7 @@ func checkLines(lines []exampleLine, newRoot func() *cobra.Command) exampleRepor
 			continue
 		}
 
+		found.Checked++
 		args, err := splitWords(line.Text)
 		if err == nil {
 			err = checkInvocation(newRoot(), args)
@@ -458,29 +501,38 @@ type exampleLine struct {
 	Source string
 	// Number is the line of the text the invocation starts on, from 1.
 	Number int
-	// Text runs from the word coroner to the end of the line.
+	// Text runs from the word coroner to the end of the line, or is the whole line when coroner
+	// is not a command word in it.
 	Text string
 	// Skipped is why the line is not checked, or empty.
 	Skipped string
 }
 
-// exampleLines returns each line of text where coroner is a command word, from that word on,
-// labelled with source. coroner is a command word at the start of the line, after a $ or PS>
-// prompt, or after |, ;, & or (, once past any NAME=value assignments. A line ending in a
-// backslash continues on the next. Lines starting with # are ignored, and a line with $( or a
-// backtick is returned with Skipped set.
+// exampleLines returns each line of text where coroner is a word, labelled with source. coroner
+// is a command word at the start of the line, after a $ or PS> prompt, or after |, ;, & or (,
+// once past any of do, then, else, if, while, until, time, sudo, exec, command, env or ! and
+// any NAME=value assignments, and the line is returned from that word on. A line ending in a
+// backslash continues on the next. Lines starting with # are ignored, and a line where coroner
+// is not a command word, or with $( or a backtick, is returned with Skipped set.
 func exampleLines(source, text string) []exampleLine {
-	commandWord := regexp.MustCompile(`((?:^(?:(?:\$|PS>)\s+)?|[|;&(]\s*)(?:[A-Za-z_]\w*=\S*\s+)*)coroner(?:[\s)]|$)`)
+	commandWord := regexp.MustCompile(`((?:^(?:(?:\$|PS>)\s+)?|[|;&(]\s*)(?:(?:do|then|else|if|while|until|time|sudo|exec|command|env|!)\s+)*(?:[A-Za-z_]\w*=\S*\s+)*)coroner(?:[\s)]|$)`)
+	anyWord := regexp.MustCompile(`(?:^|[\s|;&(])coroner(?:[\s)]|$)`)
 	var lines []exampleLine
 
 	for number, line := range logicalLines(text) {
-		match := commandWord.FindStringSubmatchIndex(line)
-		if match == nil || strings.HasPrefix(line, "#") {
+		if strings.HasPrefix(line, "#") || !anyWord.MatchString(line) {
 			continue
 		}
 
-		found := exampleLine{Source: source, Number: number, Text: line[match[3]:]}
+		found := exampleLine{Source: source, Number: number, Text: line}
+		match := commandWord.FindStringSubmatchIndex(line)
+		if match != nil {
+			found.Text = line[match[3]:]
+		}
+
 		switch {
+		case match == nil:
+			found.Skipped = "coroner is not a command word"
 		case strings.Contains(line, "$("):
 			found.Skipped = "command substitution"
 		case strings.Contains(line, "`"):
@@ -498,17 +550,17 @@ func exampleLines(source, text string) []exampleLine {
 // only the lines starting with a $ prompt and the lines they continue onto.
 func markdownExampleLines(source, markdown string) []exampleLine {
 	lines := strings.Split(markdown, "\n")
-	inBlock, language, continued := false, "", false
+	fence, language, continued := "", "", false
 
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		info, isFence := strings.CutPrefix(trimmed, "```")
 		keep := false
 
 		switch {
-		case isFence:
-			inBlock, language = !inBlock, strings.TrimSpace(info)
-		case !inBlock:
+		case fence == "":
+			fence, language = openingFence(trimmed)
+		case len(trimmed) >= len(fence) && strings.Trim(trimmed, fence[:1]) == "":
+			fence = ""
 		case language == "console":
 			keep = continued || strings.HasPrefix(trimmed, "$ ")
 		default:
@@ -522,6 +574,24 @@ func markdownExampleLines(source, markdown string) []exampleLine {
 	}
 
 	return exampleLines(source, strings.Join(lines, "\n"))
+}
+
+// openingFence returns the run of three or more backticks or tildes that line opens a code block
+// with, and the first word of its info string as the block's language, or two empty strings.
+func openingFence(line string) (string, string) {
+	info := strings.TrimLeft(line, "`")
+	if len(line)-len(info) < 3 {
+		info = strings.TrimLeft(line, "~")
+	}
+
+	fence := line[:len(line)-len(info)]
+	if len(fence) < 3 {
+		return "", ""
+	}
+
+	language, _, _ := strings.Cut(strings.TrimSpace(info), " ")
+
+	return fence, language
 }
 
 // logicalLines yields the trimmed lines of text, each keyed by its first line's number, with a
