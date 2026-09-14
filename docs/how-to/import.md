@@ -7,7 +7,9 @@ adds events or annotations to a timeline you exported, they export it again and 
 back, and `coroner import` brings their export into your database. Importing is safe to
 repeat: records identical to ones you already have are left as they are. Nothing is
 written unless every record can be imported, except that attachments whose files are
-missing are left out and the rest still imports.
+missing are left out and the rest still imports. A colleague without coroner can
+[comment in the HTML page](comment-in-the-html-page.md) instead, and send the comments
+back as a file you import the same way.
 
 ## Share a timeline with its attachment files
 

@@ -17,6 +17,7 @@ nav = [
     "how-to/index.md",
     { "Install coroner" = "how-to/install.md" },
     { "Import a colleague's export" = "how-to/import.md" },
+    { "Comment in the HTML page" = "how-to/comment-in-the-html-page.md" },
     { "Capture Slack messages" = "how-to/capture-slack-messages.md" },
     { "Add log lines" = "how-to/add-log-lines.md" },
     { "Share a timeline in GitHub, Linear, Confluence and chat" = "how-to/export-to-github-linear-confluence.md" },

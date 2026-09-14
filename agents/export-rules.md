@@ -115,7 +115,14 @@
    reaches the markup or ends a script or style element early; another fails when
    `viewer.js` names an HTML sink, such as `innerHTML`, or a vis-timeline `title`, which
    it would parse as HTML; and another when the bundle's SHA-256 is not the one its README
-   records. The page's layout is not a contract (`AGENTS.md` Rule 3); its goldens in
+   records. Its annotations export writes records only through `makeAnnotation` and
+   `annotationsHeader`, pure functions that give a comment every key the export's
+   annotation has, a UUIDv7 ID and instants with nine fractional digits, which import
+   requires; it keeps drafts only in `localStorage`, under the page's timeline ids and the
+   reader's name, and never writes the page's file. A spec validates a file a page
+   exported, kept in `internal/cli/testdata/script/viewer-annotations.txtar`, against the
+   schema and checks its IDs and instants, and that script imports it. The page's layout
+   is not a contract (`AGENTS.md` Rule 3); its goldens in
    `internal/export/testdata/html/`, with the inlined files elided, change only through
    `go test ./internal/export -update`. The bundle changes only by the steps in
    [its README](../internal/export/html/vendor/README.md).

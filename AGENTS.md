@@ -213,7 +213,10 @@ digraph coroner_rules_router {
    goldens in `internal/export/testdata/markdown/*.md`,
    `internal/export/testdata/mermaid/*.mmd`, `internal/export/testdata/html/*.html` and
    `internal/export/testdata/svg/*.svg` are rewritten by
-   `go test ./internal/export -update`. `internal/store/testdata/compat/v*.db` is written
+   `go test ./internal/export -update`. The page-exported annotations file in
+   `internal/cli/testdata/script/viewer-annotations.txtar` is rewritten only by importing
+   that script's `inc-4821.jsonl`, exporting it with `--format html`, and exporting
+   comments from that page in a browser. `internal/store/testdata/compat/v*.db` is written
    once, from its release's tag, by `go run ./internal/tools/compatfixture -o <path>`, and
    never regenerated ([the migration policy](docs/contributing/migrations.md)).
    `testdata/export/v<MAJOR.MINOR>/` is written for the current `format_version` by
