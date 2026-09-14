@@ -34,8 +34,9 @@ failing test.
    and every later build must open, migrate and read it
    ([§ Fixture databases](#fixture-databases)).
 6. **The schema is internal, never a contract.** JSON and JSONL exports are the sharing
-   contract ([`AGENTS.md`](../../AGENTS.md) Rule 3). The schema can change freely through
-   new migrations, as long as every committed fixture still opens.
+   contract ([`AGENTS.md`](https://github.com/macintacos/coroner/blob/main/AGENTS.md) Rule
+   3). The schema can change freely through new migrations, as long as every committed
+   fixture still opens.
 7. **One process migrates a database at a time.** goose ships lockers for Postgres and
    MySQL, but not for SQLite. When migrations are pending, `store.Open` holds an exclusive
    `flock` on `<db>.lock` while it takes the backup and applies them, and reads the schema
@@ -89,7 +90,9 @@ tagged:
 ## Deferred gaps
 
 - **Migrations run with foreign keys on.** A migration that rebuilds a table other tables
-  reference relies on [store rule 3](../agents/store-rules.md) to turn foreign keys off;
-  one that forgets it deletes every child row through the cascade. Running goose on a
-  connection opened without `foreign_keys(1)`, then `PRAGMA foreign_key_check`, would rule
-  that out. No migration rebuilds a table yet, so this waits for the first one that does.
+  reference relies on
+  [store rule 3](https://github.com/macintacos/coroner/blob/main/agents/store-rules.md) to
+  turn foreign keys off; one that forgets it deletes every child row through the cascade.
+  Running goose on a connection opened without `foreign_keys(1)`, then
+  `PRAGMA foreign_key_check`, would rule that out. No migration rebuilds a table yet, so
+  this waits for the first one that does.

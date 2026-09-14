@@ -53,12 +53,12 @@ digraph coroner_rules_router {
     "Load CONTEXT.md" [shape=box];
     "Load STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
-    "Load docs/agents/documentation-rules.md" [shape=box];
-    "Load docs/agents/timeline-rules.md" [shape=box];
-    "Load docs/agents/store-rules.md" [shape=box];
-    "Load docs/agents/timeparse-rules.md" [shape=box];
-    "Load docs/agents/export-rules.md" [shape=box];
-    "Load docs/agents/viewer-rules.md" [shape=box];
+    "Load agents/documentation-rules.md" [shape=box];
+    "Load agents/timeline-rules.md" [shape=box];
+    "Load agents/store-rules.md" [shape=box];
+    "Load agents/timeparse-rules.md" [shape=box];
+    "Load agents/export-rules.md" [shape=box];
+    "Load agents/viewer-rules.md" [shape=box];
 
     "Working on coroner" -> "What does the change touch?";
     "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
@@ -67,12 +67,12 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md (not in the repo yet — EXC-1303)" [label="JSON output, exports or another contract (Rule 3)"];
     "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
-    "What does the change touch?" -> "Load docs/agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a docs/agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
-    "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
-    "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
-    "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
-    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
-    "What does the change touch?" -> "Load docs/agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
+    "What does the change touch?" -> "Load agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
+    "What does the change touch?" -> "Load agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
+    "What does the change touch?" -> "Load agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
+    "What does the change touch?" -> "Load agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
+    "What does the change touch?" -> "Load agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
+    "What does the change touch?" -> "Load agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
 }
 ```
 

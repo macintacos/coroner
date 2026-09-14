@@ -6,7 +6,7 @@
    change the schema by adding the next numbered file under `internal/store/migrations/`.
    coroner never migrates down, so migrations have no `-- +goose Down`. Every release's
    fixture database must still open once the new migration applies
-   ([the migration policy](../contributing/migrations.md)).
+   ([the migration policy](../docs/contributing/migrations.md)).
 2. **A statement with a `;` before its end, such as a trigger, sits between
    `-- +goose StatementBegin` and `-- +goose StatementEnd`:** goose splits a migration on
    `;`, so the statement breaks without them.
@@ -47,8 +47,8 @@
    nothing marshals an `internal/store/sqlcgen` type to JSON, because JSON output is a
    contract (`AGENTS.md` Rule 3) and a generated model changes whenever the schema does.
    No exported store method takes or returns one either: they speak `internal/timeline`
-   types. The `sqlcgen-private` depguard rule in [`.golangci.yml`](../../.golangci.yml)
-   fails any import of `sqlcgen` outside `internal/store`.
+   types. The `sqlcgen-private` depguard rule in [`.golangci.yml`](../.golangci.yml) fails
+   any import of `sqlcgen` outside `internal/store`.
 6. **A store method's function passed to `Store.write` or `read` uses only the
    `sqlcgen.Queries` it is given, and one passed to `readTx` only the `sqlcgen.DBTX`:**
    calling another `Store` method from inside `write` waits on the transaction's own write
