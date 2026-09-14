@@ -99,11 +99,14 @@ digraph coroner_docs_router {
   `nav` lists the pages, and deployed to GitHub Pages when a `v*` tag is pushed. The
   [landing page](../docs/index.md) says what coroner is and demos it; `tutorial/`,
   `how-to/`, `reference/`, `explanation/` and `contributing/` are its Diátaxis sections.
-  The tutorial and how-to guides (not in the repo yet — EXC-1301; `docs/how-to/install.md`
-  already exists and keeps its own entry) and the reference and explanation pages (not in
-  the repo yet — EXC-1302) join those sections and the nav. A page links a file outside
-  `docs/` by its GitHub URL, since a relative one breaks on the site and
-  `mise run docs:build` does not catch it.
+  [The tutorial](../docs/tutorial/first-timeline.md) and
+  [the how-to guides](../docs/how-to/index.md) are in those sections and the nav
+  (`docs/how-to/install.md` keeps its own entry), and the examples test fails when a
+  `coroner` line in their shell code blocks stops parsing, so a changed command or flag
+  updates them in the same change. The reference and explanation pages (not in the repo
+  yet — EXC-1302) join those sections and the nav. A page links a file outside `docs/` by
+  its GitHub URL, since a relative one breaks on the site and `mise run docs:build` does
+  not catch it.
 - **[`docs/reference/cli/`](../docs/reference/cli/)** (human-facing) — the CLI reference,
   one page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never
