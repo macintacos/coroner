@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
 )
@@ -200,6 +201,19 @@ var _ = Describe("Run", func() {
 
 		Expect(code).To(Equal(0))
 		Expect(out.String()).To(ContainSubstring("bash completion"))
+	})
+
+	It("sets no command's Out, so cobra prints deprecation notices on stderr", func(ctx SpecContext) {
+		var visit func(*cobra.Command)
+		visit = func(cmd *cobra.Command) {
+			// OutOrStderr falls back to os.Stderr only while no command up the tree has Out set.
+			Expect(cmd.OutOrStderr()).To(BeIdenticalTo(os.Stderr), cmd.CommandPath())
+			for _, child := range cmd.Commands() {
+				visit(child)
+			}
+		}
+
+		visit(cli.NewRoot(ctx, newApp()))
 	})
 
 	It("reports a rejected flag on Err and exits 2", func(ctx SpecContext) {

@@ -1,0 +1,21 @@
+# coroner-deprecated is coroner with --throwaway, a global flag deprecated with deprecateFlag.
+# A deprecated flag keeps working and warns on stderr, never on stdout, so JSON output stays
+# valid and the exit code stays the command's own.
+exits 0 coroner version --json
+cp stdout want.json
+exits 0 coroner-deprecated version --json --throwaway
+jsonvalid stdout
+cmp stdout want.json
+stderr '\AFlag --throwaway has been deprecated, use --json instead; .*v0\.9\.0.*2027-03-14\n\z'
+
+# A failing command exits with its own code, and its JSON error envelope stays the last line
+# of stderr.
+exits 2 coroner-deprecated version --format jsonl --throwaway
+! stdout .
+stderr '\AFlag --throwaway has been deprecated'
+stderr '\n\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+# Help leaves the deprecated flag out.
+exec coroner-deprecated --help
+stdout 'GLOBAL FLAGS'
+! stdout throwaway
