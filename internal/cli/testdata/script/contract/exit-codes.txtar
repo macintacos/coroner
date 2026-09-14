@@ -1,7 +1,7 @@
 # Each exit code a command line can reach, with its kind in the stderr JSON error
 # envelope. Nothing reaches 1 (internal) or 130 (interrupted) from a script yet;
-# cli.Run's specs pin those. No command raises id_conflict yet. version's field is
-# experimental until 1.0 and holds the build's version, so a pattern matches it.
+# cli.Run's specs pin those. version's field is experimental until 1.0 and holds the
+# build's version, so a pattern matches it.
 
 # 0: success. stdout is valid JSON and stderr is empty.
 exits 0 coroner version --format json
@@ -30,6 +30,16 @@ exits 2 coroner version --format jsonl
 ! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 
+# 2, invalid_input: an import whose records cannot be read.
+exits 2 coroner import not-an-export.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# 4, id_conflict: an import of a record stored with different content.
+exits 0 coroner import stored.jsonl --db $WORK/conflict.db
+exits 4 coroner import changed.jsonl --db $WORK/conflict.db --json
+stderr '^\{"error":\{"kind":"id_conflict","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
 # In text mode the same failure prints no JSON.
 exits 2 coroner versio
 ! stdout .
@@ -50,3 +60,10 @@ stderr '^\{"error":\{"kind":"db_unreadable","message":"[^\n]+","hint":"[^\n]+"\}
 exits 5 coroner status --db $WORK/dir --json
 ! stdout .
 stderr '^\{"error":\{"kind":"db_unreadable",[^\n]+\}\}\n\z'
+
+-- not-an-export.jsonl --
+not json
+-- stored.jsonl --
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-0000000000e1","name":"conflict","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+-- changed.jsonl --
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-0000000000e1","name":"conflict","title":"Changed","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
