@@ -2,3 +2,8 @@
 /site/
 /.cache/
 /.venv/
+# goreleaser's output and what its before hooks generate. Untracked files would make every
+# binary it builds report +dirty.
+/dist/
+/completions/
+/manpages/

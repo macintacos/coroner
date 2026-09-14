@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Build every release artifact into dist/ without publishing"
+
+set -euo pipefail
+
+goreleaser release --snapshot --clean

@@ -1,0 +1,53 @@
+# goreleaser builds a v* tag into archives, checksums, SBOMs and a Homebrew cask.
+# https://goreleaser.com/customization/
+version: 2
+project_name: coroner
+before:
+  hooks:
+    # Hooks run without a shell, so the redirect needs one.
+    - sh -c 'rm -rf completions && mkdir completions && for shell in bash zsh fish; do go run . completion "$shell" > "completions/coroner.$shell"; done'
+    - env SOURCE_DATE_EPOCH={{ .CommitTimestamp }} go run ./internal/tools/docgen --man manpages
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    # coroner reads its version from the build info Go stamps from the tag, so none of
+    # goreleaser's default -X flags.
+    ldflags: [-s -w]
+    mod_timestamp: "{{ .CommitTimestamp }}"
+archives:
+  - formats: [tar.gz]
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: completions/*
+        dst: completions
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: manpages/*
+        dst: manpages
+        info:
+          mtime: "{{ .CommitDate }}"
+checksum:
+  name_template: checksums.txt
+sboms:
+  - artifacts: archive
+homebrew_casks:
+  - repository:
+      owner: macintacos
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/macintacos/coroner
+    description: Build root-cause investigation timelines
+    license: MIT
+    completions:
+      bash: completions/coroner.bash
+      zsh: completions/coroner.zsh
+      fish: completions/coroner.fish
+    manpages:
+      - manpages/coroner.1
