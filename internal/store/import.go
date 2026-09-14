@@ -48,13 +48,13 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 	events := inSeqOrder(records.Events)
 	return s.writeStaged(ctx, staged, func(q *sqlcgen.Queries) error {
 		for _, step := range []func() error{
-			func() error { return each(ctx, q, records.Sources, createSource) },
-			func() error { return each(ctx, q, records.Timelines, createTimeline) },
-			func() error { return each(ctx, q, records.TimelineReplacements, replaceTimeline) },
-			func() error { return each(ctx, q, events, importEvent) },
-			func() error { return each(ctx, q, records.EventReplacements, replaceEvent) },
-			func() error { return each(ctx, q, records.Annotations, importAnnotation) },
-			func() error { return each(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
+			func() error { return writeEach(ctx, q, records.Sources, createSource) },
+			func() error { return writeEach(ctx, q, records.Timelines, createTimeline) },
+			func() error { return writeEach(ctx, q, records.TimelineReplacements, replaceTimeline) },
+			func() error { return writeEach(ctx, q, events, importEvent) },
+			func() error { return writeEach(ctx, q, records.EventReplacements, replaceEvent) },
+			func() error { return writeEach(ctx, q, records.Annotations, importAnnotation) },
+			func() error { return writeEach(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
 			func() error { return insertStoredBlobAttachments(ctx, q, s.blobDir, records.Attachments) },
 		} {
 			err := step()
@@ -67,8 +67,8 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 	})
 }
 
-// each writes every one of records with write, stopping at the first error.
-func each[T any](
+// writeEach writes every one of records with write, stopping at the first error.
+func writeEach[T any](
 	ctx context.Context, q *sqlcgen.Queries, records []T, write func(context.Context, *sqlcgen.Queries, T) error,
 ) error {
 	for _, r := range records {

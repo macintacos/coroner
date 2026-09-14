@@ -225,7 +225,7 @@ func uniqueRecords[T any](typ string, records []T, key func(T) string, differ fu
 // nor the database holds, or has an attachment file that does not match it.
 func checkRecords(incoming incomingRecords, refs recordIndex, in importInput) []string {
 	var problems []string
-	add := func(typ, id string, errs ...error) {
+	addProblems := func(typ, id string, errs ...error) {
 		for _, err := range errs {
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("%s %s: %s", typ, id, strings.ReplaceAll(err.Error(), "\n", "; ")))
@@ -234,18 +234,18 @@ func checkRecords(incoming incomingRecords, refs recordIndex, in importInput) []
 	}
 
 	for _, t := range incoming.timelines {
-		add("timeline", t.ID, t.Domain().Validate(), checkGuard(t.ID, in.guard))
+		addProblems("timeline", t.ID, t.Domain().Validate(), checkGuard(t.ID, in.guard))
 	}
 	for _, e := range incoming.events {
-		add("event", e.ID, e.Domain().Validate(), checkEventBounds(e), refs.timelineKnown(e.TimelineID), checkGuard(e.TimelineID, in.guard))
+		addProblems("event", e.ID, e.Domain().Validate(), checkEventBounds(e), refs.timelineKnown(e.TimelineID), checkGuard(e.TimelineID, in.guard))
 	}
 	for _, a := range incoming.annotations {
-		add("annotation", a.ID, a.Domain().Validate(), refs.timelineKnown(a.TimelineID), refs.eventInTimeline(a.EventID, a.TimelineID),
+		addProblems("annotation", a.ID, a.Domain().Validate(), refs.timelineKnown(a.TimelineID), refs.eventInTimeline(a.EventID, a.TimelineID),
 			checkGuard(a.TimelineID, in.guard))
 	}
 	for _, a := range incoming.attachments {
 		ownerTimeline, err := refs.ownerTimeline(a)
-		add("attachment", a.ID, err, checkGuard(ownerTimeline, in.guard), checkSidecar(a, in.sidecars))
+		addProblems("attachment", a.ID, err, checkGuard(ownerTimeline, in.guard), checkSidecar(a, in.sidecars))
 	}
 
 	return problems
@@ -386,8 +386,8 @@ const invalidImportHint = "Nothing was imported. Fix those records, or export th
 // timeline with another id holds.
 func checkTimelineNames(incoming []export.Timeline, stored map[string]timeline.Timeline) error {
 	for _, t := range incoming {
-		for _, s := range stored {
-			if s.Name == t.Name && s.ID != t.ID {
+		for _, existing := range stored {
+			if existing.Name == t.Name && existing.ID != t.ID {
 				return &Error{
 					Kind:    KindTimelineExists,
 					Message: fmt.Sprintf("timeline `%s` already exists here as another timeline, so nothing was imported", t.Name),
