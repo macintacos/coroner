@@ -9,7 +9,10 @@ repo_name        = "macintacos/coroner"
 nav = [
   { "Home" = "index.md" },
   { "Tutorial" = "tutorial/index.md" },
-  { "How-to guides" = "how-to/index.md" },
+  { "How-to guides" = [
+    "how-to/index.md",
+    { "Install coroner" = "how-to/install.md" },
+  ] },
   { "Reference" = [
     { "Export format" = "reference/export-format.md" },
     { "CLI" = "reference/cli/coroner.md" },
@@ -18,6 +21,7 @@ nav = [
   { "Contributing" = [
     { "Command checklist" = "contributing/command-checklist.md" },
     { "Migration policy" = "contributing/migrations.md" },
+    { "Releasing" = "contributing/releasing.md" },
   ] },
 ]
 
