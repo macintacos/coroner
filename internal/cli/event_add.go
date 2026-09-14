@@ -38,6 +38,12 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
 			"database, and prints its id, sha256, size and type. Every file is read before anything is\n" +
 			"added, so one that cannot be read adds nothing.\n\n" +
+			"--id gives the event an id of your own, so running the same command again adds nothing and\n" +
+			"exits 0, and the same id with anything else changed exits 4.\n\n" +
+			"--from-file adds a JSONL file of event records, as 'coroner timeline export --format jsonl'\n" +
+			"writes them, in one transaction, to the timeline every record's timeline_id must name. Every\n" +
+			"record is checked first, so one bad record adds nothing. A record carries its own id and\n" +
+			"RFC 3339 times, so running the same file again adds nothing.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
 			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
 			"opens it, and --no-input never does.",
@@ -49,10 +55,24 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
 			"      --ended \"2026-09-11 14:20\" --dry-run --json\n" +
+			"  $ coroner event add \"Election timeout on db-3\" --id 01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2 \\\n" +
+			"      --at 2026-09-11T03:14:30Z --json\n" +
+			"  $ coroner event add -t mongo-outage --from-file events.jsonl --dry-run --json\n" +
 			"  $ coroner event add --interactive --source mongod",
 	}
 
-	return eventAddForm().attach(ctx, cmd, app, terminalForms(app))
+	eventAddForm().attach(ctx, cmd, app, terminalForms(app))
+	cmd.Flags().String("from-file", "", fromFileUsage)
+	withForm := cmd.RunE
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if !cmd.Flags().Changed("from-file") {
+			return withForm(cmd, args)
+		}
+
+		return addEventsFromFile(ctx, cmd, app, args)
+	}
+
+	return cmd
 }
 
 func eventAddDefinition() definition {
