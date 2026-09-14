@@ -81,6 +81,7 @@ header p {
   border: 0;
 }
 
+/* A legend is not a flex item; floating it puts it on its own row inside the fieldset's flex box. */
 #filters legend {
   float: left;
   width: 100%;

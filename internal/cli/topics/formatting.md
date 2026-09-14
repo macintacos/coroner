@@ -28,9 +28,10 @@ closed: a command line missing a required value exits 2 instead of asking.
 - `html` is one self-contained page to open in a browser or attach to a ticket: the events
   on a timeline with a row per source, and an event's full text and annotations when you
   select it. Its source, tag, text and time filters select what `coroner event list`'s
-  flags do, its link keeps the filters and the selected event for sharing, and Export PNG
-  saves the timeline as shown. It loads nothing over the network, shows times in the zone
-  `md` does, and is written to the file `-o` names, or to stdout with `-o -`.
+  flags do, and panning or zooming the timeline sets the time filter to what it shows. Its
+  link keeps the filters, that window included, and the selected event for sharing, and
+  Export PNG saves the timeline as shown. It loads nothing over the network, shows times
+  in the zone `md` does, and is written to the file `-o` names, or to stdout with `-o -`.
 
 ## What JSON output promises
 
