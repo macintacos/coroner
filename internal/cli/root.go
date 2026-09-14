@@ -48,7 +48,7 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		return usageError(cmd, err)
 	})
 
-	topics := HelpTopics()
+	topics := append(HelpTopics(), HelpTopic{Name: referenceTopic, Short: "Every command and flag on one Markdown page"})
 	help := newHelpTemplate(topics)
 	// Cobra's help function writes through OutOrStdout, bypassing app.Out.
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) {

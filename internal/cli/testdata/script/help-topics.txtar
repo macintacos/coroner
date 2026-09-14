@@ -34,5 +34,6 @@ stderr '^Did you mean ''coroner help [a-z-]+''\?$'
 
 # help completes topic names alongside command names.
 exec coroner __complete help ''
+stdout '^reference\t'
 stdout '^time\t'
 stdout '^version\t'

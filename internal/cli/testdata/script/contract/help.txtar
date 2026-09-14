@@ -211,6 +211,7 @@ HELP TOPICS
   exit-codes   Exit codes and the JSON error envelope
   formatting   Output formats and what scripts can rely on
   time         How coroner reads the times you type
+  reference    Every command and flag on one Markdown page
 
 EXAMPLES
   $ coroner version --json
@@ -1093,6 +1094,7 @@ EXAMPLES
   $ coroner help
   $ coroner help version
   $ coroner help time
+  $ coroner help reference
 
 GLOBAL FLAGS
       --config path     Config file path (env: CORONER_CONFIG)

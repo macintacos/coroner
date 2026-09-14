@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const ReferenceTopic = referenceTopic
+
 func OutputFormat(cmd *cobra.Command) error {
 	_, err := outputFormat(cmd)
 	return err

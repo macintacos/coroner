@@ -64,8 +64,13 @@ LEARN MORE
 `
 
 func newHelpTemplate(topics []HelpTopic) *template.Template {
+	return template.Must(template.New("help").Funcs(helpFuncs(topics)).Parse(helpTemplate))
+}
+
+// helpFuncs are the functions help's templates call, with topics as help's topics.
+func helpFuncs(topics []HelpTopic) template.FuncMap {
 	// Local funcs: cobra's own register through the package-global cobra.AddTemplateFunc.
-	return template.Must(template.New("help").Funcs(template.FuncMap{
+	return template.FuncMap{
 		"helpTopics": func() []HelpTopic {
 			return topics
 		},
@@ -79,7 +84,7 @@ func newHelpTemplate(topics []HelpTopic) *template.Template {
 		"trimRight": func(s string) string {
 			return strings.TrimRight(s, " \n")
 		},
-	}).Parse(helpTemplate))
+	}
 }
 
 // listed reports whether help lists cmd.
@@ -112,7 +117,7 @@ func addHelpCommand(root *cobra.Command, app App, topics []HelpTopic) {
 		Use:     "help [<command> | <topic>]",
 		Short:   "Help about any command or topic",
 		GroupID: additionalCommands,
-		Example: "  $ coroner help\n  $ coroner help version\n  $ coroner help time",
+		Example: "  $ coroner help\n  $ coroner help version\n  $ coroner help time\n  $ coroner help reference",
 		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			var completions []cobra.Completion
 			for _, candidate := range helpNames(root, args, topics) {
@@ -125,6 +130,10 @@ func addHelpCommand(root *cobra.Command, app App, topics []HelpTopic) {
 		},
 		RunE: typedHook(func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
+				if args[0] == referenceTopic {
+					return writeReference(app.Out, root)
+				}
+
 				if topic, ok := topicNamed(topics, args[0]); ok {
 					_, err := io.WriteString(app.Out, topic.Body)
 					return err
