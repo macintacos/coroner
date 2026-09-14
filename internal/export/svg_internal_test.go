@@ -61,19 +61,18 @@ var _ = Describe("layoutSVG", func() {
 
 		got := marks(layout)
 		Expect(got).To(HaveLen(3))
-		straddling := got[1]
+		point, straddling, rightBar := got[0], got[1], got[2]
 		Expect(straddling.Anchor).To(Equal("start"))
 		Expect(straddling.LabelX).To(BeNumerically("~", straddling.X+svgLabelGap, 0.001))
-		got = []svgMark{got[0], got[2]}
-		Expect(got[0].X).To(BeNumerically("~", 444, 0.001))
-		Expect(got[0].Width).To(BeZero())
-		Expect(got[0].Anchor).To(Equal("start"))
-		Expect(got[0].LabelX).To(BeNumerically(">", got[0].X))
-		Expect(got[1].X).To(BeNumerically("~", 688, 0.001))
-		Expect(got[1].Width).To(BeNumerically("~", 488, 0.001))
-		Expect(got[1].Shape).To(Equal(svgBar))
-		Expect(got[1].Anchor).To(Equal("end"))
-		Expect(got[1].LabelX).To(BeNumerically("<", got[1].X))
+		Expect(point.X).To(BeNumerically("~", 444, 0.001))
+		Expect(point.Width).To(BeZero())
+		Expect(point.Anchor).To(Equal("start"))
+		Expect(point.LabelX).To(BeNumerically(">", point.X))
+		Expect(rightBar.X).To(BeNumerically("~", 688, 0.001))
+		Expect(rightBar.Width).To(BeNumerically("~", 488, 0.001))
+		Expect(rightBar.Shape).To(Equal(svgBar))
+		Expect(rightBar.Anchor).To(Equal("end"))
+		Expect(rightBar.LabelX).To(BeNumerically("<", rightBar.X))
 	})
 
 	It("gives each source a lane in order of first appearance, then (no source), with a row per event", func() {
@@ -90,23 +89,26 @@ var _ = Describe("layoutSVG", func() {
 			And(HaveField("Label", "(no source)"), HaveField("Color", svgMuted), HaveField("Marks", HaveLen(1))),
 		))
 		Expect(layout.Lanes[0].Marks[1].Title).To(ContainSubstring("event at 2026-09-11T03:04:00Z"))
-		var previous float64
+		var previous svgLane
 		for _, lane := range layout.Lanes {
-			Expect(lane.Y).To(BeNumerically(">=", previous))
+			Expect(lane.Y).To(BeNumerically(">=", previous.Bottom))
+			top := lane.Y
 			for _, m := range lane.Marks {
-				Expect(m.Y).To(BeNumerically(">", previous))
-				Expect(m.Y).To(BeNumerically("<", lane.Y+lane.Height))
-				previous = m.Y
+				Expect(m.Y).To(BeNumerically(">", top))
+				Expect(m.Y).To(BeNumerically("<", lane.Bottom))
+				top = m.Y
 			}
+			previous = lane
 		}
-		last := layout.Lanes[len(layout.Lanes)-1]
-		Expect(layout.Height).To(BeNumerically("~", last.Y+last.Height, 0.001))
+		Expect(layout.Height).To(BeNumerically("~", previous.Bottom, 0.001))
 	})
 
 	It("wraps the palette when there are more sources than colours", func() {
 		var events []Event
 		for i := range len(sourcePalette()) + 1 {
-			events = append(events, instant("2026-09-11T03:0"+string(rune('0'+i))+":00Z", timeline.PrecisionSecond, string(rune('a'+i))))
+			e := instant("2026-09-11T03:00:00Z", timeline.PrecisionSecond, string(rune('a'+i)))
+			e.OccurredAt = Instant(at("2026-09-11T03:00:00Z").Add(time.Duration(i) * time.Minute))
+			events = append(events, e)
 		}
 
 		layout := layoutSVG(events, threeToFour(), time.UTC)
@@ -114,21 +116,21 @@ var _ = Describe("layoutSVG", func() {
 		Expect(layout.Lanes[len(sourcePalette())].Color).To(Equal(layout.Lanes[0].Color))
 	})
 
-	DescribeTable("draws a time as exact as its precision, and a guessed one as fuzzy, labelled on the zone's clock",
-		func(e Event, shape svgShape, width float64, fuzzy bool, labelPrefix string) {
+	DescribeTable("draws a time as exact as its precision, and a guessed or coarse one as inexact, labelled on the zone's clock",
+		func(e Event, shape svgShape, width float64, inexact bool, labelPrefix string) {
 			got := marks(layoutSVG([]Event{e}, threeToFour(), time.UTC))
 
 			Expect(got).To(HaveLen(1))
 			Expect(got[0].Shape).To(Equal(shape))
 			Expect(got[0].Width).To(BeNumerically("~", width, 0.001))
-			Expect(got[0].Fuzzy).To(Equal(fuzzy))
+			Expect(got[0].Inexact).To(Equal(inexact))
 			Expect(got[0].Label).To(HavePrefix(labelPrefix))
 		},
 		Entry("a second as an exact point", instant("2026-09-11T03:15:00Z", timeline.PrecisionSecond, ""), svgPoint, 0.0, false, "03:15:00 event"),
 		Entry("a millisecond as an exact point", instant("2026-09-11T03:15:00.25Z", timeline.PrecisionMillisecond, ""), svgPoint, 0.0, false, "03:15:00.250 event"),
-		Entry("a minute as a fuzzy band a minute wide", instant("2026-09-11T03:15:00Z", timeline.PrecisionMinute, ""), svgBand, 976.0/60, true, "03:15 event"),
-		Entry("an hour as a fuzzy band the whole window wide", instant("2026-09-11T03:00:00Z", timeline.PrecisionHour, ""), svgBand, 976.0, true, "03:-- event"),
-		Entry("an approximate second as a fuzzy point marked ~",
+		Entry("a minute as an inexact band a minute wide", instant("2026-09-11T03:15:00Z", timeline.PrecisionMinute, ""), svgBand, 976.0/60, true, "03:15 event"),
+		Entry("an hour as an inexact band the whole window wide", instant("2026-09-11T03:00:00Z", timeline.PrecisionHour, ""), svgBand, 976.0, true, "03:-- event"),
+		Entry("an approximate second as an inexact point marked ~",
 			func() Event {
 				e := instant("2026-09-11T03:15:00Z", timeline.PrecisionSecond, "")
 				e.Approximate = true
@@ -136,6 +138,10 @@ var _ = Describe("layoutSVG", func() {
 			}(), svgPoint, 0.0, true, "~03:15:00 event"),
 		Entry("an interval as a bar from start to end",
 			interval("2026-09-11T03:15:00Z", "2026-09-11T03:30:00Z", ""), svgBar, 244.0, false, "03:15:00–03:30:00 event"),
+		Entry("a zero-length interval as a bar wide enough to see",
+			interval("2026-09-11T03:15:00Z", "2026-09-11T03:15:00Z", ""), svgBar, 2.0, false, "03:15:00–03:15:00 event"),
+		Entry("a millisecond interval as a bar wide enough to see",
+			interval("2026-09-11T03:15:00Z", "2026-09-11T03:15:00.001Z", ""), svgBar, 2.0, false, "03:15:00–03:15:00 event"),
 	)
 
 	It("starts a day-precision band where its day starts in its own offset, labelled with that date", func() {
@@ -220,6 +226,16 @@ var _ = Describe("layoutSVG", func() {
 			{X: 200 + 976.0*60/96, Date: "2026-09-13"},
 			{X: 200 + 976.0*84/96, Date: "2026-09-14"},
 		}),
+		Entry("every four days over a month, from the first midnight", "2026-09-01T03:00:00Z", "2026-10-01T03:00:00Z", "UTC", []svgTick{
+			{X: 200 + 976.0*21/720, Date: "2026-09-02"},
+			{X: 200 + 976.0*117/720, Date: "2026-09-06"},
+			{X: 200 + 976.0*213/720, Date: "2026-09-10"},
+			{X: 200 + 976.0*309/720, Date: "2026-09-14"},
+			{X: 200 + 976.0*405/720, Date: "2026-09-18"},
+			{X: 200 + 976.0*501/720, Date: "2026-09-22"},
+			{X: 200 + 976.0*597/720, Date: "2026-09-26"},
+			{X: 200 + 976.0*693/720, Date: "2026-09-30"},
+		}),
 	)
 
 	It("lays out nothing for no events", func() {
@@ -248,6 +264,15 @@ var _ = Describe("exportWindow", func() {
 
 	It("gives a single moment a minute", func() {
 		window := exportWindow(Query{}, []Event{instant("2026-09-11T03:00:00Z", timeline.PrecisionSecond, "")})
+
+		Expect(window).To(Equal(svgWindow{From: at("2026-09-11T03:00:00Z"), To: at("2026-09-11T03:01:00Z")}))
+	})
+
+	It("gives a window shorter than a minute a minute", func() {
+		window := exportWindow(Query{}, []Event{
+			instant("2026-09-11T03:00:00.000Z", timeline.PrecisionMillisecond, ""),
+			instant("2026-09-11T03:00:00.100Z", timeline.PrecisionMillisecond, ""),
+		})
 
 		Expect(window).To(Equal(svgWindow{From: at("2026-09-11T03:00:00Z"), To: at("2026-09-11T03:01:00Z")}))
 	})

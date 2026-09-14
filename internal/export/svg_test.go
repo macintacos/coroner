@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
-	"slices"
 	"strings"
 	"time"
 
@@ -26,16 +25,15 @@ func svg(env export.Envelope, zone *time.Location) string {
 	return b.String()
 }
 
-// svgDocument is what an SVG export holds once parsed as XML: its root element, every element
-// name, and the text of every title and text element.
+// svgDocument is what an SVG export holds once parsed as XML: its root element, and the text
+// of every title and text element.
 type svgDocument struct {
 	root           xml.Name
-	elements       []string
 	titles, labels []string
 }
 
 // parseSVG parses picture with encoding/xml's strict decoder, failing on anything that is not
-// well-formed XML.
+// well-formed XML, on an element the picture never draws, and on an href or style attribute.
 func parseSVG(picture string) svgDocument {
 	GinkgoHelper()
 	var doc svgDocument
@@ -52,7 +50,10 @@ func parseSVG(picture string) svgDocument {
 			if doc.root.Local == "" {
 				doc.root = t.Name
 			}
-			doc.elements = append(doc.elements, t.Name.Local)
+			Expect(t.Name.Local).To(BeElementOf("svg", "title", "rect", "text", "g", "line", "circle"))
+			for _, a := range t.Attr {
+				Expect(a.Name.Local).NotTo(BeElementOf("href", "style"), "an attribute of %s", t.Name.Local)
+			}
 			open = append(open, t.Name.Local)
 		case xml.EndElement:
 			open = open[:len(open)-1]
@@ -95,7 +96,7 @@ func hostileSVG() export.Envelope {
 }
 
 var _ = Describe("WriteSVG", func() {
-	It("draws a lane per source, bars for intervals, points for exact instants and fuzzy marks for guessed or coarse times", func() {
+	It("draws a lane per source, bars for intervals, points for exact instants and hollow marks for guessed or coarse times", func() {
 		matchSVGGolden("checkout-spike", svg(checkoutSpike(), time.UTC))
 	})
 
@@ -118,11 +119,10 @@ var _ = Describe("WriteSVG", func() {
 		picture := svg(hostileSVG(), time.UTC)
 
 		doc := parseSVG(picture)
-		Expect(doc.elements).NotTo(ContainElements("script", "img", "foreignObject"))
 		Expect(doc.titles).To(ContainElement(hostile))
 		Expect(doc.titles).To(ContainElement(HaveSuffix(strings.Repeat("ab:c#", 2000))))
 		Expect(doc.labels).To(ContainElement(ContainSubstring(`<script>alert(1)</script> "double"`)))
-		Expect(slices.ContainsFunc(doc.titles, func(title string) bool { return strings.Contains(title, "bell� escape�") })).To(BeTrue())
+		Expect(doc.titles).To(ContainElement(ContainSubstring("bell� escape�")))
 		matchSVGGolden("hostile", picture)
 	})
 

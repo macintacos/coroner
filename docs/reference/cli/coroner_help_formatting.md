@@ -45,8 +45,9 @@ closed: a command line missing a required value exits 2 instead of asking.
   zone `md` does, and is written to the file `-o` names, or to stdout with `-o -`.
 - `svg` is a static picture of the events for documents, slides and tickets whose hosts,
   such as Confluence, draw neither Mermaid nor HTML: a lane per source on a time axis,
-  with guessed times and times known only to their minute, hour or day drawn fuzzy. It
-  shows times in the zone `md` does, and goes to stdout or the file `-o` names.
+  with guessed times, and times known only to their minute, hour or day, drawn hollow with
+  a dashed outline. It shows times in the zone `md` does, and goes to stdout or the file
+  `-o` names.
 
 ## What JSON output promises
 

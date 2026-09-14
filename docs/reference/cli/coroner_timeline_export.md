@@ -4,7 +4,7 @@ title: coroner timeline export
 
 ## coroner timeline export
 
-Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML
+Export a timeline as JSON, JSONL, Markdown, Mermaid, HTML or SVG
 
 ### Synopsis
 

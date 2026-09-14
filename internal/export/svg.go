@@ -25,30 +25,40 @@ const (
 	svgWidth       = 1224.0
 	svgGutter      = 200.0
 	svgMargin      = 24.0
-	// svgPlotWidth is the width of the time axis, between the lane labels and a right margin
-	// wide enough for half a tick's date.
-	svgPlotWidth   = svgWidth - svgGutter - 2*svgMargin
-	svgAxisHeight  = 40.0
-	svgRowHeight   = 22.0
-	svgLanePadding = 6.0
-	svgLabelGap    = 8.0
+	// svgRightMargin is wide enough for the half of the last tick's date that overhangs it.
+	svgRightMargin   = 2 * svgMargin
+	svgPlotWidth     = svgWidth - svgGutter - svgRightMargin
+	svgTitleBaseline = 34.0
+	svgTitleLeading  = 24.0
+	svgHeaderLeading = 18.0
+	svgPlotGap       = 4.0
+	svgNoteGap       = 10.0
+	svgAxisHeight    = 40.0
+	svgRowHeight     = 22.0
+	svgLanePadding   = 6.0
+	svgLabelGap      = 8.0
+	svgMinBarWidth   = 2.0
 	// svgLabelRunes and svgLaneLabelRunes cut labels short, since an SVG cannot measure text;
-	// the full text stays in a tooltip.
+	// the full text stays in a tooltip. svgLabelRunes is short enough to fit half the plot,
+	// which labelPlace relies on.
 	svgLabelRunes     = 60
 	svgLaneLabelRunes = 24
 	svgMaxTicks       = 8
 	// svgMuted colours the lane of events with no source.
-	svgMuted = "#6b7280"
+	svgMuted = "#545c63"
 )
 
-// svgPicture is what the SVG template prints: a header, then the plot, translated down to
-// PlotY, or a note at NoteY when there are no events.
+// svgPicture is what the SVG template prints: a title at TitleY and header lines, then the
+// plot, translated down to PlotY, or a note at NoteY when there are no events. The title,
+// header lines, note and lane labels start at Margin.
 type svgPicture struct {
-	Width, Height, PlotY, NoteY, AxisY float64
-	// Title is cut to fit the header; FullTitle names the picture.
-	Title, FullTitle string
-	Header           []svgText
-	Plot             svgLayout
+	Width, Height, Margin, TitleY, PlotY, NoteY float64
+	// AxisY is the axis line's y in the plot, below the tick labels.
+	AxisY float64
+	// Label is cut to fit the header; Title names the picture.
+	Label, Title string
+	Header       []svgText
+	Plot         svgLayout
 }
 
 // svgText is a line of header text with its baseline.
@@ -100,15 +110,18 @@ func newSVGPicture(env Envelope, zone *time.Location) svgPicture {
 		"Exported "+exported.Format("2006-01-02 15:04")+" "+zoneName(exported)+" by coroner "+flatten(env.CoronerVersion),
 	)
 
-	picture := svgPicture{Width: svgWidth, AxisY: svgAxisHeight, Title: truncate(title, svgHeaderRunes), FullTitle: title}
-	y := 58.0
+	picture := svgPicture{
+		Width: svgWidth, Margin: svgMargin, TitleY: svgTitleBaseline, AxisY: svgAxisHeight,
+		Label: truncate(title, svgHeaderRunes), Title: title,
+	}
+	y := svgTitleBaseline + svgTitleLeading
 	for _, line := range header {
 		picture.Header = append(picture.Header, svgText{Y: y, Text: truncate(line, svgHeaderRunes)})
-		y += 18
+		y += svgHeaderLeading
 	}
 
 	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
-	picture.PlotY, picture.NoteY = y+4, y+10
+	picture.PlotY, picture.NoteY = y+svgPlotGap, y+svgNoteGap
 	picture.Plot = layoutSVG(events, exportWindow(env.Query, events), zone)
 	picture.Height = picture.PlotY + picture.Plot.Height + svgMargin
 	if len(events) == 0 {
@@ -144,7 +157,8 @@ func flatten(s string) string {
 // svgWindow is the stretch of time the axis spans.
 type svgWindow struct{ From, To time.Time }
 
-// svgShape is how a mark draws an event.
+// svgShape is how a mark draws an event. Its values are the template's vocabulary: the
+// template compares against them.
 type svgShape string
 
 const (
@@ -164,33 +178,37 @@ type svgLayout struct {
 	Lanes  []svgLane
 }
 
-// svgTick is a time on the axis, dated when it is the first or starts a new day.
+// svgTick is a time on the axis, dated when it is the first or starts a new day. Time is empty
+// when ticks step by days.
 type svgTick struct {
 	X          float64
 	Time, Date string
 }
 
-// svgLane is the band of rows holding one source's events.
+// svgLane is the band of rows from Y to Bottom holding one source's events, labelled on the
+// centre line of its first row, LabelY.
 type svgLane struct {
 	Label, Title, Color string
-	Y, Height           float64
+	Y, Bottom, LabelY   float64
 	Marks               []svgMark
 }
 
-// svgMark is one event in its row: its shape from X to X+Width at Y, and its label, which
-// Anchor says starts or ends at LabelX.
+// svgMark is one event in its row: its shape from X to X+Width at Y, and its label at LabelX.
+// Label is cut to svgLabelRunes; Title holds the whole text for the tooltip. Anchor is an SVG
+// text-anchor, start or end.
 type svgMark struct {
 	X, Width, Y, LabelX float64
 	Shape               svgShape
-	// Fuzzy marks a time that is approximate or known only to its minute, hour or day.
-	Fuzzy        bool
+	// Inexact marks a time that is approximate, or known only to its minute, hour or day.
+	Inexact      bool
 	Label, Title string
 	Anchor       string
 }
 
 // layoutSVG lays out events, in occurred at and seq order, on an axis over window with
 // ticks on zone's wall clock: a lane per source in order of first appearance, then the
-// events with none, each event in its own row.
+// events with none, each event in its own row. With events, window must not be empty;
+// exportWindow's never is.
 func layoutSVG(events []Event, window svgWindow, zone *time.Location) svgLayout {
 	if len(events) == 0 {
 		return svgLayout{}
@@ -200,18 +218,17 @@ func layoutSVG(events []Event, window svgWindow, zone *time.Location) svgLayout 
 	layout := svgLayout{Height: svgAxisHeight, Ticks: axis.ticks(zone)}
 	palette := sourcePalette()
 	for i, g := range groupEvents(events, sourceOf) {
-		lane := svgLane{
-			Label: "(no source)", Title: "(no source)", Color: svgMuted,
-			Y: layout.Height, Height: float64(len(g.events))*svgRowHeight + 2*svgLanePadding,
-		}
+		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: svgMuted, Y: layout.Height}
 		if g.key != "" {
 			lane.Label, lane.Title, lane.Color = truncate(g.key, svgLaneLabelRunes), g.key, palette[i%len(palette)].Light
 		}
 		for row, e := range g.events {
 			lane.Marks = append(lane.Marks, axis.mark(e, zone, lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
 		}
+		lane.LabelY = lane.Marks[0].Y
+		lane.Bottom = lane.Y + float64(len(g.events))*svgRowHeight + 2*svgLanePadding
 		layout.Lanes = append(layout.Lanes, lane)
-		layout.Height += lane.Height
+		layout.Height = lane.Bottom
 	}
 
 	return layout
@@ -219,7 +236,7 @@ func layoutSVG(events []Event, window svgWindow, zone *time.Location) svgLayout 
 
 // exportWindow returns the time an export covers: from its query's since or its first event,
 // whichever is earlier, to its query's until or the furthest an event's interval or
-// precision reaches, whichever is later. A single moment is given a minute.
+// precision reaches, whichever is later. A window shorter than a minute is widened to one.
 func exportWindow(q Query, events []Event) svgWindow {
 	if len(events) == 0 {
 		return svgWindow{}
@@ -242,7 +259,7 @@ func exportWindow(q Query, events []Event) svgWindow {
 	}
 
 	window := svgWindow{From: slices.MinFunc(starts, time.Time.Compare), To: slices.MaxFunc(reaches, time.Time.Compare)}
-	if !window.To.After(window.From) {
+	if window.To.Sub(window.From) < time.Minute {
 		window.To = window.From.Add(time.Minute)
 	}
 
@@ -287,17 +304,21 @@ func (axis svgAxis) mark(e Event, zone *time.Location, y float64) svgMark {
 
 	text := svgWhen(e, zone) + " " + flatten(e.Text)
 	m := svgMark{
-		X: axis.x(start), Y: y, Shape: shape, Fuzzy: e.Approximate || precisionWindow(e.Precision) > 0,
+		X: axis.x(start), Y: y, Shape: shape, Inexact: e.Approximate || precisionWindow(e.Precision) > 0,
 		Label: truncate(text, svgLabelRunes), Title: text,
 	}
 	m.Width = axis.x(end) - m.X
+	if shape == svgBar {
+		m.Width = max(m.Width, svgMinBarWidth)
+	}
 	m.LabelX, m.Anchor = labelPlace(m.X, m.X+m.Width)
 
 	return m
 }
 
-// labelPlace returns where a mark from x from to x to puts its label: after a mark in the
-// plot's left half, before one in its right half, and inside one that crosses the middle.
+// labelPlace returns the x and text-anchor of the label of a mark spanning from to to: after
+// a mark in the plot's left half, before one in its right half, and inside one that crosses
+// the middle.
 func labelPlace(from, to float64) (float64, string) {
 	middle := svgGutter + svgPlotWidth/2
 	switch {
@@ -311,8 +332,8 @@ func labelPlace(from, to float64) (float64, string) {
 }
 
 // svgWhen returns e's time in zone at its precision, a day-precision event's as the date in
-// its own offset, then its interval's end, dated when that falls on another day, and ~ first
-// when it is approximate.
+// its own offset, then its interval's end, dated when it is day precision or falls on another
+// day in zone, and ~ first when it is approximate.
 func svgWhen(e Event, zone *time.Location) string {
 	start := time.Time(e.OccurredAt).In(zone)
 	when := clock(start, e.Precision, false)
@@ -376,32 +397,59 @@ func tickStep(span time.Duration) time.Duration {
 }
 
 // tickTimes returns the times in window a whole number of steps after a midnight in zone.
-// ponytail: sub-day steps count absolute time from the first midnight, so on a day the zone
-// changes its offset, ticks after the change sit off the wall-clock hour; re-anchor each local
-// day if that matters.
 func tickTimes(window svgWindow, zone *time.Location, step time.Duration) []time.Time {
+	day := 24 * time.Hour
+	if step%day == 0 {
+		return dayTicks(window, zone, int(step/day))
+	}
+
+	return clockTicks(window, zone, step)
+}
+
+// dayTicks returns every days-th midnight in zone in window, from the first at or after its
+// start.
+func dayTicks(window svgWindow, zone *time.Location, days int) []time.Time {
 	from := window.From.In(zone)
-	t := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, zone)
-	next := func(t time.Time) time.Time { return t.Add(step) }
-	if days := int(step / (24 * time.Hour)); step%(24*time.Hour) == 0 {
-		next = func(t time.Time) time.Time { return t.AddDate(0, 0, days) }
-		if t.Before(from) {
-			t = next(t)
-		}
-	} else {
-		steps := int64((from.Sub(t) + step - 1) / step)
-		t = t.Add(time.Duration(steps) * step)
+	t := startOfDay(from)
+	if t.Before(from) {
+		t = t.AddDate(0, 0, 1)
 	}
 
 	var times []time.Time
-	for ; !t.After(window.To); t = next(t) {
+	for ; !t.After(window.To); t = t.AddDate(0, 0, days) {
 		times = append(times, t)
 	}
 
 	return times
 }
 
+// clockTicks returns the times in window a whole number of steps after the midnight in zone
+// that starts its first day.
+// ponytail: sub-day steps count absolute time from the first midnight, so once the zone
+// changes its offset inside the window every later tick sits off the wall-clock hour;
+// re-anchor on each local midnight if that matters.
+func clockTicks(window svgWindow, zone *time.Location, step time.Duration) []time.Time {
+	from := window.From.In(zone)
+	midnight := startOfDay(from)
+	steps := int64((from.Sub(midnight) + step - 1) / step)
+
+	var times []time.Time
+	for t := midnight.Add(time.Duration(steps) * step); !t.After(window.To); t = t.Add(step) {
+		times = append(times, t)
+	}
+
+	return times
+}
+
+// startOfDay returns the midnight that starts t's day in t's location.
+func startOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 // truncate returns s cut to at most runes runes, ending in … when cut.
+// ponytail: runes are not widths, so wide glyphs such as CJK and emoji can overrun half the
+// plot, and a cut can split a grapheme cluster; measure by East Asian width and cut on
+// grapheme boundaries if that matters.
 func truncate(s string, runes int) string {
 	if utf8.RuneCountInString(s) <= runes {
 		return s

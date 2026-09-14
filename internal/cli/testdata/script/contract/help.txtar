@@ -1186,7 +1186,7 @@ COMMANDS
   create       Create a timeline
   delete       Delete a timeline and everything in it
   edit         Rename a timeline or change its title and refs
-  export       Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML
+  export       Export a timeline as JSON, JSONL, Markdown, Mermaid, HTML or SVG
   list         List timelines, marking the current one
   use          Set the current timeline
   view         Show a timeline and its events

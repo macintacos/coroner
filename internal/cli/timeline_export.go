@@ -22,7 +22,7 @@ import (
 func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export --format {json | jsonl | md | mermaid | html | svg} [-o {<file> | <directory>/}]",
-		Short: "Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML",
+		Short: "Export a timeline as JSON, JSONL, Markdown, Mermaid, HTML or SVG",
 		Long: "Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its\n" +
 			"events, their annotations, the sources they name and their attachments. --format json\n" +
 			"writes one document, indented on a terminal; --format jsonl writes a header record, then\n" +
