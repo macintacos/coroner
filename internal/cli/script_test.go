@@ -227,8 +227,8 @@ func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
 	ts.Check(errors.Join(err, db.Close()))
 }
 
-// runCoroner is coroner as scripts run it: main.go's App with the clock and IDs pinned, run
-// by run.
+// runCoroner runs coroner as scripts do, through run (cli.Run or a test variant): main.go's
+// App with the clock and IDs pinned.
 func runCoroner(run func(context.Context, cli.App) int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)

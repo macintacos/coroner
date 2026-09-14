@@ -9,8 +9,8 @@ tests, the pull request template and the help topics follow.
 
 ## Versioning
 
-- **0.x through the MVP.** Until 1.0, anything may change, but a break is never silent
-  ([§ Before 1.0](#before-10)).
+- **0.x through the MVP.** Until 1.0, a release may break a candidate-stable element, but
+  never silently and never by removing it outright ([§ Before 1.0](#before-10)).
 - **1.0 once the command tree has survived real incidents,** as the maintainer judges. 1.0
   makes every candidate-stable element stable ([§ Tiers](#tiers)).
 - **v1 forever.** After 1.0, a stable element is never removed or changed incompatibly
@@ -97,7 +97,8 @@ experimental field, such as `status`'s, which may change outright.
 - **Ignore keys and JSONL record types they do not know.** New ones are added over time.
 - **Accept enum values they do not know,** such as a new `type`, `precision` or error
   `kind`.
-- **Branch on the exit code or error `kind`, never on message text.**
+- **Branch on the exit code, or on error `kind` knowing it may change before 1.0, never on
+  message text.**
 
 An export's `format_version` is `MAJOR.MINOR`, versioned apart from coroner itself, with
 Terraform's semantics: a minor version only adds, and anything else is a new major
@@ -118,10 +119,11 @@ removing it outright.
 
 1. **Deprecate it in favour of something at least as stable.** A stable element is never
    deprecated in favour of an experimental one.
-2. **Warn on every use.** Mark the command with `deprecateCommand` or the flag with
-   `deprecateFlag` ([`internal/cli/deprecation.go`](internal/cli/deprecation.go)). Each
-   refuses a notice that does not name the replacement, the earliest removal version and
-   the earliest removal date, and cobra prints it on stderr:
+2. **Warn whenever the command line parses.** Mark the command with `deprecateCommand` or
+   the flag with `deprecateFlag`
+   ([`internal/cli/deprecation.go`](internal/cli/deprecation.go)). Each panics on a notice
+   that does not name the replacement, the earliest removal version and the earliest
+   removal date, and cobra prints the notice on stderr:
 
    ```text
    Flag --old-name has been deprecated, use --new-name instead; it may be removed in v0.9.0 or later, and no earlier than 2027-03-14
@@ -132,8 +134,8 @@ removing it outright.
    completion setup that resets it. A spec in
    [`internal/cli/root_test.go`](internal/cli/root_test.go) and
    [`deprecation.txtar`](internal/cli/testdata/script/deprecation.txtar) fail when one
-   does. An environment variable or config key has no helper yet; its notice goes to
-   stderr and names the same three things.
+   does. A shorthand alone, an environment variable or a config key has no helper yet; its
+   notice goes to stderr and names the same three things.
 3. **Keep it working for at least 6 months and at least one minor release,** both: its
    removal date is at least 6 months after the release that first ships the notice, and
    its removal version at least the next minor version after that release. An element
@@ -141,7 +143,11 @@ removing it outright.
    An experimental element needs no window.
 4. **Hide it from help, and list it here.** Deprecating hides it from `--help` and the
    generated CLI reference, so add it to [§ Currently deprecated](#currently-deprecated),
-   with its replacement and removal version and date.
+   with its replacement and removal version and date. Remove a deprecated command's
+   `Example`, since the examples spec
+   ([`internal/cli/examples_test.go`](internal/cli/examples_test.go)) rejects an example
+   that invokes a deprecated command or flag, and move every example, help topic and docs
+   page that uses the element to its replacement.
 5. **Announce it in the release notes.** git-cliff writes them from the commit history, so
    the commit that deprecates an element names it in its subject. Deprecating is not a
    break, since the element keeps working, so that commit is not marked breaking.
@@ -149,7 +155,9 @@ removing it outright.
    ([§ Before 1.0](#before-10)). After 1.0 a stable element is never removed within v1: it
    stays as a hidden alias that keeps working and keeps warning, until a major version
    (see [§ Versioning](#versioning)). That includes an element still deprecated when 1.0
-   ships, which becomes stable with the rest.
+   ships, which becomes stable with the rest. So after 1.0 a notice's removal version is
+   the next major, v2.0.0, and a notice naming an earlier one when 1.0 ships moves to
+   v2.0.0 in that release.
 
 This policy adapts the
 [Kubernetes deprecation policy](https://kubernetes.io/docs/reference/using-api/deprecation-policy/)
@@ -157,9 +165,10 @@ rules 5a, 5c and 6, with a shorter window.
 
 ## Before 1.0
 
-- Any release may change anything, but a candidate-stable element is withdrawn only
+- A release may break a candidate-stable element, within two limits: it is withdrawn only
   through [§ Deprecation](#deprecation), to practise the process before 1.0 makes it
-  binding.
+  binding, and a change to its behaviour ships opt-in first ([§ Versioning](#versioning)).
+  An experimental element may change freely ([§ Tiers](#tiers)).
 - Every break, such as removing a candidate-stable element once its window has passed, is
   listed under the **Breaking** heading of the changelog. git-cliff puts a commit there
   when it is marked breaking (`feat!:` or a `BREAKING CHANGE:` footer), which needs the
@@ -168,10 +177,10 @@ rules 5a, 5c and 6, with a shorter window.
 
 ## Classifying a contract change
 
-A pull request that changes a contract script under
-[`internal/cli/testdata/script/contract/`](internal/cli/testdata/script/contract/README.md)
-names its stability in the pull request template, taking the first label that fits the
-whole diff:
+A pull request that makes a contract change, as
+[the contract README](internal/cli/testdata/script/contract/README.md) defines it, names
+its stability in the pull request template, taking the first label that fits the whole
+diff:
 
 - **breaking**: it makes any change on [§ What is breaking](#what-is-breaking) to a stable
   or candidate-stable element. Its commit is marked breaking ([§ Before 1.0](#before-10)).
@@ -182,8 +191,9 @@ whole diff:
 - **experimental**: otherwise, it changes only experimental elements, such as an error
   `kind` string before 1.0 or a field a contract script's header marks experimental.
 
-A pull request that changes no contract script, such as one that only rewords the Markdown
-export's headings, takes no label.
+Deprecating a stable-track element, which hides it from `help.txtar`, is **additive**. A
+pull request that makes no contract change, such as rewording `--help`, only renumbering
+IDs, or only changing the Markdown export's headings, takes no label.
 
 ## Currently deprecated
 

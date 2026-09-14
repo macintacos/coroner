@@ -62,7 +62,8 @@ func Run(ctx context.Context, app App) int {
 	return execute(ctx, app, NewRoot(ctx, app))
 }
 
-// execute runs root, built by NewRoot against app, as Run does.
+// execute runs root, which NewRoot built from the same ctx and app, and returns the process
+// exit code.
 func execute(ctx context.Context, app App, root *cobra.Command) int {
 	// Cobra falls back to os.Args when given nil.
 	root.SetArgs(append([]string{}, app.Args...))

@@ -13,7 +13,8 @@ import (
 // deprecation tells the users of a deprecated command or flag what to use instead, and the
 // earliest release and day that may remove it. STABILITY.md sets how far away those may be.
 type deprecation struct {
-	// replacement says what to use instead, such as "use --json instead".
+	// replacement completes cobra's sentence with what to use instead, such as
+	// "use --json instead".
 	replacement string
 	// removalVersion is a release, such as v0.9.0.
 	removalVersion string
@@ -22,26 +23,28 @@ type deprecation struct {
 }
 
 // deprecateCommand hides cmd from help and makes running it warn on stderr with d's notice.
-func deprecateCommand(cmd *cobra.Command, d deprecation) error {
+// It panics when d is incomplete, so every spec that builds the command tree fails.
+func deprecateCommand(cmd *cobra.Command, d deprecation) {
 	notice, err := d.notice()
 	if err != nil {
-		return fmt.Errorf("deprecate %s: %w", cmd.CommandPath(), err)
+		panic(fmt.Errorf("deprecate %s: %w", cmd.CommandPath(), err))
 	}
 
 	cmd.Deprecated = notice
-
-	return nil
+	cmd.Hidden = true
 }
 
 // deprecateFlag hides the flag name in flags from help and makes passing it warn on stderr
-// with d's notice.
-func deprecateFlag(flags *pflag.FlagSet, name string, d deprecation) error {
+// with d's notice. It panics when d is incomplete or flags has no such flag, so every spec
+// that builds the command tree fails.
+func deprecateFlag(flags *pflag.FlagSet, name string, d deprecation) {
 	notice, err := d.notice()
-	if err != nil {
-		return fmt.Errorf("deprecate --%s: %w", name, err)
+	if err == nil {
+		err = flags.MarkDeprecated(name, notice)
 	}
-
-	return flags.MarkDeprecated(name, notice)
+	if err != nil {
+		panic(fmt.Errorf("deprecate --%s: %w", name, err))
+	}
 }
 
 // notice returns what cobra prints after "Flag --x has been deprecated, " or

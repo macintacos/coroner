@@ -5,6 +5,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -12,9 +13,9 @@ import (
 var _ = Describe("deprecation", func() {
 	valid := deprecation{replacement: "use --new instead", removalVersion: "v0.9.0", removalDate: "2027-03-14"}
 
-	// execute runs root with args and returns what cobra printed through OutOrStderr, which a
+	// warning runs root with args and returns what cobra printed through OutOrStderr, which a
 	// spec may point at a buffer; coroner's own root never sets Out.
-	execute := func(root *cobra.Command, args ...string) string {
+	warning := func(root *cobra.Command, args ...string) string {
 		var printed bytes.Buffer
 		root.SetOut(&printed)
 		root.SetArgs(args)
@@ -22,35 +23,48 @@ var _ = Describe("deprecation", func() {
 		return printed.String()
 	}
 
-	It("makes a deprecated flag warn with its replacement, earliest removal version and date", func() {
+	It("hides a deprecated flag and makes it warn with its replacement, earliest removal version and date", func() {
 		root := &cobra.Command{Use: "coroner", Run: func(*cobra.Command, []string) {}}
 		root.Flags().Bool("old", false, "")
 
-		Expect(deprecateFlag(root.Flags(), "old", valid)).To(Succeed())
+		deprecateFlag(root.Flags(), "old", valid)
 
-		Expect(execute(root, "--old")).To(Equal("Flag --old has been deprecated, use --new instead; " +
+		Expect(root.Flags().Lookup("old").Hidden).To(BeTrue())
+		Expect(warning(root, "--old")).To(Equal("Flag --old has been deprecated, use --new instead; " +
 			"it may be removed in v0.9.0 or later, and no earlier than 2027-03-14\n"))
 	})
 
-	It("makes a deprecated command warn with its replacement, earliest removal version and date", func() {
+	It("hides a deprecated command and makes it warn with its replacement, earliest removal version and date", func() {
 		root := &cobra.Command{Use: "coroner"}
 		old := &cobra.Command{Use: "old", Run: func(*cobra.Command, []string) {}}
 		root.AddCommand(old)
 
-		Expect(deprecateCommand(old, valid)).To(Succeed())
+		deprecateCommand(old, valid)
 
-		Expect(execute(root, "old")).To(Equal(`Command "old" is deprecated, use --new instead; ` +
+		Expect(old.Hidden).To(BeTrue())
+		Expect(warning(root, "old")).To(Equal(`Command "old" is deprecated, use --new instead; ` +
 			"it may be removed in v0.9.0 or later, and no earlier than 2027-03-14\n"))
 	})
 
-	DescribeTable("rejects a deprecation that does not name a replacement, a removal version and a removal date",
+	// onlyReason matches a message that gives reason and none of the other reasons.
+	onlyReason := func(reason string) types.GomegaMatcher {
+		matchers := []types.GomegaMatcher{ContainSubstring(reason)}
+		for _, other := range []string{"replacement", "removal version", "removal date"} {
+			if other != reason {
+				matchers = append(matchers, Not(ContainSubstring(other)))
+			}
+		}
+		return SatisfyAll(matchers...)
+	}
+
+	DescribeTable("panics on a deprecation that does not name a replacement, a removal version and a removal date",
 		func(d deprecation, reason string) {
 			flags := pflag.NewFlagSet("throwaway", pflag.ContinueOnError)
 			flags.Bool("old", false, "")
 			old := &cobra.Command{Use: "old"}
 
-			Expect(deprecateFlag(flags, "old", d)).To(MatchError(ContainSubstring(reason)))
-			Expect(deprecateCommand(old, d)).To(MatchError(ContainSubstring(reason)))
+			Expect(func() { deprecateFlag(flags, "old", d) }).To(PanicWith(MatchError(onlyReason(reason))))
+			Expect(func() { deprecateCommand(old, d) }).To(PanicWith(MatchError(onlyReason(reason))))
 			Expect(flags.Lookup("old").Deprecated).To(BeEmpty())
 			Expect(old.Deprecated).To(BeEmpty())
 		},

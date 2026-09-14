@@ -16,7 +16,8 @@ const (
 )
 
 // Kind names a class of failure. Scripts branch on it through the exit code and the JSON
-// error envelope, so a kind's meaning and exit code never change.
+// error envelope, so a kind keeps its exit code; STABILITY.md says when a kind itself may
+// change.
 type Kind string
 
 // The error kinds, grouped by exit code.
@@ -105,8 +106,8 @@ func exitCodes() map[Kind]int {
 }
 
 // Error is how a command reports a failure: Message says what went wrong and Hint how to
-// fix it. Err is the cause, logged under --debug and never printed otherwise. Only Kind is
-// stable; the text may change.
+// fix it. Err is the cause, logged under --debug and never printed otherwise. Message and
+// Hint are for people and may change; Kind is what scripts branch on.
 type Error struct {
 	Kind          Kind
 	Message, Hint string

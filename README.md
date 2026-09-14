@@ -30,7 +30,7 @@ without changing a hand-written page under `docs/` fails unless it has the
 
 ## Status
 
-Pre-0.1 and unstable: commands, flags, and the database schema can change in any release.
+Pre-0.1 and unstable: any release before 1.0 may change coroner, but never silently.
 [STABILITY.md](STABILITY.md) says what coroner promises to keep working, how a change is
 announced, and how a command or flag is deprecated before it goes.
 

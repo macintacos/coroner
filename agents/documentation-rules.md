@@ -98,11 +98,11 @@ digraph coroner_docs_router {
   [`docs/explanation/data-model.md`](../docs/explanation/data-model.md) ends with this
   file from its Language section on, word for word, and a spec in `internal/timeline`
   fails when they differ, so a glossary change edits both.
-- **[`STABILITY.md`](../STABILITY.md)** (anyone who depends on coroner's commands, flags
-  or JSON, and anyone changing them) — what counts as a contract, the tiers, what is
-  breaking, how a contract change is classified, and the deprecation mechanics. Help
-  topics, the pull request template and the contract README link to it rather than restate
-  it.
+- **[`STABILITY.md`](../STABILITY.md)** (anyone who runs coroner from a script, an agent
+  or an importer, and anyone who changes a command, flag, environment variable or JSON
+  output) — what counts as a contract, the tiers, what is breaking, how a contract change
+  is classified, and the deprecation mechanics. Help topics, the pull request template and
+  the contract README link to it for anything beyond a one-line summary.
 - **The docs site** (human-facing) — every file under [`docs/`](../docs/), built by
   Zensical with `mise run docs:build` from [`zensical.toml`](../zensical.toml), whose
   `nav` lists the pages, and deployed to GitHub Pages when a `v*` tag is pushed. The

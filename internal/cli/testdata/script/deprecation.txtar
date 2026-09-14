@@ -1,4 +1,6 @@
-# coroner-deprecated is coroner with --throwaway, a global flag deprecated with deprecateFlag.
+# coroner-deprecated, registered in script_test.go, runs export_test.go's
+# RunWithThrowawayDeprecation: coroner with --throwaway, a global flag deprecated with
+# deprecateFlag.
 # A deprecated flag keeps working and warns on stderr, never on stdout, so JSON output stays
 # valid and the exit code stays the command's own.
 exits 0 coroner version --json
