@@ -89,10 +89,10 @@ func overlay() viewer.Snapshot {
 	}
 }
 
-// sgrBefore returns the parameters of the SGR sequence that styles the last occurrence of text on
-// screen, or "" when none does.
-func sgrBefore(screen, text string) string {
-	matches := regexp.MustCompile(`\x1b\[([0-9;]*)m[^\x1b\n]*`+regexp.QuoteMeta(text)).FindAllStringSubmatch(screen, -1)
+// sgrBefore returns the parameters of the SGR sequence that styles the last occurrence of text in
+// shown, or "" when none does.
+func sgrBefore(shown, text string) string {
+	matches := regexp.MustCompile(`\x1b\[([0-9;]*)m[^\x1b\n]*`+regexp.QuoteMeta(text)).FindAllStringSubmatch(shown, -1)
 	if matches == nil {
 		return ""
 	}

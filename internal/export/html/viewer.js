@@ -508,15 +508,15 @@
   const rowOf = (event) => rowId(event.timeline_id, event.source);
   // An overlay nests a row per source under a row per timeline, in the order they were selected.
   const timelineGroups = () => {
-    const rows = new Set(data.events.map(rowOf));
+    const rowsWithEvents = new Set(data.events.map(rowOf));
     return data.timelines.flatMap((t, order) => {
-      const own = sources.filter((source) => rows.has(rowId(t.id, source)));
+      const ownSources = sources.filter((source) => rowsWithEvents.has(rowId(t.id, source)));
       // treeLevel gets the row vis-timeline's indent class.
-      const children = own.map((source, i) => ({ ...sourceGroup(source, rowId(t.id, source), i), timeline: t.id, treeLevel: 1 }));
+      const children = ownSources.map((source, i) => ({ ...sourceGroup(source, rowId(t.id, source), i), timeline: t.id, treeLevel: 1 }));
       const label = element("span", undefined, "timeline-label");
       label.append(element("span", t.name, "name"));
       if (t.title.trim()) label.append(element("span", t.title, "title"));
-      const parent = { id: t.id, order, timeline: t.id, sources: own, content: label, className: "timeline-row" };
+      const parent = { id: t.id, order, timeline: t.id, sources: ownSources, content: label, className: "timeline-row" };
       // vis-timeline gives a row with any nestedGroups, even none, an expand arrow.
       if (children.length) Object.assign(parent, { nestedGroups: children.map((child) => child.id), showNested: true });
       return [parent, ...children];

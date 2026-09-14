@@ -30,9 +30,9 @@ const (
 
 type styles struct {
 	name, faint, time, source, tags, gap, day, evidence, comment, selected, failure, notice lipgloss.Style
-	// timelines are an overlay's timeline colors, taken in the order the timelines were selected
+	// timelineStyles are an overlay's timeline colors, taken in the order the timelines were selected
 	// and wrapping after the last.
-	timelines []lipgloss.Style
+	timelineStyles []lipgloss.Style
 }
 
 // newStyles uses only the 16 ANSI colors, so the terminal's theme picks the shades.
@@ -43,24 +43,24 @@ func newStyles() styles {
 		lipgloss.Blue, lipgloss.Yellow, lipgloss.Green, lipgloss.Red,
 		lipgloss.BrightBlue, lipgloss.BrightYellow, lipgloss.BrightGreen, lipgloss.BrightRed,
 	}
-	timelines := make([]lipgloss.Style, 0, len(timelineColors))
+	timelineStyles := make([]lipgloss.Style, 0, len(timelineColors))
 	for _, c := range timelineColors {
-		timelines = append(timelines, s.Foreground(c))
+		timelineStyles = append(timelineStyles, s.Foreground(c))
 	}
 	return styles{
-		timelines: timelines,
-		name:      s.Bold(true),
-		faint:     s.Faint(true),
-		time:      s.Bold(true),
-		source:    s.Foreground(lipgloss.Cyan),
-		tags:      s.Foreground(lipgloss.Magenta),
-		gap:       s.Bold(true).Foreground(lipgloss.Yellow),
-		day:       s.Bold(true),
-		evidence:  s.Foreground(lipgloss.Green),
-		comment:   s.Faint(true).Italic(true),
-		selected:  s.Reverse(true),
-		failure:   s.Foreground(lipgloss.Red),
-		notice:    s.Bold(true).Foreground(lipgloss.Yellow),
+		timelineStyles: timelineStyles,
+		name:           s.Bold(true),
+		faint:          s.Faint(true),
+		time:           s.Bold(true),
+		source:         s.Foreground(lipgloss.Cyan),
+		tags:           s.Foreground(lipgloss.Magenta),
+		gap:            s.Bold(true).Foreground(lipgloss.Yellow),
+		day:            s.Bold(true),
+		evidence:       s.Foreground(lipgloss.Green),
+		comment:        s.Faint(true).Italic(true),
+		selected:       s.Reverse(true),
+		failure:        s.Foreground(lipgloss.Red),
+		notice:         s.Bold(true).Foreground(lipgloss.Yellow),
 	}
 }
 
@@ -288,7 +288,7 @@ func (m Model) timelineCell(e timeline.Event) (string, lipgloss.Style) {
 	i := m.timelineIndex[e.TimelineID]
 	name := pad(ansi.Truncate(m.snapshot.Timelines[i].Name, m.widths.timeline, "…"), m.widths.timeline)
 
-	return name, m.styles.timelines[i%len(m.styles.timelines)]
+	return name, m.styles.timelineStyles[i%len(m.styles.timelineStyles)]
 }
 
 // annotationLines are the annotations on the event with eventID, evidence marked ▌ and comments │,

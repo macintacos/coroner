@@ -163,11 +163,11 @@ var _ = Describe("timelineLoader", func() {
 		snapshot, err := load(viewer.Match{})
 		Expect(err).NotTo(HaveOccurred())
 		m := tea.Model(viewer.New(viewer.Options{Snapshot: snapshot, Load: load, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now}))
-		overlay := []string{"-t", "mongo-outage", "-t", "checkout-latency"}
+		overlayFlags := []string{"-t", "mongo-outage", "-t", "checkout-latency"}
 
 		Expect(snapshot.Timelines).To(HaveExactElements(HaveField("Name", "mongo-outage"), HaveField("Name", "checkout-latency")))
-		Expect(shownSeqs(m)).To(Equal(listedSeqs(ctx, overlay...)))
-		Expect(shownSeqs(submit(m, "s", "mongod"))).To(Equal(listedSeqs(ctx, append(overlay, "--source", "mongod")...)))
+		Expect(shownSeqs(m)).To(Equal(listedSeqs(ctx, overlayFlags...)))
+		Expect(shownSeqs(submit(m, "s", "mongod"))).To(Equal(listedSeqs(ctx, append(overlayFlags, "--source", "mongod")...)))
 	})
 
 	It("shows a tag's grammar error with its suggestion, keeping the events it showed", func(ctx SpecContext) {
