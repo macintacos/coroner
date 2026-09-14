@@ -35,9 +35,10 @@ Drafts are kept in your browser, under the page's timeline and your name. Closin
 and opening the same file again brings them back. The page of another timeline does not
 show them, and neither does a different name: after **Change name**, the page shows the
 drafts saved under the new name, and the earlier name's drafts come back if you change
-back to it. If the browser cannot store drafts, which can happen to a file opened from
-disk, the page says so and the drafts last until you close it, so export them before you
-do.
+back to it. Some browsers, such as Chrome, share storage between all files opened from
+disk, so another local HTML file opened in the same browser could read the drafts. If the
+browser cannot store drafts, which can happen to a file opened from disk, the page says so
+and the drafts last until you close it, so export them before you do.
 
 The page adds comments on events only: it cannot add events or evidence, or change what
 the export holds.
@@ -46,14 +47,15 @@ the export holds.
 
 1. Choose **Export annotations (.jsonl)**, above the event details. The browser downloads
    your drafts as a file named after the timeline and your name, such as
-   `inc-4821-annotations-Priya-Shah.jsonl`. Characters in your name other than letters,
-   digits, dots, underscores and hyphens become hyphens. A page of several timelines,
-   exported with `-t` given once for each, joins their names with `+`.
+   `inc-4821-annotations-Priya-Shah.jsonl`. Each run of characters in your name other than
+   letters, digits, dots, underscores and hyphens becomes one hyphen, so `Priya Shah`
+   becomes `Priya-Shah`. A page of several timelines, exported with `-t` given once for
+   each, joins their names with `+`.
 
 2. Send the file to whoever shared the page.
 
 3. Choose **Clear exported drafts** to remove the drafts you exported from the browser.
-   Drafts you add after exporting stay.
+   Drafts you add or edit after exporting stay.
 
 The file is a coroner JSONL export: a header, then one comment annotation per line, as the
 [export format](../reference/export-format.md) describes.
@@ -67,10 +69,16 @@ which has the timeline and its events. Preview what it adds first:
 coroner import inc-4821-annotations-Priya-Shah.jsonl --dry-run
 ```
 
-stderr counts the comments it would add:
+stderr names the timeline, then counts what it would add, one line per record type:
 
 ```text
+Would import into timeline `inc-4821`
+Would import timelines: 0 inserted, 0 identical, 0 conflicting
+Would import sources: 0 inserted, 0 identical, 0 conflicting
+Would import events: 0 inserted, 0 identical, 0 conflicting
 Would import annotations: 2 inserted, 0 identical, 0 conflicting
+Would import attachments: 0 inserted, 0 identical, 0 conflicting
+Would import links: 0 inserted, 0 identical, 0 conflicting
 ```
 
 Then import it, and list the timeline's annotations to see each comment with its author:
@@ -80,7 +88,8 @@ coroner import inc-4821-annotations-Priya-Shah.jsonl
 coroner annotation list -t inc-4821
 ```
 
-`coroner timeline view -t inc-4821` shows them under their events too. Importing the same
+On a terminal, `coroner timeline view -t inc-4821` shows them too, with their author,
+under an event you expand; its text output does not print annotations. Importing the same
 file again changes nothing. A database without the timeline or one of the events refuses
 the file and writes nothing; for that, conflicts and every other case, see
 [Import a colleague's export](import.md).

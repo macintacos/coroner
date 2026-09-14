@@ -376,7 +376,7 @@ a {
 }
 
 /* A draft is only in this browser until it is exported, so it is boxed apart from the export's own. */
-.drafts li {
+li.draft {
   padding: var(--space-2) var(--space-3);
   border: 1px dashed var(--muted);
   border-radius: var(--radius-md);
@@ -401,7 +401,9 @@ textarea {
   resize: vertical;
 }
 
-#detail > dl + :is(.comment, button) {
+/* Block, so its margin collapses with the list's above it. */
+.new-comment {
+  display: block;
   margin-top: var(--space-4);
 }
 

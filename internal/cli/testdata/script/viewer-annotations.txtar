@@ -1,5 +1,5 @@
 # A colleague commented on the HTML page of inc-4821.jsonl and exported their comments; the
-# investigator, who has the timeline, previews the file and imports it. Both archive files
+# investigator, who has the timeline, previews the file and imports it. Both JSONL files
 # are real: the first from timeline export, the second downloaded from that export's page.
 env CORONER_DB=$WORK/investigator.db
 exits 0 coroner import inc-4821.jsonl

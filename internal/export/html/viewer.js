@@ -146,6 +146,214 @@
     return list;
   };
 
+  // uuidV7 returns the RFC 9562 version 7 UUID for ms since the Unix epoch and ten random bytes.
+  // crypto.randomUUID only makes version 4.
+  const uuidV7 = (ms, random) => {
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 6; i++) bytes[i] = Math.floor(ms / 2 ** (40 - 8 * i)) & 0xff;
+    bytes.set(random, 6);
+    bytes[6] = (bytes[6] & 0x0f) | 0x70;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+  };
+
+  // canonicalInstant writes ms as an export instant, as timeline.FormatInstant writes, which
+  // import requires.
+  const canonicalInstant = (ms) => new Date(ms).toISOString().replace("Z", "000000Z");
+
+  // newDraft returns a comment drafted on an event at now, ms since the Unix epoch, with its ID's
+  // random part from ten random bytes.
+  const newDraft = (eventId, body, now, random) => ({
+    id: uuidV7(now, random),
+    eventId,
+    body,
+    createdAt: canonicalInstant(now),
+    updatedAt: canonicalInstant(now),
+  });
+
+  // annotationRecord returns a comment's export record, keys in export.Annotation's order; keep
+  // them in step.
+  const annotationRecord = ({ id, timelineId, eventId, body, author, createdAt, updatedAt }) => ({
+    type: "annotation",
+    id,
+    timeline_id: timelineId,
+    event_id: eventId,
+    kind: "comment",
+    body,
+    author,
+    source: null,
+    url: null,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  });
+
+  // annotationsHeader returns the header of an annotations export of envelope's timelines written
+  // at now, as Envelope.header writes one, with a query that filters nothing.
+  const annotationsHeader = (envelope, now) => ({
+    type: "header",
+    format: envelope.format,
+    format_version: envelope.format_version,
+    coroner_version: envelope.coroner_version,
+    exported_at: canonicalInstant(now),
+    query: {
+      timelines: envelope.timelines.map((t) => t.name),
+      since: null,
+      until: null,
+      sources: [],
+      tags: [],
+      contains: null,
+      limit: null,
+      order: "asc",
+    },
+  });
+
+  // Comments drafted here are kept in this browser under the page's timeline ids and the author's
+  // name, so the page of other timelines never shows them. Storage can throw, on file:// in WebKit
+  // for one, and then drafts last the visit and the page says so. The storage keys and the stored
+  // draft shape outlive a page version, so changing either orphans drafts already saved.
+  const authorKey = "coroner-author";
+  const draftsKey = (name) => "coroner-drafts:" + data.timelines.map((t) => t.id).sort().join("+") + ":" + name;
+  // memory holds what this visit stored, and is read instead of storage once storage has thrown.
+  const memory = new Map();
+  let storageFails = false;
+  const stored = (key) => {
+    if (!storageFails) {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        storageFails = true;
+      }
+    }
+    return memory.get(key) ?? null;
+  };
+  const store = (key, value) => {
+    memory.set(key, value);
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      storageFails = true;
+    }
+  };
+  const draftKeys = ["id", "eventId", "body", "createdAt", "updatedAt"];
+  // storedDrafts returns name's drafts, ignoring anything under the key that is not one. Drafts on
+  // events another export of the timeline holds are kept but not shown or exported here.
+  const storedDrafts = (name) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(stored(draftsKey(name)) ?? "[]");
+    } catch {
+      return [];
+    }
+    return Array.isArray(parsed) ? parsed.filter((draft) => draftKeys.every((key) => typeof draft?.[key] === "string")) : [];
+  };
+
+  let author = stored(authorKey);
+  let drafts = author === null ? [] : storedDrafts(author);
+  // editing is the open comment form: its event, the draft it edits or null for a new comment, and
+  // the text typed into it, undefined until the author types.
+  let editing = null;
+  // pendingComment is the event whose Add comment asked for the author's name first.
+  let pendingComment = null;
+  let lastExport = null; // { filename, versions: Map<draft id, updatedAt> }
+
+  const draftsOn = (eventId) => drafts.filter((draft) => draft.eventId === eventId);
+  const stillExported = (draft) => lastExport?.versions.get(draft.id) === draft.updatedAt;
+
+  // changeDrafts applies change to the author's drafts as stored now, which another tab of the page
+  // may have changed since this one read them, and stores the result.
+  const changeDrafts = (change) => {
+    drafts = change(storedDrafts(author));
+    store(draftsKey(author), JSON.stringify(drafts));
+  };
+
+  const button = (text, onClick, className) => {
+    const node = element("button", text, className);
+    node.type = "button";
+    node.addEventListener("click", onClick);
+    return node;
+  };
+
+  // filled reports whether control holds more than whitespace; when it does not, it empties the
+  // control and shows why.
+  const filled = (control) => {
+    if (control.value.trim()) return true;
+    control.value = "";
+    control.reportValidity();
+    return false;
+  };
+
+  const commentForm = (open, draft) => {
+    const form = element("form", undefined, draft ? "comment" : "comment new-comment");
+    const label = element("label", draft ? "Edit your comment" : "Your comment");
+    const body = element("textarea");
+    body.rows = 4;
+    body.required = true;
+    body.value = open.text ?? draft?.body ?? "";
+    body.addEventListener("input", () => {
+      open.text = body.value;
+    });
+    label.append(body);
+    const save = element("button", "Save draft");
+    save.type = "submit";
+    const actions = element("p", undefined, "actions");
+    actions.append(save, button("Cancel", () => closeComment()));
+    form.append(label, actions);
+    form.addEventListener("submit", (submitted) => {
+      submitted.preventDefault();
+      if (!filled(body)) return;
+      const now = Date.now();
+      if (draft) {
+        // Another tab may have discarded the draft; the edit keeps it rather than lose the text.
+        const edited = { ...draft, body: body.value, updatedAt: canonicalInstant(now) };
+        changeDrafts((fresh) => (fresh.some((other) => other.id === draft.id) ? fresh.map((other) => (other.id === draft.id ? edited : other)) : [...fresh, edited]));
+      } else {
+        changeDrafts((fresh) => [...fresh, newDraft(open.eventId, body.value, now, crypto.getRandomValues(new Uint8Array(10)))]);
+      }
+      editing = null;
+      refresh();
+    });
+    return form;
+  };
+
+  const draftItem = (draft) => {
+    const item = element("li", undefined, "draft");
+    const actions = element("p", undefined, "actions");
+    actions.append(
+      button("Edit", () => openComment(draft.eventId, draft.id)),
+      button("Discard", () => {
+        changeDrafts((fresh) => fresh.filter((other) => other.id !== draft.id));
+        refresh();
+      }),
+    );
+    item.append(element("p", "Draft comment by " + author, "label"), element("p", draft.body, "body"), actions);
+    return item;
+  };
+
+  // draftNodes returns an event's drafts, each editable, then a form for a new comment or the
+  // button that opens one. A form editing a draft another tab discarded is not shown.
+  const draftNodes = (eventId, eventDrafts) => {
+    const formOpen = editing?.eventId === eventId && (editing.draftId === null || eventDrafts.some((draft) => draft.id === editing.draftId));
+    const open = formOpen ? editing : null;
+    const nodes = [];
+    if (eventDrafts.length) {
+      const list = element("ul", undefined, "annotations drafts");
+      for (const draft of eventDrafts) {
+        if (draft.id !== open?.draftId) {
+          list.append(draftItem(draft));
+          continue;
+        }
+        const item = element("li", undefined, "draft");
+        item.append(commentForm(open, draft));
+        list.append(item);
+      }
+      nodes.push(list);
+    }
+    if (open?.draftId === null) nodes.push(commentForm(open, null));
+    else if (!open) nodes.push(button("Add comment", () => openComment(eventId, null), "new-comment"));
+    return nodes;
+  };
+
   // An overlay holds several timelines, and names an event's or annotation's timeline wherever
   // it shows one; the page of a single timeline names none.
   const overlay = data.timelines.length > 1;
@@ -184,10 +392,10 @@
     nodes.push(fields);
 
     const annotations = annotationsOn.get(event.id) ?? [];
-    const drafts = draftsOn(event.id);
-    if (annotations.length || drafts.length) nodes.push(element("h3", "Annotations"));
+    const eventDrafts = draftsOn(event.id);
+    if (annotations.length || eventDrafts.length) nodes.push(element("h3", "Annotations"));
     if (annotations.length) nodes.push(annotationList(annotations));
-    nodes.push(...draftNodes(event.id, drafts));
+    nodes.push(...draftNodes(event.id, eventDrafts));
     return nodes;
   };
 
@@ -473,49 +681,6 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  // uuidV7 returns the RFC 9562 version 7 UUID for ms since the Unix epoch and ten random bytes.
-  // crypto.randomUUID only makes version 4.
-  const uuidV7 = (ms, random) => {
-    const bytes = new Uint8Array(16);
-    for (let i = 0; i < 6; i++) bytes[i] = Math.floor(ms / 2 ** (40 - 8 * i)) & 0xff;
-    bytes.set(random, 6);
-    bytes[6] = (bytes[6] & 0x0f) | 0x70;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
-  };
-
-  // canonicalInstant writes ms as an export instant, which import refuses without all nine
-  // fractional digits.
-  const canonicalInstant = (ms) => new Date(ms).toISOString().replace("Z", "000000Z");
-
-  // makeAnnotation returns the export record of a comment author wrote on an event at now, ms
-  // since the Unix epoch, with its ID's random part from ten random bytes.
-  const makeAnnotation = ({ timelineId, eventId, body, author }, now, random) => ({
-    type: "annotation",
-    id: uuidV7(now, random),
-    timeline_id: timelineId,
-    event_id: eventId,
-    kind: "comment",
-    body,
-    author,
-    source: null,
-    url: null,
-    created_at: canonicalInstant(now),
-    updated_at: canonicalInstant(now),
-  });
-
-  // annotationsHeader returns the header of an annotations export written at now from the page
-  // of exported: its format version, and a query naming its timelines that filters nothing.
-  const annotationsHeader = (exported, now) => ({
-    type: "header",
-    format: exported.format,
-    format_version: exported.format_version,
-    coroner_version: exported.coroner_version,
-    exported_at: canonicalInstant(now),
-    query: { timelines: exported.timelines.map((t) => t.name), since: null, until: null, sources: [], tags: [], contains: null, limit: null, order: "asc" },
-  });
-
   const exported = inZone(instant(data.exported_at));
   const shown = data.timelines[0];
   // An overlay is named by its timelines' names, as the Markdown export titles one.
@@ -782,52 +947,10 @@
     download(await png(svg), names.join("+") + ".png");
   });
 
-  // Comments drafted here are kept in this browser under the page's timeline ids and the reader's
-  // name, so the page of other timelines never shows them. The page never writes its own file:
-  // the reader exports the drafts and sends them on. Storage can throw, on file:// in WebKit for
-  // one, and then drafts last the visit and the page says so.
-  const reviewerKey = "coroner-reviewer";
-  const draftsKey = (name) => "coroner-drafts:" + data.timelines.map((t) => t.id).join("+") + ":" + name;
-  let storageFails = false;
-  const stored = (key) => {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      storageFails = true;
-      return null;
-    }
-  };
-  const store = (key, value) => {
-    try {
-      localStorage.setItem(key, value);
-    } catch {
-      storageFails = true;
-    }
-  };
-  // storedDrafts returns name's drafts, ignoring anything under the key that is not one. Drafts on
-  // events another export of the timeline holds are kept but not shown or exported here.
-  const storedDrafts = (name) => {
-    let parsed;
-    try {
-      parsed = JSON.parse(stored(draftsKey(name)) ?? "[]");
-    } catch {
-      return [];
-    }
-    return Array.isArray(parsed) ? parsed.filter((draft) => typeof draft?.id === "string" && typeof draft.body === "string") : [];
-  };
+  const pageDrafts = () => drafts.filter((draft) => eventsById.has(draft.eventId));
 
-  let reviewer = stored(reviewerKey);
-  let drafts = reviewer === null ? [] : storedDrafts(reviewer);
-  // editing is the event whose comment form is open, and the draft it edits or null for a new one.
-  let editing = null;
-  let exportedIDs = new Set();
-  let exportedFilename = "";
-  let commentAfterName = false;
-
-  const draftsOn = (eventID) => drafts.filter((draft) => draft.event_id === eventID);
-  const pageDrafts = () => drafts.filter((draft) => eventsById.has(draft.event_id));
-
-  const reviewerLine = document.getElementById("reviewer");
+  const authorLine = document.getElementById("author");
+  const commentingAs = document.getElementById("commenting-as");
   const nameForm = document.getElementById("name-form");
   const nameInput = document.getElementById("your-name");
   const draftsStatus = document.getElementById("drafts-status");
@@ -838,156 +961,96 @@
   const plural = (count, noun) => count + " " + noun + (count === 1 ? "" : "s");
 
   const showReview = () => {
-    reviewerLine.hidden = reviewer === null;
-    document.getElementById("commenting-as").textContent = "Commenting as " + reviewer + ".";
+    authorLine.hidden = author === null;
+    if (author !== null) commentingAs.textContent = "Commenting as " + author + ".";
     const shownDrafts = pageDrafts();
-    const exportedLeft = drafts.filter((draft) => exportedIDs.has(draft.id)).length;
+    const exportedLeft = drafts.filter(stillExported).length;
     const status = [
       shownDrafts.length ? plural(shownDrafts.length, "draft comment") + (storageFails ? "." : ", kept in this browser.") : "No draft comments.",
       storageFails && "This browser can't keep drafts, so they last until you close the page.",
-      exportedLeft && "Exported " + plural(exportedLeft, "draft comment") + " to " + exportedFilename + ".",
+      exportedLeft && "Exported " + plural(exportedLeft, "draft comment") + " to " + lastExport.filename + ".",
     ];
     draftsStatus.textContent = status.filter(Boolean).join(" ");
     exportAnnotations.disabled = !shownDrafts.length;
     clearExported.hidden = !exportedLeft;
   };
 
+  // refresh redraws the review bar and the detail pane, whose redraw drops the focused control, so
+  // focus goes to the open comment form or else the selected event's Add comment button.
   const refresh = () => {
     show(eventsById.get(view.selected) ?? null);
     showReview();
-    detail.querySelector("textarea")?.focus();
-  };
-
-  const saveDrafts = () => {
-    store(draftsKey(reviewer), JSON.stringify(drafts));
-    refresh();
-  };
-
-  const button = (text, onClick) => {
-    const node = element("button", text);
-    node.type = "button";
-    node.addEventListener("click", onClick);
-    return node;
-  };
-
-  const edit = (eventID, draftID) => {
-    if (reviewer === null) {
-      commentAfterName = true;
-      askName();
-      return;
-    }
-    editing = eventID === null ? null : { eventID, draftID };
-    refresh();
-  };
-
-  const commentForm = (eventID, draft) => {
-    const form = element("form", undefined, "comment");
-    const label = element("label", draft ? "Edit your comment" : "Your comment");
-    const body = element("textarea");
-    body.rows = 4;
-    body.required = true;
-    body.value = draft?.body ?? "";
-    label.append(body);
-    const save = element("button", "Save draft");
-    save.type = "submit";
-    const actions = element("p", undefined, "actions");
-    actions.append(save, button("Cancel", () => edit(null)));
-    form.append(label, actions);
-    form.addEventListener("submit", (submitted) => {
-      submitted.preventDefault();
-      if (!body.value.trim()) {
-        body.value = "";
-        body.reportValidity();
-        return;
-      }
-      const now = Date.now();
-      drafts = draft
-        ? drafts.map((other) => (other.id === draft.id ? { ...other, body: body.value, updated_at: canonicalInstant(now) } : other))
-        : [...drafts, makeAnnotation({ timelineId: eventsById.get(eventID).timeline_id, eventId: eventID, body: body.value, author: reviewer }, now, crypto.getRandomValues(new Uint8Array(10)))];
-      editing = null;
-      saveDrafts();
-    });
-    return form;
-  };
-
-  const draftItem = (draft) => {
-    const item = element("li", undefined, "draft");
-    const actions = element("p", undefined, "actions");
-    actions.append(
-      button("Edit", () => edit(draft.event_id, draft.id)),
-      button("Discard", () => {
-        drafts = drafts.filter((other) => other.id !== draft.id);
-        saveDrafts();
-      }),
-    );
-    item.append(element("p", "Draft comment by " + draft.author, "label"), element("p", draft.body, "body"), actions);
-    return item;
-  };
-
-  // draftNodes returns an event's drafts, each editable, then a form for a new comment or the
-  // button that opens one.
-  const draftNodes = (eventID, eventDrafts) => {
-    const open = editing?.eventID === eventID ? editing : null;
-    const nodes = [];
-    if (eventDrafts.length) {
-      const list = element("ul", undefined, "annotations drafts");
-      for (const draft of eventDrafts) {
-        if (draft.id !== open?.draftID) {
-          list.append(draftItem(draft));
-          continue;
-        }
-        const item = element("li", undefined, "draft");
-        item.append(commentForm(eventID, draft));
-        list.append(item);
-      }
-      nodes.push(list);
-    }
-    if (open?.draftID === null) nodes.push(commentForm(eventID, null));
-    else if (!open) nodes.push(button("Add comment", () => edit(eventID, null)));
-    return nodes;
+    detail.querySelector("textarea, button.new-comment")?.focus();
   };
 
   const askName = () => {
     nameForm.hidden = false;
-    nameInput.value = reviewer ?? "";
+    nameInput.value = author ?? "";
     nameInput.focus();
+  };
+
+  const openComment = (eventId, draftId) => {
+    if (author === null) {
+      pendingComment = eventId;
+      askName();
+      return;
+    }
+    editing = { eventId, draftId };
+    refresh();
+  };
+
+  const closeComment = () => {
+    editing = null;
+    refresh();
   };
 
   document.getElementById("change-name").addEventListener("click", askName);
   document.getElementById("cancel-name").addEventListener("click", () => {
     nameForm.hidden = true;
-    commentAfterName = false;
+    pendingComment = null;
   });
   nameForm.addEventListener("submit", (submitted) => {
     submitted.preventDefault();
+    if (!filled(nameInput)) return;
     const name = nameInput.value.trim();
-    if (!name) {
-      nameInput.value = "";
-      nameInput.reportValidity();
-      return;
+    if (name !== author) {
+      author = name;
+      store(authorKey, name);
+      drafts = storedDrafts(name);
+      lastExport = null;
+      // A draft being edited was the previous author's; a new comment being typed carries over.
+      if (editing?.draftId !== null) editing = null;
     }
-    reviewer = name;
-    store(reviewerKey, name);
-    drafts = storedDrafts(name);
-    exportedIDs = new Set();
+    if (pendingComment !== null) editing = { eventId: pendingComment, draftId: null };
+    pendingComment = null;
     nameForm.hidden = true;
-    editing = commentAfterName && view.selected !== null ? { eventID: view.selected, draftID: null } : null;
-    commentAfterName = false;
     refresh();
+  });
+
+  // Another tab of the page changed the author's drafts. A form being typed in keeps its pane until
+  // it closes.
+  addEventListener("storage", (changed) => {
+    if (author === null || changed.key !== draftsKey(author)) return;
+    drafts = storedDrafts(author);
+    showReview();
+    if (editing === null) show(eventsById.get(view.selected) ?? null);
   });
 
   exportAnnotations.addEventListener("click", () => {
     const exporting = pageDrafts();
-    const records = [annotationsHeader(data, Date.now()), ...exporting];
-    exportedFilename = names.join("+") + "-annotations-" + reviewer.replace(/[^A-Za-z0-9._-]+/g, "-") + ".jsonl";
-    exportedIDs = new Set(exporting.map((draft) => draft.id));
-    download(new Blob([records.map((record) => JSON.stringify(record) + "\n").join("")], { type: "application/x-ndjson" }), exportedFilename);
+    const records = [
+      annotationsHeader(data, Date.now()),
+      ...exporting.map((draft) => annotationRecord({ ...draft, timelineId: eventsById.get(draft.eventId).timeline_id, author })),
+    ];
+    const filename = names.join("+") + "-annotations-" + author.replace(/[^\p{L}\p{N}._-]+/gu, "-") + ".jsonl";
+    lastExport = { filename, versions: new Map(exporting.map((draft) => [draft.id, draft.updatedAt])) };
+    download(new Blob([records.map((record) => JSON.stringify(record) + "\n").join("")], { type: "application/x-ndjson" }), filename);
     showReview();
   });
   clearExported.addEventListener("click", () => {
-    drafts = drafts.filter((draft) => !exportedIDs.has(draft.id));
-    exportedIDs = new Set();
-    saveDrafts();
+    changeDrafts((fresh) => fresh.filter((draft) => !stillExported(draft)));
+    lastExport = null;
+    refresh();
   });
 
   showReview();

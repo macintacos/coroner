@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -92,6 +93,40 @@ func archiveFile(path, name string) []byte {
 	return archive.Files[i].Data
 }
 
+// literalBody returns the lines inside the object literal that viewer.js's arrow function name
+// returns.
+func literalBody(name string) string {
+	GinkgoHelper()
+	viewer, err := os.ReadFile("html/viewer.js")
+	Expect(err).NotTo(HaveOccurred())
+	match := regexp.MustCompile(`(?ms)^  const ` + name + ` = .*? => \(\{$(.*?)^  \}\);$`).FindStringSubmatch(string(viewer))
+	Expect(match).To(HaveLen(2), "no "+name+" literal in viewer.js")
+
+	return match[1]
+}
+
+// keysAt returns, in order, the keys on the lines of body indented by exactly indent.
+func keysAt(body, indent string) []string {
+	var keys []string
+	for _, m := range regexp.MustCompile(`(?m)^`+indent+`([a-z_]+)(?::|,$)`).FindAllStringSubmatch(body, -1) {
+		keys = append(keys, m[1])
+	}
+
+	return keys
+}
+
+// jsonKeys returns the JSON keys of struct type t's fields, in order, read as checkKeys reads
+// them.
+func jsonKeys(t reflect.Type) []string {
+	var keys []string
+	for field := range t.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		keys = append(keys, name)
+	}
+
+	return keys
+}
+
 // hostileExport carries hostile text in the typed strings the viewer shows.
 func hostileExport() export.Envelope {
 	return envelope(
@@ -160,8 +195,23 @@ var _ = Describe("WriteHTML", func() {
 		Expect(string(viewer)).NotTo(MatchRegexp(`\b(innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser)\b|document\.write|\btitle\s*:`))
 	})
 
-	It("has a viewer whose annotations export validates, as a header and comments with UUIDv7 IDs and nine-digit instants", func() {
-		// A reviewer downloaded this from the page; the script beside it imports it.
+	DescribeTable("has an annotations export whose record builder writes type, then the export type's keys in order",
+		func(builder string, t reflect.Type) {
+			Expect(keysAt(literalBody(builder), "    ")).To(Equal(append([]string{"type"}, jsonKeys(t)...)))
+		},
+		Entry("annotationRecord, an annotation", "annotationRecord", reflect.TypeFor[export.Annotation]()),
+		Entry("annotationsHeader, a header", "annotationsHeader", reflect.TypeFor[export.Header]()),
+	)
+
+	It("has an annotations header whose query writes the export query's keys in order", func() {
+		query := regexp.MustCompile(`(?ms)^    query: \{$(.*?)^    \},$`).FindStringSubmatch(literalBody("annotationsHeader"))
+		Expect(query).To(HaveLen(2), "no query literal in annotationsHeader")
+
+		Expect(keysAt(query[1], "      ")).To(Equal(jsonKeys(reflect.TypeFor[export.Query]())))
+	})
+
+	It("has a page-exported annotations sample that validates, as a header and comments with UUIDv7 IDs and nine-digit instants", func() {
+		// A reviewer downloaded this from the page; viewer-annotations.txtar holds it and imports it.
 		data := archiveFile("../cli/testdata/script/viewer-annotations.txtar", "inc-4821-annotations-Priya-Shah.jsonl")
 		expectValidJSONL(exportSchemas(), data)
 		nineDigits := MatchRegexp(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)
@@ -183,6 +233,9 @@ var _ = Describe("WriteHTML", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(id.Version()).To(Equal(uuid.Version(7)), text)
 			Expect(id.Variant()).To(Equal(uuid.RFC4122), text)
+			sec, nsec := id.Time().UnixTime()
+			createdAt, _ := record["created_at"].(string)
+			Expect(sec*1000+nsec/1_000_000).To(Equal(unixMilli(createdAt)), text)
 		}
 	})
 
