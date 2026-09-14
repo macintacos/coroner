@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Reads a pull request's changed paths on stdin. Fails when a non-test file under
+# internal/cli/ changed but nothing under docs/ did, other than the generated CLI reference.
+
+set -euo pipefail
+
+paths=$(cat)
+cli=$(grep -E '^internal/cli/' <<<"$paths" | grep -vE '_test\.go$|/testdata/' || true)
+docs=$(grep -E '^docs/' <<<"$paths" | grep -v '^docs/reference/cli/' || true)
+
+if [[ -n $cli && -z $docs ]]; then
+	echo "::error::internal/cli changed but no page under docs/ did. Update the docs page the change affects, or add the docs-not-needed label if nothing user-visible changed." >&2
+	exit 1
+fi
