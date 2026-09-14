@@ -397,13 +397,13 @@ var _ = Describe("timeline export", func() {
 
 			records, err := export.Decode(strings.NewReader(readFile(filepath.Join(dir, "mongo-outage.jsonl"))))
 			Expect(err).NotTo(HaveOccurred())
-			var named []string
+			var contents []string
 			for _, record := range records {
 				if a, ok := record.(export.Attachment); ok {
-					named = append(named, readFile(filepath.Join(dir, export.AttachmentPath(a))))
+					contents = append(contents, readFile(filepath.Join(dir, export.AttachmentPath(a))))
 				}
 			}
-			Expect(named).To(ConsistOf(string(png), string(log)))
+			Expect(contents).To(ConsistOf(string(png), string(log)))
 		})
 
 		It("writes the same bytes when it exports into the same directory again", func(ctx SpecContext) {
@@ -418,13 +418,13 @@ var _ = Describe("timeline export", func() {
 
 		DescribeTable("links Markdown not written to a directory to the blobs beside the database, warning on stderr that only this machine can open them",
 			func(ctx SpecContext, file string) {
-				output, md := "-", out.String
+				path, md := "-", out.String
 				if file != "" {
-					output = filepath.Join(home, file)
-					md = func() string { return readFile(output) }
+					path = filepath.Join(home, file)
+					md = func() string { return readFile(path) }
 				}
 
-				Expect(run(ctx, "timeline", "export", "--format", "md", "-o", output)).To(Equal(0), errOut.String())
+				Expect(run(ctx, "timeline", "export", "--format", "md", "-o", path)).To(Equal(0), errOut.String())
 
 				Expect(errOut.String()).To(ContainSubstring("only this machine"))
 				var contents []string

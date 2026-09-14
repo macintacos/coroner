@@ -17,12 +17,12 @@ import (
 )
 
 const (
-	timelineID = "01a09862-b1c0-7000-8000-000000000001"
-	sourceID   = "01a09862-b1c0-7000-8000-000000000002"
-	eventID    = "01a09862-b1c0-7000-8000-000000000003"
-	eventID2   = "01a09862-b1c0-7000-8000-000000000004"
-	noteID     = "01a09862-b1c0-7000-8000-000000000005"
-	fileID     = "01a09862-b1c0-7000-8000-000000000006"
+	timelineID   = "01a09862-b1c0-7000-8000-000000000001"
+	sourceID     = "01a09862-b1c0-7000-8000-000000000002"
+	eventID      = "01a09862-b1c0-7000-8000-000000000003"
+	eventID2     = "01a09862-b1c0-7000-8000-000000000004"
+	annotationID = "01a09862-b1c0-7000-8000-000000000005"
+	attachmentID = "01a09862-b1c0-7000-8000-000000000006"
 )
 
 // sampleExport returns the JSONL export of a small timeline: a header, a timeline, a source,
@@ -34,7 +34,7 @@ func sampleExport() string {
 	env.Sources = []export.Source{{ID: sourceID, Name: "db-2/mongod", CreatedAt: instant(1, 0)}}
 	env.Events = []export.Event{sampleEvent(eventID, 1), sampleEvent(eventID2, 2)}
 	env.Annotations = []export.Annotation{{
-		ID: noteID, TimelineID: timelineID, EventID: new(eventID), Kind: timeline.AnnotationEvidence,
+		ID: annotationID, TimelineID: timelineID, EventID: new(eventID), Kind: timeline.AnnotationEvidence,
 		Body: "rs.status() showed no primary", Source: new("db-2/mongod"), CreatedAt: instant(4, 0), UpdatedAt: instant(4, 0),
 	}}
 	env.Attachments = []export.Attachment{sampleAttachment()}
@@ -57,7 +57,7 @@ func sampleEvent(id string, seq int64) export.Event {
 
 func sampleAttachment() export.Attachment {
 	return export.Attachment{
-		ID: fileID, AnnotationID: new(noteID), Filename: "rs-status.txt", MIME: "text/plain; charset=utf-8",
+		ID: attachmentID, AnnotationID: new(annotationID), Filename: "rs-status.txt", MIME: "text/plain; charset=utf-8",
 		SHA256: strings.Repeat("0f", 32), Size: 2048, CreatedAt: instant(4, 0),
 	}
 }
@@ -117,7 +117,7 @@ var _ = Describe("Decode", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		one := []string{
-			"header", "timeline " + timelineID, "source " + sourceID, "event " + eventID, "annotation " + noteID, "attachment " + fileID,
+			"header", "timeline " + timelineID, "source " + sourceID, "event " + eventID, "annotation " + annotationID, "attachment " + attachmentID,
 			"event " + eventID2,
 		}
 		Expect(labels(records)).To(Equal(append(one, one...)))

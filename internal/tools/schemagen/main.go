@@ -85,13 +85,13 @@ func generate() ([]byte, error) {
 }
 
 // dropAddedKeys removes each key whose field has a since tag, which an export of an earlier
-// minor version lacks, from object's required list, object being the schema of struct t, and
+// minor version lacks, from schema's required list, schema being the schema of struct t, and
 // from the definitions of the structs t holds.
-func dropAddedKeys(object *jsonschema.Schema, t reflect.Type, defs jsonschema.Definitions) {
+func dropAddedKeys(schema *jsonschema.Schema, t reflect.Type, defs jsonschema.Definitions) {
 	for field := range t.Fields() {
 		if _, added := field.Tag.Lookup("since"); added {
 			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-			object.Required = slices.DeleteFunc(object.Required, func(key string) bool { return key == name })
+			schema.Required = slices.DeleteFunc(schema.Required, func(key string) bool { return key == name })
 		}
 
 		held := field.Type

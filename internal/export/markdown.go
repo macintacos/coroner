@@ -431,11 +431,11 @@ func (md markdownRenderer) attachmentLinks(ownerID string) []string {
 	var links []string
 	for _, a := range md.attachments[ownerID] {
 		// Not md.escape: a URL it keeps whole could hold a ] that ends the text early.
-		link := "[" + md.escaper.Replace(strings.Join(lines(a.Filename), " ")) + "](" + linkDestination(md.link(a)) + ")"
+		rendered := "[" + md.escaper.Replace(strings.Join(lines(a.Filename), " ")) + "](" + linkDestination(md.link(a)) + ")"
 		if strings.HasPrefix(a.MIME, "image/") {
-			link = "!" + link
+			rendered = "!" + rendered
 		}
-		links = append(links, link)
+		links = append(links, rendered)
 	}
 
 	return links
