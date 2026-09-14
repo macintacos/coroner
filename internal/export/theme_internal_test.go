@@ -38,7 +38,6 @@ func contrast(a, b string) float64 {
 	return (lighter + 0.05) / (darker + 0.05)
 }
 
-// withRole returns the viewer tokens that have role.
 func withRole(role tokenRole) []themeToken {
 	return slices.DeleteFunc(viewerTokens(), func(t themeToken) bool { return t.Role != role })
 }
