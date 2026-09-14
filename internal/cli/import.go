@@ -24,13 +24,14 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 		Short:   "Import records from a JSONL export",
 		GroupID: coreCommands,
 		Long: "Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'\n" +
-			"writes it, into the database: its timelines, sources, events, annotations and attachments.\n" +
+			"writes it, into the database: its timelines, sources, events, annotations, attachments and\n" +
+			"links.\n" +
 			"- reads the export from stdin, so concatenated exports import together. Every record is\n" +
 			"checked before anything is written, and the import is written in one transaction.\n\n" +
 			"Records match by id, and sources by name. A record stored unchanged is skipped, so importing a\n" +
 			"file twice changes nothing. A record stored with different content is a conflict: by default\n" +
 			"the import writes nothing and exits 4; --on-conflict skip keeps the stored record, and\n" +
-			"--on-conflict replace takes the import's. Replace never changes an attachment or moves an event\n" +
+			"--on-conflict replace takes the import's. Replace never changes an attachment or link, or moves an event\n" +
 			"or annotation, so such a conflict exits 4 under replace too. Authors and created and updated\n" +
 			"times come from the export. An imported event keeps its seq unless its timeline has already\n" +
 			"reached that seq, when it gets the next one.\n\n" +

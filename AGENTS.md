@@ -122,13 +122,15 @@ digraph coroner_rules_router {
   output formats it supports in its `formats` annotation, and any other `--format` or
   `--json` exits 2 as `usage`. `-t` names one timeline, and naming more exits 2 as
   `usage`, unless the command reads several as an overlay and says so in its `overlay`
-  annotation, as `event list` and `timeline export` do; such a command selects its
-  timelines through `selectTimelines` and reads their events through
+  annotation, as `event list` and `timeline export` do; such a command also takes
+  `--overlay`, a saved overlay's name, in place of `-t`, reads both through
+  `readTimelineChoice` ([`overlay.go`](internal/cli/overlay.go)), selects its timelines
+  through `selectChosenTimelines` and reads their events through
   `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the JSON
   error envelope under `--format json|jsonl`.
-- Write commands (`timeline create|edit|delete|use`, `event add|edit|delete`,
-  `annotation add|edit|delete`, `attachment delete`): each declares its flags, positional
-  argument and their checks once, in a `definition`
+- Write commands (`timeline create|edit|delete|use`, `event add|edit|delete|link|unlink`,
+  `annotation add|edit|delete`, `attachment delete`, `overlay create`): each declares its
+  flags, positional argument and their checks once, in a `definition`
   ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
   and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). `RunE` reads the
   definition's values, calls a plain run function that returns a result, and renders it. A

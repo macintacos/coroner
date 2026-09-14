@@ -9,14 +9,15 @@ Import records from a JSONL export
 ### Synopsis
 
 Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'
-writes it, into the database: its timelines, sources, events, annotations and attachments.
+writes it, into the database: its timelines, sources, events, annotations, attachments and
+links.
 - reads the export from stdin, so concatenated exports import together. Every record is
 checked before anything is written, and the import is written in one transaction.
 
 Records match by id, and sources by name. A record stored unchanged is skipped, so importing a
 file twice changes nothing. A record stored with different content is a conflict: by default
 the import writes nothing and exits 4; --on-conflict skip keeps the stored record, and
---on-conflict replace takes the import's. Replace never changes an attachment or moves an event
+--on-conflict replace takes the import's. Replace never changes an attachment or link, or moves an event
 or annotation, so such a conflict exits 4 under replace too. Authors and created and updated
 times come from the export. An imported event keeps its seq unless its timeline has already
 reached that seq, when it gets the next one.

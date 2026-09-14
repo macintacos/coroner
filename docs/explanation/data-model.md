@@ -16,6 +16,8 @@ erDiagram
   TIMELINE ||--o{ ANNOTATION : "holds"
   EVENT |o--o{ ANNOTATION : "is annotated by"
   EVENT |o--o{ ATTACHMENT : "keeps"
+  EVENT ||--o{ LINK : "is the start of"
+  LINK }o--|| EVENT : "leads to"
   ANNOTATION |o--o{ ATTACHMENT : "keeps"
   SOURCE |o--o{ EVENT : "reported"
   SOURCE |o--o{ ANNOTATION : "supplied"
@@ -28,15 +30,32 @@ Each event belongs to exactly one [timeline](#glossary), its home, because the c
 event makes is part of the investigation that recorded it. Commands name a timeline by its
 unique name, such as `mongo-failover`. To read several investigations side by side, such
 as a database failover and the checkout latency it caused, you overlay their timelines. An
-overlay is a query, not a record: it merges the timelines' events into one chronology and
-changes none of them.
+overlay is a query, not a copy: it merges the timelines' events into one chronology and
+changes none of them. An investigation you come back to can save its overlay under a name,
+which stays in your database and never travels in an export.
 
 ```sh
 coroner event list -t mongo-failover -t checkout-latency
+coroner overlay create checkout-incident -t mongo-failover -t checkout-latency
+coroner timeline export --overlay checkout-incident --format jsonl
 ```
 
 Because an overlay never copies or moves an event, an event cannot drift out of step with
-a second copy of itself, and deleting one timeline never touches another.
+a second copy of itself, and deleting one timeline never touches another: it only leaves
+the overlays that read it.
+
+### Links connect events
+
+An [event link](#glossary) runs from one event to another and says how they relate: the
+log line `led_to` the page, the Slack message is `same_as` the alert, or an event was
+`copied_from` one in another timeline. Events keep their one home timeline, and a link
+between two timelines needs no copy of either event, because every event's ID is unique
+across every database. Deleting an event deletes its links. An export carries a link when
+it holds both events, so export the timelines together to keep the links between them.
+
+```sh
+coroner event link 'mongo-failover#12' 'checkout-latency#3' --kind led_to
+```
 
 ### Annotations back events up
 
@@ -75,11 +94,11 @@ files beside it.
 
 ### IDs and seqs
 
-Every timeline, event, annotation and attachment has an ID, a UUIDv7: unique across every
-database, so an import keeps each of their IDs and a colleague's export merges into yours
-without two records sharing one. Sources are the exception: each database gives a source
-its own ID, and an import matches sources by name. A UUIDv7 also starts with the time it
-was made, so IDs made later sort later.
+Every timeline, event, annotation, attachment and link has an ID, a UUIDv7: unique across
+every database, so an import keeps each of their IDs and a colleague's export merges into
+yours without two records sharing one. Sources are the exception: each database gives a
+source its own ID, and an import matches sources by name. A UUIDv7 also starts with the
+time it was made, so IDs made later sort later.
 
 People do not type UUIDs, so each event also gets a [seq](#glossary), shown as `#12`. Seqs
 follow the order events were added to their timeline, not when they happened: an event
@@ -140,8 +159,13 @@ written. A timeline can have many.
 
 _Avoid_: link, ticket
 
-**Author**: The person who added an event or annotation, which is not necessarily its
-source.
+**Link**: A directed connection from one event to another, in the same timeline or
+another, whose kind says how they relate: `led_to`, `same_as` or `copied_from`.
+
+_Avoid_: relation, edge, reference
+
+**Author**: The person who added an event, annotation or link, which is not necessarily
+its source.
 
 _Avoid_: creator, owner, user
 
@@ -195,7 +219,7 @@ when neither `-t` nor `CORONER_TIMELINE` names one.
 _Avoid_: active timeline, context
 
 **Overlay**: Several timelines read together as one chronology, without changing any of
-them.
+them. It can be saved under a name, which `--overlay` selects.
 
 _Avoid_: merge, combine
 

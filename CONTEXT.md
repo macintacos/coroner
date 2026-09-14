@@ -45,8 +45,12 @@ _Avoid_: label
 written. A timeline can have many.\
 _Avoid_: link, ticket
 
-**Author**: The person who added an event or annotation, which is not necessarily its
-source.\
+**Link**: A directed connection from one event to another, in the same timeline or
+another, whose kind says how they relate: `led_to`, `same_as` or `copied_from`.\
+_Avoid_: relation, edge, reference
+
+**Author**: The person who added an event, annotation or link, which is not necessarily
+its source.\
 _Avoid_: creator, owner, user
 
 ### Time
@@ -90,7 +94,7 @@ when neither `-t` nor `CORONER_TIMELINE` names one.\
 _Avoid_: active timeline, context
 
 **Overlay**: Several timelines read together as one chronology, without changing any of
-them.\
+them. It can be saved under a name, which `--overlay` selects.\
 _Avoid_: merge, combine
 
 ## Prior art

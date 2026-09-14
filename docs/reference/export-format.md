@@ -21,17 +21,20 @@ coroner timeline export -t mongo-outage --format jsonl --since "2026-09-11T03:00
 Given `-t` more than once, `--format json` and `--format jsonl` export an overlay: one
 export holding every timeline named, with `query.timelines` listing them and their events
 merged in the one order this page gives. Each event's `timeline_id` names one of the
-exported `timelines`. The same filters apply to the merged events.
+exported `timelines`. The same filters apply to the merged events. `--overlay` exports the
+timelines of an overlay saved with `coroner overlay create`, in its order, as those `-t`s
+would; the export records the timelines, never the overlay.
 
 ```sh
 coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl
+coroner timeline export --overlay checkout-incident --format jsonl > overlay.jsonl
 ```
 
 Command `--json` and JSONL output uses the same keys for a timeline, source, event,
-annotation, or attachment today. A command may wrap them, as `event list`, `source list`,
-and `tag list` do with `total` and `truncated`, or extend them with output-only keys,
-which this page names beside the object they extend and which an export never holds. That
-output is encoded as `coroner help formatting` describes; the
+annotation, attachment, or link today. A command may wrap them, as `event list`,
+`source list`, and `tag list` do with `total` and `truncated`, or extend them with
+output-only keys, which this page names beside the object they extend and which an export
+never holds. That output is encoded as `coroner help formatting` describes; the
 [§ Encoding rules](#encoding-rules) are what an export guarantees.
 
 An *instant*, in the tables below, is a string in coroner's canonical time format: RFC
@@ -191,6 +194,8 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 `coroner event add`, `view`, `list`, `edit`, and `delete` also print `attachments`, an
 array of the event's [attachments](#attachment), oldest first. It is output only: an
 export lists attachments on their own, so an exported event never holds it.
+`coroner event view` also prints `links`, after `attachments`: an array of the
+[links](#link) from and to the event, oldest first, output only in the same way.
 
 ### Annotation
 
@@ -254,6 +259,17 @@ another, such as a log line that led to a page. Since 1.2.
 `led_to` means the from event led to the to event; `same_as` that both record one moment,
 as two sources saw it; `copied_from` that the from event was copied from the to event. The
 two events are always different, and one pair of events has at most one link of each kind.
+Its JSONL record, from an overlay of two timelines:
+
+```json
+{"type":"link","id":"01a09862-b1c0-7000-8000-00000000000a","from_event_id":"01a09862-b1c0-7000-8000-000000000003","to_event_id":"01a09862-b1c0-7000-8000-000000000005","kind":"led_to","created_at":"2026-09-13T01:30:00.000000000Z","author":"julian"}
+```
+
+`coroner event link` and `event unlink` print the same object, and add or remove one:
+
+```sh
+coroner event link 'mongo-failover#12' 'checkout-latency#3' --kind led_to --json
+```
 
 ## The JSONL stream
 
