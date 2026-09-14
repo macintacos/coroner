@@ -54,17 +54,17 @@
    wikis: plain CommonMark with no tables, front matter or raw HTML, lists at most two
    levels deep, and URL tokens left unescaped so autolinks keep them whole. An
    attachment's image or link destination is built only from its hash, by
-   `export.AttachmentFile` or the caller's `AttachmentLink`, never from its filename,
-   which appears only as the text, through the escaper but not `escape`, whose unescaped
-   URLs could hold a `]`; an event's attachments are list items beside its annotations and
-   an annotation's end its line, so neither nests a third level. Specs parse every golden
-   in `internal/export/testdata/markdown/` with goldmark to check there is no raw HTML,
-   lists are at most two levels deep and no heading repeats under one parent, and run
-   `rumdl check` on them with MD013 off. Its MD057 needs every relative link to resolve,
-   so `attachments/` there holds an empty file for each attachment hash the goldens link,
-   as an `-o` directory export would. `rumdl fmt` skips that directory, so a golden
-   changes only through `go test ./internal/export -update`, with its diff read before
-   committing.
+   `export.AttachmentPath` or the caller's `AttachmentLink`, never from its filename. The
+   filename is only the text, and goes through the escaper, not `escape`, whose unescaped
+   URLs could hold a `]`. An event's attachments are list items beside its annotations,
+   and an annotation's attachments follow its text on its line, so neither nests a third
+   level. Specs parse every golden in `internal/export/testdata/markdown/` with goldmark
+   to check there is no raw HTML, lists are at most two levels deep and no heading repeats
+   under one parent, and run `rumdl check` on them with MD013 off. Its MD057 needs every
+   relative link to resolve, so `attachments/` there holds an empty file for each
+   attachment hash the goldens link, as an `-o` directory export would. `rumdl fmt` skips
+   that directory, so a golden changes only through `go test ./internal/export -update`,
+   with its diff read before committing.
 9. **The Mermaid export has one writer:** render it only through `export.WriteMermaid`, or
    `export.WriteMarkdown` with `Diagram`, from the same `Envelope`, so the diagram shows
    the events every other format exports. Its layout is not a contract (`AGENTS.md` Rule

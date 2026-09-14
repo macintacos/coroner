@@ -1337,19 +1337,21 @@ browser, in the same zone as md, and needs -o.
 
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
-events are always in the order they happened. -o writes a file instead of stdout.
+events are always in the order they happened.
 
-For md and jsonl, -o naming a directory, an existing one or a path ending in /, writes
-<timeline>.md or <timeline>.jsonl into it, and each attachment's file beside it under
-attachments/, named by its sha256, so the Markdown's images show wherever the directory
-is committed or unzipped. Otherwise md links attachments to the files beside the
-database, which only this machine has, and says so on stderr. Pasting Markdown into
-GitHub, Linear or Slack uploads none of its images.
+-o writes a file instead of stdout. For md and jsonl, -o may instead name a directory, one
+that exists or a path ending in /: coroner writes <timeline>.md or <timeline>.jsonl into
+it and each attachment's file under attachments/ beside it, named by its sha256, so the
+Markdown's images show wherever the directory is committed or unzipped. Otherwise md links
+attachments to the files beside the database, which only this machine has, and says so on
+stderr, and a jsonl export's attachment records carry metadata and sha256 only, so their
+files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of
+its images.
 
 --group-by is experimental and may change before 1.0.
 
 USAGE
-  coroner timeline export --format {json | jsonl | md | mermaid | html} [-o <file> | -o <directory>/] [flags]
+  coroner timeline export --format {json | jsonl | md | mermaid | html} [-o {<file> | <directory>/}] [flags]
 
 EXAMPLES
   $ coroner timeline export -t mongo-outage --format json > rca.json
@@ -1367,7 +1369,7 @@ FLAGS
       --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
-  -o, --output file        Write the export to this file, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
+  -o, --output path        Write the export to this path, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them

@@ -246,15 +246,14 @@ it is a major version.
 
 1. The `header`.
 2. The timelines, by `name`.
-3. The annotations on the whole timeline, by `created_at`, then `id`.
+3. The annotations on the whole timeline, by `created_at`, then `id`, each followed
+   immediately by its attachments.
 4. The sources, by `name`.
 5. The events, by `occurred_at`, then `seq`, then `id`. Each event is followed immediately
-   by its annotations, by `created_at`, then `id`.
+   by its attachments, then by its annotations, each followed by its own attachments.
+   Annotations and attachments are ordered by `created_at`, then `id`.
 
-Every event and annotation is followed immediately by its attachments, by `created_at`,
-then `id`, before its own annotations or the next record: an event, its attachments, then
-each of its annotations with that annotation's attachments. A reader that skips
-`attachment` records sees the order above unchanged.
+`attachment` records are new in 1.1; a reader that skips them sees the 1.0 order.
 
 Records stay in this order under every filter, and under `--order desc`: `--order` only
 decides which end `--limit` keeps events from.
@@ -276,13 +275,17 @@ cat a.jsonl b.jsonl | jq 'select(.type=="event")'
 ## Attachment files
 
 An attachment's content travels beside an export, never inside it. Given a directory,
-`coroner timeline export --format jsonl -o rca/` writes `rca/<timeline>.jsonl` and copies
-each exported attachment's content to `rca/attachments/<sha256><extension>`, the extension
-following its `mime`, such as `.png` for `image/png`, or `.bin` for a type coroner has no
-extension for. An importer finds an attachment's file by `sha256` in the `attachments/`
-directory beside the export, and checks the content against it. Only the hash names the
-file, so exporting again into the same directory writes the same bytes, and identical
-content attached twice is one file.
+`coroner timeline export --format jsonl -o rca/` writes `rca/<timeline>.jsonl`, and
+`--format md -o rca/` writes `rca/<timeline>.md`; both copy each exported attachment's
+content into `rca/attachments/`. A file's name up to its first `.` is the attachment's
+`sha256`: an importer finds the file by that name and checks the content against the hash.
+The rest of the name is an extension following `mime`, such as `.png` for `image/png`, or
+`.bin`, so the same content attached with two media types can be two files with one hash.
+`text/html` and `text/xml` get `.txt`, so a host serving the directory never runs an
+attached page. The extension is only a hint for viewers: it is not part of the contract
+and may change. Exporting again into the same directory writes the same files. The
+`attachments/` directory and the `sha256` name follow the
+[evolution rules](#evolution-rules) like the rest of the format.
 
 ## Encoding rules
 

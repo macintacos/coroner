@@ -2,60 +2,91 @@ package export
 
 import "strings"
 
-// AttachmentFile returns the path, relative to an export's directory, that a's content is
+// AttachmentPath returns the path, relative to an export's directory, that a's content is
 // written to beside the export: attachments/<sha256><extension>, with the extension of a's
-// media type, or .bin for a type it has none for. Only the hash names the file, so no text a
-// person typed reaches the path.
-func AttachmentFile(a Attachment) string {
+// media type, or .bin for a type it has none for. a.SHA256 must be 64 lowercase hex digits,
+// as Decode and the store ensure; then no text a person typed reaches the path.
+func AttachmentPath(a Attachment) string {
 	mediaType, _, _ := strings.Cut(a.MIME, ";")
-	extension, ok := extensions()[strings.TrimSpace(mediaType)]
-	if !ok {
-		extension = ".bin"
-	}
 
-	return "attachments/" + a.SHA256 + extension
+	return "attachments/" + a.SHA256 + extension(strings.TrimSpace(mediaType))
 }
 
-// extensions is fixed, rather than mime.ExtensionsByType, which reads the host's mime.types
+// extension is fixed, rather than mime.ExtensionsByType, which reads the host's mime.types
 // files and would name the same attachment differently on another machine. It covers what
-// http.DetectContentType and store.DetectMIME report.
-func extensions() map[string]string {
-	return map[string]string{
-		"application/json":              ".json",
-		"application/ogg":               ".ogg",
-		"application/pdf":               ".pdf",
-		"application/postscript":        ".ps",
-		"application/vnd.ms-fontobject": ".eot",
-		"application/wasm":              ".wasm",
-		"application/x-7z-compressed":   ".7z",
-		"application/x-gzip":            ".gz",
-		"application/x-rar-compressed":  ".rar",
-		"application/yaml":              ".yaml",
-		"application/zip":               ".zip",
-		"audio/aiff":                    ".aiff",
-		"audio/basic":                   ".au",
-		"audio/midi":                    ".mid",
-		"audio/mpeg":                    ".mp3",
-		"audio/wave":                    ".wav",
-		"font/collection":               ".ttc",
-		"font/otf":                      ".otf",
-		"font/ttf":                      ".ttf",
-		"font/woff":                     ".woff",
-		"font/woff2":                    ".woff2",
-		"image/bmp":                     ".bmp",
-		"image/gif":                     ".gif",
-		"image/jpeg":                    ".jpg",
-		"image/png":                     ".png",
-		"image/svg+xml":                 ".svg",
-		"image/webp":                    ".webp",
-		"image/x-icon":                  ".ico",
-		"text/csv":                      ".csv",
-		"text/html":                     ".html",
-		"text/markdown":                 ".md",
-		"text/plain":                    ".txt",
-		"text/xml":                      ".xml",
-		"video/avi":                     ".avi",
-		"video/mp4":                     ".mp4",
-		"video/webm":                    ".webm",
+// http.DetectContentType and store.DetectMIME report. HTML and XML are .txt so a host serving
+// the export does not run them as pages.
+func extension(mediaType string) string {
+	switch mediaType {
+	case "application/json":
+		return ".json"
+	case "application/ogg":
+		return ".ogg"
+	case "application/pdf":
+		return ".pdf"
+	case "application/postscript":
+		return ".ps"
+	case "application/vnd.ms-fontobject":
+		return ".eot"
+	case "application/wasm":
+		return ".wasm"
+	case "application/x-7z-compressed":
+		return ".7z"
+	case "application/x-gzip":
+		return ".gz"
+	case "application/x-rar-compressed":
+		return ".rar"
+	case "application/yaml":
+		return ".yaml"
+	case "application/zip":
+		return ".zip"
+	case "audio/aiff":
+		return ".aiff"
+	case "audio/basic":
+		return ".au"
+	case "audio/midi":
+		return ".mid"
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/wave":
+		return ".wav"
+	case "font/collection":
+		return ".ttc"
+	case "font/otf":
+		return ".otf"
+	case "font/ttf":
+		return ".ttf"
+	case "font/woff":
+		return ".woff"
+	case "font/woff2":
+		return ".woff2"
+	case "image/bmp":
+		return ".bmp"
+	case "image/gif":
+		return ".gif"
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/svg+xml":
+		return ".svg"
+	case "image/webp":
+		return ".webp"
+	case "image/x-icon":
+		return ".ico"
+	case "text/csv":
+		return ".csv"
+	case "text/markdown":
+		return ".md"
+	case "text/plain", "text/html", "text/xml":
+		return ".txt"
+	case "video/avi":
+		return ".avi"
+	case "video/mp4":
+		return ".mp4"
+	case "video/webm":
+		return ".webm"
 	}
+
+	return ".bin"
 }

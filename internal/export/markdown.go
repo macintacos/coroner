@@ -48,7 +48,7 @@ type MarkdownOptions struct {
 	IncludeRaw bool
 	// Diagram appends the timeline's Mermaid diagram, in Zone, as a mermaid code block.
 	Diagram bool
-	// AttachmentLink returns where an attachment's image or link points; nil is AttachmentFile,
+	// AttachmentLink returns where an attachment's image or link points; nil is AttachmentPath,
 	// for an export written beside its attachments.
 	AttachmentLink func(Attachment) string
 }
@@ -58,8 +58,8 @@ type MarkdownOptions struct {
 // by occurred at and seq, with each event's annotations nested under it, then opts.Diagram's
 // Mermaid diagram as a mermaid code block. An event's attachments are list items under it,
 // before its annotations, and an annotation's follow its text on its line. It fails, writing
-// nothing, unless env holds one timeline and the event or annotation of every annotation and
-// attachment, and opts a grouping ParseGroupBy knows.
+// nothing, unless env holds one timeline, the event of every annotation and the event or
+// annotation of every attachment, and opts a grouping ParseGroupBy knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
@@ -69,15 +69,16 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	}
 	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
 	onTimeline, byEvent, err := groupAnnotations(env.Annotations, events)
-	if err == nil {
-		err = checkAttachmentOwners(env)
+	if err != nil {
+		return err
 	}
+	attachments, err := groupAttachments(env)
 	if err != nil {
 		return err
 	}
 	link := opts.AttachmentLink
 	if link == nil {
-		link = AttachmentFile
+		link = AttachmentPath
 	}
 
 	md := markdownRenderer{
@@ -85,7 +86,7 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		groupBy:     opts.GroupBy,
 		includeRaw:  opts.IncludeRaw,
 		byEvent:     byEvent,
-		attachments: attachmentsByOwner(env.Attachments),
+		attachments: attachments,
 		link:        link,
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
@@ -385,8 +386,8 @@ func (md markdownRenderer) dayZone(day []Event) (string, bool) {
 }
 
 // eventItem returns e's list item: its time, source, text and tags, and under it e's
-// attachments, then its annotations. offset adds the zone offset to every time. In the section of groupTag, the
-// item names only e's other tags, as (also: …).
+// attachments, then its annotations. offset adds the zone offset to every time. In the
+// section of groupTag, the item names only e's other tags, as (also: …).
 func (md markdownRenderer) eventItem(e Event, offset bool, groupTag string) string {
 	var parts []string
 	if when := md.when(e, offset); when != "" {
@@ -442,9 +443,9 @@ func (md markdownRenderer) attachmentLinks(ownerID string) []string {
 
 // linkDestination returns path as a CommonMark link destination: as written, or between < and >
 // with \, < and > escaped when it holds a space, a control character, a parenthesis or one of
-// those.
+// those. A line ending cannot be written even between < and >.
 func linkDestination(path string) string {
-	if !strings.ContainsFunc(path, func(r rune) bool { return r <= ' ' || strings.ContainsRune(`()<>\`, r) }) {
+	if !strings.ContainsFunc(path, func(r rune) bool { return r <= ' ' || r == 0x7f || strings.ContainsRune(`()<>\`, r) }) {
 		return path
 	}
 

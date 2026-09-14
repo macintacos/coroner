@@ -42,10 +42,10 @@ var _ = Describe("timeline export", func() {
 			OutIsTTY:  outTTY,
 			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
 			ReadFile: func(name string) ([]byte, error) {
-				switch {
-				case name != filepath.Join(home, ".config", "coroner", "config.toml"):
+				if name != filepath.Join(home, ".config", "coroner", "config.toml") {
 					return os.ReadFile(filepath.Clean(name))
-				case configFile == "":
+				}
+				if configFile == "" {
 					return nil, fs.ErrNotExist
 				}
 				return []byte(configFile), nil
@@ -292,7 +292,17 @@ var _ = Describe("timeline export", func() {
 	Describe("attachments", func() {
 		// A PNG signature, so the store detects image/png, and a log line.
 		png, log := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), []byte("replSetStepDown\n")
-		links := regexp.MustCompile(`\]\(([^)]*)\)`)
+		links := regexp.MustCompile(`\]\((?:<((?:[^<>\\]|\\.)*)>|([^)]*))\)`)
+		unescape := strings.NewReplacer(`\<`, "<", `\>`, ">", `\\`, `\`)
+
+		// destinations returns where each link in md points.
+		destinations := func(md string) []string {
+			var found []string
+			for _, match := range links.FindAllStringSubmatch(md, -1) {
+				found = append(found, unescape.Replace(match[1])+match[2])
+			}
+			return found
+		}
 
 		// files returns every file under dir by its path relative to dir.
 		files := func(dir string) map[string]string {
@@ -322,15 +332,18 @@ var _ = Describe("timeline export", func() {
 		DescribeTable("writes the export, and each attachment's content under attachments/, into the directory -o names",
 			func(ctx SpecContext, format, target string) {
 				dir := filepath.Join(home, "rca")
-				Expect(os.Mkdir(dir, 0o750)).To(Succeed())
+				if !strings.HasSuffix(target, "/") {
+					Expect(os.Mkdir(dir, 0o750)).To(Succeed())
+				}
 
-				Expect(run(ctx, "timeline", "export", "--format", format, "-o", filepath.Join(home, target))).To(Equal(0), errOut.String())
+				Expect(run(ctx, "timeline", "export", "--format", format, "-o", home+"/"+target)).To(Equal(0), errOut.String())
 
 				Expect(out.String()).To(BeEmpty())
 				written := files(dir)
 				Expect(written).To(HaveLen(3))
 				Expect(written).To(HaveKey("mongo-outage." + format))
 				Expect(errOut.String()).To(ContainSubstring(filepath.Join(dir, "mongo-outage."+format)))
+				Expect(errOut.String()).To(ContainSubstring("Wrote 2 attachment files to " + filepath.Join(dir, "attachments") + "\n"))
 				var contents []string
 				for path, content := range written {
 					if strings.HasPrefix(path, "attachments"+string(filepath.Separator)) {
@@ -343,18 +356,38 @@ var _ = Describe("timeline export", func() {
 			Entry("JSONL, to a path ending in a slash", "jsonl", "rca/"),
 		)
 
+		It("counts a file two attachments share once", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "add", "The p99 during the step-down", "-e", "1", "--kind", "evidence", "--attach", filepath.Join(home, "p99.png"))).To(Equal(0), errOut.String())
+			dir := filepath.Join(home, "rca")
+
+			Expect(run(ctx, "timeline", "export", "--format", "md", "--source", "mongod", "-o", dir+"/")).To(Equal(0), errOut.String())
+
+			Expect(errOut.String()).To(HaveSuffix("Wrote 1 attachment file to " + filepath.Join(dir, "attachments") + "\n"))
+		})
+
+		DescribeTable("exits 2, creating nothing, when -o ends in a slash for a format written to a file",
+			func(ctx SpecContext, format string) {
+				Expect(run(ctx, "timeline", "export", "--format", format, "-o", home+"/rca/")).To(Equal(2))
+
+				Expect(filepath.Join(home, "rca")).NotTo(BeAnExistingFile())
+			},
+			Entry("json", "json"),
+			Entry("mermaid", "mermaid"),
+			Entry("html", "html"),
+		)
+
 		It("links each attachment in a Markdown export to its file in the directory", func(ctx SpecContext) {
 			dir := filepath.Join(home, "rca")
 
 			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir+"/")).To(Equal(0), errOut.String())
 
-			matches := links.FindAllStringSubmatch(readFile(filepath.Join(dir, "mongo-outage.md")), -1)
-			Expect(matches).To(HaveLen(2))
-			var linked []string
-			for _, match := range matches {
-				linked = append(linked, readFile(filepath.Join(dir, match[1])))
+			linked := destinations(readFile(filepath.Join(dir, "mongo-outage.md")))
+			Expect(linked).To(HaveLen(2))
+			var contents []string
+			for _, link := range linked {
+				contents = append(contents, readFile(filepath.Join(dir, link)))
 			}
-			Expect(linked).To(ConsistOf(string(png), string(log)))
+			Expect(contents).To(ConsistOf(string(png), string(log)))
 		})
 
 		It("writes JSONL whose attachment records name each file in the directory by its hash", func(ctx SpecContext) {
@@ -367,7 +400,7 @@ var _ = Describe("timeline export", func() {
 			var named []string
 			for _, record := range records {
 				if a, ok := record.(export.Attachment); ok {
-					named = append(named, readFile(filepath.Join(dir, export.AttachmentFile(a))))
+					named = append(named, readFile(filepath.Join(dir, export.AttachmentPath(a))))
 				}
 			}
 			Expect(named).To(ConsistOf(string(png), string(log)))
@@ -393,12 +426,12 @@ var _ = Describe("timeline export", func() {
 
 				Expect(run(ctx, "timeline", "export", "--format", "md", "-o", output)).To(Equal(0), errOut.String())
 
-				Expect(errOut.String()).To(ContainSubstring("-o"))
-				var linked []string
-				for _, match := range links.FindAllStringSubmatch(md(), -1) {
-					linked = append(linked, readFile(match[1]))
+				Expect(errOut.String()).To(ContainSubstring("only this machine"))
+				var contents []string
+				for _, link := range destinations(md()) {
+					contents = append(contents, readFile(link))
 				}
-				Expect(linked).To(ConsistOf(string(png), string(log)))
+				Expect(contents).To(ConsistOf(string(png), string(log)))
 			},
 			Entry("on stdout", ""),
 			Entry("in the file -o names", "rca.md"),

@@ -289,7 +289,7 @@ func (a Annotation) validate() error {
 	return errors.Join(
 		validateID("id", a.ID),
 		validateID("timeline_id", a.TimelineID),
-		validateOptional(func(id string) error { return validateID("event_id", id) }, a.EventID),
+		validateOptionalID("event_id", a.EventID),
 		validateOptional(timeline.ValidateSourceName, a.Source),
 	)
 }
@@ -299,8 +299,8 @@ func (a Attachment) validate() error {
 
 	return errors.Join(
 		validateID("id", a.ID),
-		validateOptional(func(id string) error { return validateID("event_id", id) }, a.EventID),
-		validateOptional(func(id string) error { return validateID("annotation_id", id) }, a.AnnotationID),
+		validateOptionalID("event_id", a.EventID),
+		validateOptionalID("annotation_id", a.AnnotationID),
 		owned.Validate(),
 	)
 }
@@ -313,6 +313,10 @@ func validateID(key, id string) error {
 	}
 
 	return nil
+}
+
+func validateOptionalID(key string, id *string) error {
+	return validateOptional(func(id string) error { return validateID(key, id) }, id)
 }
 
 func validateOptional(validate func(string) error, s *string) error {

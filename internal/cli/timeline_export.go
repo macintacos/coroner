@@ -21,7 +21,7 @@ import (
 
 func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "export --format {json | jsonl | md | mermaid | html} [-o <file> | -o <directory>/]",
+		Use:   "export --format {json | jsonl | md | mermaid | html} [-o {<file> | <directory>/}]",
 		Short: "Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML",
 		Long: "Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its\n" +
 			"events, their annotations, the sources they name and their attachments. --format json\n" +
@@ -34,13 +34,15 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"browser, in the same zone as md, and needs -o.\n\n" +
 			"The filter flags mean what they do on event list, and annotations on the events they\n" +
 			"leave out are left out too. --order picks which end --limit keeps events from; exported\n" +
-			"events are always in the order they happened. -o writes a file instead of stdout.\n\n" +
-			"For md and jsonl, -o naming a directory, an existing one or a path ending in /, writes\n" +
-			"<timeline>.md or <timeline>.jsonl into it, and each attachment's file beside it under\n" +
-			"attachments/, named by its sha256, so the Markdown's images show wherever the directory\n" +
-			"is committed or unzipped. Otherwise md links attachments to the files beside the\n" +
-			"database, which only this machine has, and says so on stderr. Pasting Markdown into\n" +
-			"GitHub, Linear or Slack uploads none of its images.\n\n" +
+			"events are always in the order they happened.\n\n" +
+			"-o writes a file instead of stdout. For md and jsonl, -o may instead name a directory, one\n" +
+			"that exists or a path ending in /: coroner writes <timeline>.md or <timeline>.jsonl into\n" +
+			"it and each attachment's file under attachments/ beside it, named by its sha256, so the\n" +
+			"Markdown's images show wherever the directory is committed or unzipped. Otherwise md links\n" +
+			"attachments to the files beside the database, which only this machine has, and says so on\n" +
+			"stderr, and a jsonl export's attachment records carry metadata and sha256 only, so their\n" +
+			"files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of\n" +
+			"its images.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html"},
@@ -64,7 +66,7 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd.Flags().String("group-by", "", "Section Markdown events by a `field`: {source|tag} (experimental)")
 	cmd.Flags().Bool("include-raw", false, "Add each event's time as it was given (--format md only)")
 	cmd.Flags().Bool("diagram", false, "Append a Mermaid gantt diagram of the events (--format md only)")
-	cmd.Flags().StringP("output", "o", "-", "Write the export to this `file`, to stdout when it is -, or, for md and jsonl, into a directory with its attachments")
+	cmd.Flags().StringP("output", "o", "-", "Write the export to this `path`, to stdout when it is -, or, for md and jsonl, into a directory with its attachments")
 
 	return cmd
 }
@@ -143,25 +145,31 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	env := newExport(input)
-	// Blobs are read only once the store is closed: withStorePath would report a permission
-	// error reading one as the database's.
 	dir := exportDirectory(path, o.format, app.Stat)
-	switch {
-	case dir != "":
-		err = writeAttachmentFiles(o, app, dir, env.Attachments, cfg.DBPath)
+	var copies []fileCopy
+	if dir != "" {
+		copies = attachmentCopies(dir, cfg.DBPath, env.Attachments)
+		err = copyFiles(fileSystem{readFile: app.ReadFile, writeFile: app.WriteFile, mkdirAll: app.MkdirAll}, dir, copies)
+		if err != nil {
+			return err
+		}
 		path = filepath.Join(dir, input.timeline.Name+"."+string(o.format))
-	case o.format == formatMarkdown:
-		markdown.AttachmentLink = func(a export.Attachment) string { return store.BlobPath(cfg.DBPath, a.SHA256) }
 	}
-	if err != nil {
-		return err
+	linksLocal := dir == "" && o.format == formatMarkdown && len(env.Attachments) > 0
+	if linksLocal {
+		markdown.AttachmentLink = func(a export.Attachment) string { return blobLink(path, store.BlobPath(cfg.DBPath, a.SHA256)) }
 	}
 	err = o.writeTo(path, app.WriteFile, func(into output) error {
 		return writeExport(into, env, markdown, zone)
 	})
-	if err == nil && dir == "" && o.format == formatMarkdown && len(env.Attachments) > 0 {
-		err = o.notify("The Markdown links its %d attachments to files only this machine has; pass -o <directory>/ to write them beside it.",
-			len(env.Attachments))
+	if err != nil {
+		return err
+	}
+	switch {
+	case linksLocal:
+		err = o.notify("The Markdown links its attachments to files only this machine has; pass -o <directory>/ to write them beside it.")
+	case len(copies) > 0:
+		err = notifyCopied(o, copies)
 	}
 	if err != nil {
 		return err
@@ -246,7 +254,7 @@ func outputPath(flags *pflag.FlagSet, chosen format) (string, error) {
 // written into beside its attachments: path when it ends in a separator or names a directory
 // that exists. It returns "" for any other path, which is a file, or stdout.
 func exportDirectory(path string, chosen format, stat func(string) (fs.FileInfo, error)) string {
-	if chosen != formatMarkdown && chosen != formatJSONL || path == "-" {
+	if (chosen != formatMarkdown && chosen != formatJSONL) || path == "-" {
 		return ""
 	}
 	if strings.HasSuffix(path, "/") || strings.HasSuffix(path, string(filepath.Separator)) {
@@ -260,42 +268,85 @@ func exportDirectory(path string, chosen format, stat func(string) (fs.FileInfo,
 	return ""
 }
 
-// writeAttachmentFiles creates dir and copies the content of each of attachments from its blob
-// beside the database at dbPath to the file export.AttachmentFile names in dir, once per file,
-// and says how many it wrote.
-func writeAttachmentFiles(o output, app App, dir string, attachments []export.Attachment, dbPath string) error {
+// fileCopy is one attachment's file in an export directory and the blob its content comes from.
+type fileCopy struct {
+	attachmentID, from, to string
+}
+
+// attachmentCopies returns, once per destination file, the blob beside the database at
+// dbPath that each attachment's file in dir is copied from.
+func attachmentCopies(dir, dbPath string, attachments []export.Attachment) []fileCopy {
+	var copies []fileCopy
+	planned := map[string]bool{}
+	for _, a := range attachments {
+		to := filepath.Join(dir, filepath.FromSlash(export.AttachmentPath(a)))
+		if !planned[to] {
+			planned[to] = true
+			copies = append(copies, fileCopy{attachmentID: a.ID, from: store.BlobPath(dbPath, a.SHA256), to: to})
+		}
+	}
+
+	return copies
+}
+
+// fileSystem is the file access copyFiles needs, as App provides it.
+type fileSystem struct {
+	readFile  func(name string) ([]byte, error)
+	writeFile func(name string, data []byte, perm fs.FileMode) error
+	mkdirAll  func(path string, perm fs.FileMode) error
+}
+
+// copyFiles creates dir, then each copy's directory, and writes the source's bytes to it.
+// Call it only once the store is closed: withStorePath would report a permission error
+// reading a blob as the database's.
+func copyFiles(files fileSystem, dir string, copies []fileCopy) error {
 	cannotWrite := func(err error) error {
 		return &Error{Kind: KindUsage, Message: "cannot write into " + dir, Err: err, Hint: "Pass -o a directory you can write to, or -o - for stdout."}
 	}
-	err := app.MkdirAll(dir, 0o755)
+	err := files.mkdirAll(dir, 0o755)
 	if err != nil {
 		return cannotWrite(err)
 	}
-
-	written := map[string]bool{}
-	for _, a := range attachments {
-		file := filepath.Join(dir, filepath.FromSlash(export.AttachmentFile(a)))
-		if written[file] {
-			continue
-		}
-		written[file] = true
-		content, err := app.ReadFile(store.BlobPath(dbPath, a.SHA256))
+	for _, c := range copies {
+		content, err := files.readFile(c.from)
 		if err != nil {
-			return fmt.Errorf("read the blob of attachment %s: %w", a.ID, err)
+			return fmt.Errorf("read the blob of attachment %s: %w", c.attachmentID, err)
 		}
-		err = app.MkdirAll(filepath.Dir(file), 0o755)
+		err = files.mkdirAll(filepath.Dir(c.to), 0o755)
 		if err == nil {
-			err = app.WriteFile(file, content, 0o644)
+			err = files.writeFile(c.to, content, 0o644)
 		}
 		if err != nil {
 			return cannotWrite(err)
 		}
 	}
-	if len(written) == 0 {
-		return nil
+
+	return nil
+}
+
+// notifyCopied says how many attachment files copies wrote, and where.
+func notifyCopied(o output, copies []fileCopy) error {
+	noun := "files"
+	if len(copies) == 1 {
+		noun = "file"
 	}
 
-	return o.notify("Wrote %d attachments to %s", len(written), filepath.Join(dir, "attachments"))
+	return o.notify("Wrote %d attachment %s to %s", len(copies), noun, filepath.Dir(copies[0].to))
+}
+
+// blobLink returns where Markdown written to path links the blob at blob: relative to path's
+// directory when both are relative, so the link resolves from the file. On stdout, when
+// either path is absolute, or when only the working directory could relate them, it is blob.
+func blobLink(path, blob string) string {
+	if path == "-" || filepath.IsAbs(path) || filepath.IsAbs(blob) {
+		return blob
+	}
+	rel, err := filepath.Rel(filepath.Dir(path), blob)
+	if err != nil {
+		return blob
+	}
+
+	return rel
 }
 
 // exportInput is what an export is made from, as the store returned it.

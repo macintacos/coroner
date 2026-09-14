@@ -139,14 +139,15 @@ var _ = Describe("schemagen", func() {
 		for t, def := range definitions(schema) {
 			var names []any
 			for field := range t.Fields() {
-				if _, added := field.Tag.Lookup("since"); !added {
+				if _, added := field.Tag.Lookup("since"); added {
+					Expect(property(def, jsonName(field))).NotTo(BeEmpty(), t.Name())
+				} else {
 					names = append(names, jsonName(field))
 				}
 			}
 
 			Expect(def["required"]).To(ConsistOf(names), t.Name())
 		}
-		Expect(property(definitions(schema)[reflect.TypeFor[export.Envelope]()], "attachments")).NotTo(BeEmpty())
 	})
 
 	It("allows null for exactly the fields that are pointers", func() {

@@ -70,7 +70,7 @@ var _ = Describe("Frozen export fixtures", func() {
 				if typ == "header" {
 					// A header is the envelope without its record lists.
 					typ = "envelope"
-					for _, key := range []string{"timelines", "sources", "events", "annotations"} {
+					for _, key := range []string{"timelines", "sources", "events", "annotations", "attachments"} {
 						record[key] = []any{}
 					}
 				}

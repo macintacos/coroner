@@ -84,9 +84,9 @@ func generate() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// dropAddedKeys leaves out of the required keys of object, the schema of struct t, and of the
-// definitions of the structs t holds, every key whose field has a since tag: a key a later minor
-// version added, which an export of an earlier minor does not have.
+// dropAddedKeys removes each key whose field has a since tag, which an export of an earlier
+// minor version lacks, from object's required list, object being the schema of struct t, and
+// from the definitions of the structs t holds.
 func dropAddedKeys(object *jsonschema.Schema, t reflect.Type, defs jsonschema.Definitions) {
 	for field := range t.Fields() {
 		if _, added := field.Tag.Lookup("since"); added {
