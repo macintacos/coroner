@@ -100,8 +100,8 @@ digraph coroner_rules_router {
   `--json` exits 2 as `usage`. `cli.Run` prints every error once, adding the JSON error
   envelope under `--format json|jsonl`.
 - Write commands (`timeline create|edit|delete|use`, `event add|edit|delete`,
-  `annotation add|edit|delete`): each declares its flags, positional argument and their
-  checks once, in a `definition`
+  `annotation add|edit|delete`, `attachment delete`): each declares its flags, positional
+  argument and their checks once, in a `definition`
   ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
   and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). `RunE` reads the
   definition's values, calls a plain run function that returns a result, and renders it. A
