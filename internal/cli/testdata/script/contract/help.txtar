@@ -906,7 +906,7 @@ LEARN MORE
 List the current timeline's events in the order they happened: by occurred at, then seq.
 
 Repeat -t to overlay several timelines: their events merge into one list by occurred at,
-then timeline, then seq, and each text row starts with its timeline's name. --json lists
+then timeline id, then seq, and each text row starts with its timeline's name. --json lists
 the selected timelines under timelines, and --format jsonl starts with a timeline line for
 each, so an event's timeline_id names one of them.
 
@@ -927,7 +927,7 @@ EXAMPLES
 FLAGS
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
-      --order order     Order by occurred at, then seq, as an order: {asc|desc} (default "asc")
+      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
       --tag tag         Keep events with this tag; repeat to require all of them
@@ -1358,8 +1358,8 @@ files stay on this machine. Pasting Markdown into GitHub, Linear or Slack upload
 its images.
 
 Repeat -t to overlay several timelines in one json or jsonl export: it holds every
-timeline, and their events merge by occurred at, then timeline, then seq. md, mermaid, html
-and svg export one timeline. An overlay written into a directory is named after its
+timeline, and their events merge by occurred at, then timeline id, then seq. md, mermaid,
+html and svg export one timeline. An overlay written into a directory is named after its
 timelines joined by +, as in mongo-failover+checkout-latency.jsonl.
 
 --group-by is experimental and may change before 1.0.

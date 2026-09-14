@@ -37,8 +37,8 @@ files stay on this machine. Pasting Markdown into GitHub, Linear or Slack upload
 its images.
 
 Repeat -t to overlay several timelines in one json or jsonl export: it holds every
-timeline, and their events merge by occurred at, then timeline, then seq. md, mermaid, html
-and svg export one timeline. An overlay written into a directory is named after its
+timeline, and their events merge by occurred at, then timeline id, then seq. md, mermaid,
+html and svg export one timeline. An overlay written into a directory is named after its
 timelines joined by +, as in mongo-failover+checkout-latency.jsonl.
 
 --group-by is experimental and may change before 1.0.

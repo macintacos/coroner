@@ -105,8 +105,8 @@ var _ = Describe("ListEvents", func() {
 		Expect(s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{uuid(9)}})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
 	})
 
-	It("returns an empty page when the filter names no timeline", func(ctx SpecContext) {
-		Expect(s.ListEvents(ctx, store.EventFilter{})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
+	It("fails when the filter names no timeline", func(ctx SpecContext) {
+		Expect(s.ListEvents(ctx, store.EventFilter{})).Error().To(HaveOccurred())
 	})
 
 	DescribeTable("merges the events of several timelines by occurred at, then timeline id, then seq",

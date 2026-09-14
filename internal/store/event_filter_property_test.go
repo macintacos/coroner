@@ -60,7 +60,7 @@ func TestListEventsMatchesReferenceFilter(t *testing.T) {
 			added = append(added, e)
 		}
 		f := filter(len(added)).Draw(t, "filter")
-		// Some of the timelines, and sometimes one with no events at all.
+		// Some of the timelines, sometimes with an id no timeline has.
 		f.TimelineIDs = rapid.SliceOfNDistinct(rapid.SampledFrom(append(timelineIDs, nextID())), 1, -1, rapid.ID).Draw(t, "selected")
 
 		page, err := s.ListEvents(ctx, f)

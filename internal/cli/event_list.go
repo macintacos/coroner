@@ -21,7 +21,7 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 		Short: "List a timeline's events, filtered",
 		Long: "List the current timeline's events in the order they happened: by occurred at, then seq.\n\n" +
 			"Repeat -t to overlay several timelines: their events merge into one list by occurred at,\n" +
-			"then timeline, then seq, and each text row starts with its timeline's name. --json lists\n" +
+			"then timeline id, then seq, and each text row starts with its timeline's name. --json lists\n" +
 			"the selected timelines under timelines, and --format jsonl starts with a timeline line for\n" +
 			"each, so an event's timeline_id names one of them.\n\n" +
 			"--since is inclusive and --until exclusive. Repeated --source flags match any of them,\n" +
@@ -44,13 +44,13 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// addEventFilterFlags declares the flags that filter a timeline's events, which mean the
-// same on every command that takes them.
+// addEventFilterFlags declares the flags that filter events, which mean the same on every
+// command that takes them.
 func addEventFilterFlags(flags *pflag.FlagSet) {
 	flags.String("since", "", "Keep events at or after this `time`")
 	flags.String("until", "", "Keep events before this `time`")
 	addEventMatchFlags(flags)
-	flags.String("order", "asc", "Order by occurred at, then seq, as an `order`: {asc|desc}")
+	flags.String("order", "asc", "Order by occurred at, then timeline id, then seq, as an `order`: {asc|desc}")
 	flags.Int("limit", 0, "Show at most this `number` of events (default: every one)")
 }
 
@@ -329,8 +329,8 @@ func writeEventLines(o output, l eventListing) error {
 	return nil
 }
 
-// withTimelineNames leads each row, the row of the event at its index, with the name of that
-// event's timeline among timelines.
+// withTimelineNames prepends to rows[i] the name of events[i]'s timeline; rows and events must
+// be parallel.
 func withTimelineNames(rows [][]string, events []timeline.Event, timelines []timeline.Timeline) [][]string {
 	names := make(map[string]string, len(timelines))
 	for _, t := range timelines {

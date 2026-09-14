@@ -210,20 +210,16 @@ func writeDeletion(o output, z zone, f foundEvents, attached map[string][]attach
 // notifyDeletion says, per timeline, how many of f's events verb applies to.
 func notifyDeletion(o output, verb string, f foundEvents) error {
 	counts := map[string]int{}
-	var order []string
 	for _, e := range f.events {
-		if counts[e.TimelineID] == 0 {
-			order = append(order, e.TimelineID)
-		}
 		counts[e.TimelineID]++
 	}
 
-	for _, id := range order {
+	for _, t := range f.timelineList() {
 		noun := "events"
-		if counts[id] == 1 {
+		if counts[t.ID] == 1 {
 			noun = "event"
 		}
-		err := o.notify("%s %d %s from timeline `%s`.", verb, counts[id], noun, f.timelines[id].Name)
+		err := o.notify("%s %d %s from timeline `%s`.", verb, counts[t.ID], noun, t.Name)
 		if err != nil {
 			return err
 		}

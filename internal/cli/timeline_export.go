@@ -46,8 +46,8 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of\n" +
 			"its images.\n\n" +
 			"Repeat -t to overlay several timelines in one json or jsonl export: it holds every\n" +
-			"timeline, and their events merge by occurred at, then timeline, then seq. md, mermaid, html\n" +
-			"and svg export one timeline. An overlay written into a directory is named after its\n" +
+			"timeline, and their events merge by occurred at, then timeline id, then seq. md, mermaid,\n" +
+			"html and svg export one timeline. An overlay written into a directory is named after its\n" +
 			"timelines joined by +, as in mongo-failover+checkout-latency.jsonl.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
@@ -98,9 +98,6 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 		return err
 	}
 	o, err := newOutput(cmd, app)
-	if err == nil {
-		err = checkOverlayFormat(names, o.format)
-	}
 	if err != nil {
 		return err
 	}
@@ -129,6 +126,9 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 		input, page, err = readExport(ctx, s, names, filter, app.LookupEnv)
 		return err
 	})
+	if err == nil {
+		err = checkOverlayFormat(len(input.timelines), o.format)
+	}
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
-		// An overlay's file is named after its timelines joined by +.
+		// ponytail: NAME_MAX caps an overlay's file name at about four long timeline names; hash or truncate when that bites.
 		path = filepath.Join(dir, strings.Join(namesOf(input.timelines), "+")+"."+string(o.format))
 	}
 	linksLocal := dir == "" && o.format == formatMarkdown && len(env.Attachments) > 0
@@ -181,23 +181,23 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	return notifyTruncated(o, page)
 }
 
-// checkOverlayFormat returns usage when names, -t's values, select several timelines for a
-// format that exports one.
-func checkOverlayFormat(names []string, chosen format) error {
-	if len(names) <= 1 || chosen.machine() {
+// checkOverlayFormat returns usage when -t selects count timelines, more than one, for a format
+// that exports one: only json and jsonl hold several.
+func checkOverlayFormat(count int, chosen format) error {
+	if count <= 1 || chosen == formatJSON || chosen == formatJSONL {
 		return nil
 	}
 
 	return &Error{
 		Kind:    KindUsage,
-		Message: fmt.Sprintf("--format %s exports one timeline, and -t names %d", chosen, len(names)),
+		Message: fmt.Sprintf("--format %s exports one timeline, and -t selects %d", chosen, count),
 		Hint:    "Pass -t once, or overlay the timelines with --format json or --format jsonl.",
 	}
 }
 
-// readExport returns what an export of the timelines names selects is made from: those
-// timelines, the events filter keeps in them, every annotation and attachment in them and
-// every source, with the page of events.
+// readExport reads what an export is made from: the timelines names select, the events filter
+// keeps in them and their page, every annotation and attachment in those timelines, and every
+// source.
 func readExport(
 	ctx context.Context, s *store.Store, names []string, filter store.EventFilter, lookupEnv func(string) (string, bool),
 ) (exportInput, store.EventPage, error) {

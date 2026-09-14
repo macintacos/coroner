@@ -143,7 +143,8 @@ func addTimelineFlag(flags *pflag.FlagSet) {
 
 const timelineUsage = "Timeline `name|id` to act on"
 
-// timelineField is -t as a write command's field.
+// timelineField is -t as a write command's field: a stringsField because -t is a StringArray
+// on every command; checkOneTimeline refuses a second timeline.
 func timelineField() field {
 	return field{name: "timeline", shorthand: "t", typ: stringsField, usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
 }
@@ -152,26 +153,28 @@ func timelineField() field {
 // repeated -t names. Any other command's -t names one timeline.
 const overlayAnnotation = "overlay"
 
-// checkOneTimeline returns usage when -t names more than one timeline for a command without
-// overlayAnnotation.
+// checkOneTimeline returns usage when -t is empty (A-9), or is given more than one value for a
+// command without overlayAnnotation. It runs before the store opens, so a timeline's name and
+// its id are two values.
 func checkOneTimeline(cmd *cobra.Command) error {
-	if cmd.Flags().Lookup("timeline") == nil || cmd.Annotations[overlayAnnotation] != "" {
+	if cmd.Flags().Lookup("timeline") == nil || cmd.Annotations[overlayAnnotation] == "true" {
 		return nil
 	}
-	names := appendUnique(nil, stringArray(cmd.Flags(), "timeline")...)
-	if len(names) <= 1 {
-		return nil
+	names, err := timelineFlags(cmd.Flags())
+	if err != nil || len(names) <= 1 {
+		return err
 	}
 
 	return &Error{
 		Kind:    KindUsage,
-		Message: fmt.Sprintf("-t names %d timelines, and %s acts on one", len(names), cmd.CommandPath()),
+		Message: fmt.Sprintf("-t is given %d different values, and %s acts on one timeline", len(names), cmd.CommandPath()),
 		Hint:    "Pass -t once. 'coroner event list' and 'coroner timeline export' read several timelines.",
 	}
 }
 
 // timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
-// Commands call it at the top of RunE, before any I/O, after checkOneTimeline.
+// Commands call it at the top of RunE, before any I/O. wrapRunErrors has already refused a
+// second timeline, so the first value is the only one.
 func timelineFlag(flags *pflag.FlagSet) (*string, error) {
 	names, err := timelineFlags(flags)
 	if err != nil || len(names) == 0 {

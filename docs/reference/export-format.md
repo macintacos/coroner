@@ -263,9 +263,8 @@ it is a major version.
    own attachments. Annotations and attachments are ordered by `created_at`, then `id`.
 
 `attachment` records are new in 1.1; a reader that skips them sees the 1.0 order. Events
-of one timeline share their `timeline_id`, so an export of one timeline has the same order
-it had in 1.0; `timeline_id` only decides between events of different timelines at one
-instant.
+of one timeline share their `timeline_id`, so `timeline_id` only orders events of
+different timelines at one instant.
 
 Records stay in this order under every filter, and under `--order desc`: `--order` only
 decides which end `--limit` keeps events from.
@@ -290,15 +289,15 @@ An attachment's content travels beside an export, never inside it. Given a direc
 `coroner timeline export --format jsonl -o rca/` writes `rca/<timeline>.jsonl`, and
 `--format md -o rca/` writes `rca/<timeline>.md`; both copy each exported attachment's
 content into `rca/attachments/`. An overlay's file is named after its timelines joined by
-`+`, as in `rca/mongo-failover+checkout-latency.jsonl`. A file's name up to its first `.`
-is the attachment's `sha256`: an importer finds the file by that name and checks the
-content against the hash. The rest of the name is an extension following `mime`, such as
-`.png` for `image/png`, or `.bin`, so the same content attached with two media types can
-be two files with one hash. `text/html` and `text/xml` get `.txt`, so a host serving the
-directory never runs an attached page. The extension is only a hint for viewers: it is not
-part of the contract and may change. Exporting again into the same directory writes the
-same files. The `attachments/` directory and the `sha256` name follow the
-[evolution rules](#evolution-rules) like the rest of the format.
+`+`, as in `rca/mongo-failover+checkout-latency.jsonl`. An attachment file's name up to
+its first `.` is the attachment's `sha256`: an importer finds the file by that name and
+checks the content against the hash. The rest of the name is an extension following
+`mime`, such as `.png` for `image/png`, or `.bin`, so the same content attached with two
+media types can be two files with one hash. `text/html` and `text/xml` get `.txt`, so a
+host serving the directory never runs an attached page. The extension is only a hint for
+viewers: it is not part of the contract and may change. Exporting again into the same
+directory writes the same files. The `attachments/` directory and the `sha256` name follow
+the [evolution rules](#evolution-rules) like the rest of the format.
 
 ## Encoding rules
 

@@ -27,7 +27,7 @@ const (
 // EventFilter selects the events of one or more timelines. Given only TimelineIDs, it
 // selects every event of those timelines, ascending.
 type EventFilter struct {
-	// TimelineIDs keeps events of any of these timelines; empty keeps none.
+	// TimelineIDs keeps events of any of these timelines, and must name at least one.
 	TimelineIDs []string
 	// Since keeps events whose occurred at is at or after it, so an interval that started
 	// earlier is left out even if it ends later; nil leaves the window open.
@@ -60,8 +60,12 @@ type EventPage struct {
 
 // ListEvents returns the events of f's timelines that f keeps, with their tags and source,
 // merged in timeline.CompareEvents order. An unknown timeline adds no events, not
-// ErrNotFound, and a bound outside years 0000–9999 is an error.
+// ErrNotFound; a filter naming no timeline, or a bound outside years 0000–9999, is an
+// error.
 func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error) {
+	if len(f.TimelineIDs) == 0 {
+		return EventPage{}, errors.New("store: EventFilter names no timeline")
+	}
 	err := errors.Join(checkBound("since", f.Since), checkBound("until", f.Until))
 	if err != nil {
 		return EventPage{}, err
@@ -195,7 +199,6 @@ func eventWhere(f EventFilter) (string, []any) {
 }
 
 // inList returns an IN operator with a placeholder per value, and the values as its args.
-// SQLite reads IN () as matching nothing.
 func inList(values []string) (string, []any) {
 	args := make([]any, 0, len(values))
 	for _, value := range values {
