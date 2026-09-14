@@ -11,6 +11,7 @@
 <h1 id="heading"></h1>
 <p class="refs" id="refs"></p>
 <p class="meta" id="meta"></p>
+<button type="button" id="theme" aria-pressed="false">Dark theme</button>
 </header>
 <main>
 <form id="filters">
@@ -26,6 +27,7 @@
 </form>
 <div id="timeline"></div>
 <section id="detail" aria-live="polite"></section>
+<section id="print"></section>
 </main>
 <noscript>This timeline needs JavaScript to show its events.</noscript>
 <script type="application/json" id="coroner-data">{{.Export}}</script>

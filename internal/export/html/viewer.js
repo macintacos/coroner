@@ -15,6 +15,30 @@
     return node;
   };
 
+  // A theme the toggle picked is remembered in this browser; without one the page follows the
+  // system. Storage can throw, on file:// in WebKit for one, and then the pick lasts the visit.
+  const root = document.documentElement;
+  const themeToggle = document.getElementById("theme");
+  const systemDark = matchMedia("(prefers-color-scheme: dark)");
+  const showTheme = (theme) => {
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    const dark = (root.dataset.theme ?? (systemDark.matches ? "dark" : "light")) === "dark";
+    themeToggle.setAttribute("aria-pressed", String(dark));
+  };
+  try {
+    showTheme(localStorage.getItem("coroner-theme"));
+  } catch {
+    showTheme(null);
+  }
+  systemDark.addEventListener("change", () => showTheme(null));
+  themeToggle.addEventListener("click", () => {
+    const theme = themeToggle.getAttribute("aria-pressed") === "true" ? "light" : "dark";
+    showTheme(theme);
+    try {
+      localStorage.setItem("coroner-theme", theme);
+    } catch {}
+  });
+
   // Browsers disagree on parsing more than three fractional digits, and a Date holds
   // milliseconds anyway.
   const instant = (timestamp) => new Date(timestamp.replace(/(\.\d{3})\d+/, "$1"));
@@ -134,6 +158,51 @@
 
     const annotations = annotationsOn.get(event.id) ?? [];
     if (annotations.length) nodes.push(element("h3", "Annotations"), annotationList(annotations));
+    return nodes;
+  };
+
+  // clockOf returns what when shows between the date and the zone.
+  const clockOf = (shown) => shown.slice(11).replace(/ \S+$/, "");
+
+  // printTime returns when an event happened as a printed day lists it, under a heading that
+  // dates it.
+  const printTime = (event) => {
+    const start = started(event);
+    let time = event.precision === "day" ? "" : clockOf(start);
+    if (event.ended_at !== null) {
+      const end = when(event.ended_at, event.precision);
+      if (event.precision === "day") time = "until " + end;
+      else time += "–" + (end.startsWith(start.slice(0, 10)) ? clockOf(end) : end.replace(/ \S+$/, ""));
+    }
+    if (!event.approximate) return time;
+    return time ? "~" + time : "approximately";
+  };
+
+  const printedEvent = (event) => {
+    const item = element("li");
+    item.append(element("span", printTime(event), "time"), element("span", event.source ?? "", "source"));
+    item.append(element("p", event.text, "text"));
+    if (event.tags.length) item.append(element("p", event.tags.map((tag) => "#" + tag).join(" "), "tags"));
+    if (annotationsOn.has(event.id)) item.append(annotationList(annotationsOn.get(event.id)));
+    return item;
+  };
+
+  // printList returns the page as it prints: the annotations on the whole timeline, then
+  // events a day at a time, as the Markdown export lists them.
+  const printList = (events) => {
+    const nodes = [];
+    if (onTimeline.length) nodes.push(element("h3", "On the whole timeline"), annotationList(onTimeline));
+    let day;
+    let list;
+    for (const event of events) {
+      if (started(event).slice(0, 10) !== day) {
+        day = started(event).slice(0, 10);
+        list = element("ol", undefined, "events");
+        nodes.push(element("h2", day + " (" + spanAt(instant(event.occurred_at).valueOf()).abbreviation + ")"), list);
+      }
+      list.append(printedEvent(event));
+    }
+    if (!list) nodes.push(element("p", data.events.length ? "No events match the filters." : "This export has no events.", "hint"));
     return nodes;
   };
 
@@ -366,8 +435,16 @@
   const sources = [...new Set(data.events.map((event) => event.source))];
   if (sources.includes(null)) sources.push(sources.splice(sources.indexOf(null), 1)[0]);
   const groupOf = new Map(sources.map((source, i) => [source, i]));
-  const groups = sources.map((source, i) => ({ id: i, order: i, content: element("span", source ?? "(no source)") }));
+  // A source's colour is its place in the export's first appearances, cycling through the palette.
+  const sourceColors = Number(document.body.dataset.sourceColors);
+  const groups = sources.map((source, i) => ({
+    id: i,
+    order: i,
+    content: element("span", source ?? "(no source)"),
+    className: source === null ? "source-none" : "source-" + (i % sourceColors),
+  }));
 
+  const coarse = new Set(["day", "hour", "minute"]);
   const eventsById = new Map(data.events.map((event) => [event.id, event]));
   const items = data.events.map((event) => {
     const item = {
@@ -376,12 +453,46 @@
       start: instant(event.occurred_at),
       content: element("span", (event.approximate ? "~" : "") + firstLine(event.text)),
       type: event.ended_at === null ? "point" : "range",
+      className: [event.approximate && "approximate", coarse.has(event.precision) && "coarse"].filter(Boolean).join(" "),
     };
     if (event.ended_at !== null) item.end = instant(event.ended_at);
     return item;
   });
 
-  const options = { moment: inZone, groupOrder: "order", showTooltips: false };
+  // gapThreshold is the shortest silence the viewers show as a gap; keep it in step with
+  // gapThreshold in internal/viewer/render.go.
+  const gapThreshold = 5 * 60 * 1000;
+
+  // silence returns the time between two items as timeline.Gaps measures a gap: from when the
+  // earlier ends, or starts, to when the later starts. Overlapping items have none.
+  const silence = (a, b) => Math.max(+b.start - +(a.end ?? a.start), +a.start - +(b.end ?? b.start), 0);
+
+  // clusterLabel names a cluster's count and the minutes it spans, on the axis's clock; the
+  // cluster splits into its events as the view zooms in.
+  const clusterLabel = (cluster) => {
+    const [from, to] = [inZone(cluster.min), inZone(cluster.max)];
+    const layout = from.format("YYYY-MM-DD") === to.format("YYYY-MM-DD") ? "HH:mm" : "YYYY-MM-DD HH:mm";
+    const span = from.format(layout) === to.format(layout) ? from.format(layout) : from.format(layout) + "–" + to.format(layout);
+    const label = element("span", undefined, "cluster");
+    label.append(element("span", cluster.uiItems.length + " events", "count"), element("span", span, "time"));
+    return label;
+  };
+
+  // Dense stretches of a row collapse into clusters. vis-timeline checks each member against
+  // the cluster's first, so no cluster holds a silence of gapThreshold or more. Ranges stay
+  // out: a cluster holding one is drawn as wide as its span, too narrow for its label.
+  const options = {
+    moment: inZone,
+    groupOrder: "order",
+    orientation: "top",
+    showTooltips: false,
+    margin: { item: { horizontal: 4, vertical: 4 } },
+    cluster: {
+      maxItems: 1,
+      clusterCriteria: (a, b) => a.end === undefined && b.end === undefined && silence(a, b) < gapThreshold,
+    },
+    template: (item) => (item.isCluster ? clusterLabel(item) : item.content),
+  };
   if (items.length) {
     // A point's label runs right of its dot, so the last one needs room past its instant.
     const first = +items[0].start;
@@ -424,6 +535,10 @@
     filter: (group) => !view.filter.sources.size || view.filter.sources.has(sources[group.id]),
   });
   const timeline = new vis.Timeline(document.getElementById("timeline"), visibleItems, visibleGroups, options);
+  // vis-timeline 8.5.4 first clusters once the timeline has a width, a redraw too late to stack
+  // the rows, so clustered events stay hidden until the window moves. Setting the groups again
+  // restacks them.
+  timeline.once("changed", () => timeline.setGroups(visibleGroups));
 
   // WebKit throws after 100 replaceState calls in 10 seconds, which typing a search reaches.
   let hashWriteTimer;
@@ -438,12 +553,17 @@
     view.selected = visibleItems.get(id) ? id : null;
     show(eventsById.get(view.selected) ?? null);
   };
+  // The printed list is rebuilt with every filter change, not on beforeprint, so what prints is
+  // always what the filters keep.
+  const printed = document.getElementById("print");
+  const showPrintList = () => printed.replaceChildren(...printList(data.events.filter((event) => keeps(event, view.filter))));
   const update = (changes) => {
     view.filter = ordered({ ...view.filter, ...changes });
     showBounds();
     visibleItems.refresh();
     visibleGroups.refresh();
     if (view.selected !== null && !visibleItems.get(view.selected)) select(null);
+    showPrintList();
     writeHash();
   };
 
@@ -482,5 +602,6 @@
 
   if (view.selected !== null) timeline.setSelection(visibleItems.get(view.selected) ? [view.selected] : []);
   select(view.selected);
+  showPrintList();
   writeHash();
 }
