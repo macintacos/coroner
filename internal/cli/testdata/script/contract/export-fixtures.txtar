@@ -122,6 +122,28 @@ exportfixture attachments.jsonl stdout
 exits 0 coroner timeline export --format json
 exportfixture attachments.json stdout
 
+# links: a saved overlay of two timelines, exported as one, with a link of each kind: led_to
+# across the timelines with an author, same_as within one without, and copied_from added
+# later. Links follow every event.
+env CORONER_DB=$WORK/links.db
+env CORONER_TEST_IDS=$WORK/links.ids
+env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner event add 'Primary stepped down' -t mongo-failover --at 2026-09-11T03:14:07Z --source mongod
+exits 0 coroner event add 'Checkout p99 above 2s' -t checkout-latency --at 2026-09-11T03:15:00Z --source grafana
+exits 0 coroner event add 'Slack: is checkout down?' -t checkout-latency --at 2026-09-11T03:16:00Z --source slack
+exits 0 coroner overlay create checkout-incident -t mongo-failover -t checkout-latency
+exits 0 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to --author julian
+exits 0 coroner event link 'checkout-latency#2' 'checkout-latency#1' --kind same_as
+env CORONER_TEST_NOW=2026-09-12T21:40:00-04:00
+exits 0 coroner event add 'Incident timeline copied from the failover' -t checkout-latency --at 2026-09-11T03:14:07Z --source mongod
+exits 0 coroner event link 'checkout-latency#3' 'mongo-failover#1' --kind copied_from --author julian
+exits 0 coroner timeline export --overlay checkout-incident --format jsonl
+exportfixture links.jsonl stdout
+exits 0 coroner timeline export --overlay checkout-incident --format json
+exportfixture links.json stdout
+
 -- stepdown.log --
 {"t":{"$date":"2026-09-11T03:14:07.412+00:00"},"s":"I","c":"REPL","id":21358,"msg":"Replica set state transition","attr":{"newState":"SECONDARY","oldState":"PRIMARY"}}
 -- rs-status.json --
