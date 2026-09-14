@@ -198,8 +198,8 @@ func addedAttachments(stored []timeline.Attachment, added []store.NewAttachment)
 // attachRequest is what --attach asks an add or edit to attach.
 type attachRequest struct {
 	files []attachFile
-	// add is files as the store adds them, once staged; nil in a dry run.
-	add    []store.NewAttachment
+	// toAdd is files as the store adds them, once staged; nil in a dry run.
+	toAdd  []store.NewAttachment
 	now    time.Time
 	dryRun bool
 }
@@ -222,7 +222,7 @@ func (r attachRequest) staged(newID func() (uuid.UUID, error), now time.Time) (a
 	}
 
 	var err error
-	r.add, err = newAttachments(r.files, newID, now)
+	r.toAdd, err = newAttachments(r.files, newID, now)
 	return r, err
 }
 
@@ -236,7 +236,7 @@ func (r attachRequest) result(
 	}
 	objects := newAttachmentJSONs(stored, dbPath)
 	if !r.dryRun {
-		return attachResult{added: addedAttachments(stored, r.add), objects: objects}, nil
+		return attachResult{added: addedAttachments(stored, r.toAdd), objects: objects}, nil
 	}
 
 	described := describeAttachments(r.files, owner, r.now)
@@ -341,8 +341,8 @@ func describedAttachmentJSON(a timeline.Attachment) attachmentJSON {
 func attachmentsByOwner(attachments []timeline.Attachment, dbPath string) map[string][]attachmentJSON {
 	byOwner := map[string][]attachmentJSON{}
 	for _, a := range attachments {
-		owner := *cmp.Or(a.Owner.EventID, a.Owner.AnnotationID)
-		byOwner[owner] = append(byOwner[owner], newAttachmentJSON(a, dbPath))
+		ownerID := *cmp.Or(a.Owner.EventID, a.Owner.AnnotationID)
+		byOwner[ownerID] = append(byOwner[ownerID], newAttachmentJSON(a, dbPath))
 	}
 
 	return byOwner

@@ -140,7 +140,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		added.timeline = t
 		added.event.TimelineID = t.ID
 		if !req.dryRun {
-			added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.add...)
+			added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
 			if err != nil {
 				return err
 			}

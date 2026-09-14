@@ -101,13 +101,13 @@ func printAttachments(o output, attachments []timeline.Attachment, order eventOr
 
 	rows := make([][]string, 0, len(attachments))
 	for _, a := range attachments {
-		var owner string
+		var attachedTo string
 		if a.Owner.EventID != nil {
-			owner = "#" + strconv.FormatInt(order[*a.Owner.EventID].seq, 10)
+			attachedTo = "#" + strconv.FormatInt(order[*a.Owner.EventID].seq, 10)
 		} else {
-			owner = *a.Owner.AnnotationID
+			attachedTo = *a.Owner.AnnotationID
 		}
-		rows = append(rows, []string{a.ID, owner, a.Filename, formatSize(a.Size), a.MIME})
+		rows = append(rows, []string{a.ID, attachedTo, a.Filename, formatSize(a.Size), a.MIME})
 	}
 
 	return o.rows(rows)

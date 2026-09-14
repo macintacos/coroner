@@ -108,7 +108,7 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 		}
 		added.annotation, added.timeline, added.event = a, t, e
 		if !req.dryRun {
-			err = s.AddAnnotation(ctx, a, draft.newSourceID, req.add...)
+			err = s.AddAnnotation(ctx, a, draft.newSourceID, req.toAdd...)
 			if err != nil {
 				return err
 			}

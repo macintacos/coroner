@@ -163,7 +163,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 		}
 		edited.event, edited.timeline = e, t
 		if !req.dryRun {
-			err = s.UpdateEvent(ctx, e, edit.newSourceID, req.add...)
+			err = s.UpdateEvent(ctx, e, edit.newSourceID, req.toAdd...)
 			if errors.Is(err, store.ErrNotFound) {
 				return eventNotFoundError("another coroner deleted the event first", err)
 			}

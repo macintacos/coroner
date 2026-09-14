@@ -21,8 +21,8 @@ type NewAttachment struct {
 
 // stagedAttachment is an attachment row whose content is staged in the blob directory.
 type stagedAttachment struct {
-	row  timeline.Attachment
-	blob stagedBlob
+	attachment timeline.Attachment
+	blob       stagedBlob
 }
 
 // AddAttachment stores content as a blob and adds a, which carries its ID, Owner, Filename and
@@ -169,7 +169,7 @@ func (s *Store) writeWithAttachments(
 
 	rows := make([]timeline.Attachment, len(staged))
 	for i, a := range staged {
-		rows[i] = a.row
+		rows[i] = a.attachment
 	}
 
 	return rows, nil
@@ -196,7 +196,7 @@ func stageAttachments(
 			return nil, nil, err
 		}
 		staged = append(staged, stagedAttachment{
-			row: timeline.Attachment{
+			attachment: timeline.Attachment{
 				ID: a.ID, Owner: owner, Filename: a.Filename, MIME: DetectMIME(blob.head, a.Filename),
 				SHA256: blob.sha256, Size: blob.size, CreatedAt: a.CreatedAt,
 			},
@@ -218,14 +218,14 @@ func insertAttachments(ctx context.Context, q *sqlcgen.Queries, blobDir string, 
 		}
 
 		_, err = q.CreateAttachment(ctx, sqlcgen.CreateAttachmentParams{
-			ID:           a.row.ID,
-			EventID:      a.row.Owner.EventID,
-			AnnotationID: a.row.Owner.AnnotationID,
-			Filename:     a.row.Filename,
-			Mime:         a.row.MIME,
-			Sha256:       a.row.SHA256,
-			Size:         a.row.Size,
-			CreatedAt:    timeline.FormatInstant(a.row.CreatedAt),
+			ID:           a.attachment.ID,
+			EventID:      a.attachment.Owner.EventID,
+			AnnotationID: a.attachment.Owner.AnnotationID,
+			Filename:     a.attachment.Filename,
+			Mime:         a.attachment.MIME,
+			Sha256:       a.attachment.SHA256,
+			Size:         a.attachment.Size,
+			CreatedAt:    timeline.FormatInstant(a.attachment.CreatedAt),
 		})
 		if err != nil {
 			return err

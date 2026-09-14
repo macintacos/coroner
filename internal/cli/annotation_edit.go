@@ -98,7 +98,7 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		a = edit.apply(a, now)
 		edited.annotation, edited.timeline = a, t
 		if !req.dryRun {
-			err = updateAnnotation(ctx, s, app, a, req.add...)
+			err = updateAnnotation(ctx, s, app, a, req.toAdd...)
 			if err != nil {
 				return err
 			}
