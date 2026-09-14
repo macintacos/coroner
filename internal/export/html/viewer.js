@@ -216,6 +216,121 @@
 
   const checkedIn = (fieldset) => new Set([...fieldset.querySelectorAll("input:checked")].map((box) => box.value));
 
+  // The PNG is an SVG redrawn from where the browser laid the page out, then rasterised.
+  // vis-timeline renders HTML, and HTML inside an SVG foreignObject draws without the
+  // page's stylesheets, so the boxes and text are copied out one by one instead.
+  const svgElement = (tag, attributes) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+    return node;
+  };
+
+  const transparent = (color) => color === "transparent" || /,\s*0\)$/.test(color);
+
+  // paintBox draws an element's background and borders at x, y in the SVG.
+  const paintBox = (parent, style, x, y, width, height) => {
+    const sides = ["Top", "Right", "Bottom", "Left"].map((side) => ({
+      width: parseFloat(style["border" + side + "Width"]),
+      color: style["border" + side + "Color"],
+    }));
+    const uniform = sides.every((side) => side.width === sides[0].width && side.color === sides[0].color);
+    const stroke = uniform ? sides[0].width : 0;
+    const fill = transparent(style.backgroundColor) ? "none" : style.backgroundColor;
+    if (fill !== "none" || stroke) {
+      parent.append(svgElement("rect", {
+        x: x + stroke / 2, y: y + stroke / 2,
+        width: Math.max(width - stroke, 0), height: Math.max(height - stroke, 0),
+        rx: Math.min(parseFloat(style.borderTopLeftRadius) || 0, width / 2, height / 2),
+        fill, stroke: stroke ? sides[0].color : "none", "stroke-width": stroke,
+      }));
+    }
+    if (uniform) return;
+    const [top, right, bottom, left] = sides;
+    const edges = [
+      [top, x, y, width, top.width], [right, x + width - right.width, y, right.width, height],
+      [bottom, x, y + height - bottom.width, width, bottom.width], [left, x, y, left.width, height],
+    ];
+    for (const [side, edgeX, edgeY, edgeWidth, edgeHeight] of edges) {
+      if (side.width) parent.append(svgElement("rect", { x: edgeX, y: edgeY, width: edgeWidth, height: edgeHeight, fill: side.color }));
+    }
+  };
+
+  // redraw copies node's visible boxes and text into parent, placing the page point origin
+  // at the SVG's top left. Children of an element that hides its overflow are clipped to it.
+  const redraw = (node, parent, origin, defs) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.replace(/\s+/g, " ").trim();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const line = range.getClientRects()[0];
+      const style = getComputedStyle(node.parentElement);
+      if (!text || !line || style.visibility === "hidden") return;
+      const label = svgElement("text", {
+        x: line.left - origin.x, y: line.top + line.height / 2 - origin.y, "dominant-baseline": "central",
+        fill: style.color, "font-family": style.fontFamily, "font-size": style.fontSize, "font-weight": style.fontWeight,
+      });
+      label.textContent = text;
+      parent.append(label);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const style = getComputedStyle(node);
+    if (style.display === "none") return;
+    const box = node.getBoundingClientRect();
+    const x = box.left - origin.x;
+    const y = box.top - origin.y;
+    // A hidden element's children can still be visible.
+    if (style.visibility !== "hidden") paintBox(parent, style, x, y, box.width, box.height);
+    let group = parent;
+    if (style.overflowX !== "visible" || style.overflowY !== "visible") {
+      const id = "clip" + defs.childElementCount;
+      const clip = svgElement("clipPath", { id });
+      clip.append(svgElement("rect", { x, y, width: box.width, height: box.height }));
+      defs.append(clip);
+      group = svgElement("g", { "clip-path": "url(#" + id + ")" });
+      parent.append(group);
+    }
+    for (const child of node.childNodes) redraw(child, group, origin, defs);
+  };
+
+  // pageSVG draws the page heading above the timeline as they are shown, at the screen's
+  // pixel density.
+  const pageSVG = (headingElement, timelineElement) => {
+    const pad = 16;
+    const headingBox = headingElement.getBoundingClientRect();
+    const timelineBox = timelineElement.getBoundingClientRect();
+    const width = Math.ceil(timelineBox.width + 2 * pad);
+    const height = Math.ceil(headingBox.height + timelineBox.height + 3 * pad);
+    const svg = svgElement("svg", {
+      width: width * devicePixelRatio, height: height * devicePixelRatio, viewBox: "0 0 " + width + " " + height,
+    });
+    const defs = svgElement("defs", {});
+    svg.append(defs, svgElement("rect", { width, height, fill: getComputedStyle(document.body).backgroundColor }));
+    redraw(headingElement, svg, { x: headingBox.left - pad, y: headingBox.top - pad }, defs);
+    redraw(timelineElement, svg, { x: timelineBox.left - pad, y: timelineBox.top - headingBox.height - 2 * pad }, defs);
+    return svg;
+  };
+
+  const png = async (svg) => {
+    const image = new Image();
+    image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+    await image.decode();
+    const canvas = element("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext("2d").drawImage(image, 0, 0);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  };
+
+  const download = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = element("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
   const exported = inZone(instant(data.exported_at));
   const shown = data.timelines[0];
   const heading = shown.title.trim() ? shown.title + " (" + shown.name + ")" : shown.name;
@@ -347,6 +462,10 @@
     showBounds();
     if (allTimesWindow.start !== undefined) timeline.setWindow(allTimesWindow.start, allTimesWindow.end);
     refilter();
+  });
+  document.getElementById("export-png").addEventListener("click", async () => {
+    const svg = pageSVG(document.getElementById("heading"), document.getElementById("timeline"));
+    download(await png(svg), shown.name + ".png");
   });
 
   if (view.selected !== null) timeline.setSelection(visibleItems.get(view.selected) ? [view.selected] : []);
