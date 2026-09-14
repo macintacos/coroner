@@ -1456,6 +1456,7 @@ EXAMPLES
   $ coroner timeline create --interactive
 
 FLAGS
+      --dry-run           Show the timeline as it would be created, and create nothing
       --if-not-exists     Print the existing timeline instead of failing when the name is taken
       --interactive       Open a form to fill in, prefilled from the other flags (needs a terminal)
       --ref stringArray   Ticket key or URL the timeline belongs to; repeat for more
@@ -1480,7 +1481,8 @@ LEARN MORE
 Delete a timeline with its events, tags, annotations, attachments and links, and the blobs
 no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
 would be deleted instead. Deleting the current timeline leaves none current, and the
-overlays that read the timeline keep their other timelines.
+overlays that read the timeline keep their other timelines. Under --json it prints the
+timeline it deletes, or would.
 
 USAGE
   coroner timeline delete <name|id> {--yes | --dry-run} [flags]
@@ -1668,7 +1670,7 @@ LEARN MORE
 -- coroner_timeline_use.txt --
 Make a timeline current, so commands that act on a timeline use it when neither -t nor
 CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves
-none current.
+none current. Under --json it prints the timeline it makes current, or null with --clear.
 
 USAGE
   coroner timeline use {<name|id> | --clear} [flags]
@@ -1678,7 +1680,8 @@ EXAMPLES
   $ coroner timeline use --clear
 
 FLAGS
-      --clear   Leave no timeline current
+      --clear     Leave no timeline current
+      --dry-run   Show the timeline that would become current, and change nothing
 
 GLOBAL FLAGS
       --config path     Config file path (env: CORONER_CONFIG)

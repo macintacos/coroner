@@ -10,7 +10,7 @@ Set the current timeline
 
 Make a timeline current, so commands that act on a timeline use it when neither -t nor
 CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves
-none current.
+none current. Under --json it prints the timeline it makes current, or null with --clear.
 
 ```
 coroner timeline use {<name|id> | --clear} [flags]
@@ -26,7 +26,8 @@ coroner timeline use {<name|id> | --clear} [flags]
 ### Options
 
 ```
-      --clear   Leave no timeline current
+      --clear     Leave no timeline current
+      --dry-run   Show the timeline that would become current, and change nothing
 ```
 
 ### Options inherited from parent commands

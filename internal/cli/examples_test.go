@@ -210,7 +210,7 @@ var _ = Describe("checkInvocation", func() {
 		Entry("an abbreviated command", "coroner time create", `unknown command "time" for "coroner"`),
 		Entry("too many positionals", "coroner timeline view a b", "accepts at most 1 arg(s), received 2"),
 		Entry("a positional to a command that takes none", "coroner version extra", `unknown command "extra" for "coroner version"`),
-		Entry("a format its command does not print", "coroner timeline use mongo --json", "cannot print --format json"),
+		Entry("a format its command does not print", "coroner version --format jsonl", "cannot print --format jsonl"),
 		Entry("--json with another --format", "coroner timeline create x --json --format text", "--json conflicts"),
 		Entry("help naming neither a help topic nor a command", "coroner help nosuch", `unknown help topic or command "nosuch"`),
 	)

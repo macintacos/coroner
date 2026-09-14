@@ -32,6 +32,7 @@ coroner timeline create <name> [flags]
 ### Options
 
 ```
+      --dry-run           Show the timeline as it would be created, and create nothing
       --if-not-exists     Print the existing timeline instead of failing when the name is taken
       --interactive       Open a form to fill in, prefilled from the other flags (needs a terminal)
       --ref stringArray   Ticket key or URL the timeline belongs to; repeat for more
