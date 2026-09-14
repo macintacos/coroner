@@ -16,6 +16,11 @@ nav = [
     "how-to/index.md",
     { "Install coroner" = "how-to/install.md" },
     { "Import a colleague's export" = "how-to/import.md" },
+    { "Capture Slack messages" = "how-to/capture-slack-messages.md" },
+    { "Add log lines" = "how-to/add-log-lines.md" },
+    { "Share a timeline" = "how-to/export-to-github-linear-confluence.md" },
+    { "Query with jq" = "how-to/query-with-jq.md" },
+    { "Grafana annotations" = "how-to/grafana-annotations.md" },
   ] },
   { "Reference" = [
     { "Export format" = "reference/export-format.md" },
