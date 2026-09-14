@@ -18,6 +18,11 @@ func ValidateTimelineName(name string) error {
 	return validateSlug("timeline name", name, namePunct)
 }
 
+// ValidateOverlayName returns an error unless name follows the timeline name grammar.
+func ValidateOverlayName(name string) error {
+	return validateSlug("overlay name", name, namePunct)
+}
+
 // ValidateSourceName returns an error unless name matches [a-z0-9][a-z0-9._:/-]* in at
 // most 64 characters and is not none, the keyword that clears an event's source.
 func ValidateSourceName(name string) error {
