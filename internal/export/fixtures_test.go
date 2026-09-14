@@ -28,6 +28,8 @@ var _ = Describe("Frozen export fixtures", func() {
 		"v1.0/minimal.jsonl",
 		"v1.0/ordering.jsonl",
 		"v1.1/annotations.jsonl",
+		"v1.1/attachments.json",
+		"v1.1/attachments.jsonl",
 		"v1.1/concatenated.jsonl",
 		"v1.1/full-model.json",
 		"v1.1/full-model.jsonl",
