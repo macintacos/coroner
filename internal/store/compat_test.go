@@ -38,7 +38,8 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 		expectCompatFixture(ctx, path)
 	})
 
-	for _, schema := range []int64{1, 2} {
+	migrations, _ := filepath.Glob("migrations/*.sql")
+	for schema := int64(1); schema < int64(len(migrations)); schema++ {
 		It(fmt.Sprintf("upgrades a schema %d database compatfixture filled, backing it up first", schema), func(ctx SpecContext) {
 			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
 			s, err := store.OpenWithMigrations(ctx, path, schemaUpTo(schema))

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -119,28 +118,41 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 		}
 		created.overlay = timeline.Overlay{ID: id.String(), Name: *name, TimelineIDs: timelineIDs(created.timelines), CreatedAt: app.Now()}
 
-		existing, err := s.OverlayByName(ctx, *name)
-		switch {
-		case err == nil && ifNotExists:
-			created.overlay, created.existed = existing, true
-			created.timelines, err = overlayTimelines(ctx, s, existing)
-			return err
-		case err == nil:
-			return overlayExistsError(*name, nil)
-		case !errors.Is(err, store.ErrNotFound):
-			return err
-		case dryRun:
-			return nil
+		if dryRun {
+			err = overlayNameFree(ctx, s, *name)
+		} else {
+			err = s.CreateOverlay(ctx, created.overlay)
 		}
-
-		err = s.CreateOverlay(ctx, created.overlay)
-		if errors.Is(err, store.ErrConflict) {
+		switch {
+		case errors.Is(err, store.ErrConflict) && ifNotExists:
+			created.overlay, err = s.OverlayByName(ctx, *name)
+			if err != nil {
+				return err
+			}
+			created.existed = true
+			created.timelines, err = overlayTimelines(ctx, s, created.overlay)
+			return err
+		case errors.Is(err, store.ErrConflict):
 			return overlayExistsError(*name, err)
 		}
 		return err
 	})
 
 	return created, err
+}
+
+// overlayNameFree returns an error wrapping store.ErrConflict when an overlay is called name,
+// as CreateOverlay would.
+func overlayNameFree(ctx context.Context, s *store.Store, name string) error {
+	_, err := s.OverlayByName(ctx, name)
+	switch {
+	case err == nil:
+		return store.ErrConflict
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	}
+
+	return err
 }
 
 func overlayExistsError(name string, err error) *Error {
@@ -251,18 +263,4 @@ func selectChosenTimelines(
 	}
 
 	return overlayTimelines(ctx, s, o)
-}
-
-// codeList returns names as code spans, joined by commas.
-func codeList(names []string) string {
-	return "`" + strings.Join(names, "`, `") + "`"
-}
-
-// pluralNoun returns noun, with an s unless n is 1.
-func pluralNoun(n int, noun string) string {
-	if n == 1 {
-		return noun
-	}
-
-	return noun + "s"
 }

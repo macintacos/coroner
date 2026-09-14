@@ -11,16 +11,17 @@ Link one event to another, in any timeline
 Link the first event to the second. --kind says how they relate: led_to when the first led
 to the second, same_as when both record one moment as two sources saw it, and copied_from
 when the first was copied from the second. The events may be in different timelines; an
-event cannot link to itself. Two events have at most one link of each kind, so another
-exits 4. --dry-run checks the link and adds nothing. 'coroner event view' shows an event's
-links, and exports carry every link between two exported events.
+event cannot link to itself. From one event to another there is at most one link of each
+kind, so another exits 4; a link in the opposite direction is a separate link. --dry-run
+checks the link and adds nothing. 'coroner event view' shows an event's links, and exports
+carry every link between two exported events.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
 are for people; scripts pass full ids.
 
 ```
-coroner event link <event> <event> --kind {led_to | same_as | copied_from} [flags]
+coroner event link <from-event> <to-event> --kind {led_to | same_as | copied_from} [flags]
 ```
 
 ### Examples

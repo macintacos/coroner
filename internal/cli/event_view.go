@@ -104,8 +104,7 @@ type eventView struct {
 	linkRows    [][]string
 }
 
-// writeEventView writes the event's summary, then its annotations, with times in z, then its
-// links.
+// writeEventView writes the event's summary and annotations, with times in z, then its links.
 func writeEventView(o output, z zone, v eventView) error {
 	_, err := io.WriteString(o.out, eventSummary(v.event, v.timeline, z)+"\n")
 	if err == nil {

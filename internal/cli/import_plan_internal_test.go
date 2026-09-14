@@ -506,12 +506,14 @@ func planAttachment(n int, content []byte) export.Attachment {
 func storedFrom(records ...export.Record) storedRecords {
 	stored := storedRecords{
 		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
-		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{}, links: map[string]timeline.Link{},
+		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
+		links: map[string]timeline.Link{}, linksByJoin: map[string]timeline.Link{},
 	}
 	for _, r := range records {
 		switch r := r.(type) {
 		case export.Link:
 			stored.links[r.ID] = r.Domain()
+			stored.linksByJoin[linkJoin(r.FromEventID, r.ToEventID, r.Kind)] = r.Domain()
 		case export.Timeline:
 			stored.timelines[r.ID] = r.Domain()
 		case export.Source:

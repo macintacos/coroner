@@ -258,8 +258,9 @@ another, such as a log line that led to a page. Since 1.2.
 
 `led_to` means the from event led to the to event; `same_as` that both record one moment,
 as two sources saw it; `copied_from` that the from event was copied from the to event. The
-two events are always different, and one pair of events has at most one link of each kind.
-Its JSONL record, from an overlay of two timelines:
+two events are always different. From one event to another there is at most one link of
+each kind; a link in the opposite direction is a separate link. Its JSONL record, from an
+overlay of two timelines:
 
 ```json
 {"type":"link","id":"01a09862-b1c0-7000-8000-00000000000a","from_event_id":"01a09862-b1c0-7000-8000-000000000003","to_event_id":"01a09862-b1c0-7000-8000-000000000005","kind":"led_to","created_at":"2026-09-13T01:30:00.000000000Z","author":"julian"}

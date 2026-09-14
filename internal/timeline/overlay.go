@@ -1,7 +1,6 @@
 package timeline
 
 import (
-	"errors"
 	"time"
 )
 
@@ -14,14 +13,4 @@ type Overlay struct {
 	// TimelineIDs are the overlay's timelines, in the order they were given.
 	TimelineIDs []string
 	CreatedAt   time.Time
-}
-
-// Validate reports every way o breaks the domain rules, or nil.
-func (o Overlay) Validate() error {
-	errs := []error{ValidateOverlayName(o.Name)}
-	if len(o.TimelineIDs) == 0 {
-		errs = append(errs, errors.New("timelines: an overlay needs at least one"))
-	}
-
-	return errors.Join(errs...)
 }

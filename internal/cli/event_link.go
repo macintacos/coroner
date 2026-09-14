@@ -17,14 +17,15 @@ const linkKindHint = "Pass --kind led_to, --kind same_as or --kind copied_from."
 func newEventLinkCommand(ctx context.Context, app App) *cobra.Command {
 	def := eventLinkDefinition()
 	cmd := &cobra.Command{
-		Use:   "link <event> <event> --kind {led_to | same_as | copied_from}",
+		Use:   "link <from-event> <to-event> --kind {led_to | same_as | copied_from}",
 		Short: "Link one event to another, in any timeline",
 		Long: "Link the first event to the second. --kind says how they relate: led_to when the first led\n" +
 			"to the second, same_as when both record one moment as two sources saw it, and copied_from\n" +
 			"when the first was copied from the second. The events may be in different timelines; an\n" +
-			"event cannot link to itself. Two events have at most one link of each kind, so another\n" +
-			"exits 4. --dry-run checks the link and adds nothing. 'coroner event view' shows an event's\n" +
-			"links, and exports carry every link between two exported events.\n\n" + eventRefHelp,
+			"event cannot link to itself. From one event to another there is at most one link of each\n" +
+			"kind, so another exits 4; a link in the opposite direction is a separate link. --dry-run\n" +
+			"checks the link and adds nothing. 'coroner event view' shows an event's links, and exports\n" +
+			"carry every link between two exported events.\n\n" + eventRefHelp,
 		Args:        cobra.ExactArgs(2),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event link mongo-failover#12 checkout-latency#3 --kind led_to\n" +
@@ -40,7 +41,7 @@ func newEventLinkCommand(ctx context.Context, app App) *cobra.Command {
 func newEventUnlinkCommand(ctx context.Context, app App) *cobra.Command {
 	def := eventUnlinkDefinition()
 	cmd := &cobra.Command{
-		Use:   "unlink <event> <event> --kind {led_to | same_as | copied_from}",
+		Use:   "unlink <from-event> <to-event> --kind {led_to | same_as | copied_from}",
 		Short: "Remove the link of a kind from one event to another",
 		Long: "Remove the link of --kind from the first event to the second, and print it as it was. A link\n" +
 			"that does not exist exits 3. --dry-run shows the link it would remove instead.\n\n" + eventRefHelp,
@@ -282,9 +283,4 @@ func newLinkJSON(l timeline.Link) linkJSON {
 		ID: l.ID, FromEventID: l.FromEventID, ToEventID: l.ToEventID, Kind: string(l.Kind),
 		CreatedAt: timeline.FormatInstant(l.CreatedAt), Author: l.Author,
 	}
-}
-
-// seqRef names e as its timeline and seq, as in mongo-outage#12.
-func seqRef(t timeline.Timeline, e timeline.Event) string {
-	return fmt.Sprintf("%s#%d", t.Name, e.Seq)
 }

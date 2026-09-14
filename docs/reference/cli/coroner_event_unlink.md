@@ -16,7 +16,7 @@ An event is named by its seq in the current timeline (12), by a timeline and seq
 are for people; scripts pass full ids.
 
 ```
-coroner event unlink <event> <event> --kind {led_to | same_as | copied_from} [flags]
+coroner event unlink <from-event> <to-event> --kind {led_to | same_as | copied_from} [flags]
 ```
 
 ### Examples

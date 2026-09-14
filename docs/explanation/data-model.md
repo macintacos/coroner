@@ -17,7 +17,7 @@ erDiagram
   EVENT |o--o{ ANNOTATION : "is annotated by"
   EVENT |o--o{ ATTACHMENT : "keeps"
   EVENT ||--o{ LINK : "is the start of"
-  LINK }o--|| EVENT : "leads to"
+  LINK }o--|| EVENT : "reaches"
   ANNOTATION |o--o{ ATTACHMENT : "keeps"
   SOURCE |o--o{ EVENT : "reported"
   SOURCE |o--o{ ANNOTATION : "supplied"
@@ -46,12 +46,12 @@ the overlays that read it.
 
 ### Links connect events
 
-An [event link](#glossary) runs from one event to another and says how they relate: the
-log line `led_to` the page, the Slack message is `same_as` the alert, or an event was
-`copied_from` one in another timeline. Events keep their one home timeline, and a link
-between two timelines needs no copy of either event, because every event's ID is unique
-across every database. Deleting an event deletes its links. An export carries a link when
-it holds both events, so export the timelines together to keep the links between them.
+[Links](#glossary) run from one event to another and say how they relate: the log line
+`led_to` the page, the Slack message is `same_as` the alert, or an event was `copied_from`
+one in another timeline. Events keep their one home timeline, and a link between two
+timelines needs no copy of either event, because every event's ID is unique across every
+database. Deleting an event deletes its links. An export carries a link when it holds both
+events, so export the timelines together to keep the links between them.
 
 ```sh
 coroner event link 'mongo-failover#12' 'checkout-latency#3' --kind led_to

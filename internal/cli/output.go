@@ -161,3 +161,17 @@ func writeJSON(w io.Writer, pretty bool, v any) error {
 
 	return encoder.Encode(v)
 }
+
+// codeList returns names as code spans, joined by commas.
+func codeList(names []string) string {
+	return "`" + strings.Join(names, "`, `") + "`"
+}
+
+// pluralNoun returns noun, with an s unless n is 1.
+func pluralNoun(n int, noun string) string {
+	if n == 1 {
+		return noun
+	}
+
+	return noun + "s"
+}

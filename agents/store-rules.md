@@ -21,10 +21,10 @@
    SQLite cannot alter a CHECK, so changing one, even to add a precision or an annotation
    kind, needs a migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
-   another table references (`timeline`, `event`, `annotation`, `source`) is rebuilt in a
-   migration marked `-- +goose NO TRANSACTION`, because inside goose's transaction
-   `PRAGMA foreign_keys = OFF` is ignored and `DROP TABLE` cascades into every child row.
-   Recreate the rebuilt table's indexes and triggers before `COMMIT`:
+   another table references (`timeline`, `event`, `annotation`, `source`, `overlay`) is
+   rebuilt in a migration marked `-- +goose NO TRANSACTION`, because inside goose's
+   transaction `PRAGMA foreign_keys = OFF` is ignored and `DROP TABLE` cascades into every
+   child row. Recreate the rebuilt table's indexes and triggers before `COMMIT`:
 
    ```sql
    -- +goose NO TRANSACTION

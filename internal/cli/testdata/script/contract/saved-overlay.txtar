@@ -62,9 +62,9 @@ stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
 
 # Deleting a timeline removes it from its overlays, and says so on stderr.
 exits 0 coroner timeline delete mongo-failover --dry-run
-stderr '^Would remove it from overlay `checkout-incident`\.\n\z'
+stderr '^Would remove timeline `mongo-failover` from overlay `checkout-incident`\.\n\z'
 exits 0 coroner timeline delete mongo-failover --yes
-stderr '^Removed it from overlay `checkout-incident`\.\n'
+stderr '^Removed timeline `mongo-failover` from overlay `checkout-incident`\.\n'
 exits 0 coroner event list --overlay checkout-incident --json
 jsonvalid stdout
 stdout '"timelines":\[\{"id":"[^"]+","name":"checkout-latency",'

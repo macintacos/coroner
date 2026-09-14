@@ -123,7 +123,8 @@ func (d timelineDeleted) render(o output) error {
 	return d.notifyOverlays(o, "Would remove")
 }
 
-// notifyOverlays says which overlays verb the timeline from, if any.
+// notifyOverlays says, with verb, which overlays the timeline leaves; it writes nothing when there
+// are none.
 func (d timelineDeleted) notifyOverlays(o output, verb string) error {
 	if len(d.overlays) == 0 {
 		return nil
@@ -133,5 +134,5 @@ func (d timelineDeleted) notifyOverlays(o output, verb string) error {
 		names = append(names, overlay.Name)
 	}
 
-	return o.notify("%s it from %s %s.", verb, pluralNoun(len(names), "overlay"), codeList(names))
+	return o.notify("%s timeline `%s` from %s %s.", verb, d.timeline.Name, pluralNoun(len(names), "overlay"), codeList(names))
 }

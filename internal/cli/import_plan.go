@@ -39,9 +39,11 @@ type storedRecords struct {
 	events      map[string]timeline.Event
 	annotations map[string]timeline.Annotation
 	attachments map[string]timeline.Attachment
-	// links are the stored ones whose ids the input names, and those joining the same events
-	// with the same kind as an input link, by id.
+	// links are the stored ones whose ids the input names.
 	links map[string]timeline.Link
+	// linksByJoin are the stored ones joining the same events with the same kind as an input
+	// link, by linkJoin.
+	linksByJoin map[string]timeline.Link
 }
 
 // importInput is everything planImport decides from.
@@ -186,14 +188,14 @@ func collectRecords(records []export.Record) (incomingRecords, []string) {
 	incoming.annotations, annotationRepeats = uniqueRecords("annotation", incoming.annotations, func(a export.Annotation) string { return a.ID }, export.DifferingKeys)
 	incoming.attachments, attachmentRepeats = uniqueRecords("attachment", incoming.attachments, func(a export.Attachment) string { return a.ID }, export.DifferingKeys)
 	incoming.links, linkRepeats = uniqueRecords("link", incoming.links, func(l export.Link) string { return l.ID }, export.DifferingKeys)
-	incoming.links, joinRepeats = uniqueRecords("link", incoming.links, linkJoin, export.DifferingKeys)
+	incoming.links, joinRepeats = uniqueRecords("link", incoming.links, func(l export.Link) string { return linkJoin(l.FromEventID, l.ToEventID, l.Kind) }, export.DifferingKeys)
 
 	return incoming, slices.Concat(idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats, linkRepeats, joinRepeats)
 }
 
-// linkJoin names the kind and events of l, which the database holds at most one link for.
-func linkJoin(l export.Link) string {
-	return fmt.Sprintf("%s from %s to %s", l.Kind, l.FromEventID, l.ToEventID)
+// linkJoin names a link's kind and events, which the database holds at most one link for.
+func linkJoin(fromEventID, toEventID string, kind timeline.LinkKind) string {
+	return fmt.Sprintf("%s from %s to %s", kind, fromEventID, toEventID)
 }
 
 // sortedUnique returns tags sorted, each once, without changing tags.
@@ -575,7 +577,7 @@ func (p *planner) planLinks(links []export.Link) {
 	for _, l := range links {
 		stored, ok := p.in.stored.links[l.ID]
 		if !ok {
-			stored, ok = p.in.stored.linkJoining(l)
+			stored, ok = p.in.stored.linksByJoin[linkJoin(l.FromEventID, l.ToEventID, l.Kind)]
 		}
 		if ok {
 			p.resolve(&p.result.Links, importConflict{Type: "link", ID: l.ID, Fields: export.DifferingKeys(export.NewLink(stored), l)}, false)
@@ -584,19 +586,9 @@ func (p *planner) planLinks(links []export.Link) {
 
 		p.result.Links.Inserted++
 		p.write.Links = append(p.write.Links, l.Domain())
+		// checkRecords has already rejected a link whose event is unknown.
 		p.timelineIDs[p.refs.events[l.FromEventID]] = true
 	}
-}
-
-// linkJoining returns the stored link of l's kind between l's events, whatever its id.
-func (s storedRecords) linkJoining(l export.Link) (timeline.Link, bool) {
-	for _, stored := range s.links {
-		if stored.FromEventID == l.FromEventID && stored.ToEventID == l.ToEventID && stored.Kind == l.Kind {
-			return stored, true
-		}
-	}
-
-	return timeline.Link{}, false
 }
 
 // planUnrecordedSources creates each source uses name that is neither stored nor being created,

@@ -13,8 +13,8 @@
 3. **An occurred at is the start of its precision window** in the offset `OccurredOffset`
    states (UTC when nil). Build it with `Precision.Truncate` on the time in that offset,
    never by hand; `Truncate` measures in the fixed offset its argument carries.
-4. **Validation rejects and never normalizes.** The timeline name, source and tag grammars
-   may only loosen, because tightening one breaks stored data.
+4. **Validation rejects and never normalizes.** The timeline name, overlay name, source
+   and tag grammars may only loosen, because tightening one breaks stored data.
 5. **Events order by occurred at, then timeline id, then seq, through `CompareEvents`**,
    never by created at. The store's `ORDER BY` and the export's record order mirror it, so
    an overlay of several timelines merges the same way everywhere.

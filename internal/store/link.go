@@ -53,7 +53,8 @@ func (s *Store) EventLinks(ctx context.Context, eventID string) ([]timeline.Link
 }
 
 // TimelineLinks returns the links from events in the timeline with timelineID, to events in
-// any timeline, oldest first. A link between two timelines is listed under one of them.
+// any timeline, oldest first. A link between two timelines is listed only under its from
+// event's timeline, so reading several timelines lists it once.
 func (s *Store) TimelineLinks(ctx context.Context, timelineID string) ([]timeline.Link, error) {
 	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Link, error) {
 		rows, err := q.ListTimelineLinks(ctx, timelineID)

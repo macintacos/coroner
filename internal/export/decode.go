@@ -307,7 +307,7 @@ func (a Attachment) validate() error {
 	)
 }
 
-// validate leaves kind to the importer: it is an open enum.
+// validate leaves kind, an open enum, and the self-link rule to the importer.
 func (l Link) validate() error {
 	return errors.Join(validateID("id", l.ID), validateID("from_event_id", l.FromEventID), validateID("to_event_id", l.ToEventID))
 }
