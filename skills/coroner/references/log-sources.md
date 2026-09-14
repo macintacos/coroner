@@ -2,11 +2,11 @@
 
 *Audience: coding agents turning log lines and chat messages into coroner events.*
 
-coroner does not parse logs. You find each line's time, write it as RFC 3339, and keep the
-line itself as evidence. `--at` takes RFC 3339 with an explicit offset. A JSONL record
-takes UTC with nine fraction digits and the offset in seconds
-([JSONL event records](jsonl-events.md)). The commands below print both forms; they need
-Python 3.11 or later.
+`--at` also reads some log layouts, such as yearless syslog stamps, but only RFC 3339 is
+stable (`coroner help time`). So you find each line's time, write it as RFC 3339 with an
+explicit offset, and keep the line itself as evidence. A JSONL record takes UTC with nine
+fraction digits and the offset in seconds ([JSONL event records](jsonl-events.md)). The
+commands below print the forms each needs; they need Python 3.11 or later.
 
 ## Convert a time with an offset
 

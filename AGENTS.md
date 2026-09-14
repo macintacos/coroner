@@ -77,6 +77,7 @@ digraph coroner_rules_router {
     "Load agents/timeparse-rules.md" [shape=box];
     "Load agents/export-rules.md" [shape=box];
     "Load agents/viewer-rules.md" [shape=box];
+    "Load agents/skills-rules.md" [shape=box];
 
     "Working on coroner" -> "What does the change touch?";
     "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
@@ -84,13 +85,14 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md" [label="JSON output, exports or another contract (Rule 3)"];
-    "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command the agent skill uses (Rule 6)"];
+    "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 6)"];
     "What does the change touch?" -> "Load agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, an agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
     "What does the change touch?" -> "Load agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
     "What does the change touch?" -> "Load agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
+    "What does the change touch?" -> "Load agents/skills-rules.md" [label="skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json"];
 }
 ```
 
@@ -195,12 +197,13 @@ digraph coroner_rules_router {
   command word, as in `brew uninstall --cask coroner`, is reported as skipped.
 - Agent skill: [`skills/coroner/`](skills/coroner/SKILL.md) holds the Agent Skill and its
   `references/`, with spec front matter keys only. Go cannot embed a parent directory, so
-  [`skills/skills.go`](skills/skills.go) embeds `SKILL.md`, `main.go` passes it in as
-  `App.Skill`, and `coroner agent skill` ([`agent.go`](internal/cli/agent.go)) prints it;
-  a spec fails when the output differs from the file. `agent skill` names the document it
-  prints rather than a verb, as `help <topic>` does. The repository is its own Claude Code
-  plugin marketplace: [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json)
-  offers `skills/` as a plugin holding only this skill.
+  [`skills/skills.go`](skills/skills.go) embeds `SKILL.md`; `main.go` passes it in as
+  `App.Skill`, and `coroner agent skill` ([`agent.go`](internal/cli/agent.go)) prints it
+  (S-2's glossary lists it). A spec fails when `agent skill` prints anything but the file
+  or opens the database, and two others when `SKILL.md`'s front matter breaks or a link to
+  a reference does. The repository is its own Claude Code plugin marketplace:
+  [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) offers `skills/` as
+  a plugin holding only this skill.
 - Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,
   `reference/`, `explanation/` and `contributing/`, with its nav in
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
@@ -272,8 +275,8 @@ digraph coroner_rules_router {
    non-conventional message (git's own merge, revert and reapply subjects pass; merges are
    left out of the changelog), and git-cliff builds the changelog from the history, so a
    commit's type picks its heading.
-6. **Keep the agent skill in sync:** when a command used in
-   [`skills/coroner/SKILL.md`](skills/coroner/SKILL.md) or its references changes, update
-   the skill in the same PR, or its examples test fails.
+6. **Keep the agent skill in sync:** when a command, flag, JSON key or exit code used in
+   [`skills/coroner/`](skills/coroner/SKILL.md) changes, update the skill in the same PR.
+   The examples test catches only a command or flag that no longer parses.
 7. **Run `mise run preflight` before declaring work done:** it runs lint, test, build and
    docs:build ([`.mise/tasks/preflight`](.mise/tasks/preflight)).

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +19,13 @@ func newAgentCommand(app App) *cobra.Command {
 		RunE:        runNoun,
 	}
 
-	cmd.AddCommand(&cobra.Command{
+	cmd.AddCommand(newAgentSkillCommand(app))
+
+	return cmd
+}
+
+func newAgentSkillCommand(app App) *cobra.Command {
+	return &cobra.Command{
 		Use:   "skill",
 		Short: "Print the Agent Skill for this version of coroner",
 		Long: "Print the SKILL.md of the coroner Agent Skill this binary was built with, so the skill an\n" +
@@ -28,10 +36,8 @@ func newAgentCommand(app App) *cobra.Command {
 		Example: "  $ coroner agent skill\n" +
 			"  $ coroner agent skill | diff - ~/.claude/skills/coroner/SKILL.md",
 		RunE: func(*cobra.Command, []string) error {
-			_, err := app.Out.Write(app.Skill)
+			_, err := io.WriteString(app.Out, app.Skill)
 			return err
 		},
-	})
-
-	return cmd
+	}
 }

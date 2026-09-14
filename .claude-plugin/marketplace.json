@@ -12,7 +12,7 @@
       "strict": false,
       "skills": ["./coroner"],
       "description": "Agent Skill for building root-cause investigation timelines with the coroner CLI.",
-      "homepage": "https://macintacos.github.io/coroner/how-to/use-with-ai-agents/",
+      "homepage": "https://github.com/macintacos/coroner/blob/main/docs/how-to/use-with-ai-agents.md",
       "repository": "https://github.com/macintacos/coroner",
       "license": "MIT"
     }

@@ -32,7 +32,9 @@ claude plugin marketplace add macintacos/coroner
 claude plugin install coroner@coroner
 ```
 
-The marketplace follows the repository's `main` branch. To get a later skill, run
+The marketplace follows the repository's `main` branch. To take the skill from a release
+instead, add the marketplace as `macintacos/coroner@v0.1.0`, naming your coroner's version
+(`coroner version` prints it). To get a later skill, run
 `claude plugin marketplace update coroner`. To remove it:
 
 ```sh
@@ -50,11 +52,13 @@ project, or `.claude/skills/` inside one project:
 git clone --depth 1 https://github.com/macintacos/coroner.git /tmp/coroner-src
 mkdir -p ~/.claude/skills
 cp -R /tmp/coroner-src/skills/coroner ~/.claude/skills/
+rm -rf /tmp/coroner-src
 ```
 
-To take the skill from a release rather than `main`, add `--branch v0.1.0`, naming your
-coroner's version, to `git clone`. To update the copy, remove it and copy it again. To
-remove it:
+For one project only, run the same `cp -R` into `.claude/skills/` at the project's root
+instead. To take the skill from a release rather than `main`, add `--branch v0.1.0`,
+naming your coroner's version, to `git clone`. To update the copy, remove it and copy it
+again. To remove it:
 
 ```sh
 rm -r ~/.claude/skills/coroner
@@ -68,11 +72,15 @@ Every coroner binary carries the `SKILL.md` it was built with, and prints it:
 coroner agent skill
 ```
 
-Compare it with an installed copy; `diff` prints nothing when they match:
+Compare it with a copied install; `diff` prints nothing when they match:
 
 ```sh
 coroner agent skill | diff - ~/.claude/skills/coroner/SKILL.md
 ```
+
+The plugin keeps its copy at
+`~/.claude/plugins/cache/coroner/coroner/<version>/coroner/SKILL.md`, where `<version>` is
+the installed plugin's version directory; compare against that path instead.
 
 `coroner agent skill` prints `SKILL.md` alone. The references come only with the
 directory, so install the skill with one of the methods above rather than from this
@@ -92,16 +100,19 @@ coroner help reference
 
 - Pass `--json`, parse stdout, and decide what happened from the exit code, never from
   message text.
-- Name the timeline with `-t` on every command, rather than relying on
-  `coroner timeline use`.
+- Name the timeline with `-t` on every command that acts on one, and events by their full
+  id, rather than relying on `coroner timeline use`.
 - Send RFC 3339 times with an explicit offset, never natural language, which is
   experimental.
 - Record what happened as events with a source, keep log lines and messages word for word
   as evidence annotations, and put its reading of them in comment annotations. Hypotheses
   and fixes stay out of the timeline.
-- Add more than a handful of events from a JSONL file, with a dry run first.
+- When there are more than a handful of events to add, write them to a JSONL file and add
+  it in one command, with a dry run first.
 - Give each event its own id, so a retried command adds nothing twice, and never delete to
   retry.
+- Retrying `annotation add` adds a second copy, since an annotation takes no id, so check
+  `annotation list` before running it again.
 
 [The stability policy](https://github.com/macintacos/coroner/blob/main/STABILITY.md) says
 which commands, flags and JSON shapes the skill can rely on.
