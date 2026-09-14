@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"fmt"
 	"io/fs"
 	"os"
@@ -40,12 +41,17 @@ var _ = Describe("timeline export", func() {
 			Err:       &errOut,
 			OutIsTTY:  outTTY,
 			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-			ReadFile: func(string) ([]byte, error) {
-				if configFile == "" {
+			ReadFile: func(name string) ([]byte, error) {
+				switch {
+				case name != filepath.Join(home, ".config", "coroner", "config.toml"):
+					return os.ReadFile(filepath.Clean(name))
+				case configFile == "":
 					return nil, fs.ErrNotExist
 				}
 				return []byte(configFile), nil
 			},
+			Stat:     os.Stat,
+			MkdirAll: os.MkdirAll,
 			Now: func() time.Time {
 				now = now.Add(tick)
 				return now
@@ -280,6 +286,141 @@ var _ = Describe("timeline export", func() {
 
 			Expect(out.String()).To(BeEmpty())
 			Expect(errOut.String()).To(ContainSubstring(path))
+		})
+	})
+
+	Describe("attachments", func() {
+		// A PNG signature, so the store detects image/png, and a log line.
+		png, log := []byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), []byte("replSetStepDown\n")
+		links := regexp.MustCompile(`\]\(([^)]*)\)`)
+
+		// files returns every file under dir by its path relative to dir.
+		files := func(dir string) map[string]string {
+			GinkgoHelper()
+			found := map[string]string{}
+			Expect(filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+				if err == nil && !entry.IsDir() {
+					rel, _ := filepath.Rel(dir, path)
+					found[rel] = readFile(path)
+				}
+				return err
+			})).To(Succeed())
+			return found
+		}
+
+		BeforeEach(func(ctx SpecContext) {
+			Expect(os.WriteFile(filepath.Join(home, "p99.png"), png, 0o600)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(home, "stepdown.log"), log, 0o600)).To(Succeed())
+			for _, args := range [][]string{
+				{"event", "edit", "1", "--attach", filepath.Join(home, "p99.png")},
+				{"annotation", "add", "The step-down, as mongod logged it", "-e", "2", "--kind", "evidence", "--attach", filepath.Join(home, "stepdown.log")},
+			} {
+				Expect(run(ctx, args...)).To(Equal(0), errOut.String())
+			}
+		})
+
+		DescribeTable("writes the export, and each attachment's content under attachments/, into the directory -o names",
+			func(ctx SpecContext, format, target string) {
+				dir := filepath.Join(home, "rca")
+				Expect(os.Mkdir(dir, 0o750)).To(Succeed())
+
+				Expect(run(ctx, "timeline", "export", "--format", format, "-o", filepath.Join(home, target))).To(Equal(0), errOut.String())
+
+				Expect(out.String()).To(BeEmpty())
+				written := files(dir)
+				Expect(written).To(HaveLen(3))
+				Expect(written).To(HaveKey("mongo-outage." + format))
+				Expect(errOut.String()).To(ContainSubstring(filepath.Join(dir, "mongo-outage."+format)))
+				var contents []string
+				for path, content := range written {
+					if strings.HasPrefix(path, "attachments"+string(filepath.Separator)) {
+						contents = append(contents, content)
+					}
+				}
+				Expect(contents).To(ConsistOf(string(png), string(log)))
+			},
+			Entry("Markdown, to a directory that exists", "md", "rca"),
+			Entry("JSONL, to a path ending in a slash", "jsonl", "rca/"),
+		)
+
+		It("links each attachment in a Markdown export to its file in the directory", func(ctx SpecContext) {
+			dir := filepath.Join(home, "rca")
+
+			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir+"/")).To(Equal(0), errOut.String())
+
+			matches := links.FindAllStringSubmatch(readFile(filepath.Join(dir, "mongo-outage.md")), -1)
+			Expect(matches).To(HaveLen(2))
+			var linked []string
+			for _, match := range matches {
+				linked = append(linked, readFile(filepath.Join(dir, match[1])))
+			}
+			Expect(linked).To(ConsistOf(string(png), string(log)))
+		})
+
+		It("writes JSONL whose attachment records name each file in the directory by its hash", func(ctx SpecContext) {
+			dir := filepath.Join(home, "rca")
+
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl", "-o", dir+"/")).To(Equal(0), errOut.String())
+
+			records, err := export.Decode(strings.NewReader(readFile(filepath.Join(dir, "mongo-outage.jsonl"))))
+			Expect(err).NotTo(HaveOccurred())
+			var named []string
+			for _, record := range records {
+				if a, ok := record.(export.Attachment); ok {
+					named = append(named, readFile(filepath.Join(dir, export.AttachmentFile(a))))
+				}
+			}
+			Expect(named).To(ConsistOf(string(png), string(log)))
+		})
+
+		It("writes the same bytes when it exports into the same directory again", func(ctx SpecContext) {
+			dir := filepath.Join(home, "rca") + "/"
+			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir)).To(Equal(0), errOut.String())
+			first := files(dir)
+
+			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir)).To(Equal(0), errOut.String())
+
+			Expect(files(dir)).To(Equal(first))
+		})
+
+		DescribeTable("links Markdown not written to a directory to the blobs beside the database, warning on stderr that only this machine can open them",
+			func(ctx SpecContext, file string) {
+				output, md := "-", out.String
+				if file != "" {
+					output = filepath.Join(home, file)
+					md = func() string { return readFile(output) }
+				}
+
+				Expect(run(ctx, "timeline", "export", "--format", "md", "-o", output)).To(Equal(0), errOut.String())
+
+				Expect(errOut.String()).To(ContainSubstring("-o"))
+				var linked []string
+				for _, match := range links.FindAllStringSubmatch(md(), -1) {
+					linked = append(linked, readFile(match[1]))
+				}
+				Expect(linked).To(ConsistOf(string(png), string(log)))
+			},
+			Entry("on stdout", ""),
+			Entry("in the file -o names", "rca.md"),
+		)
+
+		It("writes nothing but the document to stdout", func(ctx SpecContext) {
+			dir := filepath.Join(home, "rca") + "/"
+			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir)).To(Equal(0), errOut.String())
+			inDirectory := readFile(filepath.Join(dir, "mongo-outage.md"))
+
+			Expect(run(ctx, "timeline", "export", "--format", "md")).To(Equal(0), errOut.String())
+
+			Expect(errOut.String()).NotTo(BeEmpty())
+			Expect(links.ReplaceAllString(out.String(), "]()")).To(Equal(links.ReplaceAllString(inDirectory, "]()")))
+		})
+
+		It("lists in JSON the attachments of the events and annotations it exports, and no others", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "json", "--source", "pagerduty")).To(Equal(0), errOut.String())
+
+			var env export.Envelope
+			Expect(json.Unmarshal(out.Bytes(), &env)).To(Succeed())
+			Expect(env.Attachments).To(ConsistOf(HaveField("Filename", "stepdown.log")))
 		})
 	})
 

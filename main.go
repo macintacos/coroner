@@ -45,6 +45,8 @@ func main() {
 		WriteFile:         os.WriteFile,
 		OpenFile:          openFile,
 		RemoveFile:        os.Remove,
+		Stat:              os.Stat,
+		MkdirAll:          os.MkdirAll,
 		Now:               time.Now,
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
