@@ -16,13 +16,14 @@
    `go run ./internal/tools/schemagen`, and classify the change by the evolution rules in
    [the export format reference](../reference/export-format.md#evolution-rules), with the
    reference updated in the same change (`AGENTS.md` Rules 3 and 4). `export.Decode` and
-   the schema require every key of the current type, so the first key added in a minor
-   version carries a `since:"1.N"` struct tag, and that change teaches `checkKeys` to skip
-   a tagged key for a header of an older minor and schemagen to leave it out of
-   `required`. Neither exists yet; until they do, a new required key fails every older
-   minor's fixtures (rule 7). With them, an older minor's fixture still validates and
-   decodes, but no longer re-encodes to its own bytes: the added key is written into its
-   lines.
+   the schema require every key of the current type, so a key added to an existing object
+   in a minor version carries a `since:"1.N"` struct tag, which schemagen reads to leave
+   the key out of `required`, as `Envelope.Attachments` does. A new record type's keys
+   need no tag: no older minor has that record. `checkKeys` does not read the tag yet, so
+   the first tagged key on a JSONL record type or the header teaches it to skip that key
+   for a header of an older minor; until then such a key fails every older minor's JSONL
+   fixtures (rule 7). An older minor's fixture still validates and decodes, but no longer
+   re-encodes to its own bytes: the added key is written into its lines.
 5. **The package imports no command or storage code:** the `export-contract` depguard rule
    in [`.golangci.yml`](../../.golangci.yml) fails an import of `internal/store`,
    `internal/cli` or cobra.

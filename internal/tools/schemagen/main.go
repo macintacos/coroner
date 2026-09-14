@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/invopop/jsonschema"
@@ -66,6 +67,7 @@ func generate() ([]byte, error) {
 
 	schema := reflector.Reflect(export.Envelope{})
 	schema.ID = jsonschema.ID("https://raw.githubusercontent.com/macintacos/coroner/main/" + outPath)
+	dropAddedKeys(schema, reflect.TypeFor[export.Envelope](), schema.Definitions)
 	tidyDescriptions(schema)
 	for _, def := range schema.Definitions {
 		tidyDescriptions(def)
@@ -80,6 +82,26 @@ func generate() ([]byte, error) {
 	b.WriteByte('\n')
 
 	return b.Bytes(), nil
+}
+
+// dropAddedKeys leaves out of the required keys of object, the schema of struct t, and of the
+// definitions of the structs t holds, every key whose field has a since tag: a key a later minor
+// version added, which an export of an earlier minor does not have.
+func dropAddedKeys(object *jsonschema.Schema, t reflect.Type, defs jsonschema.Definitions) {
+	for field := range t.Fields() {
+		if _, added := field.Tag.Lookup("since"); added {
+			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+			object.Required = slices.DeleteFunc(object.Required, func(key string) bool { return key == name })
+		}
+
+		held := field.Type
+		if held.Kind() == reflect.Slice {
+			held = held.Elem()
+		}
+		if def, ok := defs[held.Name()]; ok && held.Kind() == reflect.Struct {
+			dropAddedKeys(def, held, defs)
+		}
+	}
 }
 
 // tidyDescriptions joins the wrapped lines of schema's description and of each property's, and

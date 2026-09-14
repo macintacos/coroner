@@ -38,6 +38,20 @@ func NewEvent(e timeline.Event) Event {
 	return out
 }
 
+// NewAttachment returns a as its canonical object.
+func NewAttachment(a timeline.Attachment) Attachment {
+	return Attachment{
+		ID:           a.ID,
+		EventID:      a.Owner.EventID,
+		AnnotationID: a.Owner.AnnotationID,
+		Filename:     a.Filename,
+		MIME:         a.MIME,
+		SHA256:       a.SHA256,
+		Size:         a.Size,
+		CreatedAt:    Instant(a.CreatedAt),
+	}
+}
+
 // NewAnnotation returns a as its canonical object.
 func NewAnnotation(a timeline.Annotation) Annotation {
 	return Annotation{

@@ -147,6 +147,8 @@ func decodeLine(line []byte) (string, Record, error) {
 		record, err = decodeRecord[Event](line, members)
 	case "annotation":
 		record, err = decodeRecord[Annotation](line, members)
+	case "attachment":
+		record, err = decodeRecord[Attachment](line, members)
 	}
 
 	return typ, record, err
@@ -289,6 +291,17 @@ func (a Annotation) validate() error {
 		validateID("timeline_id", a.TimelineID),
 		validateOptional(func(id string) error { return validateID("event_id", id) }, a.EventID),
 		validateOptional(timeline.ValidateSourceName, a.Source),
+	)
+}
+
+func (a Attachment) validate() error {
+	owned := timeline.Attachment{Owner: timeline.AttachmentOwner{EventID: a.EventID, AnnotationID: a.AnnotationID}, SHA256: a.SHA256, Size: a.Size}
+
+	return errors.Join(
+		validateID("id", a.ID),
+		validateOptional(func(id string) error { return validateID("event_id", id) }, a.EventID),
+		validateOptional(func(id string) error { return validateID("annotation_id", id) }, a.AnnotationID),
+		owned.Validate(),
 	)
 }
 
