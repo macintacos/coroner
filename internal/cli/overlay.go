@@ -162,10 +162,10 @@ func overlayExistsError(name string, err error) *Error {
 	}
 }
 
-// overlayTimelines returns o's timelines, in its order.
-func overlayTimelines(ctx context.Context, s *store.Store, o timeline.Overlay) ([]timeline.Timeline, error) {
-	timelines := make([]timeline.Timeline, 0, len(o.TimelineIDs))
-	for _, id := range o.TimelineIDs {
+// overlayTimelines returns overlay's timelines, in its order.
+func overlayTimelines(ctx context.Context, s *store.Store, overlay timeline.Overlay) ([]timeline.Timeline, error) {
+	timelines := make([]timeline.Timeline, 0, len(overlay.TimelineIDs))
+	for _, id := range overlay.TimelineIDs {
 		t, err := s.Timeline(ctx, id)
 		if err != nil {
 			return nil, err
