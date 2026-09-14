@@ -52,7 +52,24 @@ own:
 coroner timeline export -t mongo-failover -t checkout-latency --format mermaid > overlay.mmd
 ```
 
-The HTML and SVG exports show one timeline, and exit with an error when given more.
+The HTML page of an overlay nests each timeline's sources under a row for the timeline,
+which collapses to hide them, and adds a checkbox per timeline to the filters. A source
+both timelines name, such as `k8s:events`, gets a row under each. The checked timelines
+are kept in the page's link, as the other filters are:
+
+```sh
+coroner timeline export -t mongo-failover -t checkout-latency --format html -o overlay.html
+```
+
+The SVG export shows one timeline, and exits with an error when given more.
+
+To read an overlay in the terminal before sharing it, view the same timelines. The viewer
+starts each event's row with its timeline's name, tinted with a color for that timeline,
+and its filters and time jump cover every timeline:
+
+```sh
+coroner timeline view -t mongo-failover -t checkout-latency
+```
 
 ## GitHub and GitLab
 

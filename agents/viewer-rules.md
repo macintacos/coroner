@@ -17,9 +17,11 @@
 3. **Order and gaps come from the domain:** events arrive in `timeline.CompareEvents`
    order, and gap rows come from `timeline.Gaps`. Never compute either in the view.
 4. **Color never carries meaning alone:** evidence and comments, gaps, day breaks, the
-   current timeline and the cursor each have a glyph or word as well, so `NO_COLOR` and
-   `--no-color` lose nothing. Use the 16 ANSI colors, which the terminal's theme picks
-   shades for.
+   current timeline, an overlay's timelines and the cursor each have a glyph or word as
+   well, so `NO_COLOR` and `--no-color` lose nothing. Use the 16 ANSI colors, which the
+   terminal's theme picks shades for. An overlay's timelines take the colors of
+   `sourcePalette` in `internal/export/theme.go` by hue, in selection order, so a change
+   to either list changes both.
 5. **The screen is pinned by goldens:** `testdata/*.golden` hold `View()` at 80×20 in
    America/New_York, with a fixed clock and escape sequences stripped. Rewrite them only
    with `go test ./internal/viewer -update`, and read the diff before committing it.

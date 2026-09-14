@@ -24,7 +24,7 @@ type Snapshot struct {
 	Timelines []timeline.Timeline
 	// Events are in timeline.CompareEvents order.
 	Events []timeline.Event
-	// Annotations are every annotation in the timelines, oldest first.
+	// Annotations are every annotation in the timelines, each timeline's oldest first.
 	Annotations []timeline.Annotation
 	// Attachments are every attachment on the timelines' events and annotations.
 	Attachments []timeline.Attachment

@@ -122,12 +122,13 @@ digraph coroner_rules_router {
   output formats it supports in its `formats` annotation, and any other `--format` or
   `--json` exits 2 as `usage`. `-t` names one timeline, and naming more exits 2 as
   `usage`, unless the command reads several as an overlay and says so in its `overlay`
-  annotation, as `event list`, `timeline export` and `overlay create` do. `event list` and
-  `timeline export` also take `--overlay`, a saved overlay's name, in place of `-t`, read
-  both through `readTimelineChoice` ([`overlay.go`](internal/cli/overlay.go)), select
-  their timelines through `selectChosenTimelines` and read their events through
-  `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the JSON
-  error envelope under `--format json|jsonl`.
+  annotation, as `event list`, `timeline export`, `timeline view` and `overlay create` do.
+  `event list` and `timeline export` also take `--overlay`, a saved overlay's name, in
+  place of `-t`, read both through `readTimelineChoice`
+  ([`overlay.go`](internal/cli/overlay.go)), select their timelines through
+  `selectChosenTimelines` and read their events through `store.EventFilter.TimelineIDs`.
+  `cli.Run` prints every error once, adding the JSON error envelope under
+  `--format json|jsonl`.
 - Write commands (`timeline create|edit|delete|use`, `event add|edit|delete|link|unlink`,
   `annotation add|edit|delete`, `attachment delete`, `overlay create`): each declares its
   flags, positional argument and their checks once, in a `definition`
