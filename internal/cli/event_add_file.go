@@ -213,10 +213,10 @@ func plannedEvents(events []timeline.Event) map[string]timeline.Event {
 	return planned
 }
 
-// writeEvents writes write and returns the events of the timeline with timelineID by id, which
-// now hold write's under the seqs the store gave them.
-func writeEvents(ctx context.Context, s *store.Store, write store.ImportRecords, timelineID string) (map[string]timeline.Event, error) {
-	err := s.Import(ctx, write)
+// writeEvents writes records and returns the events of the timeline with timelineID by id, which
+// now hold records' under the seqs the store gave them.
+func writeEvents(ctx context.Context, s *store.Store, records store.ImportRecords, timelineID string) (map[string]timeline.Event, error) {
+	err := s.Import(ctx, records)
 	if errors.Is(err, store.ErrConflict) {
 		return nil, &Error{
 			Kind: KindIDConflict, Message: "the database changed while the events were being added, so nothing was added",
