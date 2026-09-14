@@ -63,15 +63,14 @@
    and an annotation's attachments follow its text on its line, so neither nests a third
    level. An overlay of several timelines lists each under a `Timelines` metadata bullet
    and labels every event, and every annotation on a whole timeline, with its timeline's
-   name as a code span; an export of one timeline carries no label, so its goldens stay
-   byte for byte as they are. Specs parse every golden in
-   `internal/export/testdata/markdown/` with goldmark to check there is no raw HTML, lists
-   are at most two levels deep and no heading repeats under one parent, and run
-   `rumdl check` on them with MD013 off. Its MD057 needs every relative link to resolve,
-   so `attachments/` there holds an empty file for each attachment hash the goldens link,
-   as an `-o` directory export would. `rumdl fmt` skips that directory, so a golden
-   changes only through `go test ./internal/export -update`, with its diff read before
-   committing.
+   name as a code span; an export of one timeline carries no label. Specs parse every
+   golden in `internal/export/testdata/markdown/` with goldmark to check there is no raw
+   HTML, lists are at most two levels deep and no heading repeats under one parent, and
+   run `rumdl check` on them with MD013 off. Its MD057 needs every relative link to
+   resolve, so `attachments/` there holds an empty file for each attachment hash the
+   goldens link, as an `-o` directory export would. `rumdl fmt` skips that directory, so a
+   golden changes only through `go test ./internal/export -update`, with its diff read
+   before committing.
 9. **The Mermaid export has one writer:** render it only through `export.WriteMermaid`, or
    `export.WriteMarkdown` with `Diagram`, from the same `Envelope`, so the diagram shows
    the events every other format exports. Its layout is not a contract (`AGENTS.md` Rule

@@ -30,8 +30,8 @@ const (
 // zone being UTC, and the title naming the zone by its abbreviations. An overlay of several
 // timelines has a section per timeline and source, <timeline>/<source> or
 // <timeline>/(no source), all in order of first appearance, and its title names each timeline.
-// It fails, writing nothing, unless env holds a timeline and the timeline of every event and
-// annotation.
+// It fails, writing nothing, unless env holds a timeline and, in an overlay, the timeline of
+// every event and annotation.
 func WriteMermaid(w io.Writer, env Envelope, zone *time.Location) error {
 	diagram, err := mermaid(env, zone)
 	if err != nil {
@@ -59,14 +59,14 @@ func mermaid(env Envelope, zone *time.Location) (string, error) {
 	if len(env.Timelines) == 0 {
 		return "", errors.New("want a timeline, got none")
 	}
-	label, err := timelineLabels(env)
+	names, err := overlayNames(env)
 	if err != nil {
 		return "", err
 	}
 
 	gantt := mermaidRenderer{
 		zone:          cmp.Or(zone, time.UTC),
-		timelineLabel: label,
+		timelineNames: names,
 		// Mermaid decodes #<code>; entities, so a literal # is written as one. A : ends a task
 		// label, % starts a comment or directive, and Mermaid before 10.8.0 ends text at ;.
 		escaper: strings.NewReplacer("#", "#35;", ":", "#58;", "%", "#37;", ";", "#59;"),
@@ -85,27 +85,30 @@ func mermaid(env Envelope, zone *time.Location) (string, error) {
 
 // mermaidRenderer renders the lines of a Mermaid gantt diagram.
 type mermaidRenderer struct {
-	zone *time.Location
-	// timelineLabel returns the label of a record of the timeline with an id, "" for none.
-	timelineLabel func(timelineID string) string
+	zone          *time.Location
+	timelineNames map[string]string
 	escaper       *strings.Replacer
 	syntax        *regexp.Regexp
 }
 
-// header returns the diagram's opening lines: the title, naming one timeline by its name and
-// title or an overlay by its timelines' names, then the zone, and the date formats.
+// header returns the diagram's opening lines: the title, then the zone, and the date formats.
 func (gantt mermaidRenderer) header(timelines []Timeline, events []Event, exportedAt Instant) []string {
-	title := overlayName(timelines)
-	if len(timelines) == 1 {
-		title = timelines[0].Name + " " + timelines[0].Title
-	}
-
 	return []string{
 		"gantt",
-		"  title " + gantt.text(title) + " (" + gantt.text(gantt.zoneNames(events, exportedAt)) + ")",
+		"  title " + gantt.title(timelines) + " (" + gantt.text(gantt.zoneNames(events, exportedAt)) + ")",
 		"  dateFormat " + mermaidDateFormat,
 		"  axisFormat %H:%M:%S",
 	}
+}
+
+// title returns the diagram's title text: an overlay's timelines' names, or one timeline's name
+// and title.
+func (gantt mermaidRenderer) title(timelines []Timeline) string {
+	if len(timelines) > 1 {
+		return gantt.text(overlayName(timelines))
+	}
+
+	return gantt.text(timelines[0].Name + " " + timelines[0].Title)
 }
 
 // zoneNames returns the zone abbreviations of events' instants, in order of first appearance,
@@ -126,11 +129,11 @@ func (gantt mermaidRenderer) zoneNames(events []Event, exportedAt Instant) strin
 	return strings.Join(names, "/")
 }
 
-// sections returns a section of tasks per lane of events, in order of first appearance, then
-// one of the events with none.
+// sections returns a section of tasks per sectionOf key, in order of first appearance; for one
+// timeline, the events with no source come last.
 func (gantt mermaidRenderer) sections(events []Event) []string {
 	var rows []string
-	for _, g := range groupEvents(events, gantt.lane) {
+	for _, g := range groupEvents(events, gantt.sectionOf) {
 		section := "(no source)"
 		if g.key != "" {
 			section = gantt.text(g.key)
@@ -144,16 +147,16 @@ func (gantt mermaidRenderer) sections(events []Event) []string {
 	return rows
 }
 
-// lane returns the section e's task is drawn in: its source, or in an overlay
+// sectionOf returns the section e's task is drawn in: its source, or in an overlay
 // <timeline>/<source> with (no source) for none. A timeline name holds no /, so the pair is
 // unambiguous.
-func (gantt mermaidRenderer) lane(e Event) []string {
-	label := gantt.timelineLabel(e.TimelineID)
-	if label == "" {
+func (gantt mermaidRenderer) sectionOf(e Event) []string {
+	name := gantt.timelineNames[e.TimelineID]
+	if name == "" {
 		return sourceOf(e)
 	}
 
-	return []string{label + "/" + cmp.Or(deref(e.Source), "(no source)")}
+	return []string{name + "/" + cmp.Or(deref(e.Source), "(no source)")}
 }
 
 // task returns e's task line: a milestone at its start, or a bar for its duration. A duration,

@@ -183,9 +183,14 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 }
 
 // checkOverlayFormat returns usage when -t selects count timelines, more than one, for a format
-// that exports one: html and svg.
+// that exports one.
 func checkOverlayFormat(count int, chosen format) error {
-	if count <= 1 || (chosen != formatHTML && chosen != formatSVG) {
+	switch chosen {
+	case formatJSON, formatJSONL, formatMarkdown, formatMermaid:
+		return nil
+	case formatHTML, formatSVG, formatText:
+	}
+	if count <= 1 {
 		return nil
 	}
 
