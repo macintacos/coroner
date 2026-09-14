@@ -6,10 +6,9 @@ A release is a pushed `v*` tag. The
 [Release workflow](https://github.com/macintacos/coroner/blob/main/.github/workflows/release.yml)
 writes the release notes with git-cliff, then runs goreleaser with
 [`.goreleaser.yaml`](https://github.com/macintacos/coroner/blob/main/.goreleaser.yaml).
-goreleaser publishes a GitHub release with four archives (darwin and linux, amd64 and
-arm64), `checksums.txt` and a separate `.sbom.json` per archive, and updates the cask in
-`macintacos/homebrew-tap`. The steps below check locally what the tag will publish before
-it is pushed, then check the published release.
+goreleaser publishes a GitHub release with an archive and a `.sbom.json` per platform and
+`checksums.txt`, and updates the cask in `macintacos/homebrew-tap`. The steps below check
+locally what the tag will publish before it is pushed, then check the published release.
 
 ## One-time setup
 
@@ -27,13 +26,17 @@ it is pushed, then check the published release.
 ## Before tagging
 
 1. On an up-to-date `main`, run `mise run preflight`.
-2. Run `mise run release:check`, then `mise run release:snapshot`. Neither inspects what
-   the snapshot built, so check by hand that `dist/` holds four `.tar.gz` archives,
-   `checksums.txt`, four `.sbom.json` files and `dist/homebrew/Casks/coroner.rb`, and that
-   `dist/coroner_<os>_<arch>*/coroner version` does not end in `+dirty`.
-3. Pick the version, `vX.Y.Z`.
-4. Run `git cliff --tag vX.Y.Z -o CHANGELOG.md` and commit the result to `main` as
-   `chore(release): vX.Y.Z`. Never edit `CHANGELOG.md` by hand.
+2. Run `mise run release:check`, then `mise run release:snapshot`, which fails if the
+   build leaves a file git sees that was not there before it. Neither checks what `dist/`
+   holds, so check by hand that it holds a `.tar.gz` archive and a `.sbom.json` per
+   platform, `checksums.txt` and `dist/homebrew/Casks/coroner.rb`.
+3. Pick the version, `vX.Y.Z`. A pre-release tag such as `vX.Y.Z-rc.N` publishes a GitHub
+   pre-release and leaves the Homebrew cask alone.
+4. Run `git cliff --tag vX.Y.Z -o CHANGELOG.md` and commit the result as
+   `chore(release): vX.Y.Z`. Never edit `CHANGELOG.md` by hand. Get that commit onto
+   `origin/main`, by pushing it or by merging the pull request that carries it and
+   pulling, then wait for CI on it to pass: the Release workflow runs no checks of its
+   own.
 5. Tag that commit and push the tag:
 
    ```sh
@@ -43,8 +46,8 @@ it is pushed, then check the published release.
 
 ## After the workflow finishes
 
-1. Open the release on GitHub and check the four archives, `checksums.txt`, the SBOMs and
-   the notes.
+1. Open the release on GitHub and check the archives, the SBOMs, `checksums.txt` and the
+   notes.
 2. Download the archive for your machine, check it against `checksums.txt`, and check that
    `coroner version` prints exactly `vX.Y.Z`.
 3. Run `brew update && brew install --cask macintacos/tap/coroner` (or
@@ -57,6 +60,14 @@ it is pushed, then check the published release.
 ## Rebuilding a tag
 
 A tag is built again when its Release workflow is re-run, or when goreleaser builds it
-locally. `checksums.txt` has a line for each archive and each SBOM. Building the same tag
-again produces byte-identical archives, so their lines do not change. The SBOM lines do:
-syft writes a creation time and a random document ID into every SBOM.
+locally. A re-run cannot repair a release that already has assets: goreleaser uploads the
+archives before it pushes the cask, so a run that failed at the cask, for example on a
+missing or under-scoped `HOMEBREW_TAP_GITHUB_TOKEN`, leaves them on the release, and a
+re-run fails on their names. To rebuild or retry a published tag, delete its GitHub
+release but not the tag, with `gh release delete vX.Y.Z` (without `--cleanup-tag`), then
+re-run the Release workflow.
+
+`checksums.txt` has a line for each archive and each SBOM. Building the same tag again
+with the tools `mise.lock` pins produces byte-identical archives, so compare only the
+archive lines. The SBOM lines change: syft writes a creation time and a random document ID
+into every SBOM.

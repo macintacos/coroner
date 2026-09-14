@@ -1,7 +1,8 @@
 // Command docgen writes coroner's CLI reference into docs/reference/cli, one Markdown file
 // per command and per help topic. With --check it lists how that directory drifts from the
 // commands and topics instead, and exits 1 on any drift. With --man <dir> it writes a man
-// page per command into dir instead, which a release packs. Run it from the module root.
+// page per command into dir instead, which a release packs, dated by SOURCE_DATE_EPOCH
+// (unix seconds) when set so a rebuilt release reproduces them. Run it from the module root.
 package main
 
 import (
@@ -16,7 +17,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
@@ -44,7 +47,12 @@ func main() {
 	case *checkOnly:
 		err = check(ref, outDir, os.Stderr)
 	case *manDir != "":
-		err = writeMan(ref.root, *manDir)
+		var date time.Time
+
+		date, err = sourceDate(os.Getenv("SOURCE_DATE_EPOCH"), time.Now)
+		if err == nil {
+			err = writeMan(ref.root, *manDir, date)
+		}
 	default:
 		err = write(ref, outDir)
 	}
@@ -63,7 +71,12 @@ type reference struct {
 
 // write replaces dir with the reference, so pages of removed commands go with it.
 func write(ref reference, dir string) error {
-	err := emptyDir(dir)
+	err := os.RemoveAll(dir)
+	if err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(dir, 0o750)
 	if err != nil {
 		return err
 	}
@@ -71,27 +84,61 @@ func write(ref reference, dir string) error {
 	return generate(ref, dir)
 }
 
-// writeMan replaces dir with a man page per command. cobra dates each page from
-// SOURCE_DATE_EPOCH when it is set, so a release can rebuild the pages byte for byte.
-func writeMan(root *cobra.Command, dir string) error {
-	err := emptyDir(dir)
+// writeMan writes a man page per command into dir, dated by date's month in UTC, after
+// removing the root's earlier pages from dir; other files there are left alone.
+func writeMan(root *cobra.Command, dir string, date time.Time) error {
+	err := os.MkdirAll(dir, 0o750)
+	if err != nil {
+		return err
+	}
+
+	err = removeManPages(dir, root.Name())
 	if err != nil {
 		return err
 	}
 
 	root.DisableAutoGenTag = true
+	utc := date.UTC()
 
 	// cobra fills an empty Source with its generation tag before children inherit DisableAutoGenTag.
-	return doc.GenManTree(root, &doc.GenManHeader{Source: root.Name()}, dir)
+	return doc.GenManTree(root, &doc.GenManHeader{Source: root.Name(), Date: &utc}, dir)
 }
 
-func emptyDir(dir string) error {
-	err := os.RemoveAll(dir)
+// removeManPages removes name's pages from dir: name.1 and name-<subcommand>.1.
+func removeManPages(dir, name string) error {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 
-	return os.MkdirAll(dir, 0o750)
+	for _, entry := range entries {
+		page := entry.Name()
+		isPage := page == name+".1" || strings.HasPrefix(page, name+"-") && strings.HasSuffix(page, ".1")
+		if !isPage {
+			continue
+		}
+
+		err = os.Remove(filepath.Join(dir, page))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// sourceDate reads a SOURCE_DATE_EPOCH value, unix seconds, falling back to now when it is empty.
+func sourceDate(epoch string, now func() time.Time) (time.Time, error) {
+	if epoch == "" {
+		return now(), nil
+	}
+
+	seconds, err := strconv.ParseInt(epoch, 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("SOURCE_DATE_EPOCH: %w", err)
+	}
+
+	return time.Unix(seconds, 0), nil
 }
 
 // check prints an added, changed or removed line to out for each page dir that differs

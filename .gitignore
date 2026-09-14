@@ -2,8 +2,8 @@
 /site/
 /.cache/
 /.venv/
-# goreleaser's output and what its before hooks generate. Untracked files would make every
-# binary it builds report +dirty.
+# goreleaser's output and every path its before hooks write: an untracked file makes Go
+# stamp +dirty.
 /dist/
 /completions/
 /manpages/

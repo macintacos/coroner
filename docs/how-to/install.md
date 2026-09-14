@@ -49,7 +49,8 @@ Needs [Homebrew](https://brew.sh). The cask installs an unsigned binary, so read
 brew install --cask macintacos/tap/coroner
 ```
 
-The cask also installs the bash, zsh and fish completions and the `coroner` man page.
+The cask also installs the bash, zsh and fish completions and the top-level `coroner` man
+page. The release archive carries one man page per command.
 
 Upgrade with `brew update && brew upgrade --cask coroner`. Each new version is unsigned
 too, so macOS may refuse it again after an upgrade. To uninstall:
@@ -82,15 +83,17 @@ sha256sum --check --ignore-missing checksums.txt          # Linux
 shasum -a 256 --check --ignore-missing checksums.txt      # macOS
 ```
 
-Unpack it and put the binary in a directory on your `PATH`, such as `~/.local/bin`:
+The archive has no top-level directory, so unpack it into a new one and work from there.
+Put the binary in a directory on your `PATH`, such as `~/.local/bin`:
 
 ```sh
-tar -xzf coroner_<version>_<os>_<arch>.tar.gz
+mkdir coroner && tar -xzf coroner_<version>_<os>_<arch>.tar.gz -C coroner && cd coroner
 mkdir -p ~/.local/bin && install -m 0755 coroner ~/.local/bin/coroner
 ```
 
 Optionally, install the man pages and the completions for your shell. Run only the
-completions line for the shell you use:
+completions line for the shell you use; `coroner completion <shell> --help` shows where
+that shell looks for completions:
 
 ```sh
 mkdir -p ~/.local/share/man/man1 && cp manpages/*.1 ~/.local/share/man/man1/

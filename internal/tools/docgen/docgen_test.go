@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -91,11 +92,10 @@ var _ = Describe("docgen", func() {
 
 		BeforeEach(func() {
 			manDir = filepath.Join(GinkgoT().TempDir(), "man")
-			GinkgoT().Setenv("SOURCE_DATE_EPOCH", "1700000000")
-			Expect(writeMan(newReference().root, manDir)).To(Succeed())
+			Expect(writeMan(newReference().root, manDir, time.Unix(1700000000, 0))).To(Succeed())
 		})
 
-		It("writes one section 1 page per command, carrying no generation tag", func() {
+		It("writes a .1 page per command, carrying no generation tag", func() {
 			entries, err := os.ReadDir(manDir)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(entries).To(HaveLen(2))
@@ -107,18 +107,37 @@ var _ = Describe("docgen", func() {
 			}
 		})
 
-		It("dates every page from SOURCE_DATE_EPOCH, so a release rebuilds them byte for byte", func() {
+		It("dates the pages in UTC", func() {
+			lateInUTCMinus5 := time.Date(2023, 11, 30, 23, 30, 0, 0, time.FixedZone("UTC-5", -5*60*60))
+
+			Expect(writeMan(newReference().root, manDir, lateInUTCMinus5)).To(Succeed())
+
 			content, err := fs.ReadFile(os.DirFS(manDir), "tool-sub.1")
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(content)).To(ContainSubstring(`"Nov 2023"`))
+			Expect(string(content)).To(MatchRegexp(`(?m)^\.TH .*"Dec 2023"`))
 		})
 
 		It("drops the pages of removed commands", func() {
 			Expect(os.WriteFile(filepath.Join(manDir, "tool-gone.1"), nil, 0o600)).To(Succeed())
 
-			Expect(writeMan(newReference().root, manDir)).To(Succeed())
+			Expect(writeMan(newReference().root, manDir, time.Unix(1700000000, 0))).To(Succeed())
 
 			Expect(filepath.Join(manDir, "tool-gone.1")).NotTo(BeAnExistingFile())
+		})
+
+		It("keeps files in the directory that are not the tool's pages", func() {
+			Expect(os.WriteFile(filepath.Join(manDir, "other.1"), nil, 0o600)).To(Succeed())
+
+			Expect(writeMan(newReference().root, manDir, time.Unix(1700000000, 0))).To(Succeed())
+
+			Expect(filepath.Join(manDir, "other.1")).To(BeAnExistingFile())
+		})
+
+		It("reads SOURCE_DATE_EPOCH as unix seconds, rejecting anything else", func() {
+			Expect(sourceDate("1700000000", time.Now)).To(Equal(time.Unix(1700000000, 0)))
+
+			_, err := sourceDate("2023-11-14", time.Now)
+			Expect(err).To(MatchError(ContainSubstring("SOURCE_DATE_EPOCH")))
 		})
 	})
 

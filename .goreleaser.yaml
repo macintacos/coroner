@@ -1,11 +1,14 @@
 # goreleaser builds a v* tag into archives, checksums, SBOMs and a Homebrew cask.
+# Timestamps, owners and modes come from the commit and constants, so rebuilding a tag
+# reproduces its archives byte for byte.
 # https://goreleaser.com/customization/
 version: 2
 project_name: coroner
 before:
   hooks:
     # Hooks run without a shell, so the redirect needs one.
-    - sh -c 'rm -rf completions && mkdir completions && for shell in bash zsh fish; do go run . completion "$shell" > "completions/coroner.$shell"; done'
+    - sh -ec 'rm -rf completions && mkdir completions && for shell in bash zsh fish; do go run . completion "$shell" > "completions/coroner.$shell"; done'
+    # docgen dates the man pages from SOURCE_DATE_EPOCH.
     - env SOURCE_DATE_EPOCH={{ .CommitTimestamp }} go run ./internal/tools/docgen --man manpages
 builds:
   - env:
@@ -13,35 +16,51 @@ builds:
     goos: [darwin, linux]
     goarch: [amd64, arm64]
     flags: [-trimpath]
-    # coroner reads its version from the build info Go stamps from the tag, so none of
-    # goreleaser's default -X flags.
+    # Version comes from Go's VCS build info, so no -X flags.
     ldflags: [-s -w]
     mod_timestamp: "{{ .CommitTimestamp }}"
 archives:
   - formats: [tar.gz]
     builds_info:
+      owner: root
+      group: root
+      mode: 0755
       mtime: "{{ .CommitDate }}"
     files:
       - src: LICENSE
         info:
+          owner: root
+          group: root
+          mode: 0644
           mtime: "{{ .CommitDate }}"
       - src: completions/*
         dst: completions
         info:
+          owner: root
+          group: root
+          mode: 0644
           mtime: "{{ .CommitDate }}"
       - src: manpages/*
         dst: manpages
         info:
+          owner: root
+          group: root
+          mode: 0644
           mtime: "{{ .CommitDate }}"
 checksum:
   name_template: checksums.txt
 sboms:
   - artifacts: archive
+release:
+  # A tag with a pre-release suffix, such as v0.1.0-rc.0, is not marked Latest.
+  prerelease: auto
 homebrew_casks:
   - repository:
       owner: macintacos
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    # Keeps a pre-release out of `brew upgrade`.
+    skip_upload: auto
     homepage: https://github.com/macintacos/coroner
     description: Build root-cause investigation timelines
     license: MIT
