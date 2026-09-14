@@ -93,6 +93,17 @@ func (o output) notify(message string, args ...any) error {
 	return err
 }
 
+// printID writes a created record's id on its own line to o.out when --quiet asks for text, so a
+// script can capture it; under --json the record's object carries it.
+func (o output) printID(id string) error {
+	if !o.quiet || o.format != formatText {
+		return nil
+	}
+
+	_, err := fmt.Fprintln(o.out, id)
+	return err
+}
+
 // writeTo runs write against o when path is -. Otherwise it runs write against o as piped
 // output into a buffer, writes the buffer to path with writeFile, and says so.
 func (o output) writeTo(path string, writeFile func(name string, data []byte, perm fs.FileMode) error, write func(output) error) error {

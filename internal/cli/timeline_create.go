@@ -220,6 +220,9 @@ func addTimeline(ctx context.Context, s *store.Store, t timeline.Timeline, dryRu
 
 func (c timelineCreated) render(o output) error {
 	err := printTimeline(o, c.timeline)
+	if err == nil && !c.dryRun {
+		err = o.printID(c.timeline.ID)
+	}
 	if err != nil {
 		return err
 	}

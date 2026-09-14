@@ -185,6 +185,12 @@ func (c overlayCreated) render(o output) error {
 			return err
 		}
 	}
+	if !c.dryRun {
+		err := o.printID(c.overlay.ID)
+		if err != nil {
+			return err
+		}
+	}
 
 	of := "of " + pluralNoun(len(c.timelines), "timeline") + " " + codeList(namesOf(c.timelines))
 	switch {

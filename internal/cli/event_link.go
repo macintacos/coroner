@@ -261,8 +261,14 @@ func (c linkChange) render(o output) error {
 	}
 
 	did := c.done
-	if c.dryRun {
+	switch {
+	case c.dryRun:
 		did = "Would " + c.verb
+	case c.verb == "link":
+		err := o.printID(c.link.ID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return o.notify("%s `%s` %s `%s` as %s.", did, c.ends.ref(0), c.preposition, c.ends.ref(1), c.link.Kind)

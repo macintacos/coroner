@@ -165,6 +165,9 @@ func (a eventAdded) render(o output) error {
 
 	err := printEvent(o, a.event, a.attach.objects)
 	if err == nil {
+		err = o.printID(a.event.ID)
+	}
+	if err == nil {
 		err = a.attach.notify(o)
 	}
 	if err != nil {
