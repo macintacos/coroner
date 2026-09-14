@@ -304,6 +304,53 @@
       ],
       "description": "Event is something that happened at a moment, or over an interval, as a source reported it."
     },
+    "Link": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID is the link's ID."
+        },
+        "from_event_id": {
+          "type": "string",
+          "description": "FromEventID is the event the link leaves."
+        },
+        "to_event_id": {
+          "type": "string",
+          "description": "ToEventID is the event the link reaches."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Kind is led_to, same_as or copied_from. Consumers must accept values they do not know."
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$",
+          "format": "date-time",
+          "description": "CreatedAt is when the link was added in coroner."
+        },
+        "author": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Author is the person who added the link."
+        }
+      },
+      "type": "object",
+      "required": [
+        "id",
+        "from_event_id",
+        "to_event_id",
+        "kind",
+        "created_at",
+        "author"
+      ],
+      "description": "Link is a directed, typed link from one exported event to another, in the same timeline or another."
+    },
     "Query": {
       "properties": {
         "timelines": {
@@ -514,6 +561,13 @@
       },
       "type": "array",
       "description": "Attachments are the attachments of the exported events and annotations."
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/Link"
+      },
+      "type": "array",
+      "description": "Links are the links between exported events."
     }
   },
   "type": "object",

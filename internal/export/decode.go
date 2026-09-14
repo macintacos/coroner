@@ -149,6 +149,8 @@ func decodeLine(line []byte) (string, Record, error) {
 		record, err = decodeRecord[Annotation](line, members)
 	case "attachment":
 		record, err = decodeRecord[Attachment](line, members)
+	case "link":
+		record, err = decodeRecord[Link](line, members)
 	}
 
 	return typ, record, err
@@ -303,6 +305,11 @@ func (a Attachment) validate() error {
 		validateOptionalID("annotation_id", a.AnnotationID),
 		owned.Validate(),
 	)
+}
+
+// validate leaves kind to the importer: it is an open enum.
+func (l Link) validate() error {
+	return errors.Join(validateID("id", l.ID), validateID("from_event_id", l.FromEventID), validateID("to_event_id", l.ToEventID))
 }
 
 // validateID returns an error unless id is a UUID written as lowercase hex with hyphens.

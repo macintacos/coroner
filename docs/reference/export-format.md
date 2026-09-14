@@ -38,7 +38,7 @@ An *instant*, in the tables below, is a string in coroner's canonical time forma
 3339 in UTC with nine fractional digits, such as `2026-09-10T14:54:03.180000000Z`
 ([§ Encoding rules](#encoding-rules)). An *importer* is any program that reads exports.
 
-This page is version **1.1** of the format. The
+This page is version **1.2** of the format. The
 [JSON Schema](/coroner/schema/export-v1.schema.json) describes the same objects and is
 generated from the Go types in `internal/export`.
 
@@ -49,7 +49,7 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
 ```json
 {
   "format": "coroner.export",
-  "format_version": "1.1",
+  "format_version": "1.2",
   "coroner_version": "0.1.0",
   "exported_at": "2026-09-13T01:30:00.000000000Z",
   "query": {
@@ -66,14 +66,15 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
   "sources": [],
   "events": [],
   "annotations": [],
-  "attachments": []
+  "attachments": [],
+  "links": []
 }
 ```
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `format` | string | Always `coroner.export`. An identifier, not a URL. |
-| `format_version` | string | `MAJOR.MINOR` version of this format, such as `1.1`. |
+| `format_version` | string | `MAJOR.MINOR` version of this format, such as `1.2`. |
 | `coroner_version` | string | Version of coroner that wrote the export. |
 | `exported_at` | instant | When the export was written. |
 | `query` | object | The selection the export was made with. |
@@ -82,12 +83,13 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
 | `events` | array of event | The exported events, from every exported timeline. |
 | `annotations` | array of annotation | The exported annotations. |
 | `attachments` | array of attachment | The attachments of the exported events and annotations. Since 1.1. |
+| `links` | array of link | The links between exported events. Since 1.2. |
 
 The record lists are flat. An event carries its `timeline_id` rather than sitting inside
 its timeline, an annotation carries its `event_id` rather than sitting inside its event,
-and an attachment carries its `event_id` or `annotation_id`. Reading several timelines
-together is then a merge of their events on time, and an export can hold any mix of
-timelines without changing shape.
+an attachment carries its `event_id` or `annotation_id`, and a link carries the ids of the
+two events it joins. Reading several timelines together is then a merge of their events on
+time, and an export can hold any mix of timelines without changing shape.
 
 `events` is ordered by `occurred_at`, then `timeline_id`, then `seq`. The envelope's other
 lists have no defined order; sort them yourself if you need one. The JSONL stream orders
@@ -95,10 +97,12 @@ every record, under its own [record order](#record-order).
 
 An export made with filters holds only what those filters kept: the events that match, the
 annotations on those events or on the whole timeline, the attachments of those events and
-annotations, and the sources those events and annotations name. An annotation is kept or
-left out with its event, whatever its own `source`, so `sources` can name a source no
-exported event came from. Unlike `coroner event list --json`, an export has no `truncated`
-or `total` key: `query.limit` records the limit, and `coroner timeline export` says on
+annotations, the links whose two events both match, and the sources those events and
+annotations name. An annotation is kept or left out with its event, whatever its own
+`source`, so `sources` can name a source no exported event came from. A link to an event
+in a timeline the export leaves out is left out too: export both timelines together, as an
+overlay, to keep it. Unlike `coroner event list --json`, an export has no `truncated` or
+`total` key: `query.limit` records the limit, and `coroner timeline export` says on
 stderr, in text for people, when the limit left events out. From the file alone, an export
 with exactly `query.limit` events may or may not have been cut short.
 
@@ -233,12 +237,30 @@ the database path is, as with a relative `--db`. `id` and `path` are `null` only
 preview of an attachment not yet added, such as
 `coroner event add --attach <file> --dry-run`. No export holds `path`.
 
+### Link
+
+A link is a directed, typed connection from one event to another, in the same timeline or
+another, such as a log line that led to a page. Since 1.2.
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `id` | string | The link's ID. |
+| `from_event_id` | string | ID of the event the link leaves. |
+| `to_event_id` | string | ID of the event the link reaches. |
+| `kind` | string | `led_to`, `same_as` or `copied_from`; an open enum. |
+| `created_at` | instant | When the link was added in coroner. |
+| `author` | string or null | Who added the link. |
+
+`led_to` means the from event led to the to event; `same_as` that both record one moment,
+as two sources saw it; `copied_from` that the from event was copied from the to event. The
+two events are always different, and one pair of events has at most one link of each kind.
+
 ## The JSONL stream
 
 A JSONL export is [JSON Lines](https://jsonlines.org/): UTF-8, one record per line, each
 line ended by `\n`. A record is the header or one of the objects above, with one extra key
-first, `type`, naming it: `header`, `timeline`, `source`, `event`, `annotation`, or, since
-1.1, `attachment`.
+first, `type`, naming it: `header`, `timeline`, `source`, `event`, `annotation`, since 1.1
+`attachment`, or, since 1.2, `link`.
 
 ```json
 {"type":"event","id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":"mongod","tags":["election"],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
@@ -261,10 +283,12 @@ it is a major version.
 5. The events, by `occurred_at`, then `timeline_id`, then `seq`, then `id`. Each event is
    followed immediately by its attachments, then by its annotations, each followed by its
    own attachments. Annotations and attachments are ordered by `created_at`, then `id`.
+6. The links, by `created_at`, then `id`, after every event, so both events a link joins
+   come before it.
 
-`attachment` records are new in 1.1; a reader that skips them sees the 1.0 order. Events
-of one timeline share their `timeline_id`, so `timeline_id` only orders events of
-different timelines at one instant.
+`attachment` records are new in 1.1, and `link` records in 1.2; a reader that skips them
+sees the order of the version before. Events of one timeline share their `timeline_id`, so
+`timeline_id` only orders events of different timelines at one instant.
 
 Records stay in this order under every filter, and under `--order desc`: `--order` only
 decides which end `--limit` keeps events from.

@@ -80,6 +80,20 @@ func (e Event) Domain() timeline.Event {
 	return out
 }
 
+// NewLink returns l as its canonical object.
+func NewLink(l timeline.Link) Link {
+	return Link{
+		ID: l.ID, FromEventID: l.FromEventID, ToEventID: l.ToEventID, Kind: l.Kind, CreatedAt: Instant(l.CreatedAt), Author: l.Author,
+	}
+}
+
+// Domain returns l as its domain value.
+func (l Link) Domain() timeline.Link {
+	return timeline.Link{
+		ID: l.ID, FromEventID: l.FromEventID, ToEventID: l.ToEventID, Kind: l.Kind, CreatedAt: time.Time(l.CreatedAt), Author: l.Author,
+	}
+}
+
 // NewAttachment returns a as its canonical object.
 func NewAttachment(a timeline.Attachment) Attachment {
 	return Attachment{

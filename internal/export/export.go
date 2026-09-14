@@ -1,5 +1,5 @@
 // Package export is coroner's public machine representation: the canonical JSON object for
-// each timeline, source, event, annotation and attachment, the versioned export envelope and
+// each timeline, source, event, annotation, attachment and link, the versioned export envelope and
 // JSONL record stream that carry them, and the one encoder and decoder for both. It also
 // renders the same envelope as Markdown for people, through WriteMarkdown. Every key is always
 // present, so no field here uses omitempty or omitzero; a value that may be absent is a
@@ -19,7 +19,7 @@ import (
 // Format identifies a coroner export; FormatVersion is the version of the format it follows.
 const (
 	Format        = "coroner.export"
-	FormatVersion = "1.1"
+	FormatVersion = "1.2"
 )
 
 // Envelope is a whole export: what was exported, by which coroner, when and with which
@@ -45,6 +45,8 @@ type Envelope struct {
 	Annotations []Annotation `json:"annotations"`
 	// Attachments are the attachments of the exported events and annotations.
 	Attachments []Attachment `json:"attachments" since:"1.1"`
+	// Links are the links between exported events.
+	Links []Link `json:"links" since:"1.2"`
 }
 
 // Query is the selection an export was made with. Every field but Timelines and Order filters
@@ -191,6 +193,23 @@ type Attachment struct {
 	Size int64 `json:"size"`
 	// CreatedAt is when the file was attached in coroner.
 	CreatedAt Instant `json:"created_at"`
+}
+
+// Link is a directed, typed link from one exported event to another, in the same timeline or
+// another.
+type Link struct {
+	// ID is the link's ID.
+	ID string `json:"id"`
+	// FromEventID is the event the link leaves.
+	FromEventID string `json:"from_event_id"`
+	// ToEventID is the event the link reaches.
+	ToEventID string `json:"to_event_id"`
+	// Kind is led_to, same_as or copied_from. Consumers must accept values they do not know.
+	Kind timeline.LinkKind `json:"kind"`
+	// CreatedAt is when the link was added in coroner.
+	CreatedAt Instant `json:"created_at"`
+	// Author is the person who added the link.
+	Author *string `json:"author" jsonschema:"nullable"`
 }
 
 // NewEnvelope returns an envelope with the format identifiers set, written by coronerVersion
