@@ -9,6 +9,14 @@ cmp stdout coroner.txt
 ! stderr .
 
 # Every other command, in tree order.
+exits 0 coroner agent --help
+cmp stdout coroner_agent.txt
+! stderr .
+
+exits 0 coroner agent skill --help
+cmp stdout coroner_agent_skill.txt
+! stderr .
+
 exits 0 coroner annotation --help
 cmp stdout coroner_annotation.txt
 ! stderr .
@@ -201,6 +209,7 @@ CORE COMMANDS
   timeline     Create, list and switch between timelines
 
 ADDITIONAL COMMANDS
+  agent        Print what coding agents need to drive coroner
   completion   Generate the autocompletion script for the specified shell
   help         Help about any command or topic
   status       Show the database and the timeline commands act on
@@ -218,6 +227,62 @@ EXAMPLES
 
 FLAGS
       --version   Show coroner's version
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_agent.txt --
+coroner ships an Agent Skill that teaches coding agents to build timelines with flags and
+JSON. 'coroner agent skill' prints the one this binary was built with.
+
+USAGE
+  coroner agent [flags]
+  coroner agent <command> [flags]
+
+COMMANDS
+  skill        Print the Agent Skill for this version of coroner
+
+EXAMPLES
+  $ coroner agent skill
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_agent_skill.txt --
+Print the SKILL.md of the coroner Agent Skill this binary was built with, so the skill an
+agent reads matches the commands it runs. Its references ship with the skill's directory
+in the repository, not in the binary.
+
+USAGE
+  coroner agent skill [flags]
+
+EXAMPLES
+  $ coroner agent skill
+  $ coroner agent skill | diff - ~/.claude/skills/coroner/SKILL.md
 
 GLOBAL FLAGS
       --config path     Config file path (env: CORONER_CONFIG)

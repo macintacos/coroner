@@ -20,6 +20,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/skills"
 )
 
 func main() {
@@ -40,6 +41,7 @@ func main() {
 		OutIsTTY:          isatty.IsTerminal(os.Stdout.Fd()),
 		ErrIsTTY:          isatty.IsTerminal(os.Stderr.Fd()),
 		Version:           version,
+		Skill:             skills.Coroner,
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
