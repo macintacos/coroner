@@ -142,18 +142,7 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 			return err
 		}
 
-		tags, err := q.ListEventTags(ctx, e.ID)
-		if err != nil {
-			return err
-		}
-		for _, tag := range tags {
-			err = q.DeleteEventTag(ctx, sqlcgen.DeleteEventTagParams{EventID: e.ID, Tag: tag})
-			if err != nil {
-				return err
-			}
-		}
-
-		return addTags(ctx, q, e.ID, e.Tags)
+		return replaceTags(ctx, q, e.ID, e.Tags)
 	})
 	return err
 }
@@ -226,6 +215,22 @@ func addTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []str
 	}
 
 	return nil
+}
+
+// replaceTags replaces the tags of the event with eventID with tags.
+func replaceTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []string) error {
+	stored, err := q.ListEventTags(ctx, eventID)
+	if err != nil {
+		return err
+	}
+	for _, tag := range stored {
+		err = q.DeleteEventTag(ctx, sqlcgen.DeleteEventTagParams{EventID: eventID, Tag: tag})
+		if err != nil {
+			return err
+		}
+	}
+
+	return addTags(ctx, q, eventID, tags)
 }
 
 func offsetParam(offset *int) *int64 {

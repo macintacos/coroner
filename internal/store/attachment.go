@@ -217,22 +217,27 @@ func insertAttachments(ctx context.Context, q *sqlcgen.Queries, blobDir string, 
 			return err
 		}
 
-		_, err = q.CreateAttachment(ctx, sqlcgen.CreateAttachmentParams{
-			ID:           a.attachment.ID,
-			EventID:      a.attachment.Owner.EventID,
-			AnnotationID: a.attachment.Owner.AnnotationID,
-			Filename:     a.attachment.Filename,
-			Mime:         a.attachment.MIME,
-			Sha256:       a.attachment.SHA256,
-			Size:         a.attachment.Size,
-			CreatedAt:    timeline.FormatInstant(a.attachment.CreatedAt),
-		})
+		err = createAttachment(ctx, q, a.attachment)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func createAttachment(ctx context.Context, q *sqlcgen.Queries, a timeline.Attachment) error {
+	_, err := q.CreateAttachment(ctx, sqlcgen.CreateAttachmentParams{
+		ID:           a.ID,
+		EventID:      a.Owner.EventID,
+		AnnotationID: a.Owner.AnnotationID,
+		Filename:     a.Filename,
+		Mime:         a.MIME,
+		Sha256:       a.SHA256,
+		Size:         a.Size,
+		CreatedAt:    timeline.FormatInstant(a.CreatedAt),
+	})
+	return err
 }
 
 // checkOwner returns an error wrapping ErrNotFound unless owner's event or annotation exists.

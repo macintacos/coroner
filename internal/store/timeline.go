@@ -92,18 +92,7 @@ func (s *Store) UpdateTimeline(ctx context.Context, t timeline.Timeline) error {
 			return err
 		}
 
-		refs, err := q.ListTimelineRefs(ctx, t.ID)
-		if err != nil {
-			return err
-		}
-		for _, ref := range refs {
-			err = q.DeleteTimelineRef(ctx, sqlcgen.DeleteTimelineRefParams{TimelineID: t.ID, Ref: ref})
-			if err != nil {
-				return err
-			}
-		}
-
-		return addRefs(ctx, q, t.ID, t.Refs)
+		return replaceRefs(ctx, q, t.ID, t.Refs)
 	})
 }
 
@@ -166,4 +155,20 @@ func addRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []
 	}
 
 	return nil
+}
+
+// replaceRefs replaces the refs of the timeline with timelineID with refs, in the order given.
+func replaceRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []string) error {
+	stored, err := q.ListTimelineRefs(ctx, timelineID)
+	if err != nil {
+		return err
+	}
+	for _, ref := range stored {
+		err = q.DeleteTimelineRef(ctx, sqlcgen.DeleteTimelineRefParams{TimelineID: timelineID, Ref: ref})
+		if err != nil {
+			return err
+		}
+	}
+
+	return addRefs(ctx, q, timelineID, refs)
 }

@@ -243,6 +243,58 @@ func (q *Queries) ListEventsByIDPrefix(ctx context.Context, arg ListEventsByIDPr
 	return items, nil
 }
 
+const replaceEvent = `-- name: ReplaceEvent :exec
+UPDATE event
+SET occurred_at = ?,
+  occurred_offset = ?,
+  occurred_precision = ?,
+  approximate = ?,
+  occurred_raw = ?,
+  ended_at = ?,
+  source_id = ?,
+  text = ?,
+  url = ?,
+  author = ?,
+  created_at = ?,
+  updated_at = ?
+WHERE id = ?
+`
+
+type ReplaceEventParams struct {
+	OccurredAt        string
+	OccurredOffset    *int64
+	OccurredPrecision string
+	Approximate       int64
+	OccurredRaw       *string
+	EndedAt           *string
+	SourceID          *string
+	Text              string
+	Url               *string
+	Author            *string
+	CreatedAt         string
+	UpdatedAt         string
+	ID                string
+}
+
+func (q *Queries) ReplaceEvent(ctx context.Context, arg ReplaceEventParams) error {
+	_, err := q.db.ExecContext(ctx, replaceEvent,
+		arg.OccurredAt,
+		arg.OccurredOffset,
+		arg.OccurredPrecision,
+		arg.Approximate,
+		arg.OccurredRaw,
+		arg.EndedAt,
+		arg.SourceID,
+		arg.Text,
+		arg.Url,
+		arg.Author,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateEvent = `-- name: UpdateEvent :one
 UPDATE event
 SET occurred_at = ?,
