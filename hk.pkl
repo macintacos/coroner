@@ -106,15 +106,15 @@ local linters = new Mapping<String, Step> {
 
   ["Go(Lint)          [[builtins.golangci_lint]]"] = Builtins.golangci_lint
 
-  ["Python(Lint)      [[builtins.ruff]]"] = Builtins.ruff
-
-  ["Python(Type)      [[builtins.ty]]"] = Builtins.ty
-
   // golangci-lint ignores unknown keys, so a misspelled setting silently disables its rule.
   ["Go(LintConfig)    [[golangci-lint config verify]]"] = new Step {
     glob = List(".golangci.yml")
     check = "golangci-lint config verify"
   }
+
+  ["Python(Lint)      [[builtins.ruff]]"] = Builtins.ruff
+
+  ["Python(Type)      [[builtins.ty]]"] = Builtins.ty
 }
 
 // hk's stage globs match only files on disk, so a removed command's deleted page needs git add --all.

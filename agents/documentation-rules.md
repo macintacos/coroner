@@ -35,7 +35,7 @@ digraph coroner_docs_router {
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
-    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license"];
+    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks, hk hooks and what CI runs, the routing digraph, where things live, the repository rules"];
     "Which doc does the change affect?" -> "Edit agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
@@ -92,7 +92,7 @@ digraph coroner_docs_router {
   The tutorial and how-to guides (not in the repo yet — EXC-1301) and the reference and
   explanation pages (not in the repo yet — EXC-1302) join those sections and the nav. A
   page links a file outside `docs/` by its GitHub URL, since a relative one breaks on the
-  site.
+  site and `mise run docs:build` does not catch it.
 - **[`docs/reference/cli/`](../docs/reference/cli/)** (human-facing) — the CLI reference,
   one page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never

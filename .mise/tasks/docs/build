@@ -3,8 +3,9 @@
 
 set -euo pipefail
 
-uv run zensical build --clean --strict
+uv run --locked zensical build --clean --strict
 
-# Zensical publishes only what is under docs/, and a symlink there empties the build.
+# Zensical publishes only files under docs/, and a symlink there empties the build,
+# so copy the generated schema in.
 mkdir -p site/schema
-cp schema/export-v1.schema.json site/schema/
+cp schema/*.json site/schema/

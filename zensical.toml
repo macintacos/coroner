@@ -26,6 +26,8 @@ features = ["content.code.copy", "navigation.sections"]
 
 [[project.theme.palette]]
 media       = "(prefers-color-scheme)"
+primary     = "blue grey"
+accent      = "amber"
 toggle.icon = "lucide/sun-moon"
 toggle.name = "Switch to light mode"
 

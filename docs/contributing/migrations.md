@@ -58,13 +58,14 @@ already exists, so it can never touch a committed fixture or a real database. It
 - evidence and comment annotations on events, and one annotation on the timeline itself.
 
 The compatibility spec in
-[`internal/store/compat_test.go`](../../internal/store/compat_test.go), which
-`mise run test` runs, checks a database the current build writes, because that is what the
-next release commits, and every committed `testdata/compat/v*.db`. It copies each one into
-a temporary directory and opens the copy with `store.Open`, which migrates an older
-fixture after backing it up. It then compares every timeline, source, event and annotation
-it reads back with the records compatfixture writes, field for field, and adds an event to
-check that the sequence counter survived. The committed file is never opened in place.
+[`internal/store/compat_test.go`](https://github.com/macintacos/coroner/blob/main/internal/store/compat_test.go),
+which `mise run test` runs, checks a database the current build writes, because that is
+what the next release commits, and every committed `testdata/compat/v*.db`. It copies each
+one into a temporary directory and opens the copy with `store.Open`, which migrates an
+older fixture after backing it up. It then compares every timeline, source, event and
+annotation it reads back with the records compatfixture writes, field for field, and adds
+an event to check that the sequence counter survived. The committed file is never opened
+in place.
 
 A fixture records what a release wrote, so it is never edited, regenerated or deleted.
 When a new migration breaks a committed fixture, fix the migration. compatfixture's

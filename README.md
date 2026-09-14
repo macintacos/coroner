@@ -20,8 +20,9 @@ mise run preflight   # lint, test, and build the binary and docs: run before pus
 ```
 
 On every pull request and push to `main`, CI runs lint and tests, builds the docs, and
-fails on unformatted or stale generated files. A pull request that changes the CLI without
-changing `docs/` fails unless it has the `docs-not-needed` label.
+fails on unformatted or stale generated files. A pull request that changes the CLI's code
+without changing a hand-written page under `docs/` fails unless it has the
+`docs-not-needed` label.
 
 ## Status
 
