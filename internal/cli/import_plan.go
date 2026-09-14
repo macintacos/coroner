@@ -39,6 +39,9 @@ type storedRecords struct {
 	events      map[string]timeline.Event
 	annotations map[string]timeline.Annotation
 	attachments map[string]timeline.Attachment
+	// links are the stored ones whose ids the input names, and those joining the same events
+	// with the same kind as an input link, by id.
+	links map[string]timeline.Link
 }
 
 // importInput is everything planImport decides from.
@@ -75,6 +78,7 @@ type importResultJSON struct {
 	Events             importCounts        `json:"events"`
 	Annotations        importCounts        `json:"annotations"`
 	Attachments        importCounts        `json:"attachments"`
+	Links              importCounts        `json:"links"`
 	Conflicts          []importConflict    `json:"conflicts"`
 	MissingAttachments []missingAttachment `json:"missing_attachments"`
 }
@@ -106,6 +110,7 @@ type incomingRecords struct {
 	events      []export.Event
 	annotations []export.Annotation
 	attachments []export.Attachment
+	links       []export.Link
 }
 
 // planImport decides what importing in.records writes: new records, replacements under
@@ -130,6 +135,7 @@ func planImport(in importInput) (importPlan, error) {
 	p.planSources(incoming.sources)
 	uses := slices.Concat(p.planEvents(incoming.events), p.planAnnotations(incoming.annotations))
 	p.planAttachments(incoming.attachments)
+	p.planLinks(incoming.links)
 	p.planUnrecordedSources(uses)
 	err = p.assignSourceIDs()
 	if err != nil {
@@ -165,11 +171,13 @@ func collectRecords(records []export.Record) (incomingRecords, []string) {
 			incoming.annotations = append(incoming.annotations, r)
 		case export.Attachment:
 			incoming.attachments = append(incoming.attachments, r)
+		case export.Link:
+			incoming.links = append(incoming.links, r)
 		}
 	}
 
 	eventsWithoutSeq := func(a, b export.Event) []string { return withoutKey(export.DifferingKeys(a, b), keySeq) }
-	var idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats []string
+	var idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats, linkRepeats, joinRepeats []string
 	incoming.timelines, idRepeats = uniqueRecords("timeline", incoming.timelines, func(t export.Timeline) string { return t.ID }, export.DifferingKeys)
 	incoming.timelines, nameRepeats = uniqueRecords("timeline", incoming.timelines, func(t export.Timeline) string { return t.Name }, export.DifferingKeys)
 	// Two ids for one source name are expected: each database gives a source its own id.
@@ -177,8 +185,15 @@ func collectRecords(records []export.Record) (incomingRecords, []string) {
 	incoming.events, eventRepeats = uniqueRecords("event", incoming.events, func(e export.Event) string { return e.ID }, eventsWithoutSeq)
 	incoming.annotations, annotationRepeats = uniqueRecords("annotation", incoming.annotations, func(a export.Annotation) string { return a.ID }, export.DifferingKeys)
 	incoming.attachments, attachmentRepeats = uniqueRecords("attachment", incoming.attachments, func(a export.Attachment) string { return a.ID }, export.DifferingKeys)
+	incoming.links, linkRepeats = uniqueRecords("link", incoming.links, func(l export.Link) string { return l.ID }, export.DifferingKeys)
+	incoming.links, joinRepeats = uniqueRecords("link", incoming.links, linkJoin, export.DifferingKeys)
 
-	return incoming, slices.Concat(idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats)
+	return incoming, slices.Concat(idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats, linkRepeats, joinRepeats)
+}
+
+// linkJoin names the kind and events of l, which the database holds at most one link for.
+func linkJoin(l export.Link) string {
+	return fmt.Sprintf("%s from %s to %s", l.Kind, l.FromEventID, l.ToEventID)
 }
 
 // sortedUnique returns tags sorted, each once, without changing tags.
@@ -247,6 +262,10 @@ func checkRecords(incoming incomingRecords, refs recordIndex, in importInput) []
 		ownerTimeline, err := refs.ownerTimeline(a)
 		addProblems("attachment", a.ID, err, checkGuard(ownerTimeline, in.guard), checkSidecar(a, in.sidecars))
 	}
+	for _, l := range incoming.links {
+		addProblems("link", l.ID, l.Domain().Validate(), refs.eventKnown(l.FromEventID), refs.eventKnown(l.ToEventID),
+			checkGuard(refs.events[l.FromEventID], in.guard), checkGuard(refs.events[l.ToEventID], in.guard))
+	}
 
 	return problems
 }
@@ -309,6 +328,14 @@ func (idx recordIndex) timelineKnown(id string) error {
 	}
 
 	return fmt.Errorf("its timeline %s is neither in the import nor in the database", id)
+}
+
+func (idx recordIndex) eventKnown(id string) error {
+	if _, ok := idx.events[id]; ok {
+		return nil
+	}
+
+	return fmt.Errorf("its event %s is neither in the import nor in the database", id)
 }
 
 func (idx recordIndex) eventInTimeline(eventID *string, timelineID string) error {
@@ -542,6 +569,36 @@ func (p *planner) planAttachments(attachments []export.Attachment) {
 	}
 }
 
+// planLinks inserts each new link. Links never change, so a stored one with different content,
+// or with another id for the same events and kind, cannot be replaced.
+func (p *planner) planLinks(links []export.Link) {
+	for _, l := range links {
+		stored, ok := p.in.stored.links[l.ID]
+		if !ok {
+			stored, ok = p.in.stored.linkJoining(l)
+		}
+		if ok {
+			p.resolve(&p.result.Links, importConflict{Type: "link", ID: l.ID, Fields: export.DifferingKeys(export.NewLink(stored), l)}, false)
+			continue
+		}
+
+		p.result.Links.Inserted++
+		p.write.Links = append(p.write.Links, l.Domain())
+		p.timelineIDs[p.refs.events[l.FromEventID]] = true
+	}
+}
+
+// linkJoining returns the stored link of l's kind between l's events, whatever its id.
+func (s storedRecords) linkJoining(l export.Link) (timeline.Link, bool) {
+	for _, stored := range s.links {
+		if stored.FromEventID == l.FromEventID && stored.ToEventID == l.ToEventID && stored.Kind == l.Kind {
+			return stored, true
+		}
+	}
+
+	return timeline.Link{}, false
+}
+
 // planUnrecordedSources creates each source uses name that is neither stored nor being created,
 // created when the first record naming it was.
 func (p *planner) planUnrecordedSources(uses []sourceUse) {
@@ -587,7 +644,7 @@ func (p *planner) blocked() error {
 		return &Error{
 			Kind: KindIDConflict,
 			Message: recordCount(len(p.unreplaceable)) +
-				" cannot be replaced, so nothing was imported: an attachment never changes, and an event or annotation never moves",
+				" cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
 			Hint: "Pass --on-conflict skip to keep what is stored.",
 		}
 	}

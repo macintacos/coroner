@@ -285,8 +285,9 @@ func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.Fi
 	return blobs
 }
 
-// readStoredRecords returns every stored timeline and source, and the stored events, annotations
-// and attachments whose ids records name.
+// readStoredRecords returns every stored timeline and source, the stored events, annotations,
+// attachments and links whose ids records name, and the stored links joining a link record's
+// events with its kind.
 // ponytail: one read per id; a batched read if large imports read slowly.
 func readStoredRecords(ctx context.Context, s *store.Store, records []export.Record) (storedRecords, error) {
 	timelines, err := s.Timelines(ctx)
@@ -295,7 +296,7 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 	}
 	stored := storedRecords{
 		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
-		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
+		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{}, links: map[string]timeline.Link{},
 	}
 	for _, t := range timelines {
 		stored.timelines[t.ID] = t
@@ -316,6 +317,11 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 				addStored(ctx, &r.ID, stored.attachments, s.Attachment),
 				addStored(ctx, r.EventID, stored.events, s.Event), addStored(ctx, r.AnnotationID, stored.annotations, s.Annotation),
 			)
+		case export.Link:
+			err = errors.Join(
+				addStored(ctx, &r.ID, stored.links, s.Link), addStoredJoining(ctx, s, r, stored.links),
+				addStored(ctx, &r.FromEventID, stored.events, s.Event), addStored(ctx, &r.ToEventID, stored.events, s.Event),
+			)
 		}
 		if err != nil {
 			return storedRecords{}, err
@@ -323,6 +329,21 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 	}
 
 	return stored, nil
+}
+
+// addStoredJoining adds the stored link of l's kind between l's events to into, under its own id,
+// unless none is stored.
+func addStoredJoining(ctx context.Context, s *store.Store, l export.Link, into map[string]timeline.Link) error {
+	stored, err := s.LinkBetween(ctx, l.FromEventID, l.ToEventID, l.Kind)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	}
+	into[stored.ID] = stored
+
+	return nil
 }
 
 // addStored adds the record get finds under id to into, unless id is nil, already there or not
@@ -355,7 +376,7 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 		verb = "Would import"
 	}
 	r := plan.result
-	lines := make([]string, 0, 7+len(r.Conflicts))
+	lines := make([]string, 0, 8+len(r.Conflicts))
 	if n := len(plan.timelineNames); n > 0 {
 		noun := "timelines"
 		if n == 1 {
@@ -367,7 +388,12 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 		name   string
 		counts importCounts
 	}{
-		{"timelines", r.Timelines}, {"sources", r.Sources}, {"events", r.Events}, {"annotations", r.Annotations}, {"attachments", r.Attachments},
+		{"timelines", r.Timelines},
+		{"sources", r.Sources},
+		{"events", r.Events},
+		{"annotations", r.Annotations},
+		{"attachments", r.Attachments},
+		{"links", r.Links},
 	} {
 		lines = append(lines, fmt.Sprintf("%s %s: %d inserted, %d identical, %d conflicting",
 			verb, c.name, c.counts.Inserted, c.counts.Identical, c.counts.Conflicting))

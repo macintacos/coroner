@@ -202,8 +202,8 @@ func checkOverlayFormat(count int, chosen format) error {
 }
 
 // readExport reads what an export is made from: the timelines names select, the events filter
-// keeps in them and their page, every annotation and attachment in those timelines, and every
-// source.
+// keeps in them and their page, every annotation, attachment and link from an event in those
+// timelines, and every source.
 func readExport(
 	ctx context.Context, s *store.Store, names []string, filter store.EventFilter, lookupEnv func(string) (string, bool),
 ) (exportInput, store.EventPage, error) {
@@ -223,6 +223,10 @@ func readExport(
 		return input, page, err
 	}
 	input.attachments, err = readEach(timelines, func(id string) ([]timeline.Attachment, error) { return s.TimelineAttachments(ctx, id) })
+	if err != nil {
+		return input, page, err
+	}
+	input.links, err = readEach(timelines, func(id string) ([]timeline.Link, error) { return s.TimelineLinks(ctx, id) })
 	if err != nil {
 		return input, page, err
 	}
@@ -417,13 +421,15 @@ type exportInput struct {
 	annotations []timeline.Annotation
 	// attachments are every attachment in the timelines.
 	attachments []timeline.Attachment
+	// links are every link from an event in the timelines.
+	links []timeline.Link
 	// sources are every source.
 	sources []timeline.Source
 }
 
 // newExport returns input's timelines as an export: their events in ascending order, the
 // annotations on a timeline or on those events, the attachments of those events and
-// annotations, and the sources they name.
+// annotations, the links between two of those events, and the sources they name.
 func newExport(input exportInput) export.Envelope {
 	env := export.NewEnvelope(input.version, input.exportedAt)
 	env.Query = newExportQuery(input.timelines, input.filter)
@@ -455,6 +461,11 @@ func newExport(input exportInput) export.Envelope {
 	for _, a := range input.attachments {
 		if exported[*cmp.Or(a.Owner.EventID, a.Owner.AnnotationID)] {
 			env.Attachments = append(env.Attachments, export.NewAttachment(a))
+		}
+	}
+	for _, l := range input.links {
+		if exported[l.FromEventID] && exported[l.ToEventID] {
+			env.Links = append(env.Links, export.NewLink(l))
 		}
 	}
 	for _, s := range input.sources {

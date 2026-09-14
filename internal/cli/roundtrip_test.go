@@ -202,6 +202,7 @@ type model struct {
 	timelines   []timeline.Timeline
 	events      []eventDraft
 	annotations []annotationDraft
+	links       []timeline.Link
 }
 
 type eventDraft struct {
@@ -255,8 +256,8 @@ func seedStore(ctx context.Context, path string, m model) error {
 	return errors.Join(writeModel(ctx, s, m), s.Close())
 }
 
-// writeModel deletes events last, so seqs have gaps and annotations, attachments and sources can
-// lose what named them.
+// writeModel deletes events last, so seqs have gaps and annotations, attachments, links and
+// sources can lose what named them.
 func writeModel(ctx context.Context, s *store.Store, m model) error {
 	for _, t := range m.timelines {
 		err := s.CreateTimeline(ctx, t)
@@ -272,6 +273,12 @@ func writeModel(ctx context.Context, s *store.Store, m model) error {
 	}
 	for _, a := range m.annotations {
 		err := s.AddAnnotation(ctx, a.Annotation, a.newSourceID, newAttachments(a.attachments)...)
+		if err != nil {
+			return err
+		}
+	}
+	for _, l := range m.links {
+		err := s.AddLink(ctx, l)
 		if err != nil {
 			return err
 		}
@@ -422,9 +429,10 @@ func readTree(dir string) (map[string][]byte, error) {
 	return files, err
 }
 
-// observe records in seen each record type in jsonl, and each of its keys as type.key=null or
-// type.key=set.
+// observe records in seen each record type in jsonl, each of its keys as type.key=null or
+// type.key=set, and a link between events of two timelines as crossLink.
 func observe(seen map[string]bool, jsonl []byte) error {
+	timelineOf := map[any]any{}
 	for line := range bytes.Lines(jsonl) {
 		var record map[string]any
 		err := json.Unmarshal(line, &record)
@@ -433,6 +441,12 @@ func observe(seen map[string]bool, jsonl []byte) error {
 		}
 		typ, _ := record["type"].(string)
 		seen[typ] = true
+		switch typ {
+		case "event":
+			timelineOf[record["id"]] = record["timeline_id"]
+		case "link":
+			seen[crossLink] = seen[crossLink] || timelineOf[record["from_event_id"]] != timelineOf[record["to_event_id"]]
+		}
 		for key, value := range record {
 			state := "set"
 			if value == nil {
@@ -445,13 +459,19 @@ func observe(seen map[string]bool, jsonl []byte) error {
 	return nil
 }
 
-// unseen returns what seen lacks of the five record types besides the header and, for each
-// nullable key of its export type, that key both null and set.
+// crossLink is the key observe sets for a link between events of two timelines.
+const crossLink = "link across timelines"
+
+// unseen returns what seen lacks of the six record types besides the header, of a link across
+// timelines and, for each nullable key of its export type, that key both null and set.
 func unseen(seen map[string]bool) []string {
 	var missing []string
+	if !seen[crossLink] {
+		missing = append(missing, crossLink)
+	}
 	for typ, record := range map[string]any{
 		"timeline": export.Timeline{}, "source": export.Source{}, "event": export.Event{},
-		"annotation": export.Annotation{}, "attachment": export.Attachment{},
+		"annotation": export.Annotation{}, "attachment": export.Attachment{}, "link": export.Link{},
 	} {
 		want := []string{typ}
 		for _, key := range nullableKeys(typ, record) {
@@ -482,9 +502,9 @@ func nullableKeys(typ string, record any) []string {
 	return keys
 }
 
-// roundTripModel draws 1–3 timelines with events, annotations and attachments that every
-// validation accepts, so a failure is a round trip losing something rather than a rejected
-// record. Instants often tie, so seq decides the order.
+// roundTripModel draws 1–3 timelines with events, annotations, attachments and links between
+// events of any of them that every validation accepts, so a failure is a round trip losing
+// something rather than a rejected record. Instants often tie, so seq decides the order.
 func roundTripModel() *rapid.Generator[model] {
 	return rapid.Custom(func(t *rapid.T) model {
 		n := 0
@@ -501,8 +521,42 @@ func roundTripModel() *rapid.Generator[model] {
 			m.events = append(m.events, one.events...)
 			m.annotations = append(m.annotations, one.annotations...)
 		}
+		m.links = links(m.events, nextID).Draw(t, "links")
 
 		return m
+	})
+}
+
+// links draws up to four links between two different events, of any timelines, with at most one
+// link of each kind from one event to another.
+func links(events []eventDraft, nextID func() string) *rapid.Generator[[]timeline.Link] {
+	if len(events) < 2 {
+		return rapid.Just[[]timeline.Link](nil)
+	}
+	ids := make([]string, 0, len(events))
+	for _, e := range events {
+		ids = append(ids, e.ID)
+	}
+
+	return rapid.Custom(func(t *rapid.T) []timeline.Link {
+		joined := map[timeline.Link]bool{}
+		var out []timeline.Link
+		for range rapid.IntRange(0, 4).Draw(t, "count") {
+			join := timeline.Link{
+				FromEventID: rapid.SampledFrom(ids).Draw(t, "from"),
+				ToEventID:   rapid.SampledFrom(ids).Draw(t, "to"),
+				Kind:        rapid.SampledFrom([]timeline.LinkKind{timeline.LinkLedTo, timeline.LinkSameAs, timeline.LinkCopiedFrom}).Draw(t, "kind"),
+			}
+			if join.FromEventID == join.ToEventID || joined[join] {
+				continue
+			}
+			joined[join] = true
+			l := join
+			l.ID, l.CreatedAt, l.Author = nextID(), instant().Draw(t, "created"), rapid.Ptr(blankable(), true).Draw(t, "author")
+			out = append(out, l)
+		}
+
+		return out
 	})
 }
 

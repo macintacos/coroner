@@ -25,6 +25,8 @@ var _ = Describe("planImport", func() {
 		mongod     export.Source
 		screenshot export.Attachment
 		content    []byte
+		pager      export.Event
+		ledTo      export.Link
 	)
 
 	BeforeEach(func() {
@@ -35,6 +37,10 @@ var _ = Describe("planImport", func() {
 		content = []byte("rs.status() output")
 		screenshot = planAttachment(5, content)
 		screenshot.EventID = &stepdown.ID
+		pager = planEvent(30, tl.ID, "Pager fires for db-2")
+		ledTo = export.Link{
+			ID: planID(31), FromEventID: stepdown.ID, ToEventID: pager.ID, Kind: timeline.LinkLedTo, CreatedAt: planInstant(24), Author: new("julian"),
+		}
 	})
 
 	all := func() []export.Record { return []export.Record{tl, mongod, stepdown, evidence, screenshot} }
@@ -226,6 +232,20 @@ var _ = Describe("planImport", func() {
 					renamed.Filename = "renamed.png"
 					return []export.Record{renamed}
 				}),
+			Entry("a link, which never changes",
+				func() []export.Record { return []export.Record{tl, stepdown, pager, ledTo} },
+				func() []export.Record {
+					reauthored := ledTo
+					reauthored.Author = new("sam")
+					return []export.Record{reauthored}
+				}),
+			Entry("a link of one kind between the same events under another id",
+				func() []export.Record { return []export.Record{tl, stepdown, pager, ledTo} },
+				func() []export.Record {
+					twin := ledTo
+					twin.ID = planID(32)
+					return []export.Record{twin}
+				}),
 		)
 	})
 
@@ -314,7 +334,70 @@ var _ = Describe("planImport", func() {
 		Entry("an attachment file whose content does not match its sha256",
 			func() []export.Record { return []export.Record{tl, stepdown, screenshot} },
 			func(in *importInput) { in.sidecars = map[string][]byte{screenshot.SHA256: []byte("something else")} }, planID(5)),
+		Entry("a link whose event is neither in the input nor stored",
+			func() []export.Record { return []export.Record{tl, stepdown, ledTo} }, nil, planID(30)),
+		Entry("a link from an event to itself",
+			func() []export.Record {
+				self := ledTo
+				self.ToEventID = stepdown.ID
+				return []export.Record{tl, stepdown, self}
+			}, nil, planID(31)),
+		Entry("a link of a kind this coroner does not know",
+			func() []export.Record {
+				after := ledTo
+				after.Kind = "after"
+				return []export.Record{tl, stepdown, pager, after}
+			}, nil, "after"),
+		Entry("one link of a kind between two events under two ids",
+			func() []export.Record {
+				twin := ledTo
+				twin.ID = planID(32)
+				return []export.Record{tl, stepdown, pager, ledTo, twin}
+			}, nil, "led_to from "+planID(3)+" to "+planID(30)),
+		Entry("a link to an event outside the timeline -t selects",
+			func() []export.Record {
+				checkout := planTimeline(33, "checkout-latency")
+				p99 := planEvent(34, checkout.ID, "Checkout p99 above 2s")
+				across := ledTo
+				across.ToEventID = p99.ID
+				return []export.Record{tl, checkout, stepdown, p99, across}
+			},
+			func(in *importInput) {
+				guard := tl.Domain()
+				in.guard = &guard
+				in.stored = storedFrom(tl)
+			}, planID(31)),
 	)
+
+	Describe("links", func() {
+		It("inserts a link between two timelines' events with the events", func() {
+			checkout := planTimeline(33, "checkout-latency")
+			p99 := planEvent(34, checkout.ID, "Checkout p99 above 2s")
+			ledTo.ToEventID = p99.ID
+
+			plan, err := planImport(planInput([]export.Record{tl, checkout, stepdown, p99, ledTo}, storedRecords{}))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.result.Links).To(Equal(importCounts{Inserted: 1}))
+			Expect(plan.write.Links).To(Equal([]timeline.Link{ledTo.Domain()}))
+		})
+
+		It("skips a link stored unchanged", func() {
+			plan, err := planImport(planInput([]export.Record{tl, stepdown, pager, ledTo}, storedFrom(tl, stepdown, pager, ledTo)))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.result.Links).To(Equal(importCounts{Identical: 1}))
+			Expect(plan.write).To(Equal(store.ImportRecords{}))
+		})
+
+		It("names the timeline of the event a new link leaves as one it writes to", func() {
+			plan, err := planImport(planInput([]export.Record{ledTo}, storedFrom(tl, stepdown, pager)))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.write.Links).To(HaveLen(1))
+			Expect(plan.timelineNames).To(Equal([]string{"inc-4821"}))
+		})
+	})
 
 	It("lists the first five problems, then how many more there are", func() {
 		records := []export.Record{}
@@ -423,10 +506,12 @@ func planAttachment(n int, content []byte) export.Attachment {
 func storedFrom(records ...export.Record) storedRecords {
 	stored := storedRecords{
 		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
-		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
+		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{}, links: map[string]timeline.Link{},
 	}
 	for _, r := range records {
 		switch r := r.(type) {
+		case export.Link:
+			stored.links[r.ID] = r.Domain()
 		case export.Timeline:
 			stored.timelines[r.ID] = r.Domain()
 		case export.Source:
