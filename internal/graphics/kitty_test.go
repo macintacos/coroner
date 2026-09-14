@@ -34,12 +34,6 @@ var _ = Describe("Place", func() {
 	})
 })
 
-var _ = Describe("Delete", func() {
-	It("frees the image and its placements", func() {
-		Expect(graphics.Delete(7)).To(Equal("\x1b_Ga=d,d=I,i=7,q=2\x1b\\"))
-	})
-})
-
 var _ = Describe("Cells", func() {
 	It("fills each row with placeholders naming their row and column, colored with the image id", func() {
 		// 70000 is 0x011170: red 1, green 17, blue 112.

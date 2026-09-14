@@ -23,3 +23,12 @@
 5. **The screen is pinned by goldens:** `testdata/*.golden` hold `View()` at 80×20 in
    America/New_York, with a fixed clock and escape sequences stripped. Rewrite them only
    with `go test ./internal/viewer -update`, and read the diff before committing it.
+6. **Images leave only through `tea.Raw`, and only once the terminal has answered:** the
+   renderer drops any escape sequence in `View()`, so an image shows through
+   `graphics.Cells`, placeholder text the renderer redraws like any other, after
+   `graphics.Transmit` and `graphics.Place` went out through `tea.Raw`. Send nothing
+   before the reply to the attributes query `Init` sends: until the terminal reads the
+   first frame it is on its main screen, and an image sent there never shows on the
+   alternate one. Attachment content is read through `Options.Blob` in a command, never
+   while rendering, and an attachment that cannot be read or shown is its placeholder
+   text, never an error. Only `internal/graphics` decides which terminals show images.

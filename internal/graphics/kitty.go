@@ -53,11 +53,6 @@ func Place(id uint32, g Grid) string {
 		"c="+strconv.Itoa(g.Cols), "r="+strconv.Itoa(g.Rows), "q=2")
 }
 
-// Delete returns the sequence that frees the image with id and its placements.
-func Delete(id uint32) string {
-	return ansi.KittyGraphics(nil, "a=d", "d=I", "i="+strconv.FormatUint(uint64(id), 10), "q=2")
-}
-
 // Cells returns g's rows of placeholders showing the image with id, each naming its row and
 // column, colored with the id, which the terminal reads back from the foreground color.
 func Cells(id uint32, g Grid) []string {
