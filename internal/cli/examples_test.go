@@ -3,10 +3,14 @@ package cli_test
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"iter"
+	"os"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
+	"testing/fstest"
 	"unicode"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -37,10 +41,17 @@ var _ = Describe("exampleLines", func() {
 			HaveField("Text", "coroner status")))
 	})
 
+	It("starts a line at coroner after another command", func() {
+		Expect(exampleLines("s", "mkdir rca && coroner timeline export --format md -o rca/")).To(ConsistOf(
+			HaveField("Text", "coroner timeline export --format md -o rca/")))
+	})
+
 	It("ignores comments, and lines where coroner is not a command word", func() {
 		text := "  # coroner timeline list\n" +
 			"  $ cp coroner.fish ~/.config/fish/completions/coroner.fish\n" +
-			"  $ ls \"${fpath[1]}/_coroner\""
+			"  $ ls \"${fpath[1]}/_coroner\"\n" +
+			"install -m 0755 coroner ~/.local/bin/coroner\n" +
+			"brew uninstall --cask coroner"
 
 		Expect(exampleLines("s", text)).To(BeEmpty())
 	})
@@ -64,6 +75,34 @@ var _ = Describe("exampleLines", func() {
 		Entry("command substitution", "  $ coroner timeline use $(coroner timeline list | head -1)"),
 		Entry("a backtick", "  $ coroner timeline use `cat name`"),
 	)
+})
+
+var _ = Describe("markdownExampleLines", func() {
+	It("returns the coroner lines of a shell code block, numbered by their line in the page", func() {
+		page := "# Check\n\nRun `coroner version` to check.\n\n```sh\ncoroner version\n```\n"
+
+		Expect(markdownExampleLines("how-to/x.md", page)).To(Equal([]exampleLine{
+			{Source: "how-to/x.md", Number: 6, Text: "coroner version"},
+		}))
+	})
+
+	It("returns only the $ lines of a console block and the lines they continue onto", func() {
+		page := "```console\n" +
+			"$ coroner timeline create x \\\n" +
+			"    --title y\n" +
+			"Next: coroner timeline use x\n" +
+			"      coroner event add -t x <text>\n" +
+			"```\n"
+
+		Expect(markdownExampleLines("s", page)).To(ConsistOf(SatisfyAll(
+			HaveField("Number", 2), HaveField("Text", "coroner timeline create x --title y"))))
+	})
+
+	It("ignores code blocks that are not shell", func() {
+		page := "```markdown\ncoroner nosuch\n```\n\n```text\ncoroner nosuch\n```\n\n```\ncoroner nosuch\n```\n"
+
+		Expect(markdownExampleLines("s", page)).To(BeEmpty())
+	})
 })
 
 var _ = DescribeTable("splitWords splits a command line as a shell would",
@@ -212,24 +251,99 @@ var _ = Describe("checkExamples", func() {
 	})
 })
 
-// exampleReport is what checkExamples found. Each entry reads
+var _ = Describe("checkDocExamples", func() {
+	newRoot := func(ctx SpecContext) func() *cobra.Command {
+		return func() *cobra.Command { return cli.NewRoot(ctx, cli.App{}) }
+	}
+
+	It("names the page, the line and the parse error of each broken example under dirs", func(ctx SpecContext) {
+		docs := fstest.MapFS{
+			"how-to/logs.md":    {Data: []byte("# Logs\n\n```sh\ncoroner version\ncoroner event add x --sorce slack\n```\n")},
+			"how-to/index.md":   {Data: []byte("```console\n$ coroner nosuch\n```\n")},
+			"reference/x.md":    {Data: []byte("```sh\ncoroner nosuch\n```\n")},
+			"how-to/logs.jsonl": {Data: []byte("coroner nosuch\n")},
+		}
+
+		found, err := checkDocExamples(docs, []string{"how-to"}, newRoot(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(found.Broken).To(ConsistOf(
+			"how-to/logs.md:5: coroner event add x --sorce slack: unknown flag: --sorce",
+			HavePrefix("how-to/index.md:2: coroner nosuch: "),
+		))
+	})
+
+	It("fails on a directory that does not exist", func(ctx SpecContext) {
+		_, err := checkDocExamples(fstest.MapFS{}, []string{"tutorial"}, newRoot(ctx))
+
+		Expect(err).To(MatchError(fs.ErrNotExist))
+	})
+
+	It("finds no broken example in the tutorial and how-to guides", func(ctx SpecContext) {
+		found, err := checkDocExamples(os.DirFS("../../docs"), []string{"tutorial", "how-to"}, newRoot(ctx))
+
+		Expect(err).NotTo(HaveOccurred())
+		for _, line := range found.Skipped {
+			AddReportEntry("skipped example", line)
+		}
+		Expect(found.Broken).To(BeEmpty())
+	})
+})
+
+// exampleReport is what checkExamples or checkDocExamples found. Each entry reads
 // "<source>:<line>: <text>: <reason>".
 type exampleReport struct {
 	Broken  []string
 	Skipped []string
 }
 
-// checkExamples checks each coroner line in the Example of tree and every command under it,
-// hidden ones included, against a fresh tree from newRoot, one per line, because a tree keeps
-// the flag values it parsed. tree is walked separately so a caller can edit an Example without
-// editing newRoot's trees.
-func checkExamples(tree *cobra.Command, newRoot func() *cobra.Command) exampleReport {
-	var found exampleReport
+// checkDocExamples checks each coroner line in the shell code blocks of every Markdown page
+// under dirs of docs, labelled with its path in docs, as checkLines does.
+func checkDocExamples(docs fs.FS, dirs []string, newRoot func() *cobra.Command) (exampleReport, error) {
+	var lines []exampleLine
 
+	for _, dir := range dirs {
+		err := fs.WalkDir(docs, dir, func(name string, entry fs.DirEntry, err error) error {
+			if err != nil || entry.IsDir() || path.Ext(name) != ".md" {
+				return err
+			}
+
+			page, err := fs.ReadFile(docs, name)
+			lines = append(lines, markdownExampleLines(name, string(page))...)
+
+			return err
+		})
+		if err != nil {
+			return exampleReport{}, err
+		}
+	}
+
+	return checkLines(lines, newRoot), nil
+}
+
+// checkExamples checks each coroner line in the Example of tree and every command under it,
+// hidden ones included, as checkLines does. tree is walked separately so a caller can edit an
+// Example without editing newRoot's trees.
+func checkExamples(tree *cobra.Command, newRoot func() *cobra.Command) exampleReport {
 	lines := exampleLines(tree.CommandPath(), tree.Example)
+	found := checkLines(lines, newRoot)
 	if tree.Example != "" && len(lines) == 0 {
 		found.Skipped = append(found.Skipped, tree.CommandPath()+": no coroner line")
 	}
+
+	for _, child := range tree.Commands() {
+		under := checkExamples(child, newRoot)
+		found.Broken = append(found.Broken, under.Broken...)
+		found.Skipped = append(found.Skipped, under.Skipped...)
+	}
+
+	return found
+}
+
+// checkLines checks each of lines that is not skipped against a fresh tree from newRoot, one
+// per line, because a tree keeps the flag values it parsed.
+func checkLines(lines []exampleLine, newRoot func() *cobra.Command) exampleReport {
+	var found exampleReport
 
 	for _, line := range lines {
 		entry := func(reason any) string {
@@ -249,12 +363,6 @@ func checkExamples(tree *cobra.Command, newRoot func() *cobra.Command) exampleRe
 		if err != nil {
 			found.Broken = append(found.Broken, entry(err))
 		}
-	}
-
-	for _, child := range tree.Commands() {
-		under := checkExamples(child, newRoot)
-		found.Broken = append(found.Broken, under.Broken...)
-		found.Skipped = append(found.Skipped, under.Skipped...)
 	}
 
 	return found
@@ -357,10 +465,12 @@ type exampleLine struct {
 }
 
 // exampleLines returns each line of text where coroner is a command word, from that word on,
-// labelled with source. A line ending in a backslash continues on the next. Lines starting
-// with # are ignored, and a line with $( or a backtick is returned with Skipped set.
+// labelled with source. coroner is a command word at the start of the line, after a $ or PS>
+// prompt, or after |, ;, & or (, once past any NAME=value assignments. A line ending in a
+// backslash continues on the next. Lines starting with # are ignored, and a line with $( or a
+// backtick is returned with Skipped set.
 func exampleLines(source, text string) []exampleLine {
-	commandWord := regexp.MustCompile(`(^|[\s|;&(])coroner([\s)]|$)`)
+	commandWord := regexp.MustCompile(`((?:^(?:(?:\$|PS>)\s+)?|[|;&(]\s*)(?:[A-Za-z_]\w*=\S*\s+)*)coroner(?:[\s)]|$)`)
 	var lines []exampleLine
 
 	for number, line := range logicalLines(text) {
@@ -381,6 +491,37 @@ func exampleLines(source, text string) []exampleLine {
 	}
 
 	return lines
+}
+
+// markdownExampleLines returns exampleLines of the shell code blocks in markdown, numbered by
+// their line in markdown: every line of a sh, bash, shell or zsh block, and of a console block
+// only the lines starting with a $ prompt and the lines they continue onto.
+func markdownExampleLines(source, markdown string) []exampleLine {
+	lines := strings.Split(markdown, "\n")
+	inBlock, language, continued := false, "", false
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		info, isFence := strings.CutPrefix(trimmed, "```")
+		keep := false
+
+		switch {
+		case isFence:
+			inBlock, language = !inBlock, strings.TrimSpace(info)
+		case !inBlock:
+		case language == "console":
+			keep = continued || strings.HasPrefix(trimmed, "$ ")
+		default:
+			keep = slices.Contains([]string{"sh", "bash", "shell", "zsh"}, language)
+		}
+
+		continued = keep && strings.HasSuffix(trimmed, `\`)
+		if !keep {
+			lines[i] = ""
+		}
+	}
+
+	return exampleLines(source, strings.Join(lines, "\n"))
 }
 
 // logicalLines yields the trimmed lines of text, each keyed by its first line's number, with a
