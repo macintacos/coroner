@@ -31,6 +31,8 @@ const (
 	KindTimelineRequired Kind = "timeline_required"
 	// KindAmbiguousID means an ID prefix matches more than one record.
 	KindAmbiguousID Kind = "ambiguous_id"
+	// KindInvalidInput means records a command reads, such as an import's, cannot be used.
+	KindInvalidInput Kind = "invalid_input"
 
 	KindTimelineNotFound   Kind = "timeline_not_found"
 	KindEventNotFound      Kind = "event_not_found"
@@ -73,6 +75,7 @@ func exitCodes() map[Kind]int {
 		KindInvalidName:      2,
 		KindTimelineRequired: 2,
 		KindAmbiguousID:      2,
+		KindInvalidInput:     2,
 
 		KindTimelineNotFound:   3,
 		KindEventNotFound:      3,
