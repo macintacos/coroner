@@ -335,7 +335,7 @@ var _ = Describe("event view, edit and delete", func() {
 			Expect(run(ctx, "event", "delete", "1", pagerFires, "--json")).To(Equal(0), errOut.String())
 
 			Expect(out.String()).To(MatchRegexp(
-				`^\{"events":\[\{"id":"` + steppedDown + `",[^{}]*"text":"Primary stepped down",[^{}]*\},\{"id":"` +
+				`^\{"timelines":\[\{"id":"` + outageID + `","name":"mongo-outage",[^{}]*\}\],"events":\[\{"id":"` + steppedDown + `",[^{}]*"text":"Primary stepped down",[^{}]*\},\{"id":"` +
 					pagerFires + `",[^{}]*\}\],"truncated":false,"total":2\}\n$`))
 			Expect(errOut.String()).To(ContainSubstring("Deleted 2 events from timeline `mongo-outage`"))
 			Expect(events(ctx, outageID)).To(BeEmpty())

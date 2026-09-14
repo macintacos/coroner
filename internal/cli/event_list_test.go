@@ -125,12 +125,13 @@ var _ = Describe("event list", func() {
 		Expect(errOut.String()).To(ContainSubstring("2 of 4"))
 	})
 
-	It("prints one event object per line, typed event, under --format jsonl", func(ctx SpecContext) {
+	It("prints the timeline, then one event object per line, each typed, under --format jsonl", func(ctx SpecContext) {
 		Expect(run(ctx, "event", "list", "--format", "jsonl")).To(Equal(0))
 
 		lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
-		Expect(lines).To(HaveLen(4))
-		for _, line := range lines {
+		Expect(lines).To(HaveLen(5))
+		Expect(lines[0]).To(HavePrefix(`{"type":"timeline","id":`))
+		for _, line := range lines[1:] {
 			Expect(line).To(HavePrefix(`{"type":"event","id":`))
 		}
 	})

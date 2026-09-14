@@ -20,15 +20,20 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 		Use:   "list",
 		Short: "List a timeline's events, filtered",
 		Long: "List the current timeline's events in the order they happened: by occurred at, then seq.\n\n" +
+			"Repeat -t to overlay several timelines: their events merge into one list by occurred at,\n" +
+			"then timeline, then seq, and each text row starts with its timeline's name. --json lists\n" +
+			"the selected timelines under timelines, and --format jsonl starts with a timeline line for\n" +
+			"each, so an event's timeline_id names one of them.\n\n" +
 			"--since is inclusive and --until exclusive. Repeated --source flags match any of them,\n" +
 			"and repeated --tag flags must all match. Times with no offset are read, and times print,\n" +
 			"in --tz, then the config file's default_timezone, then the local zone. Piped, the\n" +
 			"fields are tab-separated.",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
+		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl", overlayAnnotation: "true"},
 		Example: "  $ coroner event list --tag election --source mongod\n" +
 			"  $ coroner event list --since \"2026-09-11T03:00Z\" --until \"2026-09-11T04:00Z\" --tag election --format jsonl\n" +
-			"  $ coroner event list --contains stepdown --order desc --limit 20",
+			"  $ coroner event list --contains stepdown --order desc --limit 20\n" +
+			"  $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return listEvents(ctx, cmd, app)
 		},
@@ -57,7 +62,7 @@ func addEventMatchFlags(flags *pflag.FlagSet) {
 }
 
 func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
-	flag, err := timelineFlag(cmd.Flags())
+	names, err := timelineFlags(cmd.Flags())
 	if err != nil {
 		return err
 	}
@@ -75,18 +80,20 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
+		timelines, err := selectTimelines(ctx, s, names, app.LookupEnv)
 		if err != nil {
 			return err
 		}
-		filter.TimelineIDs = []string{t.ID}
+		filter.TimelineIDs = timelineIDs(timelines)
 		page, err := s.ListEvents(ctx, filter)
 		if err != nil {
 			return err
 		}
-		listing := eventListing{page: page}
+		listing := eventListing{timelines: timelines, page: page}
 		if o.format.machine() {
-			attachments, err := s.TimelineAttachments(ctx, t.ID)
+			attachments, err := readEach(timelines, func(id string) ([]timeline.Attachment, error) {
+				return s.TimelineAttachments(ctx, id)
+			})
 			if err != nil {
 				return err
 			}
@@ -218,6 +225,8 @@ func readBound(flags *pflag.FlagSet, name string, now time.Time, z zone) (*time.
 }
 
 type eventListJSON struct {
+	// Timelines are the timelines the events are listed from. Never nil, like Events.
+	Timelines []timelineJSON `json:"timelines"`
 	// Never nil, so no events encode as [] rather than null.
 	Events    []eventJSON `json:"events"`
 	Truncated bool        `json:"truncated"`
@@ -231,19 +240,32 @@ type eventLineJSON struct {
 	eventJSON
 }
 
-// eventListing is a page of events with their attachments' objects, keyed by event id.
+// timelineLineJSON is a timeline as a JSONL line, whose type says what the line holds.
+type timelineLineJSON struct {
+	Type string `json:"type"`
+
+	timelineJSON
+}
+
+// eventListing is a page of events from timelines, with their attachments' objects, keyed by
+// event id.
 type eventListing struct {
-	page     store.EventPage
-	attached map[string][]attachmentJSON
+	timelines []timeline.Timeline
+	page      store.EventPage
+	attached  map[string][]attachmentJSON
 }
 
 func newEventListJSON(l eventListing) eventListJSON {
+	timelines := make([]timelineJSON, 0, len(l.timelines))
+	for _, t := range l.timelines {
+		timelines = append(timelines, newTimelineJSON(t))
+	}
 	events := make([]eventJSON, 0, len(l.page.Events))
 	for _, e := range l.page.Events {
 		events = append(events, newEventJSON(e, l.attached[e.ID]))
 	}
 
-	return eventListJSON{Events: events, Truncated: l.page.Truncated, Total: l.page.Total}
+	return eventListJSON{Timelines: timelines, Events: events, Truncated: l.page.Truncated, Total: l.page.Total}
 }
 
 // printEventPage prints l in o's format, with text times in z and noEvents on stderr when it
@@ -272,14 +294,7 @@ func writeEventPage(o output, z zone, l eventListing, noEvents string) error {
 	case formatJSON:
 		return o.json(newEventListJSON(l))
 	case formatJSONL:
-		for _, e := range page.Events {
-			err := writeJSON(o.out, false, eventLineJSON{Type: "event", eventJSON: newEventJSON(e, l.attached[e.ID])})
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
+		return writeEventLines(o, l)
 	case formatMarkdown, formatMermaid, formatHTML, formatSVG:
 		return fmt.Errorf("event list cannot write --format %s", o.format)
 	case formatText:
@@ -288,8 +303,44 @@ func writeEventPage(o output, z zone, l eventListing, noEvents string) error {
 	if len(page.Events) == 0 {
 		return o.notify(noEvents)
 	}
+	rows := eventListRows(page.Events, z)
+	if len(l.timelines) > 1 {
+		rows = withTimelineNames(rows, page.Events, l.timelines)
+	}
 
-	return o.rows(eventListRows(page.Events, z))
+	return o.rows(rows)
+}
+
+// writeEventLines writes a JSONL line for each of l's timelines, then for each of its events.
+func writeEventLines(o output, l eventListing) error {
+	for _, t := range l.timelines {
+		err := writeJSON(o.out, false, timelineLineJSON{Type: "timeline", timelineJSON: newTimelineJSON(t)})
+		if err != nil {
+			return err
+		}
+	}
+	for _, e := range l.page.Events {
+		err := writeJSON(o.out, false, eventLineJSON{Type: "event", eventJSON: newEventJSON(e, l.attached[e.ID])})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// withTimelineNames leads each row, the row of the event at its index, with the name of that
+// event's timeline among timelines.
+func withTimelineNames(rows [][]string, events []timeline.Event, timelines []timeline.Timeline) [][]string {
+	names := make(map[string]string, len(timelines))
+	for _, t := range timelines {
+		names[t.ID] = t.Name
+	}
+	for i, e := range events {
+		rows[i] = append([]string{names[e.TimelineID]}, rows[i]...)
+	}
+
+	return rows
 }
 
 // eventListRows returns a row per event: seq, occurred at in z, source, tags and text.

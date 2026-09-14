@@ -44,9 +44,20 @@ stderr '^Would attach p99\.gif \(sha256 [0-9a-f]{8}…, 25 B, image/gif\)$'
 exec coroner event edit 3 --attach p99.gif
 stderr '\AAttached p99\.gif as [0-9a-f-]{36} .*\nEdited event #3 '
 
+# Given -t more than once, event list merges the timelines by time and leads each row with
+# its timeline.
+exec coroner timeline create checkout-latency
+exec coroner event add 'Checkout p99 at 4 s' --at 2026-09-11T03:14:30Z -t checkout-latency
+exec coroner event list -t mongo-outage -t checkout-latency --until 2026-09-11T03:16:00Z
+cmp stdout overlay.tsv
+
 -- p99.gif --
 GIF89a p99 latency panel
 -- slack.txt --
 Pager fires for db-2
 -- election.tsv --
 #1	2026-09-10T23:14:07.412-04:00	mongod	election	Primary stepped down: replSetStepDown
+-- overlay.tsv --
+mongo-outage	#1	2026-09-10T23:14:07.412-04:00	mongod	election	Primary stepped down: replSetStepDown
+checkout-latency	#1	2026-09-10T23:14:30-04:00	-	-	Checkout p99 at 4 s
+mongo-outage	#2	2026-09-10T23:15:00-04:00	slack	-	Pager fires for db-2

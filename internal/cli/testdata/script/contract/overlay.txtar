@@ -35,3 +35,40 @@ stdout '"text":"Primary stepped down",'
 # The same timeline named twice is one timeline.
 exits 0 coroner event add 'Election won by db-3' --at 2026-09-10T14:03:00Z -t mongo-failover -t mongo-failover
 stderr '^Added event #2 to timeline `mongo-failover` '
+exits 0 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:03:00Z -t checkout-latency --source grafana
+exits 0 coroner event add 'Checkout errors clear' --at 2026-09-10T14:05:00Z -t checkout-latency
+
+# event list merges the timelines by occurred at, then timeline id, then seq: at 14:03,
+# mongo-failover's #2 comes before checkout-latency's #1, the older timeline. json lists the
+# selected timelines under timelines; jsonl leads with a timeline line for each.
+exits 0 coroner event list -t mongo-failover -t checkout-latency --json
+cmp stdout list.json
+exits 0 coroner event list -t mongo-failover -t checkout-latency --format jsonl
+cmp stdout list.jsonl
+
+# --order desc reverses the merge, and --limit counts every timeline's matches.
+exits 0 coroner event list -t mongo-failover -t checkout-latency --order desc --limit 1 --json
+jsonvalid stdout
+stdout '"text":"Checkout errors clear"'
+stdout '"truncated":true,"total":4\}$'
+stderr '1 of 4'
+
+# A timeline's name and its id are one timeline.
+exits 0 coroner event list -t checkout-latency -t 01a09862-b1c0-7000-8000-000000000002 --json
+jsonvalid stdout
+stdout '^\{"timelines":\[\{"id":"01a09862-b1c0-7000-8000-000000000002",[^{]*\],"events"'
+stdout '"total":2\}$'
+
+# An unknown timeline among several exits 3, kind timeline_not_found, naming it.
+exits 3 coroner event list -t mongo-failover -t missing --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_not_found","message":"[^\n]*missing[^\n]*\}\}\n\z'
+-- list.json --
+{"timelines":[{"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000002","name":"checkout-latency","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}],"events":[{"id":"01a09862-b1c0-7000-8000-000000000003","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-10T14:02:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:02:00Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]},{"id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":null,"tags":[],"text":"Election won by db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]},{"id":"01a09862-b1c0-7000-8000-000000000005","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":"grafana","tags":[],"text":"Checkout p99 at 4 s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]},{"id":"01a09862-b1c0-7000-8000-000000000007","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":2,"occurred_at":"2026-09-10T14:05:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:05:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout errors clear","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}],"truncated":false,"total":4}
+-- list.jsonl --
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000002","name":"checkout-latency","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000003","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-10T14:02:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:02:00Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":null,"tags":[],"text":"Election won by db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":"grafana","tags":[],"text":"Checkout p99 at 4 s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000007","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":2,"occurred_at":"2026-09-10T14:05:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:05:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout errors clear","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}

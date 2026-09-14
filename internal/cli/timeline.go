@@ -269,6 +269,54 @@ func selectTimeline(
 	return t, err
 }
 
+// selectTimelines returns the timeline each of names, -t's values, selects, each once in the
+// order named, or, when names is empty, the one timeline selectTimeline selects. A name no
+// timeline has is timeline_not_found, naming it.
+func selectTimelines(
+	ctx context.Context, s *store.Store, names []string, lookupEnv func(string) (string, bool),
+) ([]timeline.Timeline, error) {
+	if len(names) == 0 {
+		t, err := selectTimeline(ctx, s, nil, lookupEnv)
+		return []timeline.Timeline{t}, err
+	}
+
+	var timelines []timeline.Timeline
+	for _, name := range names {
+		t, _, err := lookupTimeline(ctx, s, &name, lookupEnv)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(timelines, func(selected timeline.Timeline) bool { return selected.ID == t.ID }) {
+			timelines = append(timelines, t)
+		}
+	}
+
+	return timelines, nil
+}
+
+func timelineIDs(timelines []timeline.Timeline) []string {
+	ids := make([]string, 0, len(timelines))
+	for _, t := range timelines {
+		ids = append(ids, t.ID)
+	}
+
+	return ids
+}
+
+// readEach returns what read returns for the id of each of timelines, in order.
+func readEach[T any](timelines []timeline.Timeline, read func(timelineID string) ([]T, error)) ([]T, error) {
+	var all []T
+	for _, t := range timelines {
+		records, err := read(t.ID)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, records...)
+	}
+
+	return all, nil
+}
+
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines
 // there are.
 func timelineRequiredError(ctx context.Context, s *store.Store) error {

@@ -16,7 +16,7 @@ func newEventCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "An event is something that happened at a moment or over an interval, as a source reported\n" +
 			"it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else\n" +
 			"the one 'coroner timeline use' picked. view, edit and delete also take an event's id, from\n" +
-			"any timeline.",
+			"any timeline. list takes -t more than once to overlay several timelines.",
 		Example: "  $ coroner event add \"Primary stepped down\" --at 2026-09-11T03:14:07Z --source mongod\n" +
 			"  $ coroner event list --tag election",
 		// Help and the unknown-verb error print under any format.
