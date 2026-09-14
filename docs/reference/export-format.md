@@ -18,6 +18,15 @@ coroner timeline export -t mongo-outage --format json > rca.json
 coroner timeline export -t mongo-outage --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
 ```
 
+Given `-t` more than once, `--format json` and `--format jsonl` export an overlay: one
+export holding every timeline named, with `query.timelines` listing them and their events
+merged in the one order this page gives. Each event's `timeline_id` names one of the
+exported `timelines`. The same filters apply to the merged events.
+
+```sh
+coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl
+```
+
 Command `--json` and JSONL output uses the same keys for a timeline, source, event,
 annotation, or attachment today. A command may wrap them, as `event list`, `source list`,
 and `tag list` do with `total` and `truncated`, or extend them with output-only keys,
@@ -280,14 +289,15 @@ cat a.jsonl b.jsonl | jq 'select(.type=="event")'
 An attachment's content travels beside an export, never inside it. Given a directory,
 `coroner timeline export --format jsonl -o rca/` writes `rca/<timeline>.jsonl`, and
 `--format md -o rca/` writes `rca/<timeline>.md`; both copy each exported attachment's
-content into `rca/attachments/`. A file's name up to its first `.` is the attachment's
-`sha256`: an importer finds the file by that name and checks the content against the hash.
-The rest of the name is an extension following `mime`, such as `.png` for `image/png`, or
-`.bin`, so the same content attached with two media types can be two files with one hash.
-`text/html` and `text/xml` get `.txt`, so a host serving the directory never runs an
-attached page. The extension is only a hint for viewers: it is not part of the contract
-and may change. Exporting again into the same directory writes the same files. The
-`attachments/` directory and the `sha256` name follow the
+content into `rca/attachments/`. An overlay's file is named after its timelines joined by
+`+`, as in `rca/mongo-failover+checkout-latency.jsonl`. A file's name up to its first `.`
+is the attachment's `sha256`: an importer finds the file by that name and checks the
+content against the hash. The rest of the name is an extension following `mime`, such as
+`.png` for `image/png`, or `.bin`, so the same content attached with two media types can
+be two files with one hash. `text/html` and `text/xml` get `.txt`, so a host serving the
+directory never runs an attached page. The extension is only a hint for viewers: it is not
+part of the contract and may change. Exporting again into the same directory writes the
+same files. The `attachments/` directory and the `sha256` name follow the
 [evolution rules](#evolution-rules) like the rest of the format.
 
 ## Encoding rules
