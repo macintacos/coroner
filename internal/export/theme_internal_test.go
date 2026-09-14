@@ -13,7 +13,6 @@ import (
 // luminance returns the WCAG 2.2 relative luminance of hex, a #rrggbb colour.
 func luminance(hex string) float64 {
 	GinkgoHelper()
-	Expect(hex).To(MatchRegexp(`^#[0-9a-f]{6}$`))
 	channel := func(i int) float64 {
 		v, err := strconv.ParseUint(hex[i:i+2], 16, 8)
 		Expect(err).NotTo(HaveOccurred())
@@ -39,17 +38,9 @@ func contrast(a, b string) float64 {
 	return (lighter + 0.05) / (darker + 0.05)
 }
 
-// tokens returns the viewer tokens named, in that order.
-func tokens(names ...string) []themeToken {
-	GinkgoHelper()
-	picked := make([]themeToken, len(names))
-	for i, name := range names {
-		j := slices.IndexFunc(viewerTokens(), func(t themeToken) bool { return t.Name == name })
-		Expect(j).NotTo(Equal(-1), "no token "+name)
-		picked[i] = viewerTokens()[j]
-	}
-
-	return picked
+// withRole returns the viewer tokens that have role.
+func withRole(role tokenRole) []themeToken {
+	return slices.DeleteFunc(viewerTokens(), func(t themeToken) bool { return t.Role != role })
 }
 
 // pairEntries returns an entry for each foreground on each background, in each theme.
@@ -70,8 +61,15 @@ func pairEntries(foregrounds, backgrounds []themeToken) []TableEntry {
 var _ = Describe("The HTML viewer's theme", func() {
 	sources := make([]themeToken, len(sourcePalette()))
 	for i, c := range sourcePalette() {
-		sources[i] = themeToken{fmt.Sprintf("source-%d", i), c}
+		sources[i] = themeToken{Name: fmt.Sprintf("source-%d", i), Color: c}
 	}
+
+	It("writes every colour as #rrggbb in both themes", func() {
+		for _, t := range append(viewerTokens(), sources...) {
+			Expect(t.Color.Light).To(MatchRegexp(`^#[0-9a-f]{6}$`), t.Name)
+			Expect(t.Color.Dark).To(MatchRegexp(`^#[0-9a-f]{6}$`), t.Name)
+		}
+	})
 
 	DescribeTable("gives text at least WCAG AA contrast, 4.5:1",
 		func(text, background string) {
@@ -79,7 +77,7 @@ var _ = Describe("The HTML viewer's theme", func() {
 			GinkgoWriter.Printf("%s on %s: %.2f:1\n", text, background, ratio)
 			Expect(ratio).To(BeNumerically(">=", 4.5))
 		},
-		pairEntries(tokens("ink", "muted", "accent"), tokens("paper", "surface", "selected")),
+		pairEntries(withRole(roleText), withRole(roleBackground)),
 	)
 
 	DescribeTable("gives each source colour at least WCAG's non-text contrast, 3:1",
@@ -88,6 +86,6 @@ var _ = Describe("The HTML viewer's theme", func() {
 			GinkgoWriter.Printf("%s on %s: %.2f:1\n", mark, background, ratio)
 			Expect(ratio).To(BeNumerically(">=", 3))
 		},
-		pairEntries(sources, tokens("paper", "surface")),
+		pairEntries(sources, withRole(roleBackground)),
 	)
 })

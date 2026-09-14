@@ -10,12 +10,15 @@
   --text-base: 0.9375rem;
   --text-lg: 1.125rem;
   --text-xl: 1.5rem;
+  --text-print: 10pt;
+  --space-0: 0.125rem;
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 3rem;
+  --radius-xs: 2px;
   --radius-sm: 3px;
   --radius-md: 5px;
 }
@@ -36,7 +39,6 @@ header {
   column-gap: var(--space-5);
 }
 
-header > :not(#theme),
 #detail {
   max-width: 80ch;
 }
@@ -87,7 +89,7 @@ input:not([type="checkbox"]) {
   background: var(--paper);
   border: 1px solid var(--rule);
   border-radius: var(--radius-sm);
-  padding: 0.125rem 0.375rem;
+  padding: var(--space-0) var(--space-2);
 }
 
 button {
@@ -212,13 +214,9 @@ a:focus-visible {
   width: 0.625rem;
   height: 0.625rem;
   margin-right: var(--space-2);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: var(--source);
   vertical-align: -0.0625rem;
-}
-
-#timeline .source-none {
-  --source: var(--muted);
 }
 
 #timeline .vis-item {
@@ -234,7 +232,7 @@ a:focus-visible {
 
 #timeline .vis-item .vis-item-content {
   max-width: 14em;
-  padding: 0.125rem var(--space-1);
+  padding: var(--space-0) var(--space-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -250,22 +248,24 @@ a:focus-visible {
   background: var(--surface);
 }
 
-/* A time kept to the minute or coarser is hollow; a guessed one is dashed and keeps its ~. */
-#timeline .vis-item.coarse.vis-dot {
+/*
+ * A time kept to the minute or coarser is hollow; a guessed one has a broken outline, dotted
+ * on a dot and dashed on a range, and keeps its ~. A hollow dot's 4px plus 2px of border
+ * keeps vis-timeline's 8px dot, so its placement still centres it.
+ */
+#timeline .vis-item.vis-dot:is(.coarse, .approximate) {
   width: 4px;
   height: 4px;
   border-width: 2px;
   background: var(--paper);
 }
 
-#timeline .vis-item.coarse.vis-range {
-  background: var(--paper);
+#timeline .vis-item.vis-dot.approximate {
+  border-style: dotted;
 }
 
-#timeline .vis-item.approximate.vis-dot {
-  width: 4px;
-  height: 4px;
-  border: 2px dotted var(--source);
+#timeline .vis-item.coarse.vis-range {
+  border-width: 1px;
   background: var(--paper);
 }
 
@@ -364,7 +364,7 @@ pre.body {
 @media print {
   body {
     padding: 0;
-    font-size: 10pt;
+    font-size: var(--text-print);
   }
 
   header {
@@ -391,7 +391,11 @@ pre.body {
     break-after: avoid;
   }
 
+  /* Each row is a subgrid, so a day's times share one column as wide as its longest. */
   #print .events {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 8em) minmax(0, 1fr);
+    column-gap: var(--space-3);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -399,13 +403,13 @@ pre.body {
 
   #print .events > li {
     display: grid;
-    grid-template-columns: 12em 8em minmax(0, 1fr);
-    column-gap: var(--space-3);
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     padding: var(--space-1) 0;
     break-inside: avoid;
   }
 
-  #print .events > li > :nth-child(n + 3) {
+  #print .events > li > :not(.time, .source) {
     grid-column: 3;
     margin: 0;
   }

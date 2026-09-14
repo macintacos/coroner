@@ -39,3 +39,15 @@ page inlines the file in a `<script>` element, which either would break. Then ru
 `go test ./internal/export`, which fails until the SHA-256 above matches the file, and
 open an exported page in a browser to check the timeline still renders with no network
 requests.
+
+Two parts of `viewer.js` lean on 8.5.4's internals, and an upgrade that breaks either
+still renders a page. It sets the groups again after the first `changed` event, because
+8.5.4 first clusters in a redraw too late to restack the rows, which left clustered events
+hidden until the window moved. And its `clusterCriteria` keeps what it accepts contiguous:
+`getClusters` sorts a row by centre, a range's midpoint, collects the next items that pass
+the criterion against the cluster's first item, and resumes by a count, not a position, so
+a criterion that skips an item inside a run starts a second cluster on an existing member
+and counts it twice. After an upgrade, check that a row of dense events clusters on first
+open without moving the window, and whether it still does with the `setGroups` call
+removed; and, with a range among points in one row, that no event is drawn both alone and
+inside a cluster.

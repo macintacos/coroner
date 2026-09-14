@@ -129,11 +129,17 @@ var _ = Describe("WriteHTML", func() {
 		Expect(string(viewer)).NotTo(MatchRegexp(`\b(innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser)\b|document\.write|\btitle\s*:`))
 	})
 
-	It("has a stylesheet that names no colour, reading each from the theme", func() {
+	It("has a stylesheet that paints only with the theme's tokens", func() {
 		css, err := os.ReadFile("html/viewer.css")
 		Expect(err).NotTo(HaveOccurred())
+		paints := regexp.MustCompile(`(?m)^\s*((?:--)?[a-z-]*(?:color|background|border|outline|shadow|fill|stroke|source)[a-z-]*)\s*:\s*([^;]+);`)
+		themedOrPlain := `^(?:\s+|,|var\(--[a-z0-9-]+\)|-?[\d.]+(?:px|rem|em|pt|%)?|solid|dashed|dotted|none|transparent|inherit)*$`
 
-		Expect(string(css)).NotTo(MatchRegexp(`(?i)#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|light-dark|color-mix)\(|[\s:,(](white|black|gr[ae]y)[\s;,)!]`))
+		declarations := paints.FindAllStringSubmatch(string(css), -1)
+		Expect(len(declarations)).To(BeNumerically(">=", 30))
+		for _, d := range declarations {
+			Expect(d[2]).To(MatchRegexp(themedOrPlain), d[1])
+		}
 	})
 
 	It("inlines the vendored library whose SHA-256 its README records", func() {

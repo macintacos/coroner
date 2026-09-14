@@ -104,16 +104,27 @@
    renders hostile text in the fields the viewer shows and fails when it reaches the
    markup or ends a script or style element early; another fails when `viewer.js` names an
    HTML sink, such as `innerHTML`, or a vis-timeline `title`, which it would parse as
-   HTML; and another when the bundle's SHA-256 is not the one its README records. Every
-   colour the page shows is a token in `internal/export/theme.go`, which `WriteHTML`
-   writes into the page as custom properties with their light, dark and print values, so
-   the SVG export and the terminal viewer can take the same source palette. `viewer.css`
-   names no colour and reads spacing, type and radius from its own `:root` tokens; specs
-   fail on a colour literal in it, on text tokens under WCAG AA contrast and on source
-   colours under 3:1, in either theme. Sources take palette colours by first appearance,
-   and a source's name always shows beside its colour. A cluster never holds a silence of
-   5 minutes or more, the terminal viewer's `gapThreshold`, so a change to one changes
-   both. The page's layout is not a contract (`AGENTS.md` Rule 3); its goldens in
+   HTML; and another when the bundle's SHA-256 is not the one its README records. The
+   page's layout is not a contract (`AGENTS.md` Rule 3); its goldens in
    `internal/export/testdata/html/`, with the inlined files elided, change only through
    `go test ./internal/export -update`. The bundle changes only by the steps in
    [its README](../../internal/export/html/vendor/README.md).
+11. **The HTML viewer's colours live in `theme.go`:** every colour the page shows is a
+    token in `internal/export/theme.go` with a role, background, text or line, and
+    `WriteHTML` writes the tokens into the page as custom properties with their light,
+    dark and print values, so the SVG export can take the same source palette. Sources
+    take palette colours by first appearance among the exported events, and a source's
+    name always shows beside its colour. `viewer.css` names no colour and reads spacing,
+    type sizes and radii from its own `:root` tokens; line-heights stay raw numbers. Specs
+    in `internal/export/theme_internal_test.go` fail when a token or source colour is not
+    a lowercase `#rrggbb`, when a text token is under WCAG AA contrast (4.5:1) on a
+    background token, or a source colour under 3:1 on one, in either theme; line tokens
+    have no contrast floor. A spec in `internal/export/html_test.go` fails when
+    `viewer.css` gives a paint declaration, one whose property names a colour, background,
+    border, outline, shadow, fill, stroke or source, custom properties included, anything
+    but `var(--…)` references, numbers, lengths, commas, `solid`, `dashed`, `dotted`,
+    `none`, `transparent` or `inherit`.
+12. **A cluster never hides a gap:** `clusterCriteria` in `viewer.js` keeps a cluster to
+    points spanning less than 5 minutes, with no range in its row whose midpoint falls
+    within that span, ends included. The 5 minutes are the terminal viewer's
+    `gapThreshold`, so a change to one changes both.
