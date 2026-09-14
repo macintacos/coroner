@@ -43,9 +43,10 @@ type Options struct {
 	// Load reads the timeline again under a match. It validates the match, opens and closes
 	// the database itself, and returns errors whose text is ready to show.
 	Load func(Match) (Snapshot, error)
-	// Blob reads an attachment's content. The viewer calls it off the screen's redraw, and shows
-	// an attachment it cannot read as its placeholder.
-	Blob func(timeline.Attachment) ([]byte, error)
+	// Image reads an image attachment and returns its image: decoded for a terminal that shows
+	// images, or only its size in pixels otherwise. The viewer calls it in a command, never while
+	// rendering, and shows an attachment it cannot read as its placeholder.
+	Image func(timeline.Attachment) (graphics.Image, error)
 	// Location is the zone times show in, and typed times are read in.
 	Location  *time.Location
 	ZoneLabel string // shown verbatim in the header, e.g. "America/New_York" or "local"
@@ -72,12 +73,18 @@ func Run(ctx context.Context, term Terminal, opts Options) error {
 	return err
 }
 
-// onTerminal is m showing images the way term can.
-func onTerminal(term Terminal, m Model) Model {
-	if !term.NoColor {
-		m.graphics = term.Graphics
+// images is how the viewer shows images on t.
+func (t Terminal) images() graphics.Protocol {
+	if t.NoColor {
+		return graphics.None
 	}
 
+	return t.Graphics
+}
+
+// onTerminal is m showing images the way term can.
+func onTerminal(term Terminal, m Model) Model {
+	m.images.protocol = term.images()
 	return m
 }
 
@@ -100,7 +107,7 @@ func colorProfile(term Terminal) colorprofile.Profile {
 	switch {
 	case term.NoColor:
 		return colorprofile.ASCII
-	case term.Graphics == graphics.Kitty:
+	case term.images() == graphics.Kitty:
 		// An image's id travels as a 24-bit color, which ANSI would round to one of 16.
 		return colorprofile.TrueColor
 	}

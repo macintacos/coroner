@@ -2,6 +2,7 @@ package graphics_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"image"
 	"image/color"
 	"image/gif"
@@ -57,25 +58,85 @@ var _ = Describe("Decode", func() {
 		Entry("JPEG", func(b *bytes.Buffer, m image.Image) error { return jpeg.Encode(b, m, nil) }),
 		Entry("GIF", func(b *bytes.Buffer, m image.Image) error { return gif.Encode(b, m, nil) }),
 	)
+})
 
-	It("rejects content that is not a PNG, JPEG or GIF", func() {
-		webp := []byte("RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00")
+var _ = Describe("DecodeSize", func() {
+	DescribeTable("reads the size in pixels, without the PNG",
+		func(encode func(*bytes.Buffer, image.Image) error) {
+			img, err := graphics.DecodeSize(encoded(encode, picture(40, 30)))
 
-		_, err := graphics.Decode(webp)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(img).To(Equal(graphics.Image{Width: 40, Height: 30}))
+		},
+		Entry("PNG", func(b *bytes.Buffer, m image.Image) error { return png.Encode(b, m) }),
+		Entry("JPEG", func(b *bytes.Buffer, m image.Image) error { return jpeg.Encode(b, m, nil) }),
+		Entry("GIF", func(b *bytes.Buffer, m image.Image) error { return gif.Encode(b, m, nil) }),
+	)
+})
 
-		Expect(err).To(MatchError(image.ErrFormat))
-	})
-
-	It("rejects a JPEG too large to decode safely, without decoding it", func() {
-		// A JFIF header claiming 65535×65535 pixels, with no image data behind it.
+// jpegHeader is a JFIF header claiming width×height pixels, with no image data behind it.
+func jpegHeader(width, height uint16) func() []byte {
+	return func() []byte {
 		header := []byte{
 			0xFF, 0xD8, // start of image
 			0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-			0xFF, 0xC0, 0x00, 0x0B, 0x08, 0xFF, 0xFF, 0xFF, 0xFF, 0x01, 0x01, 0x11, 0x00, // baseline frame, one component
+			0xFF, 0xC0, 0x00, 0x0B, 0x08, // baseline frame
 		}
+		header = binary.BigEndian.AppendUint16(header, height)
+		header = binary.BigEndian.AppendUint16(header, width)
 
-		_, err := graphics.Decode(header)
+		return append(header, 0x01, 0x01, 0x11, 0x00) // one component
+	}
+}
 
-		Expect(err).To(MatchError(ContainSubstring("65535×65535")))
-	})
-})
+func grayPNG(width, height int) func() []byte {
+	return func() []byte {
+		return encoded(func(b *bytes.Buffer, m image.Image) error { return png.Encode(b, m) },
+			image.NewGray(image.Rect(0, 0, width, height)))
+	}
+}
+
+var _ = DescribeTableSubtree("Decode and DecodeSize limits",
+	func(decode func([]byte) (graphics.Image, error)) {
+		It("rejects content that is not a PNG, JPEG or GIF", func() {
+			webp := []byte("RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00")
+
+			_, err := decode(webp)
+
+			Expect(err).To(MatchError(image.ErrFormat))
+		})
+
+		DescribeTable("rejects an image too large to decode safely or show, without decoding it",
+			func(content func() []byte, size string) {
+				_, err := decode(content())
+
+				Expect(err).To(MatchError(ContainSubstring(size)))
+			},
+			Entry("a JPEG claiming more pixels than 64 million, under 10000 a side", jpegHeader(9000, 8000), "9000×8000"),
+			Entry("a PNG wider than 10000 pixels", grayPNG(10_001, 1), "10001×1"),
+			Entry("a PNG taller than 10000 pixels", grayPNG(1, 10_001), "1×10001"),
+		)
+
+		It("accepts an image 10000 pixels a side", func() {
+			_, err := decode(grayPNG(10_000, 1)())
+
+			Expect(err).NotTo(HaveOccurred())
+		})
+	},
+	Entry("Decode", graphics.Decode),
+	Entry("DecodeSize", graphics.DecodeSize),
+)
+
+var _ = DescribeTable("Decodable",
+	func(mime string, want bool) {
+		Expect(graphics.Decodable(mime)).To(Equal(want))
+	},
+	Entry("PNG", "image/png", true),
+	Entry("JPEG", "image/jpeg", true),
+	Entry("GIF", "image/gif", true),
+	Entry("a media type with parameters", "image/png; charset=binary", true),
+	Entry("WebP, an image Decode cannot read", "image/webp", false),
+	Entry("SVG", "image/svg+xml", false),
+	Entry("text", "text/plain; charset=utf-8", false),
+	Entry("no media type", "", false),
+)

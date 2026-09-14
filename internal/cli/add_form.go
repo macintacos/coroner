@@ -73,7 +73,7 @@ type formCommand struct {
 
 // attach registers c's flags and --interactive on cmd, and a RunE that asks through forms when
 // formMode opens the form, and otherwise runs flagsOnly.
-func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
+func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool, images graphics.Protocol) askFunc) *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		interactive, _ := cmd.Flags().GetBool("interactive")
 		inputOff := noInput(cmd, app)
@@ -104,7 +104,9 @@ func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool) 
 
 // attach registers f's flags and --interactive on cmd, and a RunE that asks through forms when a
 // field the command requires is missing or --interactive asks, and otherwise runs writeRunE.
-func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
+func (f addForm[R]) attach(
+	ctx context.Context, cmd *cobra.Command, app App, forms func(color bool, images graphics.Protocol) askFunc,
+) *cobra.Command {
 	return formCommand{
 		def:       f.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(f.def, in) },
@@ -138,7 +140,7 @@ func interactiveRefusal(cmd *cobra.Command, inputOff bool) error {
 }
 
 // newFormSession returns the session cmd's form runs in, asking through forms.
-func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc) (formSession, error) {
+func newFormSession(cmd *cobra.Command, app App, forms func(color bool, images graphics.Protocol) askFunc) (formSession, error) {
 	o, err := newOutput(cmd, app)
 	if err != nil {
 		return formSession{}, err
@@ -162,7 +164,7 @@ func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc)
 	}
 
 	return formSession{
-		app: app, cfg: cfg, o: o, ask: forms(color), global: global,
+		app: app, cfg: cfg, o: o, ask: forms(color, images), global: global,
 		thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
 		// A rejected entry is reported to the person at the form, never as a JSON envelope.
 		style: errorStyle{color: colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv)},
@@ -425,12 +427,12 @@ func onlyField(d definition, name string) definition {
 }
 
 // terminalForms returns the askFunc that runs forms on app's terminal, drawing in color when color
-// is true.
-func terminalForms(app App) func(color bool) askFunc {
-	return func(color bool) askFunc {
-		profile := formProfile(color, app.LookupEnv)
-
+// is true, in the profile an attach field needs for the images the terminal shows.
+func terminalForms(app App) func(color bool, images graphics.Protocol) askFunc {
+	return func(color bool, images graphics.Protocol) askFunc {
 		return func(ctx context.Context, fields ...huh.Field) (bool, error) {
+			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
+			profile := formProfile(color, images, attach)
 			cancelled := false
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.

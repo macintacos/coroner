@@ -33,10 +33,14 @@ var _ = Describe("the attach field's thumbnail", func() {
 		Expect(png.Encode(&b, image.NewRGBA(image.Rect(0, 0, width, height)))).To(Succeed())
 		return writeFile(name, b.Bytes())
 	}
+	fieldReading := func(readFile func(string) ([]byte, error), images graphics.Protocol) huh.Field {
+		GinkgoHelper()
+		choices := formChoices{thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(readFile, images)}}
+		return namedField(attach.formFields(formCheckEnv(), fieldValues{}, choices), "attach")
+	}
 	field := func(images graphics.Protocol) huh.Field {
 		GinkgoHelper()
-		choices := formChoices{thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(os.ReadFile, images)}}
-		return namedField(attach.formFields(formCheckEnv(), fieldValues{}, choices), "attach")
+		return fieldReading(os.ReadFile, images)
 	}
 	// add types path into f and enters it, returning every raw sequence the field asks to write.
 	add := func(f huh.Field, path string) string {
@@ -63,6 +67,41 @@ var _ = Describe("the attach field's thumbnail", func() {
 
 		Expect(fieldView(f)).To(ContainSubstring("[file: notes.txt · 5 B]"))
 		Expect(written).To(BeEmpty())
+	})
+
+	It("captions an image it cannot decode as an image, without its size in pixels", func() {
+		f := field(graphics.Kitty)
+		written := add(f, writeFile("x.webp", []byte("RIFF\x00\x00\x00\x00WEBPVP8 ")))
+
+		Expect(fieldView(f)).To(ContainSubstring("[image: x.webp · 16 B]"))
+		Expect(written).To(BeEmpty())
+	})
+
+	It("shows no thumbnail for a path it cannot read, until the file is there", func() {
+		f := field(graphics.Kitty)
+		path := filepath.Join(dir, "later.txt")
+		written := add(f, path)
+
+		Expect(fieldView(f)).NotTo(ContainSubstring("later.txt ·"))
+		Expect(written).To(BeEmpty())
+
+		writeFile("later.txt", []byte("hello"))
+		press(f, tea.KeyUp)
+
+		Expect(fieldView(f)).To(ContainSubstring("[file: later.txt · 5 B]"))
+	})
+
+	It("reads a file once, however often it is picked", func() {
+		reads := 0
+		f := fieldReading(func(name string) ([]byte, error) {
+			reads++
+			return os.ReadFile(name) //nolint:gosec // the spec reads only the file it wrote
+		}, graphics.Kitty)
+		add(f, pngFile("p99.png", 40, 30))
+
+		press(f, tea.KeyUp, tea.KeyDown, tea.KeyUp)
+
+		Expect(reads).To(Equal(1))
 	})
 
 	It("shows the picked value's thumbnail rather than the last one added", func() {
@@ -106,14 +145,14 @@ var _ = Describe("the attach field's thumbnail", func() {
 	})
 
 	DescribeTable("the color profile a form pins",
-		func(color bool, env map[string]string, want colorprofile.Profile) {
-			lookup := func(key string) (string, bool) { value, ok := env[key]; return value, ok }
-			Expect(formProfile(color, lookup)).To(Equal(want))
+		func(color bool, images graphics.Protocol, attach bool, want colorprofile.Profile) {
+			Expect(formProfile(color, images, attach)).To(Equal(want))
 		},
-		Entry("16 colors", true, map[string]string{"TERM_PROGRAM": "Apple_Terminal"}, colorprofile.ANSI),
-		Entry("24-bit color where images show, since an image's id travels as a color",
-			true, map[string]string{"TERM_PROGRAM": "ghostty"}, colorprofile.TrueColor),
-		Entry("no color when color is off, even where images show", false, map[string]string{"TERM_PROGRAM": "ghostty"}, colorprofile.ASCII),
+		Entry("16 colors", true, graphics.None, true, colorprofile.ANSI),
+		Entry("24-bit color for an attach field where images show, since an image's id travels as a color",
+			true, graphics.Kitty, true, colorprofile.TrueColor),
+		Entry("16 colors where images show but no field attaches", true, graphics.Kitty, false, colorprofile.ANSI),
+		Entry("no color when color is off", false, graphics.Kitty, true, colorprofile.ASCII),
 	)
 })
 

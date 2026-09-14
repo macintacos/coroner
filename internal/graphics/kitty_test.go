@@ -48,23 +48,49 @@ var _ = Describe("Cells", func() {
 			Expect(ansi.StringWidth(row)).To(Equal(37))
 		}
 	})
+
+	It("draws no more than the 297 rows and columns a placeholder can name", func() {
+		rows := graphics.Cells(3, graphics.Grid{Cols: 300, Rows: 300})
+
+		Expect(rows).To(HaveLen(297))
+		Expect(ansi.StringWidth(rows[0])).To(Equal(297))
+	})
 })
 
+var _ = DescribeTable("ContentID is never 0 and fits the 24 bits Cells carries",
+	func(content string) {
+		Expect(graphics.ContentID([]byte(content))).To(And(BeNumerically(">", 0), BeNumerically("<", 1<<24)))
+	},
+	Entry("any content", "p99.png"),
+	// SHA-256 of "15001195" starts 0c000000: its low 24 bits of the first four bytes are 0.
+	Entry("content whose hash names id 0", "15001195"),
+)
+
 var _ = DescribeTable("Fit",
-	func(bounds graphics.Grid, cell graphics.Pixels, want graphics.Grid) {
-		img := graphics.Image{Width: 400, Height: 225}
+	func(img graphics.Image, bounds graphics.Grid, cell graphics.Pixels, want graphics.Grid) {
 		Expect(graphics.Fit(img, bounds, cell)).To(Equal(want))
 	},
 	Entry("the full width, rows rounded up to keep the aspect ratio",
-		graphics.Grid{Cols: 40, Rows: 100}, graphics.Pixels{Width: 19, Height: 39}, graphics.Grid{Cols: 40, Rows: 11}),
+		graphics.Image{Width: 8000, Height: 4500}, graphics.Grid{Cols: 40, Rows: 100}, graphics.Pixels{Width: 19, Height: 39},
+		graphics.Grid{Cols: 40, Rows: 11}),
 	Entry("fewer rows than the width needs, narrowing the columns to match",
-		graphics.Grid{Cols: 40, Rows: 5}, graphics.Pixels{Width: 19, Height: 39}, graphics.Grid{Cols: 19, Rows: 5}),
-	Entry("an unknown cell size, taken as twice as tall as wide",
-		graphics.Grid{Cols: 40, Rows: 100}, graphics.Pixels{}, graphics.Grid{Cols: 40, Rows: 12}),
+		graphics.Image{Width: 8000, Height: 4500}, graphics.Grid{Cols: 40, Rows: 5}, graphics.Pixels{Width: 19, Height: 39},
+		graphics.Grid{Cols: 19, Rows: 5}),
 	Entry("a width beyond the 297 cells a placeholder can name",
-		graphics.Grid{Cols: 500, Rows: 1000}, graphics.Pixels{Width: 10, Height: 20}, graphics.Grid{Cols: 297, Rows: 84}),
+		graphics.Image{Width: 8000, Height: 4500}, graphics.Grid{Cols: 500, Rows: 1000}, graphics.Pixels{Width: 10, Height: 20},
+		graphics.Grid{Cols: 297, Rows: 84}),
 	Entry("no room at all, still one cell",
-		graphics.Grid{Cols: 0, Rows: 0}, graphics.Pixels{Width: 10, Height: 20}, graphics.Grid{Cols: 1, Rows: 1}),
+		graphics.Image{Width: 8000, Height: 4500}, graphics.Grid{Cols: 0, Rows: 0}, graphics.Pixels{Width: 10, Height: 20},
+		graphics.Grid{Cols: 1, Rows: 1}),
+	Entry("a small image at its own size in cells, not stretched to the bounds",
+		graphics.Image{Width: 400, Height: 225}, graphics.Grid{Cols: 40, Rows: 100}, graphics.Pixels{Width: 19, Height: 39},
+		graphics.Grid{Cols: 22, Rows: 6}),
+	Entry("an icon smaller than a cell, in one cell",
+		graphics.Image{Width: 16, Height: 16}, graphics.Grid{Cols: 40, Rows: 100}, graphics.Pixels{Width: 19, Height: 39},
+		graphics.Grid{Cols: 1, Rows: 1}),
+	Entry("an unknown cell size, taken as twice as tall as wide, stretching a small image to the bounds",
+		graphics.Image{Width: 400, Height: 225}, graphics.Grid{Cols: 40, Rows: 100}, graphics.Pixels{},
+		graphics.Grid{Cols: 40, Rows: 12}),
 )
 
 var _ = Describe("Fit on a tall, narrow image", func() {

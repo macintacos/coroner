@@ -1,7 +1,9 @@
 package graphics
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,8 +25,15 @@ type Pixels struct {
 	Width, Height int
 }
 
+// ContentID names content to the terminal by its SHA-256: 24 bits, never 0.
+func ContentID(content []byte) uint32 {
+	sum := sha256.Sum256(content)
+	return max(binary.BigEndian.Uint32(sum[:4])&0xFFFFFF, 1)
+}
+
 // Transmit returns the sequences that send png to the terminal as the image with id, without
-// showing it.
+// showing it. It asks the terminal for no reply (q=2), which the program would otherwise read as
+// input. id must be in 1..(1<<24)-1.
 func Transmit(id uint32, png []byte) string {
 	payload := base64.StdEncoding.EncodeToString(png)
 	var b strings.Builder
@@ -47,15 +56,18 @@ func Transmit(id uint32, png []byte) string {
 }
 
 // Place returns the sequence that shows the image with id wherever Cells for it are drawn,
-// scaled into g. A later Place for the same image replaces it.
+// scaled into g. A later Place for the same image replaces it. id must be in 1..(1<<24)-1.
 func Place(id uint32, g Grid) string {
 	return ansi.KittyGraphics(nil, "a=p", "U=1", "i="+strconv.FormatUint(uint64(id), 10), "p=1",
 		"c="+strconv.Itoa(g.Cols), "r="+strconv.Itoa(g.Rows), "q=2")
 }
 
 // Cells returns g's rows of placeholders showing the image with id, each naming its row and
-// column, colored with the id, which the terminal reads back from the foreground color.
+// column, colored with the id, which the terminal reads back from the foreground color. id must be
+// in 1..(1<<24)-1, the 24 bits the color carries, and g is clamped to the 297 rows and columns a
+// placeholder can name.
 func Cells(id uint32, g Grid) []string {
+	g = Grid{Cols: min(g.Cols, maxCells), Rows: min(g.Rows, maxCells)}
 	color := fmt.Sprintf("\x1b[38;2;%d;%d;%dm", id>>16&0xFF, id>>8&0xFF, id&0xFF)
 	rows := make([]string, g.Rows)
 	for r := range g.Rows {
@@ -74,14 +86,19 @@ func Cells(id uint32, g Grid) []string {
 }
 
 // Fit returns the grid, within bounds, that shows img as wide as it can at its own aspect ratio in
-// cells of cell pixels. A zero cell size counts as twice as tall as wide.
+// cells of cell pixels, and no larger than img's own size in those cells. A zero cell size counts
+// as twice as tall as wide and leaves img's own size uncapped.
 func Fit(img Image, bounds Grid, cell Pixels) Grid {
+	cols := min(max(bounds.Cols, 1), maxCells)
+	maxRows := min(max(bounds.Rows, 1), maxCells)
 	if cell.Width <= 0 || cell.Height <= 0 {
 		cell = Pixels{Width: 1, Height: 2}
+	} else {
+		cols = min(cols, max(ceilDiv(img.Width, cell.Width), 1))
+		maxRows = min(maxRows, max(ceilDiv(img.Height, cell.Height), 1))
 	}
-	cols := min(max(bounds.Cols, 1), maxCells)
 	rows := max(ceilDiv(cols*cell.Width*img.Height, img.Width*cell.Height), 1)
-	if maxRows := min(max(bounds.Rows, 1), maxCells); rows > maxRows {
+	if rows > maxRows {
 		rows = maxRows
 		cols = min(cols, max(ceilDiv(rows*cell.Height*img.Width, img.Height*cell.Width), 1))
 	}

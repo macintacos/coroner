@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -51,8 +52,8 @@ var _ = Describe("timeline forms", func() {
 
 	// answers returns forms that answer each ask in turn with the next of answers, recording what
 	// each ask showed.
-	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool) askFunc {
-		return func(bool) askFunc {
+	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+		return func(bool, graphics.Protocol) askFunc {
 			return func(_ context.Context, fields ...huh.Field) (bool, error) {
 				GinkgoHelper()
 				asked = append(asked, fields)
@@ -101,7 +102,7 @@ var _ = Describe("timeline forms", func() {
 	})
 
 	Describe("timeline create", func() {
-		create := func(ctx SpecContext, forms func(bool) askFunc) *cobra.Command {
+		create := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
 			command := &cobra.Command{Use: "create", Annotations: map[string]string{formatsAnnotation: "text,json"}}
 			return timelineCreateForm(ctx, appOn()).attach(command, appOn(), forms)
 		}
@@ -215,7 +216,7 @@ var _ = Describe("timeline forms", func() {
 	})
 
 	Describe("timeline edit", func() {
-		edit := func(ctx SpecContext, forms func(bool) askFunc) *cobra.Command {
+		edit := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
 			command := &cobra.Command{Use: "edit", Annotations: map[string]string{formatsAnnotation: "text,json"}}
 			return timelineEditForm(ctx, appOn()).attach(command, appOn(), forms)
 		}

@@ -10,6 +10,8 @@ A flag wins over its environment variable, and an environment variable wins over
 config file. An empty `CORONER_*` variable counts as unset, and so does an `XDG_*`
 variable that is empty or not an absolute path.
 
+Images show inline only with color on and outside a multiplexer.
+
 | Variable | Effect |
 | --- | --- |
 | `CORONER_DB` | The database file, as `--db` sets it |
@@ -20,7 +22,7 @@ variable that is empty or not an absolute path.
 | `NO_COLOR`, `CORONER_NO_COLOR` | Any non-empty value disables color, as `--no-color` does |
 | `TERM` | `dumb` disables color, the forms, the picker and the viewer; `xterm-kitty` or `xterm-ghostty` shows images inline, and a `tmux` or `screen` value shows placeholders instead |
 | `KITTY_WINDOW_ID` | Set by kitty: images show inline |
-| `TERM_PROGRAM`, `TERM_PROGRAM_VERSION` | `ghostty`, or `iTerm.app` at version 3.7 or later, shows images inline |
+| `TERM_PROGRAM`, `TERM_PROGRAM_VERSION` | `ghostty`, or `iTerm.app` at version 3.7 or later, shows images inline; another program, such as `vscode`, shows placeholders whatever the other variables say |
 | `LC_TERMINAL`, `LC_TERMINAL_VERSION` | `iTerm2` at version 3.7 or later, as iTerm2 passes it through ssh, shows images inline |
 | `TMUX`, `STY`, `ZELLIJ` | Set inside tmux, screen or Zellij: images show as placeholders, since the multiplexer drops them |
 | `TZ` | The local time zone, used when neither `--tz` nor `default_timezone` names one |

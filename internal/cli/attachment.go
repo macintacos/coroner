@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -260,7 +260,7 @@ type attachResult struct {
 // it by, or what a dry run would attach.
 func (r attachResult) notify(o output) error {
 	for _, a := range r.added {
-		details := fmt.Sprintf("(sha256 %s…, %s, %s)", a.SHA256[:8], formatSize(a.Size), a.MIME)
+		details := fmt.Sprintf("(sha256 %s…, %s, %s)", a.SHA256[:8], graphics.ByteSize(a.Size), a.MIME)
 		var err error
 		if r.dryRun {
 			err = o.notify("Would attach %s %s", a.Filename, details)
@@ -273,18 +273,6 @@ func (r attachResult) notify(o output) error {
 	}
 
 	return nil
-}
-
-// formatSize returns size, in bytes, as people read it: in B, KB, MB or GB, rounded.
-func formatSize(size int64) string {
-	units := []string{"B", "KB", "MB", "GB"}
-	value, unit := float64(size), 0
-	for math.Round(value) >= 1000 && unit < len(units)-1 {
-		value /= 1000
-		unit++
-	}
-
-	return fmt.Sprintf("%.0f %s", value, units[unit])
 }
 
 // attachmentJSON is the CLI's attachment object's keys, every one always present; id and path are

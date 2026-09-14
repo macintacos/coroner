@@ -56,19 +56,11 @@ type loadedMsg struct {
 	seq      int
 }
 
-// imageMsg is the image attachment attachmentID holds, or why it cannot show.
+// imageMsg is the image attachmentID holds, or why it could not be read.
 type imageMsg struct {
 	attachmentID string
 	img          graphics.Image
 	err          error
-}
-
-// shownImage is an image attachment once read: its size in pixels, unknown when it could not be
-// read, and, once sent to the terminal, the id naming it there and the grid it is placed in.
-type shownImage struct {
-	img  graphics.Image
-	id   uint32
-	grid graphics.Grid
 }
 
 // Model is the viewer's state; build it with New.
@@ -86,17 +78,7 @@ type Model struct {
 	attachments map[string][]timeline.Attachment
 	// expanded holds the ids of the events whose annotations and attachments show.
 	expanded map[string]bool
-	graphics graphics.Protocol
-	// images holds the image attachments read or being read, by attachment id, and sent the id
-	// last sent to the terminal.
-	images map[string]shownImage
-	sent   uint32
-	// answered is whether the terminal has answered the attributes query Init sends, so it has
-	// read the first frame, which switches to the alternate screen: an image sent to the main
-	// screen never shows on the alternate one.
-	answered bool
-	// cell is the terminal's cell size in pixels, zero until it reports one.
-	cell graphics.Pixels
+	images   inlineImages
 	// lines are the event list's lines and blocks[i] where event i's sit in them, rebuilt only
 	// when the snapshot, width or expanded events change.
 	lines    []string
@@ -121,7 +103,7 @@ func New(opts Options) Model {
 	m := Model{
 		opts:     opts,
 		expanded: map[string]bool{},
-		images:   map[string]shownImage{},
+		images:   inlineImages{shown: map[string]shownImage{}},
 		input:    textinput.New(),
 		keys:     newKeyMap(),
 		help:     help.New(),
@@ -137,7 +119,7 @@ func New(opts Options) Model {
 // Init asks a terminal that shows images for its cell size and then its attributes, which every
 // terminal answers; the first snapshot arrives through Options.
 func (m Model) Init() tea.Cmd {
-	if m.graphics != graphics.Kitty {
+	if m.images.protocol != graphics.Kitty {
 		return nil
 	}
 
@@ -151,13 +133,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m.placeImages()
 	case uv.CellSizeEvent:
-		m.cell = graphics.Pixels{Width: msg.Width, Height: msg.Height}
+		m.images.cell = graphics.Pixels{Width: msg.Width, Height: msg.Height}
 		return m.placeImages()
 	case uv.PrimaryDeviceAttributesEvent:
-		m.answered = true
+		m.images.answered = true
 		return m.sendImages()
 	case loadedMsg:
-		return m.loaded(msg), nil
+		return m.loaded(msg)
 	case imageMsg:
 		return m.imageRead(msg)
 	case tea.KeyPressMsg:
@@ -213,15 +195,11 @@ func (m Model) listKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.showHelp = true
 		return m, nil
 	case key.Matches(msg, m.keys.annotations):
-		var read tea.Cmd
 		if len(m.snapshot.Events) > 0 {
 			id := m.snapshot.Events[m.cursor].ID
 			m.expanded[id] = !m.expanded[id]
-			if m.expanded[id] {
-				read = m.readImages(id)
-			}
 		}
-		return m.render(), read
+		return m.render().readImages()
 	}
 
 	return m.moveTo(m.cursor + m.movement(msg)), nil
@@ -358,18 +336,19 @@ func (m Model) load(match Match) (Model, tea.Cmd) {
 	}
 }
 
-func (m Model) loaded(msg loadedMsg) Model {
+// loaded shows the snapshot msg read, and reads the images it gained on expanded events.
+func (m Model) loaded(msg loadedMsg) (Model, tea.Cmd) {
 	switch {
 	case msg.seq != m.seq:
-		return m
+		return m, nil
 	case msg.err != nil:
 		m.problem = failure(msg.err)
 		m.pending = m.match
-		return m.scroll()
+		return m.scroll(), nil
 	}
 
 	m.problem = ""
-	return m.show(msg.snapshot, msg.match)
+	return m.show(msg.snapshot, msg.match).readImages()
 }
 
 // show replaces what the viewer shows, keeping the cursor on its event when the snapshot still
@@ -430,7 +409,7 @@ func (m Model) moveTo(i int) Model {
 }
 
 // scroll sizes the event list to the window and scrolls it so the cursor event, the rules above
-// it and its annotations show.
+// it and its annotations and attachments show.
 func (m Model) scroll() Model {
 	m.body.SetWidth(m.width)
 	m.body.SetHeight(m.bodyHeight())
@@ -454,65 +433,55 @@ func (m Model) bodyHeight() int {
 	return max(m.height-lipgloss.Height(m.header())-lipgloss.Height(m.footer()), 1)
 }
 
-// readImages starts reading each image attachment on the event with eventID or its annotations
-// that has not been read yet.
-func (m Model) readImages(eventID string) tea.Cmd {
-	owned := slices.Clone(m.attachments[eventID])
-	for _, a := range m.annotations[eventID] {
-		owned = append(owned, m.attachments[a.ID]...)
+// readImages starts reading, one at a time, each image attachment on an expanded event or its
+// annotations that has not been read yet.
+func (m Model) readImages() (Model, tea.Cmd) {
+	var toRead []timeline.Attachment
+	m.images, toRead = m.images.toRead(m.expandedAttachments())
+	reads := make([]tea.Cmd, 0, len(toRead))
+	for _, a := range toRead {
+		reads = append(reads, readImage(m.opts.Image, a))
 	}
 
-	var reads []tea.Cmd
-	for _, a := range owned {
-		if _, seen := m.images[a.ID]; seen || !isImage(a) {
-			continue
-		}
-		m.images[a.ID] = shownImage{}
-		reads = append(reads, readImage(m.opts.Blob, a))
-	}
-
-	return tea.Batch(reads...)
+	return m, tea.Sequence(reads...)
 }
 
-func readImage(blob func(timeline.Attachment) ([]byte, error), a timeline.Attachment) tea.Cmd {
-	return func() tea.Msg {
-		content, err := blob(a)
-		if err != nil {
-			return imageMsg{attachmentID: a.ID, err: err}
+// expandedAttachments are the attachments on each expanded event and its annotations, in the order
+// they show.
+func (m Model) expandedAttachments() []timeline.Attachment {
+	var owned []timeline.Attachment
+	for _, e := range m.snapshot.Events {
+		if !m.expanded[e.ID] {
+			continue
 		}
-		img, err := graphics.Decode(content)
+		owned = append(owned, m.attachments[e.ID]...)
+		for _, a := range m.annotations[e.ID] {
+			owned = append(owned, m.attachments[a.ID]...)
+		}
+	}
 
+	return owned
+}
+
+func readImage(image func(timeline.Attachment) (graphics.Image, error), a timeline.Attachment) tea.Cmd {
+	return func() tea.Msg {
+		img, err := image(a)
 		return imageMsg{attachmentID: a.ID, img: img, err: err}
 	}
 }
 
-// imageRead keeps the image msg read, or nothing of it when it could not be read, and sends it.
+// imageRead keeps the image msg read, or that it failed, and sends it.
 func (m Model) imageRead(msg imageMsg) (Model, tea.Cmd) {
-	shown := shownImage{}
-	if msg.err == nil {
-		shown.img = msg.img
-	}
-	m.images[msg.attachmentID] = shown
-
+	m.images = m.images.read(msg.attachmentID, msg.img, msg.err)
 	return m.sendImages()
 }
 
 // sendImages rebuilds the event list and, once a terminal that shows images has answered, sends
-// it each image read and not sent yet.
+// it each image read and not sent yet, in snapshot order, so ids are assigned deterministically.
 func (m Model) sendImages() (Model, tea.Cmd) {
-	var sends strings.Builder
-	for _, a := range m.snapshot.Attachments {
-		shown := m.images[a.ID]
-		if m.graphics != graphics.Kitty || !m.answered || shown.img.PNG == nil || shown.id != 0 {
-			continue
-		}
-		m.sent++
-		shown.id, shown.grid = m.sent, m.gridFor(a, shown.img)
-		m.images[a.ID] = shown
-		sends.WriteString(graphics.Transmit(shown.id, shown.img.PNG) + graphics.Place(shown.id, shown.grid))
-	}
-
-	return m.render(), raw(sends.String())
+	var sends string
+	m.images, sends = m.images.send(m.snapshot.Attachments, m.gridFor)
+	return m.render(), raw(sends)
 }
 
 // raw is the command writing seq to the terminal, or nil for an empty seq.
@@ -527,27 +496,16 @@ func raw(seq string) tea.Cmd {
 // placeImages rebuilds the event list and places each image sent to the terminal again whose
 // grid the window or cell size changed.
 func (m Model) placeImages() (Model, tea.Cmd) {
-	var places strings.Builder
-	for _, a := range m.snapshot.Attachments {
-		shown, ok := m.images[a.ID]
-		if !ok || shown.id == 0 {
-			continue
-		}
-		if grid := m.gridFor(a, shown.img); grid != shown.grid {
-			shown.grid = grid
-			m.images[a.ID] = shown
-			places.WriteString(graphics.Place(shown.id, grid))
-		}
-	}
-
-	return m.render(), raw(places.String())
+	var places string
+	m.images, places = m.images.place(m.snapshot.Attachments, m.gridFor)
+	return m.render(), raw(places)
 }
 
 // gridFor is the grid attachment a shows img in: as wide as the window leaves beside its lines'
-// indent, and no taller than the event list less its caption.
+// indent, and no taller than half the event list, since no key scrolls within an event's lines.
 func (m Model) gridFor(a timeline.Attachment, img graphics.Image) graphics.Grid {
-	bounds := graphics.Grid{Cols: m.width - attachmentIndentWidth(a), Rows: m.bodyHeight() - 1}
-	return graphics.Fit(img, bounds, m.cell)
+	bounds := graphics.Grid{Cols: m.width - attachmentIndentWidth(a), Rows: max(m.bodyHeight()/2, 1)}
+	return graphics.Fit(img, bounds, m.images.cell)
 }
 
 // View draws the header, the event list or the key help, the message line and the short help.

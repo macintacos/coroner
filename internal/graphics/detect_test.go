@@ -47,4 +47,10 @@ var _ = DescribeTable("Detect",
 	Entry("a screen TERM", map[string]string{"TERM": "screen-256color", "TERM_PROGRAM": "ghostty"}, graphics.None),
 	Entry("Zellij, inside Ghostty", map[string]string{"ZELLIJ": "0", "TERM_PROGRAM": "ghostty"}, graphics.None),
 	Entry("an empty TMUX, as a shell that left tmux keeps it", map[string]string{"TMUX": "", "TERM": "xterm-kitty"}, graphics.Kitty),
+
+	Entry("VS Code launched from kitty, which keeps KITTY_WINDOW_ID", map[string]string{"TERM_PROGRAM": "vscode", "KITTY_WINDOW_ID": "1"}, graphics.None),
+	Entry("another program under a kitty TERM", map[string]string{"TERM_PROGRAM": "vscode", "TERM": "xterm-kitty"}, graphics.None),
+	Entry("another program under a Ghostty TERM", map[string]string{"TERM_PROGRAM": "vscode", "TERM": "xterm-ghostty"}, graphics.None),
+	Entry("another program over ssh from iTerm2", map[string]string{"TERM_PROGRAM": "vscode", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.7.1"}, graphics.None),
+	Entry("Ghostty with a KITTY_WINDOW_ID left over", map[string]string{"TERM_PROGRAM": "ghostty", "KITTY_WINDOW_ID": "1"}, graphics.Kitty),
 )

@@ -21,18 +21,21 @@ const (
 
 // Detect returns the protocol the terminal lookupEnv describes can show images through, from
 // environment hints alone. A multiplexer shows none, since it swallows graphics escapes unless
-// configured to pass them through.
+// configured to pass them through. So does any TERM_PROGRAM other than Ghostty or iTerm2, since a
+// terminal started from kitty or Ghostty, such as VS Code's, inherits their hints.
 func Detect(lookupEnv func(string) (string, bool)) Protocol {
 	term := env(lookupEnv, "TERM")
+	program := env(lookupEnv, "TERM_PROGRAM")
 	switch {
 	case env(lookupEnv, "TMUX") != "", env(lookupEnv, "STY") != "", env(lookupEnv, "ZELLIJ") != "",
 		strings.HasPrefix(term, "tmux"), strings.HasPrefix(term, "screen"):
 		return None
-	case env(lookupEnv, "KITTY_WINDOW_ID") != "", term == "xterm-kitty",
-		env(lookupEnv, "TERM_PROGRAM") == "ghostty", term == "xterm-ghostty":
+	case program != "" && program != "ghostty" && program != "iTerm.app":
+		return None
+	case env(lookupEnv, "KITTY_WINDOW_ID") != "", term == "xterm-kitty", program == "ghostty", term == "xterm-ghostty":
 		return Kitty
-	case env(lookupEnv, "TERM_PROGRAM") == "iTerm.app" && atLeast37(env(lookupEnv, "TERM_PROGRAM_VERSION")),
-		env(lookupEnv, "LC_TERMINAL") == "iTerm2" && atLeast37(env(lookupEnv, "LC_TERMINAL_VERSION")):
+	case program == "iTerm.app" && iTermHasKittyPlaceholders(env(lookupEnv, "TERM_PROGRAM_VERSION")),
+		env(lookupEnv, "LC_TERMINAL") == "iTerm2" && iTermHasKittyPlaceholders(env(lookupEnv, "LC_TERMINAL_VERSION")):
 		return Kitty
 	}
 
@@ -44,9 +47,9 @@ func env(lookupEnv func(string) (string, bool), key string) string {
 	return value
 }
 
-// atLeast37 reports whether version, such as 3.7.1 or 3.7.0beta6, is iTerm2 3.7 or later, the
-// first with Kitty graphics.
-func atLeast37(version string) bool {
+// iTermHasKittyPlaceholders reports whether iTerm2 version, such as 3.7.1 or 3.7.0beta6, is 3.7
+// or later.
+func iTermHasKittyPlaceholders(version string) bool {
 	majorText, rest, _ := strings.Cut(version, ".")
 	minorText, _, _ := strings.Cut(rest, ".")
 	major, err := strconv.Atoi(majorText)

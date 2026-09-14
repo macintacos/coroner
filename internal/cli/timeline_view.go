@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -29,8 +30,8 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 			"show the timeline CORONER_TIMELINE or 'coroner timeline use' selects.\n\n" +
 			"On a terminal it opens an interactive viewer, where ? lists the keys and q quits.\n" +
 			"Expanding an event shows its attachments: images inline in kitty, Ghostty and iTerm2 3.7 or\n" +
-			"later, outside tmux and with color on, and elsewhere a placeholder naming each file, which\n" +
-			"'coroner attachment export' copies out.\n" +
+			"later, outside a multiplexer such as tmux and with color on, and elsewhere a placeholder\n" +
+			"naming each file, which 'coroner attachment export' copies out.\n" +
 			"--format text, piping the output, --no-input or CORONER_NO_INPUT prints plain text instead:\n" +
 			"a summary, then the events, each with the gap since the event before it. --source, --tag and\n" +
 			"--contains keep the events 'coroner event list' keeps with the same flags; --json prints the\n" +
@@ -107,16 +108,19 @@ func viewTimeline(
 	}
 
 	noColor, _ := cmd.Flags().GetBool("no-color")
-	logger, flush := viewerDiagnostics(app)
-	term := viewer.Terminal{
-		In: app.In, Out: app.Out, NoColor: !colorEnabled(app.OutIsTTY, noColor, app.LookupEnv),
-		Graphics: graphics.Detect(app.LookupEnv),
+	_, debug := errorStyleFor(app)
+	logger, flush := viewerDiagnostics(debug, app.Err)
+	color := colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)
+	images := graphics.None
+	if color {
+		images = graphics.Detect(app.LookupEnv)
 	}
+	term := viewer.Terminal{In: app.In, Out: app.Out, NoColor: !color, Graphics: images}
 	err = viewer.Run(ctx, term, viewer.Options{
 		Snapshot: snapshot,
 		Match:    viewer.Match{Sources: filter.Sources, Tags: filter.Tags, Contains: filter.Contains},
 		Load:     timelineLoader(ctx, app, cfg.DBPath, snapshot.Timeline.ID),
-		Blob:     blobReader(ctx, app, cfg.DBPath, logger),
+		Image:    imageReader(app.ReadFile, cfg.DBPath, images, logger),
 		Location: z.loc, ZoneLabel: z.label, Now: app.Now,
 	})
 	err = errors.Join(err, flush())
@@ -161,33 +165,65 @@ func timelineLoader(ctx context.Context, app App, path, timelineID string) func(
 }
 
 // viewerDiagnostics returns a logger for debug detail found while the viewer holds the screen,
-// and a flush that writes what it logged to app.Err once the viewer has closed. Without --debug
-// or CORONER_DEBUG it logs nothing.
-func viewerDiagnostics(app App) (*slog.Logger, func() error) {
-	_, debug := errorStyleFor(app)
+// and a flush that writes what it logged to errOut once the viewer has closed. Without debug it
+// logs nothing.
+func viewerDiagnostics(debug bool, errOut io.Writer) (*slog.Logger, func() error) {
 	if !debug {
 		return slog.New(slog.DiscardHandler), func() error { return nil }
 	}
 
-	var logged bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logged := &lockedBuffer{}
+	logger := slog.New(slog.NewTextHandler(logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	return logger, func() error {
-		_, err := app.Err.Write(logged.Bytes())
+		_, err := logged.WriteTo(errOut)
 		return err
 	}
 }
 
-// blobReader returns the viewer's Blob for the database at path: it reads an attachment's blob,
-// logging why it could not.
-func blobReader(ctx context.Context, app App, path string, logger *slog.Logger) func(timeline.Attachment) ([]byte, error) {
-	return func(a timeline.Attachment) ([]byte, error) {
-		content, err := app.ReadFile(store.BlobPath(path, a.SHA256))
+// lockedBuffer is a buffer a flush can drain while commands still write to it: bubbletea does not
+// wait for their goroutines when the viewer closes.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) WriteTo(w io.Writer) (int64, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.b.WriteTo(w)
+}
+
+// imageReader returns the viewer's Image for the database at path: it reads an attachment's blob
+// and decodes it when protocol shows images, or reads only its size otherwise, logging why it
+// could not.
+func imageReader(
+	readFile func(string) ([]byte, error), path string, protocol graphics.Protocol, logger *slog.Logger,
+) func(timeline.Attachment) (graphics.Image, error) {
+	decode := graphics.DecodeSize
+	if protocol == graphics.Kitty {
+		decode = graphics.Decode
+	}
+
+	return func(a timeline.Attachment) (graphics.Image, error) {
+		content, err := readFile(store.BlobPath(path, a.SHA256))
+		img := graphics.Image{}
+		if err == nil {
+			img, err = decode(content)
+		}
 		if err != nil {
-			logger.DebugContext(ctx, "attachment blob unreadable", "attachment", a.ID, "sha256", a.SHA256, "error", err)
+			logger.Debug("attachment image not shown", "attachment", a.ID, "sha256", a.SHA256, "error", err)
 		}
 
-		return content, err
+		return img, err
 	}
 }
 

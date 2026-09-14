@@ -17,7 +17,7 @@ func newKeyMap() keyMap {
 		pageDown:    key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdn", "page down")),
 		top:         key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g/home", "first")),
 		bottom:      key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G/end", "last")),
-		annotations: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "annotations")),
+		annotations: key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "expand")),
 		source:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "source")),
 		tag:         key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "tag")),
 		contains:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "text")),

@@ -24,11 +24,12 @@
    America/New_York, with a fixed clock and escape sequences stripped. Rewrite them only
    with `go test ./internal/viewer -update`, and read the diff before committing it.
 6. **Images leave only through `tea.Raw`, and only once the terminal has answered:** the
-   renderer drops any escape sequence in `View()`, so an image shows through
-   `graphics.Cells`, placeholder text the renderer redraws like any other, after
-   `graphics.Transmit` and `graphics.Place` went out through `tea.Raw`. Send nothing
-   before the reply to the attributes query `Init` sends: until the terminal reads the
-   first frame it is on its main screen, and an image sent there never shows on the
-   alternate one. Attachment content is read through `Options.Blob` in a command, never
-   while rendering, and an attachment that cannot be read or shown is its placeholder
-   text, never an error. Only `internal/graphics` decides which terminals show images.
+   renderer drops escape sequences in `View()`. `graphics.Transmit` and `graphics.Place`
+   go out through `tea.Raw`, and the image then shows through `graphics.Cells`,
+   placeholder text the renderer redraws like any other. Send nothing before the reply to
+   the attributes query `Init` sends: until the terminal reads the first frame it is on
+   its main screen, and an image sent there never shows on the alternate one. An image
+   attachment is read through `Options.Image` in a command, one at a time, never while
+   rendering, and an attachment that cannot be read or shown is its placeholder text,
+   never an error. Only `internal/graphics` decides which terminals and which attachments
+   show images; `Terminal` turns them off without color.

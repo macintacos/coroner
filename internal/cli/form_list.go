@@ -58,6 +58,9 @@ func newListField(input *huh.Input, help string, values []string, check func(str
 
 // withThumbnail returns l showing thumbnail's lines under its value.
 func (l *listField) withThumbnail(thumbnail func(value string) (string, tea.Cmd)) *listField {
+	if thumbnail == nil {
+		return l
+	}
 	l.thumbnail = thumbnail
 	l.show()
 

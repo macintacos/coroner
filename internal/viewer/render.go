@@ -233,14 +233,13 @@ func (m Model) annotationLines(eventID string) []string {
 			mark, label, style = "│", "comment", m.styles.comment
 		}
 
-		head := annotationHead(mark, label)
-		under := strings.Repeat(" ", lipgloss.Width(head)-lipgloss.Width(mark))
+		head, under := annotationHead(mark, label), expandedIndent+annotationIndent(style.Render(mark))
 		body := strings.Split(printable(a.Body), "\n")
 		lines = append(lines, m.fit(expandedIndent+style.Render(head)+body[0]+m.styles.faint.Render(attribution(a))))
 		for _, line := range body[1:] {
-			lines = append(lines, m.fit(expandedIndent+style.Render(mark)+under+line))
+			lines = append(lines, m.fit(under+line))
 		}
-		lines = append(lines, m.attachmentLines(m.attachments[a.ID], expandedIndent+style.Render(mark)+under)...)
+		lines = append(lines, m.attachmentLines(m.attachments[a.ID], under)...)
 	}
 
 	return lines
@@ -251,16 +250,22 @@ func annotationHead(mark, label string) string {
 	return fmt.Sprintf("%s %-8s  ", mark, label)
 }
 
+// annotationIndent is what starts an annotation's lines under its head: its mark, then blanks to
+// where its body starts, which is as far for every kind.
+func annotationIndent(mark string) string {
+	return mark + strings.Repeat(" ", lipgloss.Width(annotationHead("", "")))
+}
+
 // attachmentLines are attachments, each after prefix: an image sent to the terminal as its
 // placeholder cells over its caption, anything else as its placeholder text.
 func (m Model) attachmentLines(attachments []timeline.Attachment, prefix string) []string {
 	var lines []string
 	for _, a := range attachments {
-		shown := m.images[a.ID]
+		shown := m.images.shown[a.ID]
 		caption := graphics.Caption{
 			Filename: a.Filename, Size: a.Size, Width: shown.img.Width, Height: shown.img.Height, Image: isImage(a),
 		}
-		if shown.id == 0 {
+		if shown.state != imageSent {
 			lines = append(lines, m.fit(prefix+m.styles.faint.Render(caption.Placeholder())))
 			continue
 		}
@@ -275,11 +280,11 @@ func (m Model) attachmentLines(attachments []timeline.Attachment, prefix string)
 }
 
 // attachmentIndentWidth is how far in a's lines start: under its event, or under its
-// annotation's head.
+// annotation's head, whose one-cell mark is any kind's.
 func attachmentIndentWidth(a timeline.Attachment) int {
 	width := lipgloss.Width(expandedIndent)
 	if a.Owner.AnnotationID != nil {
-		width += lipgloss.Width(annotationHead("▌", "evidence"))
+		width += lipgloss.Width(annotationIndent("▌"))
 	}
 
 	return width
