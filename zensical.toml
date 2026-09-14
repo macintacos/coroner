@@ -8,7 +8,10 @@ repo_name        = "macintacos/coroner"
 # Unlisted pages, such as every CLI page but coroner.md, are still built and searchable.
 nav = [
   { "Home" = "index.md" },
-  { "Tutorial" = "tutorial/index.md" },
+  { "Tutorial" = [
+    "tutorial/index.md",
+    { "Your first timeline" = "tutorial/first-timeline.md" },
+  ] },
   { "How-to guides" = [
     "how-to/index.md",
     { "Install coroner" = "how-to/install.md" },
