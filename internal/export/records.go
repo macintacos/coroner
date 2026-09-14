@@ -62,7 +62,7 @@ func (a Attachment) line() any {
 
 // Records returns env's records in export order: the header; the timelines, by name; the
 // annotations on no event, by created at then id; the sources, by name; then the events, by
-// occurred at, seq, then id, each followed by its annotations, by created at then id. Every
+// occurred at, timeline id, seq, then id, each followed by its annotations, by created at then id. Every
 // event and annotation is followed by its attachments, by created at then id, before anything
 // else. env's own list order does not matter. It fails when an annotation's event, or an
 // attachment's event or annotation, is not in env.
@@ -171,7 +171,8 @@ func compareAttachments(a, b Attachment) int {
 
 func compareEvents(a, b Event) int {
 	return cmp.Or(
-		time.Time(a.OccurredAt).Compare(time.Time(b.OccurredAt)), cmp.Compare(deref(a.Seq), deref(b.Seq)), cmp.Compare(a.ID, b.ID),
+		time.Time(a.OccurredAt).Compare(time.Time(b.OccurredAt)), cmp.Compare(a.TimelineID, b.TimelineID),
+		cmp.Compare(deref(a.Seq), deref(b.Seq)), cmp.Compare(a.ID, b.ID),
 	)
 }
 

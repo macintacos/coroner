@@ -156,6 +156,18 @@ var _ = Describe("Records", func() {
 		Expect(labels(records)).To(Equal([]string{"header", "timeline t2", "timeline t1"}))
 	})
 
+	It("orders events of several timelines at one instant by timeline id, then seq", func() {
+		env := export.NewEnvelope("0.1.0", at(9, 0))
+		b1, a2, a1 := event("b1", 1, at(3, 14)), event("a2", 2, at(3, 14)), event("a1", 1, at(3, 14))
+		b1.TimelineID, a2.TimelineID, a1.TimelineID = "tb", "ta", "ta"
+		env.Events = []export.Event{b1, a2, a1}
+
+		records, err := export.Records(env)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(labels(records)).To(Equal([]string{"header", "event a1", "event a2", "event b1"}))
+	})
+
 	DescribeTable("orders events tying on occurred at and seq by id, whatever their input order",
 		func(ids ...string) {
 			env := export.NewEnvelope("0.1.0", at(9, 0))

@@ -16,19 +16,20 @@ var _ = Describe("buildEventQuery", func() {
 		const hostile = "'); DROP TABLE event; --"
 		since := time.Date(2026, 9, 12, 14, 0, 0, 0, time.UTC)
 		f := store.EventFilter{
-			Since:    &since,
-			Until:    new(since.Add(time.Hour)),
-			Sources:  []string{hostile, hostile + "2"},
-			Tags:     []string{hostile, hostile + "3"},
-			Contains: hostile,
-			Order:    store.OrderDesc,
-			Limit:    5,
+			TimelineIDs: []string{hostile, hostile + "1"},
+			Since:       &since,
+			Until:       new(since.Add(time.Hour)),
+			Sources:     []string{hostile, hostile + "2"},
+			Tags:        []string{hostile, hostile + "3"},
+			Contains:    hostile,
+			Order:       store.OrderDesc,
+			Limit:       5,
 		}
 
-		query, args := store.BuildEventQuery(hostile, f)
+		query, args := store.BuildEventQuery(f)
 
 		Expect(query).NotTo(ContainSubstring("DROP"))
-		Expect(args).To(ContainElements(hostile, hostile+"2", hostile+"3"))
+		Expect(args).To(ContainElements(hostile, hostile+"1", hostile+"2", hostile+"3"))
 		Expect(strings.Count(query, "?")).To(Equal(len(args)))
 	})
 })
@@ -93,20 +94,42 @@ var _ = Describe("ListEvents", func() {
 		}
 	})
 
-	It("returns every event of the timeline, as Events reads them, for the zero filter", func(ctx SpecContext) {
+	It("returns every event of the timeline, as Events reads them, for a filter of that timeline alone", func(ctx SpecContext) {
 		events, err := s.Events(ctx, incident.ID)
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(s.ListEvents(ctx, incident.ID, store.EventFilter{})).To(Equal(store.EventPage{Events: events, Total: 4}))
+		Expect(s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{incident.ID}})).To(Equal(store.EventPage{Events: events, Total: 4}))
 	})
 
 	It("returns an empty page for a timeline with no events", func(ctx SpecContext) {
-		Expect(s.ListEvents(ctx, uuid(9), store.EventFilter{})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
+		Expect(s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{uuid(9)}})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
 	})
+
+	It("returns an empty page when the filter names no timeline", func(ctx SpecContext) {
+		Expect(s.ListEvents(ctx, store.EventFilter{})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
+	})
+
+	DescribeTable("merges the events of several timelines by occurred at, then timeline id, then seq",
+		func(ctx SpecContext, f store.EventFilter, want []string, total int) {
+			f.TimelineIDs = []string{other.ID, incident.ID}
+			page, err := s.ListEvents(ctx, f)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(ids(page.Events)).To(Equal(want))
+			Expect(page.Total).To(Equal(total))
+		},
+		// At 14:15, incident's seqs 2 and 3 come before other's seq 1: incident's id is smaller.
+		Entry("ascending", store.EventFilter{}, []string{uuid(10), uuid(11), uuid(12), uuid(14), uuid(13)}, 5),
+		Entry("descending, the exact reverse", store.EventFilter{Order: store.OrderDesc},
+			[]string{uuid(13), uuid(14), uuid(12), uuid(11), uuid(10)}, 5),
+		Entry("limited, counting every timeline's matches", store.EventFilter{Sources: []string{"slack"}, Limit: 1},
+			[]string{uuid(11)}, 2),
+	)
 
 	DescribeTable("rejects a bound outside years 0000–9999",
 		func(ctx SpecContext, f store.EventFilter) {
-			Expect(s.ListEvents(ctx, incident.ID, f)).Error().To(HaveOccurred())
+			f.TimelineIDs = []string{incident.ID}
+			Expect(s.ListEvents(ctx, f)).Error().To(HaveOccurred())
 		},
 		Entry("Since", store.EventFilter{Since: new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC))}),
 		Entry("Until", store.EventFilter{Until: new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC))}),
@@ -114,7 +137,8 @@ var _ = Describe("ListEvents", func() {
 
 	DescribeTable("keeps the events the filter selects, in order, up to its limit",
 		func(ctx SpecContext, f store.EventFilter, want []int64, total int, truncated bool) {
-			page, err := s.ListEvents(ctx, incident.ID, f)
+			f.TimelineIDs = []string{incident.ID}
+			page, err := s.ListEvents(ctx, f)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(seqs(page.Events)).To(Equal(want))

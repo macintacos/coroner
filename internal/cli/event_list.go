@@ -79,7 +79,8 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
-		page, err := s.ListEvents(ctx, t.ID, filter)
+		filter.TimelineIDs = []string{t.ID}
+		page, err := s.ListEvents(ctx, filter)
 		if err != nil {
 			return err
 		}

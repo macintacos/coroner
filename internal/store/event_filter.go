@@ -13,18 +13,22 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// Order is the direction ListEvents sorts events in, by occurred at, then seq.
+// Order is the direction ListEvents sorts events in, by occurred at, then timeline id, then
+// seq.
 type Order int
 
-// OrderDesc is the exact reverse of OrderAsc: seq flips with occurred at. Any other value
-// sorts ascending.
+// OrderDesc is the exact reverse of OrderAsc: timeline id and seq flip with occurred at. Any
+// other value sorts ascending.
 const (
 	OrderAsc Order = iota
 	OrderDesc
 )
 
-// EventFilter selects a timeline's events. Its zero value selects every event, ascending.
+// EventFilter selects the events of one or more timelines. Given only TimelineIDs, it
+// selects every event of those timelines, ascending.
 type EventFilter struct {
+	// TimelineIDs keeps events of any of these timelines; empty keeps none.
+	TimelineIDs []string
 	// Since keeps events whose occurred at is at or after it, so an interval that started
 	// earlier is left out even if it ends later; nil leaves the window open.
 	Since *time.Time
@@ -54,15 +58,15 @@ type EventPage struct {
 	Truncated bool
 }
 
-// ListEvents returns the events of the timeline with timelineID that f keeps, with their
-// tags and source, ordered by occurred at, then seq. An unknown timeline gives an empty page,
-// not ErrNotFound, and a bound outside years 0000–9999 is an error.
-func (s *Store) ListEvents(ctx context.Context, timelineID string, f EventFilter) (EventPage, error) {
+// ListEvents returns the events of f's timelines that f keeps, with their tags and source,
+// merged in timeline.CompareEvents order. An unknown timeline adds no events, not
+// ErrNotFound, and a bound outside years 0000–9999 is an error.
+func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error) {
 	err := errors.Join(checkBound("since", f.Since), checkBound("until", f.Until))
 	if err != nil {
 		return EventPage{}, err
 	}
-	query, args := buildEventQuery(timelineID, f)
+	query, args := buildEventQuery(f)
 
 	return readTx(ctx, s, func(tx sqlcgen.DBTX) (EventPage, error) {
 		events, err := queryAll(ctx, tx, query, args, scanEvent)
@@ -72,7 +76,7 @@ func (s *Store) ListEvents(ctx context.Context, timelineID string, f EventFilter
 
 		page := EventPage{Events: events, Total: len(events)}
 		if f.Limit > 0 && len(events) == f.Limit {
-			countQuery, countArgs := buildEventCount(timelineID, f)
+			countQuery, countArgs := buildEventCount(f)
 			err = tx.QueryRowContext(ctx, countQuery, countArgs...).Scan(&page.Total)
 			if err != nil {
 				return EventPage{}, err
@@ -131,16 +135,17 @@ const eventSelect = `SELECT e.*, src.name,
 	(SELECT json_group_array(t.tag ORDER BY t.tag) FROM event_tag t WHERE t.event_id = e.id)
 ` + eventFrom
 
-// buildEventQuery returns the SQL selecting the events of the timeline with timelineID that
-// f keeps, in its order and up to its limit, and its args.
-func buildEventQuery(timelineID string, f EventFilter) (string, []any) {
-	where, args := eventWhere(timelineID, f)
+// buildEventQuery returns the SQL selecting the events f keeps, in its order and up to its
+// limit, and its args. The order mirrors timeline.CompareEvents.
+func buildEventQuery(f EventFilter) (string, []any) {
+	where, args := eventWhere(f)
 
 	direction := "ASC"
 	if f.Order == OrderDesc {
 		direction = "DESC"
 	}
-	query := eventSelect + " WHERE " + where + " ORDER BY e.occurred_at " + direction + ", e.seq " + direction
+	query := eventSelect + " WHERE " + where +
+		" ORDER BY e.occurred_at " + direction + ", e.timeline_id " + direction + ", e.seq " + direction
 
 	if f.Limit > 0 {
 		query += " LIMIT ?"
@@ -152,16 +157,16 @@ func buildEventQuery(timelineID string, f EventFilter) (string, []any) {
 
 // buildEventCount returns the SQL counting every event buildEventQuery selects before its
 // limit, and its args.
-func buildEventCount(timelineID string, f EventFilter) (string, []any) {
-	where, args := eventWhere(timelineID, f)
+func buildEventCount(f EventFilter) (string, []any) {
+	where, args := eventWhere(f)
 	return "SELECT COUNT(*) " + eventFrom + " WHERE " + where, args
 }
 
-// eventWhere returns the conditions selecting the events of the timeline with timelineID
-// that f keeps, and their args. Every value is an arg, never SQL text.
-func eventWhere(timelineID string, f EventFilter) (string, []any) {
-	where := []string{"e.timeline_id = ?"}
-	args := []any{timelineID}
+// eventWhere returns the conditions selecting the events f keeps, and their args. Every value
+// is an arg, never SQL text.
+func eventWhere(f EventFilter) (string, []any) {
+	timelines, args := inList(f.TimelineIDs)
+	where := []string{"e.timeline_id " + timelines}
 
 	if f.Since != nil {
 		where = append(where, "e.occurred_at >= ?")
@@ -172,10 +177,9 @@ func eventWhere(timelineID string, f EventFilter) (string, []any) {
 		args = append(args, timeline.FormatInstant(*f.Until))
 	}
 	if len(f.Sources) > 0 {
-		where = append(where, "src.name IN ("+strings.Repeat("?,", len(f.Sources)-1)+"?)")
-		for _, source := range f.Sources {
-			args = append(args, source)
-		}
+		sources, sourceArgs := inList(f.Sources)
+		where = append(where, "src.name "+sources)
+		args = append(args, sourceArgs...)
 	}
 	for _, tag := range f.Tags {
 		where = append(where, "EXISTS (SELECT 1 FROM event_tag t WHERE t.event_id = e.id AND t.tag = ?)")
@@ -188,4 +192,15 @@ func eventWhere(timelineID string, f EventFilter) (string, []any) {
 	}
 
 	return strings.Join(where, " AND "), args
+}
+
+// inList returns an IN operator with a placeholder per value, and the values as its args.
+// SQLite reads IN () as matching nothing.
+func inList(values []string) (string, []any) {
+	args := make([]any, 0, len(values))
+	for _, value := range values {
+		args = append(args, value)
+	}
+
+	return "IN (" + strings.TrimSuffix(strings.Repeat("?,", len(values)), ",") + ")", args
 }

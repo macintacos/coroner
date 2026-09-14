@@ -249,7 +249,8 @@ func hinted(err error) error {
 
 // readSnapshot reads t's events that filter keeps, and every annotation and attachment in t.
 func readSnapshot(ctx context.Context, s *store.Store, t timeline.Timeline, filter store.EventFilter) (viewer.Snapshot, error) {
-	page, err := s.ListEvents(ctx, t.ID, filter)
+	filter.TimelineIDs = []string{t.ID}
+	page, err := s.ListEvents(ctx, filter)
 	if err != nil {
 		return viewer.Snapshot{}, err
 	}

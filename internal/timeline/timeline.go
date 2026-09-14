@@ -131,10 +131,11 @@ func (s Source) Validate() error {
 	return ValidateSourceName(s.Name)
 }
 
-// CompareEvents orders events by occurred at, then seq, for [slices.SortFunc]. A coarse
-// event sorts at the start of its window, so "10:15" precedes every 10:15:xx event.
+// CompareEvents orders events by occurred at, then timeline id, then seq, for
+// [slices.SortFunc], so events of several timelines merge into one deterministic order. A
+// coarse event sorts at the start of its window, so "10:15" precedes every 10:15:xx event.
 func CompareEvents(a, b Event) int {
-	return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.Seq, b.Seq))
+	return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.TimelineID, b.TimelineID), cmp.Compare(a.Seq, b.Seq))
 }
 
 func validateNotBlank(what, s string) error {

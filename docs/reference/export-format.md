@@ -80,9 +80,9 @@ and an attachment carries its `event_id` or `annotation_id`. Reading several tim
 together is then a merge of their events on time, and an export can hold any mix of
 timelines without changing shape.
 
-`events` is ordered by `occurred_at`, then `seq`. The envelope's other lists have no
-defined order; sort them yourself if you need one. The JSONL stream orders every record,
-under its own [record order](#record-order).
+`events` is ordered by `occurred_at`, then `timeline_id`, then `seq`. The envelope's other
+lists have no defined order; sort them yourself if you need one. The JSONL stream orders
+every record, under its own [record order](#record-order).
 
 An export made with filters holds only what those filters kept: the events that match, the
 annotations on those events or on the whole timeline, the attachments of those events and
@@ -249,11 +249,14 @@ it is a major version.
 3. The annotations on the whole timeline, by `created_at`, then `id`, each followed
    immediately by its attachments.
 4. The sources, by `name`.
-5. The events, by `occurred_at`, then `seq`, then `id`. Each event is followed immediately
-   by its attachments, then by its annotations, each followed by its own attachments.
-   Annotations and attachments are ordered by `created_at`, then `id`.
+5. The events, by `occurred_at`, then `timeline_id`, then `seq`, then `id`. Each event is
+   followed immediately by its attachments, then by its annotations, each followed by its
+   own attachments. Annotations and attachments are ordered by `created_at`, then `id`.
 
-`attachment` records are new in 1.1; a reader that skips them sees the 1.0 order.
+`attachment` records are new in 1.1; a reader that skips them sees the 1.0 order. Events
+of one timeline share their `timeline_id`, so an export of one timeline has the same order
+it had in 1.0; `timeline_id` only decides between events of different timelines at one
+instant.
 
 Records stay in this order under every filter, and under `--order desc`: `--order` only
 decides which end `--limit` keeps events from.

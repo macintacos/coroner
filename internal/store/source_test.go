@@ -82,10 +82,11 @@ var _ = Describe("Sources", func() {
 		It("moves the source's events to the new name", func(ctx SpecContext) {
 			Expect(s.RenameSource(ctx, uuid(20), "mongodb")).To(Succeed())
 
-			renamed, err := s.ListEvents(ctx, incident.ID, store.EventFilter{Sources: []string{"mongodb"}})
+			renamed, err := s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{incident.ID}, Sources: []string{"mongodb"}})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(renamed.Events).To(HaveExactElements(HaveField("ID", uuid(10))))
-			Expect(s.ListEvents(ctx, incident.ID, store.EventFilter{Sources: []string{"mongo"}})).To(HaveField("Events", BeEmpty()))
+			Expect(s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{incident.ID}, Sources: []string{"mongo"}})).
+				To(HaveField("Events", BeEmpty()))
 			Expect(s.Event(ctx, uuid(10))).To(HaveField("Source", HaveValue(Equal("mongodb"))))
 		})
 
