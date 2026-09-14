@@ -22,6 +22,8 @@ digraph coroner_docs_router {
     "Edit agents/*.md" [shape=box];
     "Edit docs/contributing/command-checklist.md" [shape=box];
     "Edit docs/contributing/migrations.md" [shape=box];
+    "Edit docs/contributing/releasing.md" [shape=box];
+    "Edit docs/how-to/install.md" [shape=box];
     "Edit .github/pull_request_template.md" [shape=box];
     "Edit internal/cli/testdata/script/contract/README.md" [shape=box];
     "Edit internal/export/html/vendor/README.md" [shape=box];
@@ -30,7 +32,7 @@ digraph coroner_docs_router {
     "Edit the docs site: docs/ and zensical.toml" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
     "Edit docs/reference/export-format.md" [shape=box];
-    "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [shape=box];
+    "Regenerate CHANGELOG.md (committed by the first release)" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
@@ -40,6 +42,8 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
+    "Which doc does the change affect?" -> "Edit docs/contributing/releasing.md" [label="how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, or the steps before and after a tag"];
+    "Which doc does the change affect?" -> "Edit docs/how-to/install.md" [label="how coroner is installed, upgraded or removed, what a release archive holds, or the macOS signing decision"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
     "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, and what a diff under contract/ means"];
     "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
@@ -48,7 +52,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit the docs site: docs/ and zensical.toml" [label="user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav"];
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
-    "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
+    "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (committed by the first release)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
     "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables"];
     "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
 }
@@ -71,6 +75,12 @@ digraph coroner_docs_router {
 - **[`docs/contributing/migrations.md`](../docs/contributing/migrations.md)** (humans and
   agents) — the migration policy, the fixture database each release commits and how to add
   it, and the migration gaps deferred so far.
+- **[`docs/contributing/releasing.md`](../docs/contributing/releasing.md)** (maintainers)
+  — the release checklist: the one-time tap and token setup, the checks before a `v*` tag,
+  the checks after the release workflow publishes it, and what a rebuilt tag reproduces.
+- **[`docs/how-to/install.md`](../docs/how-to/install.md)** (human-facing) — installing,
+  upgrading and removing coroner with `go install`, Homebrew or a release archive, what an
+  archive holds, and the macOS signing decision.
 - **[`.github/pull_request_template.md`](../.github/pull_request_template.md)** — the
   checkbox that makes a pull request cite the checklist IDs it was checked against, and
   the contract section that makes it state a contract change's stability.
@@ -103,10 +113,10 @@ digraph coroner_docs_router {
   order, the encoding rules and the evolution rules. Its machine-readable twin,
   `schema/export-v1.schema.json`, is generated from the `internal/export` types by
   `go run ./internal/tools/schemagen` and never hand-edited.
-- **`CHANGELOG.md`** (not in the repo yet — EXC-1304; human-facing) — every release's
+- **`CHANGELOG.md`** (committed by the first release; human-facing) — every release's
   changes grouped by commit type, **Breaking** first, written at release by
-  `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../cliff.toml). Never
-  hand-edited.
+  `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../cliff.toml), per
+  [the release checklist](../docs/contributing/releasing.md). Never hand-edited.
 - **[`internal/cli/topics/*.md`](../internal/cli/topics/)** (humans and agents at the
   terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
   CLI reference pages. Specs pin the `exit-codes` table and the `environment` variables to
