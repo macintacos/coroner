@@ -136,29 +136,63 @@ func (by selectedBy) setting() string {
 
 // addTimelineFlag declares -t/--timeline, so every command registers the same name,
 // shorthand and usage.
+// It is a StringArray, not a StringSlice, so a value is never split on commas.
 func addTimelineFlag(flags *pflag.FlagSet) {
-	flags.StringP("timeline", "t", "", timelineUsage)
+	flags.StringArrayP("timeline", "t", nil, timelineUsage)
 }
 
 const timelineUsage = "Timeline `name|id` to act on"
 
 // timelineField is -t as a write command's field.
 func timelineField() field {
-	return field{name: "timeline", shorthand: "t", usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
+	return field{name: "timeline", shorthand: "t", typ: stringsField, usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
+}
+
+// overlayAnnotation is the cmd.Annotations key marking a command that reads every timeline a
+// repeated -t names. Any other command's -t names one timeline.
+const overlayAnnotation = "overlay"
+
+// checkOneTimeline returns usage when -t names more than one timeline for a command without
+// overlayAnnotation.
+func checkOneTimeline(cmd *cobra.Command) error {
+	if cmd.Flags().Lookup("timeline") == nil || cmd.Annotations[overlayAnnotation] != "" {
+		return nil
+	}
+	names := appendUnique(nil, stringArray(cmd.Flags(), "timeline")...)
+	if len(names) <= 1 {
+		return nil
+	}
+
+	return &Error{
+		Kind:    KindUsage,
+		Message: fmt.Sprintf("-t names %d timelines, and %s acts on one", len(names), cmd.CommandPath()),
+		Hint:    "Pass -t once. 'coroner event list' and 'coroner timeline export' read several timelines.",
+	}
 }
 
 // timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
-// Commands call it at the top of RunE, before any I/O.
+// Commands call it at the top of RunE, before any I/O, after checkOneTimeline.
 func timelineFlag(flags *pflag.FlagSet) (*string, error) {
-	flag := changedString(flags, "timeline")
-	if flag != nil {
-		err := checkTimelineFlag(*flag)
+	names, err := timelineFlags(flags)
+	if err != nil || len(names) == 0 {
+		return nil, err
+	}
+
+	return &names[0], nil
+}
+
+// timelineFlags returns -t's values in the order given, each once, or usage when one is empty
+// (A-9).
+func timelineFlags(flags *pflag.FlagSet) ([]string, error) {
+	names := appendUnique(nil, stringArray(flags, "timeline")...)
+	for _, name := range names {
+		err := checkTimelineFlag(name)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return flag, nil
+	return names, nil
 }
 
 func checkTimelineFlag(value string) error {

@@ -135,6 +135,13 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	case f.typ == boolField:
 		b, _ := strconv.ParseBool(*bound)
 		return huh.NewConfirm().Key(f.name).Title(title).Description(help).Value(&b)
+	// Before the repeatable cases: the timeline picker selects one value of -t, a repeatable flag.
+	case form.choices.options[f.name] != nil:
+		selectField := huh.NewSelect[string]().Key(f.name).Title(title).Description(help).Value(bound).
+			Options(withGiven(form.choices.options[f.name], *bound)...).Validate(check)
+		return selectField.DescriptionFunc(func() string {
+			return f.description(help, fmt.Sprint(selectField.GetValue()), form.env())
+		}, bindings)
 	case f.typ == stringsField && f.list:
 		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check).
 			withThumbnail(form.choices.thumbnails[f.name])
@@ -142,12 +149,6 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)
 		})
-	case form.choices.options[f.name] != nil:
-		selectField := huh.NewSelect[string]().Key(f.name).Title(title).Description(help).Value(bound).
-			Options(withGiven(form.choices.options[f.name], *bound)...).Validate(check)
-		return selectField.DescriptionFunc(func() string {
-			return f.description(help, fmt.Sprint(selectField.GetValue()), form.env())
-		}, bindings)
 	}
 
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).

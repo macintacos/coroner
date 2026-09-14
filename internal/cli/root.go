@@ -141,7 +141,7 @@ func addCompletionCommand(root *cobra.Command, app App) {
 // wrapRunErrors makes every error a command's hooks or body return an *Error, recovering a
 // panic into an internal one, so Run can tell an untyped error from cobra, which rejected the
 // command line, from a command's own. A body runs only once outputFormat accepts
-// --format and --json.
+// --format and --json, and checkOneTimeline accepts -t.
 func wrapRunErrors(cmd *cobra.Command) {
 	hooks := []*func(*cobra.Command, []string) error{
 		&cmd.PersistentPreRunE, &cmd.PreRunE, &cmd.RunE, &cmd.PostRunE, &cmd.PersistentPostRunE,
@@ -155,6 +155,9 @@ func wrapRunErrors(cmd *cobra.Command) {
 	if run := cmd.RunE; run != nil {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
 			_, err := outputFormat(cmd)
+			if err == nil {
+				err = checkOneTimeline(cmd)
+			}
 			if err != nil {
 				return err
 			}

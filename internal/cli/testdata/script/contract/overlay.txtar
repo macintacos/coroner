@@ -1,0 +1,37 @@
+# Overlays: -t given more than once reads several timelines as one chronology on event list
+# and timeline export. Every other command acts on one timeline.
+
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-10T14:02:00Z -t mongo-failover
+
+# A write, or a read of one timeline, given two timelines exits 2, kind usage, and writes
+# nothing.
+exits 2 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:02:00Z -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner annotation add 'Checkout slows as the primary steps down' --kind comment -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event edit 1 --text 'Primary stepped down: replSetStepDown' -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event delete 1 -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event view 1 -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner status -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 0 coroner event list -t checkout-latency --json
+jsonvalid stdout
+stdout '"events":\[\]'
+exits 0 coroner event list -t mongo-failover --json
+jsonvalid stdout
+stdout '"text":"Primary stepped down",'
+
+# The same timeline named twice is one timeline.
+exits 0 coroner event add 'Election won by db-3' --at 2026-09-10T14:03:00Z -t mongo-failover -t mongo-failover
+stderr '^Added event #2 to timeline `mongo-failover` '
