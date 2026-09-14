@@ -35,44 +35,51 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 			"--format text, piping the output, --no-input or CORONER_NO_INPUT prints plain text instead:\n" +
 			"a summary, then the events, each with the gap since the event before it. --source, --tag and\n" +
 			"--contains keep the events 'coroner event list' keeps with the same flags; --json prints the\n" +
-			"timeline object alone.",
+			"timeline object alone.\n\n" +
+			"Repeat -t to view several timelines as one chronology: their events merge by occurred at, then\n" +
+			"timeline id, then seq. The viewer names each event's timeline in a column tinted with that\n" +
+			"timeline's color, and plain text prints each timeline's summary and starts each event's row\n" +
+			"with its timeline's name. --json prints one timeline object, so it takes one timeline.",
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeTimelineArg(ctx, app),
-		Annotations:       map[string]string{formatsAnnotation: "text,json"},
+		Annotations:       map[string]string{formatsAnnotation: "text,json", overlayAnnotation: "true"},
 		Example: "  $ coroner timeline view mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline view --tag election --source mongod\n" +
+			"  $ coroner timeline view -t mongo-failover -t checkout-latency\n" +
 			"  $ coroner timeline view --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flag, err := timelineFlag(cmd.Flags())
+			names, err := timelineFlags(cmd.Flags())
 			switch {
 			case err != nil:
 				return err
-			case len(args) == 1 && flag != nil:
+			case len(args) == 1 && len(names) > 0:
 				return &Error{
 					Kind:    KindUsage,
 					Message: "pass either a timeline name or id, or -t",
 					Hint:    "Run 'coroner timeline view --help' for usage.",
 				}
 			case len(args) == 1:
-				return viewTimeline(ctx, cmd, app, func(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
-					return findTimeline(ctx, s, args[0])
+				return viewTimelines(ctx, cmd, app, func(ctx context.Context, s *store.Store) ([]timeline.Timeline, error) {
+					t, err := findTimeline(ctx, s, args[0])
+					return []timeline.Timeline{t}, err
 				})
 			}
 
-			return viewTimeline(ctx, cmd, app, func(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
-				return selectTimeline(ctx, s, flag, app.LookupEnv)
+			return viewTimelines(ctx, cmd, app, func(ctx context.Context, s *store.Store) ([]timeline.Timeline, error) {
+				return selectTimelines(ctx, s, names, app.LookupEnv)
 			})
 		},
 	}
 
 	addTimelineFlag(cmd.Flags())
+	cmd.Flags().Lookup("timeline").Usage = "Timeline `name|id` to view; repeat to view several as one chronology"
 	addEventMatchFlags(cmd.Flags())
 
 	return cmd
 }
 
-func viewTimeline(
-	ctx context.Context, cmd *cobra.Command, app App, lookup func(context.Context, *store.Store) (timeline.Timeline, error),
+func viewTimelines(
+	ctx context.Context, cmd *cobra.Command, app App, lookup func(context.Context, *store.Store) ([]timeline.Timeline, error),
 ) error {
 	o, err := newOutput(cmd, app)
 	if err != nil {
@@ -89,22 +96,28 @@ func viewTimeline(
 
 	var snapshot viewer.Snapshot
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := lookup(ctx, s)
+		timelines, err := lookup(ctx, s)
 		switch {
 		case err != nil:
 			return err
+		case o.format == formatJSON && len(timelines) > 1:
+			return &Error{
+				Kind:    KindUsage,
+				Message: fmt.Sprintf("--json prints one timeline, and -t selects %d", len(timelines)),
+				Hint:    "Pass -t once, or list the timelines' events with 'coroner event list -t <timeline>... --json'.",
+			}
 		case o.format == formatJSON:
-			return o.json(newTimelineJSON(t))
+			return o.json(newTimelineJSON(timelines[0]))
 		}
 
-		snapshot, err = readSnapshot(ctx, s, t, filter)
+		snapshot, err = readSnapshot(ctx, s, timelines, filter)
 		return err
 	})
 	switch {
 	case err != nil || o.format == formatJSON:
 		return err
 	case !interactive(cmd, app):
-		return writeTimelineView(o, z, snapshot.Timeline, snapshot.Events, keptAnnotations(snapshot))
+		return writeTimelineView(o, z, snapshot)
 	}
 
 	noColor, _ := cmd.Flags().GetBool("no-color")
@@ -119,7 +132,7 @@ func viewTimeline(
 	err = viewer.Run(ctx, term, viewer.Options{
 		Snapshot: snapshot,
 		Match:    viewer.Match{Sources: filter.Sources, Tags: filter.Tags, Contains: filter.Contains},
-		Load:     timelineLoader(ctx, app, cfg.DBPath, snapshot.Timeline.ID),
+		Load:     timelineLoader(ctx, app, cfg.DBPath, timelineIDs(snapshot.Timelines)),
 		Image:    imageReader(app.ReadFile, cfg.DBPath, images, logger),
 		Location: z.loc, ZoneLabel: z.label, Now: app.Now,
 	})
@@ -136,10 +149,10 @@ func interactive(cmd *cobra.Command, app App) bool {
 	return interactiveTerminal(app, noInput(cmd, app)) && !cmd.Flags().Changed("format")
 }
 
-// timelineLoader returns the viewer's Load for the timeline with timelineID in the database at
+// timelineLoader returns the viewer's Load for the timelines with timelineIDs in the database at
 // path. Each call checks the match as event list's flags are checked, then opens the database
 // read-only, reads and closes it again; its errors carry their hints in their text.
-func timelineLoader(ctx context.Context, app App, path, timelineID string) func(viewer.Match) (viewer.Snapshot, error) {
+func timelineLoader(ctx context.Context, app App, path string, timelineIDs []string) func(viewer.Match) (viewer.Snapshot, error) {
 	return func(match viewer.Match) (viewer.Snapshot, error) {
 		filter := store.EventFilter{
 			Sources: appendUnique(nil, match.Sources...), Tags: appendUnique(nil, match.Tags...), Contains: match.Contains,
@@ -151,12 +164,12 @@ func timelineLoader(ctx context.Context, app App, path, timelineID string) func(
 
 		var snapshot viewer.Snapshot
 		err = withStoreOpenedBy(ctx, app.OpenStoreReadOnly, path, func(s *store.Store) error {
-			t, err := s.Timeline(ctx, timelineID)
+			timelines, err := timelinesByID(ctx, s, timelineIDs)
 			if err != nil {
 				return err
 			}
 
-			snapshot, err = readSnapshot(ctx, s, t, filter)
+			snapshot, err = readSnapshot(ctx, s, timelines, filter)
 			return err
 		})
 
@@ -247,20 +260,21 @@ func hinted(err error) error {
 	return hintedError{err: typed}
 }
 
-// readSnapshot reads t's events that filter keeps, and every annotation and attachment in t.
-func readSnapshot(ctx context.Context, s *store.Store, t timeline.Timeline, filter store.EventFilter) (viewer.Snapshot, error) {
-	filter.TimelineIDs = []string{t.ID}
+// readSnapshot reads the events of timelines that filter keeps, merged in one order, and every
+// annotation and attachment in them.
+func readSnapshot(ctx context.Context, s *store.Store, timelines []timeline.Timeline, filter store.EventFilter) (viewer.Snapshot, error) {
+	filter.TimelineIDs = timelineIDs(timelines)
 	page, err := s.ListEvents(ctx, filter)
 	if err != nil {
 		return viewer.Snapshot{}, err
 	}
-	annotations, err := s.Annotations(ctx, t.ID)
+	annotations, err := readEach(timelines, func(id string) ([]timeline.Annotation, error) { return s.Annotations(ctx, id) })
 	if err != nil {
 		return viewer.Snapshot{}, err
 	}
-	attachments, err := s.TimelineAttachments(ctx, t.ID)
+	attachments, err := readEach(timelines, func(id string) ([]timeline.Attachment, error) { return s.TimelineAttachments(ctx, id) })
 
-	return viewer.Snapshot{Timeline: t, Events: page.Events, Annotations: annotations, Attachments: attachments}, err
+	return viewer.Snapshot{Timelines: timelines, Events: page.Events, Annotations: annotations, Attachments: attachments}, err
 }
 
 // keptAnnotations counts snapshot's annotations on its events or on the timeline itself.
@@ -280,9 +294,11 @@ func keptAnnotations(snapshot viewer.Snapshot) int {
 	return count
 }
 
-// writeTimelineView writes t's summary, including annotationCount, then events, which must
-// already be in timeline.CompareEvents order, with times in z.
-func writeTimelineView(o output, z zone, t timeline.Timeline, events []timeline.Event, annotationCount int) error {
+// writeTimelineView writes the summary of each of snapshot's timelines, then of its events and
+// the annotations on them or on a whole timeline, then the events, with times in z. In an overlay
+// of several timelines, each event's row starts with its timeline's name, as event list's do.
+func writeTimelineView(o output, z zone, snapshot viewer.Snapshot) error {
+	events := snapshot.Events
 	sources, tags := map[string]int{}, map[string]int{}
 	for _, e := range events {
 		if e.Source != nil {
@@ -293,12 +309,18 @@ func writeTimelineView(o output, z zone, t timeline.Timeline, events []timeline.
 		}
 	}
 
+	overlay := len(snapshot.Timelines) > 1
 	var b strings.Builder
-	b.WriteString(timelineSummary(t, z))
+	for _, t := range snapshot.Timelines {
+		b.WriteString(timelineSummary(t, z))
+		if overlay {
+			b.WriteString("\n")
+		}
+	}
 	writeField(&b, "Events:", eventSpan(events, z))
 	writeField(&b, "Sources:", countSummary(sources))
 	writeField(&b, "Tags:", countSummary(tags))
-	writeField(&b, "Annotations:", strconv.Itoa(annotationCount))
+	writeField(&b, "Annotations:", strconv.Itoa(keptAnnotations(snapshot)))
 	if len(events) > 0 {
 		b.WriteString("\n")
 	}
@@ -307,8 +329,12 @@ func writeTimelineView(o output, z zone, t timeline.Timeline, events []timeline.
 	if err != nil {
 		return err
 	}
+	rows := eventRows(events, z)
+	if overlay {
+		rows = withTimelineNames(rows, events, snapshot.Timelines)
+	}
 
-	return o.rows(eventRows(events, z))
+	return o.rows(rows)
 }
 
 // timelineSummary describes t itself, one field per line under its name, with times in z.

@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"image/color"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ const (
 	// gapThreshold is the shortest silence between events that gets its own row.
 	gapThreshold   = 5 * time.Minute
 	maxSourceWidth = 16
+	maxTrackWidth  = 16
 	maxTagsWidth   = 24
 	maxNameWidth   = 32
 	maxTitleWidth  = 32
@@ -28,33 +30,52 @@ const (
 
 type styles struct {
 	name, faint, time, source, tags, gap, day, evidence, comment, selected, failure, notice lipgloss.Style
+	// timelines are an overlay's timeline colours, taken in the order the timelines were selected
+	// and wrapping after the last.
+	timelines []lipgloss.Style
 }
 
 // newStyles uses only the 16 ANSI colors, so the terminal's theme picks the shades.
 func newStyles() styles {
 	s := lipgloss.NewStyle()
+	// The hues of sourcePalette in internal/export/theme.go, in its order, as ANSI names them;
+	// keep the two in step.
+	timelineColors := []color.Color{
+		lipgloss.Blue, lipgloss.Yellow, lipgloss.Green, lipgloss.Magenta,
+		lipgloss.BrightMagenta, lipgloss.Cyan, lipgloss.BrightYellow, lipgloss.Red,
+	}
+	timelines := make([]lipgloss.Style, 0, len(timelineColors))
+	for _, c := range timelineColors {
+		timelines = append(timelines, s.Foreground(c))
+	}
 	return styles{
-		name:     s.Bold(true),
-		faint:    s.Faint(true),
-		time:     s.Bold(true),
-		source:   s.Foreground(lipgloss.Cyan),
-		tags:     s.Foreground(lipgloss.Magenta),
-		gap:      s.Bold(true).Foreground(lipgloss.Yellow),
-		day:      s.Bold(true),
-		evidence: s.Foreground(lipgloss.Green),
-		comment:  s.Faint(true).Italic(true),
-		selected: s.Reverse(true),
-		failure:  s.Foreground(lipgloss.Red),
-		notice:   s.Bold(true).Foreground(lipgloss.Yellow),
+		timelines: timelines,
+		name:      s.Bold(true),
+		faint:     s.Faint(true),
+		time:      s.Bold(true),
+		source:    s.Foreground(lipgloss.Cyan),
+		tags:      s.Foreground(lipgloss.Magenta),
+		gap:       s.Bold(true).Foreground(lipgloss.Yellow),
+		day:       s.Bold(true),
+		evidence:  s.Foreground(lipgloss.Green),
+		comment:   s.Faint(true).Italic(true),
+		selected:  s.Reverse(true),
+		failure:   s.Foreground(lipgloss.Red),
+		notice:    s.Bold(true).Foreground(lipgloss.Yellow),
 	}
 }
 
-// header names the timeline and the zone times show in, then counts the events the filter keeps.
+// header names the timeline, by its name and title, or an overlay, by its timelines' names, and
+// the zone times show in, then counts the events the filter keeps.
 func (m Model) header() string {
-	t := m.snapshot.Timeline
-	left := m.styles.name.Render(t.Name)
-	if t.Title != "" {
-		left += "  " + oneLine(t.Title)
+	timelines := m.snapshot.Timelines
+	names := make([]string, 0, len(timelines))
+	for _, t := range timelines {
+		names = append(names, t.Name)
+	}
+	left := m.styles.name.Render(strings.Join(names, " + "))
+	if len(timelines) == 1 && timelines[0].Title != "" {
+		left += "  " + oneLine(timelines[0].Title)
 	}
 	right := m.styles.faint.Render("times in " + m.opts.ZoneLabel)
 	space := max(m.width-lipgloss.Width(left)-lipgloss.Width(right), 1)
@@ -168,9 +189,25 @@ func (m Model) rule(label string, style lipgloss.Style) string {
 	return m.fit(style.Render(text + strings.Repeat("─", max(m.width-lipgloss.Width(text), 2))))
 }
 
-// widths are the event list's column widths.
+// widths are the event list's column widths. track is 0 for a single timeline, which has no
+// track column.
 type widths struct {
-	seq, time, source, tags int
+	track, seq, time, source, tags int
+}
+
+// trackWidth is the track column's width: an overlay's widest timeline name, up to
+// maxTrackWidth, or 0 for a single timeline.
+func trackWidth(timelines []timeline.Timeline) int {
+	if len(timelines) < 2 {
+		return 0
+	}
+
+	width := 0
+	for _, t := range timelines {
+		width = max(width, min(lipgloss.Width(t.Name), maxTrackWidth))
+	}
+
+	return width
 }
 
 func measure(events []timeline.Event, loc *time.Location) widths {
@@ -185,9 +222,11 @@ func measure(events []timeline.Event, loc *time.Location) widths {
 	return w
 }
 
-// row is e's line: seq, time, source, tags, text and how many annotations and attachments it has.
+// row is e's line: in an overlay its timeline, then seq, time, source, tags, text and how many
+// annotations and attachments it has.
 func (m Model) row(e timeline.Event, selected bool) string {
 	w := m.widths
+	track, tintedTrack := m.track(e)
 	fields := []string{
 		pad(seqText(e), w.seq),
 		pad(eventTime(e, m.opts.Location), w.time),
@@ -208,14 +247,28 @@ func (m Model) row(e timeline.Event, selected bool) string {
 	}
 
 	if selected {
-		return m.styles.selected.Render(m.fit("› " + strings.Join(fields, "  ") + count))
+		return m.styles.selected.Render(m.fit("› " + track + strings.Join(fields, "  ") + count))
 	}
 
 	styled := []string{
 		m.styles.faint.Render(fields[0]), m.styles.time.Render(fields[1]), m.styles.source.Render(fields[2]),
 		m.styles.tags.Render(fields[3]), fields[4] + m.styles.faint.Render(count),
 	}
-	return m.fit(indent + strings.Join(styled, "  "))
+	return m.fit(indent + tintedTrack + strings.Join(styled, "  "))
+}
+
+// track is e's timeline name padded to the track column and followed by the column gap, plain and
+// in the timeline's colour, or two empty strings when there is no track column.
+func (m Model) track(e timeline.Event) (string, string) {
+	if m.widths.track == 0 {
+		return "", ""
+	}
+
+	i := m.timelineIndex[e.TimelineID]
+	name := pad(ansi.Truncate(m.snapshot.Timelines[i].Name, m.widths.track, "…"), m.widths.track)
+	tint := m.styles.timelines[i%len(m.styles.timelines)]
+
+	return name + "  ", tint.Render(name) + "  "
 }
 
 // annotationLines are the annotations on the event with eventID, evidence marked ▌ and comments │,

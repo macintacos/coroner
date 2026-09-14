@@ -72,6 +72,8 @@ type Model struct {
 	match, pending Match
 	// seq numbers the newest load; a result from an older one is dropped.
 	seq int
+	// timelineIndex holds where each of the snapshot's timelines is in its Timelines, by id.
+	timelineIndex map[string]int
 	// annotations holds the snapshot's annotations by event id.
 	annotations map[string][]timeline.Annotation
 	// attachments holds the snapshot's attachments by the id of their event or annotation.
@@ -360,6 +362,10 @@ func (m Model) show(snapshot Snapshot, match Match) Model {
 	}
 
 	m.snapshot, m.match, m.pending = snapshot, match, match
+	m.timelineIndex = map[string]int{}
+	for i, t := range snapshot.Timelines {
+		m.timelineIndex[t.ID] = i
+	}
 	m.annotations = map[string][]timeline.Annotation{}
 	for _, a := range snapshot.Annotations {
 		if a.EventID != nil {
@@ -386,6 +392,7 @@ func (m Model) show(snapshot Snapshot, match Match) Model {
 func (m Model) render() Model {
 	m.cursor = max(min(m.cursor, len(m.snapshot.Events)-1), 0)
 	m.widths = measure(m.snapshot.Events, m.opts.Location)
+	m.widths.track = trackWidth(m.snapshot.Timelines)
 	m.lines, m.blocks = m.bodyLines()
 
 	return m.scroll()

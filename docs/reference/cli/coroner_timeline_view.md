@@ -20,6 +20,11 @@ a summary, then the events, each with the gap since the event before it. --sourc
 --contains keep the events 'coroner event list' keeps with the same flags; --json prints the
 timeline object alone.
 
+Repeat -t to view several timelines as one chronology: their events merge by occurred at, then
+timeline id, then seq. The viewer names each event's timeline in a column tinted with that
+timeline's color, and plain text prints each timeline's summary and starts each event's row
+with its timeline's name. --json prints one timeline object, so it takes one timeline.
+
 ```
 coroner timeline view [<name|id>] [flags]
 ```
@@ -29,6 +34,7 @@ coroner timeline view [<name|id>] [flags]
 ```
   $ coroner timeline view mongo-outage-2026-09-11
   $ coroner timeline view --tag election --source mongod
+  $ coroner timeline view -t mongo-failover -t checkout-latency
   $ coroner timeline view --json
 ```
 
@@ -38,7 +44,7 @@ coroner timeline view [<name|id>] [flags]
       --contains text      Keep events whose text contains this text, ignoring case
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them
-  -t, --timeline name|id   Timeline name|id to act on
+  -t, --timeline name|id   Timeline name|id to view; repeat to view several as one chronology
 ```
 
 ### Options inherited from parent commands

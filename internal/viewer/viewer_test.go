@@ -29,7 +29,9 @@ func fixture() viewer.Snapshot {
 	ended := utc(11, 4, 40, 0)
 	stepdown := "0199a1b2-0000-7000-8000-000000000002"
 	return viewer.Snapshot{
-		Timeline: timeline.Timeline{ID: "0199a1b2-0000-7000-8000-000000000000", Name: "mongo-outage", Title: "Primary election storm"},
+		Timelines: []timeline.Timeline{
+			{ID: "0199a1b2-0000-7000-8000-000000000000", Name: "mongo-outage", Title: "Primary election storm"},
+		},
 		Events: []timeline.Event{
 			{
 				ID: stepdown, Seq: 2, OccurredAt: utc(11, 3, 14, 7), Precision: timeline.PrecisionSecond,
@@ -61,6 +63,49 @@ func fixture() viewer.Snapshot {
 			{Kind: timeline.AnnotationComment, Body: "On the whole timeline, so never under an event"},
 		},
 	}
+}
+
+// overlay is two timelines read as one chronology, in timeline.CompareEvents order: their events
+// interleave, both name the source mongod, and the second timeline's name is wider than the
+// track column.
+func overlay() viewer.Snapshot {
+	failover, latency := "0199a1b2-0000-7000-8000-0000000000a0", "0199a1b2-0000-7000-8000-0000000000b0"
+	event := func(id, timelineID string, seq int64, at time.Time, source, text string) timeline.Event {
+		return timeline.Event{
+			ID: id, TimelineID: timelineID, Seq: seq, OccurredAt: at, Precision: timeline.PrecisionSecond, Source: new(source), Text: text,
+		}
+	}
+	return viewer.Snapshot{
+		Timelines: []timeline.Timeline{
+			{ID: failover, Name: "mongo-failover", Title: "Primary failover"},
+			{ID: latency, Name: "checkout-latency-regression", Title: "Checkout latency"},
+		},
+		Events: []timeline.Event{
+			event("0199a1b2-0000-7000-8000-0000000000b1", latency, 1, utc(11, 3, 13, 30), "grafana", "Checkout p99 at 4 s"),
+			event("0199a1b2-0000-7000-8000-0000000000a1", failover, 1, utc(11, 3, 14, 7), "mongod", "Primary stepped down"),
+			event("0199a1b2-0000-7000-8000-0000000000b2", latency, 2, utc(11, 3, 14, 7), "mongod", "Slow query on checkout.orders"),
+			event("0199a1b2-0000-7000-8000-0000000000a2", failover, 2, utc(11, 3, 15, 0), "mongod", "New primary elected"),
+		},
+	}
+}
+
+// sgrBefore returns the parameters of the SGR sequence that styles the last text on screen, or ""
+// when none does.
+func sgrBefore(screen, text string) string {
+	matches := regexp.MustCompile(`\x1b\[([0-9;]*)m[^\x1b\n]*`+regexp.QuoteMeta(text)).FindAllStringSubmatch(screen, -1)
+	if matches == nil {
+		return ""
+	}
+	return matches[len(matches)-1][1]
+}
+
+// profiled is m's view as a terminal with profile shows it.
+func profiled(m tea.Model, profile colorprofile.Profile) string {
+	var b bytes.Buffer
+	w := &colorprofile.Writer{Forward: &b, Profile: profile}
+	_, err := w.Write([]byte(m.View().Content))
+	Expect(err).NotTo(HaveOccurred())
+	return b.String()
 }
 
 func newYork() *time.Location {
@@ -229,6 +274,45 @@ var _ = Describe("the viewer", func() {
 			empty := fixture()
 			empty.Events = []timeline.Event{}
 			Expect(screen(open(empty, viewer.Match{Contains: "zebra"}, l))).To(ContainSubstring("No events match."))
+		})
+	})
+
+	Describe("an overlay of several timelines", func() {
+		It("names each event's timeline in a track column, in the merged order", func() {
+			matchGolden("overlay", screen(open(overlay(), viewer.Match{}, l)))
+		})
+
+		It("tints each timeline's name with a colour of its own", func() {
+			shown := profiled(open(overlay(), viewer.Match{}, l), colorprofile.ANSI)
+
+			failover, latency := sgrBefore(shown, "mongo-failover  "), sgrBefore(shown, "checkout-latenc…")
+			Expect(failover).To(MatchRegexp(`\b(3[0-7]|9[0-7])\b`), shown)
+			Expect(latency).To(MatchRegexp(`\b(3[0-7]|9[0-7])\b`), shown)
+			Expect(failover).NotTo(Equal(latency))
+		})
+
+		It("keeps every timeline's name without colour", func() {
+			shown := profiled(open(overlay(), viewer.Match{}, l), colorprofile.ASCII)
+
+			Expect(shown).To(ContainSubstring("mongo-failover "))
+			Expect(shown).To(ContainSubstring("checkout-latenc…"))
+			Expect(shown).NotTo(MatchRegexp(`\x1b\[[0-9;]*\b(3[0-9]|4[0-9]|9[0-7])m`))
+		})
+
+		It("keeps the track column when a filter reloads the timelines", func() {
+			l.next = overlay()
+			l.next.Events = l.next.Events[1:2]
+			m, _ := press(open(overlay(), viewer.Match{}, l), "s")
+			m, cmd := press(typeText(m, "mongod"), "enter")
+
+			Expect(screen(settle(m, cmd))).To(MatchRegexp(`mongo-failover\s+#1\s.*Primary stepped down`))
+		})
+
+		It("jumps to the first event at or after a time, whichever timeline holds it", func() {
+			m, _ := press(open(overlay(), viewer.Match{}, l), "@")
+			m, _ = press(typeText(m, "2026-09-10 23:14:05"), "enter")
+
+			Expect(cursorLine(m)).To(ContainSubstring("Primary stepped down"))
 		})
 	})
 

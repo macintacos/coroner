@@ -1,5 +1,5 @@
-# Overlays: -t given more than once reads several timelines as one chronology on event list
-# and timeline export. Every other command acts on one timeline.
+# Overlays: -t given more than once reads several timelines as one chronology on event list,
+# timeline export and timeline view. Every other command acts on one timeline.
 
 exits 0 coroner timeline create mongo-failover
 exits 0 coroner timeline create checkout-latency
@@ -101,6 +101,15 @@ stdout '^  section checkout-latency/grafana$'
 # HTML overlays too, embedding every timeline in the page's export.
 exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format html -o overlay.html
 grep '"query":\{"timelines":\["mongo-failover","checkout-latency"\]' overlay.html
+
+# timeline view shows several timelines, but its --json prints one timeline's object: several
+# exit 2, kind usage. A timeline's name and its id are one timeline.
+exits 2 coroner timeline view -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 0 coroner timeline view -t checkout-latency -t 01a09862-b1c0-7000-8000-000000000002 --json
+jsonvalid stdout
+stdout '^\{"id":"01a09862-b1c0-7000-8000-000000000002",'
 
 # SVG shows one timeline: several exit 2, kind usage, before anything is written.
 exits 2 coroner timeline export -t mongo-failover -t checkout-latency --format svg -o overlay.svg

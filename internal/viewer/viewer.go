@@ -18,14 +18,15 @@ import (
 // ErrInterrupted is what Run and Pick return when Ctrl-C stops them.
 var ErrInterrupted = errors.New("interrupted")
 
-// Snapshot is one read of a timeline.
+// Snapshot is one read of a timeline, or of several read together as an overlay.
 type Snapshot struct {
-	Timeline timeline.Timeline
+	// Timelines are in the order they were selected, which picks each one's colour.
+	Timelines []timeline.Timeline
 	// Events are in timeline.CompareEvents order.
 	Events []timeline.Event
-	// Annotations are every annotation in the timeline, oldest first.
+	// Annotations are every annotation in the timelines, oldest first.
 	Annotations []timeline.Annotation
-	// Attachments are every attachment on the timeline's events and annotations.
+	// Attachments are every attachment on the timelines' events and annotations.
 	Attachments []timeline.Attachment
 }
 
