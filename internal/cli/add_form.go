@@ -473,7 +473,7 @@ func filtering(formField huh.Field) bool {
 func eventAddForm() addForm[eventAdded] {
 	return addForm[eventAdded]{
 		path: "event add", def: eventAddDefinition(), run: addEvent,
-		cleared: []string{"text", "at", "ended", "approximate", "url", "attach"},
+		cleared: []string{"text", "at", "ended", "approximate", "url", "attach", "id"},
 		choices: func(ctx context.Context, s *store.Store, _ timeline.Timeline, _ zone) (formChoices, error) {
 			return sourceChoices(ctx, s)
 		},

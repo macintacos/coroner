@@ -340,6 +340,7 @@ func badValues() []badValue {
 		{"event add", "url", " ", []string{"Pager fires"}},
 		{"event add", "author", " ", []string{"Pager fires"}},
 		{"event add", "attach", "-", []string{"Pager fires"}},
+		{"event add", "id", "3b241101-e2bb-4255-8caf-4136c566a962", []string{"Pager fires"}},
 		{"event edit", "event", "Bad Ref!", []string{"--dry-run"}},
 		{"event edit", "text", " ", []string{"12"}},
 		{"event edit", "at", "2026-13-45", []string{"12"}},

@@ -3,8 +3,10 @@ package cli
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -89,20 +92,25 @@ func eventAddDefinition() definition {
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
 		attachField(),
+		{
+			name: "id", usage: "The event's id, as a lowercase UUIDv7 `uuid`, so running the same command again adds nothing",
+			check: withoutEnv(checkEventID),
+		},
 		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
 	}}
 }
 
 const addedEndedHint = "~ and around mark --at only; pass --approximate to mark the event."
 
-// eventAdded is the event add stored or, with --dry-run, would store, in its timeline.
+// eventAdded is the event add stored or, with --dry-run, would store, in its timeline, or the one
+// already stored under --id.
 type eventAdded struct {
 	event    timeline.Event
 	timeline timeline.Timeline
 	// when is the event's resolved time as the command prints it.
-	when   string
-	attach attachResult
-	dryRun bool
+	when            string
+	attach          attachResult
+	dryRun, existed bool
 }
 
 func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {
@@ -139,8 +147,20 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		}
 		added.timeline = t
 		added.event.TimelineID = t.ID
-		if !req.dryRun {
+		if in.given("id") {
+			added.event, added.existed, err = storedSameEvent(ctx, s, added.event, req.files)
+			if err != nil {
+				return err
+			}
+		}
+		switch {
+		case added.existed:
+			req = attachRequest{}
+		case !req.dryRun:
 			added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
+			if errors.Is(err, store.ErrConflict) && in.given("id") {
+				return idConflictError(added.event.ID, "another write added it while this one ran", err)
+			}
 			if err != nil {
 				return err
 			}
@@ -153,7 +173,88 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	return added, err
 }
 
+// storedSameEvent returns the event stored under e's id and true when adding e, with files
+// attached, would change nothing; e and false when no event has that id; and id_conflict when
+// adding e would change the stored event.
+func storedSameEvent(ctx context.Context, s *store.Store, e timeline.Event, files []attachFile) (timeline.Event, bool, error) {
+	stored, err := s.Event(ctx, e.ID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return e, false, nil
+	case err != nil:
+		return e, false, err
+	}
+	attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &stored.ID})
+	if err != nil {
+		return e, false, err
+	}
+
+	keys := changedEventKeys(stored, e)
+	if !slices.Equal(sortedSHA256s(attachments), sortedSHA256s(describeAttachments(files, timeline.AttachmentOwner{}, time.Time{}))) {
+		keys = append(keys, "attachments")
+	}
+	if len(keys) > 0 {
+		return e, false, idConflictError(e.ID, "it is stored with different "+strings.Join(keys, ", "), nil)
+	}
+
+	return stored, true, nil
+}
+
+// changedEventKeys returns the export keys in which draft differs from stored, the event under
+// the same id, leaving out the seq and times the store sets and the order of tags.
+func changedEventKeys(stored, draft timeline.Event) []string {
+	compared := func(e timeline.Event) export.Event {
+		e.Seq, e.CreatedAt, e.UpdatedAt = 0, time.Time{}, time.Time{}
+		e.Tags = append([]string{}, sortedUnique(e.Tags)...)
+		return export.NewEvent(e)
+	}
+
+	return export.DifferingKeys(compared(stored), compared(draft))
+}
+
+func sortedSHA256s(attachments []timeline.Attachment) []string {
+	sums := make([]string, 0, len(attachments))
+	for _, a := range attachments {
+		sums = append(sums, a.SHA256)
+	}
+	slices.Sort(sums)
+
+	return sums
+}
+
+func idConflictError(id, why string, err error) *Error {
+	return &Error{
+		Kind: KindIDConflict, Message: fmt.Sprintf("event %s already exists: %s, so nothing was added", id, why),
+		Hint: fmt.Sprintf("Pass a new --id to add another event, or change this one with 'coroner event edit %s'.", id), Err: err,
+	}
+}
+
+// checkEventID rejects an id that is not a UUIDv7 written as lowercase hex with hyphens, the ids
+// coroner makes.
+func checkEventID(id string) error {
+	parsed, err := uuid.Parse(id)
+	if err == nil && parsed.Version() == 7 && parsed.String() == id {
+		return nil
+	}
+
+	return &Error{
+		Kind: KindUsage, Message: fmt.Sprintf("--id %q is not a lowercase UUIDv7", id),
+		Hint: "Pass a version 7 UUID in lowercase, such as 01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2.", Err: err,
+	}
+}
+
 func (a eventAdded) render(o output) error {
+	if a.existed {
+		err := printEvent(o, a.event, a.attach.objects)
+		if err == nil {
+			err = o.printID(a.event.ID)
+		}
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Event %s is already #%d in timeline `%s`, so nothing was added", a.event.ID, a.event.Seq, a.timeline.Name)
+	}
 	if a.dryRun {
 		err := previewEvent(o, a.timeline, a.event, a.attach.objects, a.when)
 		if err == nil {
@@ -198,7 +299,7 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	if err != nil {
 		return eventDraft{}, err
 	}
-	eventID, err := app.NewID()
+	eventID, err := newEventID(in.value("id"), app.NewID)
 	if err != nil {
 		return eventDraft{}, err
 	}
@@ -208,7 +309,7 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	}
 
 	e := timeline.Event{
-		ID:             eventID.String(),
+		ID:             eventID,
 		OccurredAt:     times.at.Instant,
 		OccurredOffset: times.at.Offset,
 		Precision:      times.at.Precision,
@@ -231,6 +332,16 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	}
 
 	return eventDraft{event: e, newSourceID: sourceID, when: times.when}, nil
+}
+
+// newEventID returns id when it was given, and a new id otherwise.
+func newEventID(id *string, newID func() (uuid.UUID, error)) (string, error) {
+	if id != nil {
+		return *id, nil
+	}
+
+	generated, err := newID()
+	return generated.String(), err
 }
 
 // newSourceID returns a new id for source, or "" when no source was given.
