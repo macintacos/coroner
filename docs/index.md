@@ -52,7 +52,8 @@ gantt
     Rolled back deploy 812 :milestone, 2026-09-11T00:07:00, 0s
 ```
 
-The same timeline also exports as JSON, JSONL, Markdown and a standalone HTML page.
+The same timeline also exports as JSON, JSONL, Markdown, a standalone HTML page and an SVG
+picture.
 
 ## Where to go next
 
