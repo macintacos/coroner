@@ -42,7 +42,7 @@ exits 0 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:03:00Z -t che
 exits 0 coroner event add 'Checkout errors clear' --at 2026-09-10T14:05:00Z -t checkout-latency
 
 # event list merges the timelines by occurred at, then timeline id, then seq: at 14:03,
-# mongo-failover's #2 comes before checkout-latency's #1, the older timeline. json lists the
+# mongo-failover, the older timeline, sorts its #2 before checkout-latency's #1. json lists the
 # selected timelines under timelines; jsonl leads with a timeline line for each.
 exits 0 coroner event list -t mongo-failover -t checkout-latency --json
 cmp stdout list.json
