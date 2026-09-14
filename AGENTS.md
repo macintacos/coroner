@@ -118,8 +118,12 @@ digraph coroner_rules_router {
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the
   output formats it supports in its `formats` annotation, and any other `--format` or
-  `--json` exits 2 as `usage`. `cli.Run` prints every error once, adding the JSON error
-  envelope under `--format json|jsonl`.
+  `--json` exits 2 as `usage`. `-t` names one timeline, and naming more exits 2 as
+  `usage`, unless the command reads several as an overlay and says so in its `overlay`
+  annotation, as `event list` and `timeline export` do; such a command selects its
+  timelines through `selectTimelines` and reads their events through
+  `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the JSON
+  error envelope under `--format json|jsonl`.
 - Write commands (`timeline create|edit|delete|use`, `event add|edit|delete`,
   `annotation add|edit|delete`, `attachment delete`): each declares its flags, positional
   argument and their checks once, in a `definition`
