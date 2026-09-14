@@ -160,8 +160,11 @@ digraph coroner_rules_router {
   format version, written by
   [`contract/export-fixtures.txtar`](internal/cli/testdata/script/contract/export-fixtures.txtar)
   and validated, decoded and re-encoded by
-  [`internal/export/fixtures_test.go`](internal/export/fixtures_test.go);
-  `testdata/export/compat/` holds hand-written exports of other versions.
+  [`internal/export/fixtures_test.go`](internal/export/fixtures_test.go), then imported
+  and exported again by
+  [`internal/cli/roundtrip_test.go`](internal/cli/roundtrip_test.go), whose rapid property
+  round-trips generated databases the same way; `testdata/export/compat/` holds
+  hand-written exports of other versions.
 - Examples: [`internal/cli/examples_test.go`](internal/cli/examples_test.go) parses every
   `coroner` line in every command's `Example`, and in the `sh`, `bash`, `shell` and `zsh`
   code blocks and the `$` lines of `console` blocks on every page under `docs/`, against

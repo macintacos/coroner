@@ -39,13 +39,16 @@
    current types. Only the current `format_version`'s fixtures are re-encoded, the `.json`
    one through `export.Write` and the JSONL through `export.Records`, and compared byte
    for byte, because a later minor's added keys legitimately re-encode into an older
-   minor's lines. A failure that is an export format change is a breaking change, fixed in
-   the Go types and never in the fixture (`AGENTS.md` Rules 2 and 3). A fixture failure
-   that is not an export format change, such as renumbered IDs, is fixed in the script,
-   for example by giving the new command its own section or pre-seeding that section's
-   counter file, never in the fixture. A format change's new fixture directory or schema
-   diff lands in a commit whose type and subject describe the format change, which is what
-   puts it in the changelog. `testdata/export/compat/` holds hand-written exports of other
+   minor's lines. Every fixture also imports into an empty database and exports again as
+   the current `format_version`'s fixture of the same name, in
+   `internal/cli/roundtrip_test.go`, so an older minor's fixture needs a current one
+   beside it. A failure that is an export format change is a breaking change, fixed in the
+   Go types and never in the fixture (`AGENTS.md` Rules 2 and 3). A fixture failure that
+   is not an export format change, such as renumbered IDs, is fixed in the script, for
+   example by giving the new command its own section or pre-seeding that section's counter
+   file, never in the fixture. A format change's new fixture directory or schema diff
+   lands in a commit whose type and subject describe the format change, which is what puts
+   it in the changelog. `testdata/export/compat/` holds hand-written exports of other
    versions that pin the evolution rules; they are not frozen.
 8. **The Markdown export has one writer:** render it only through `export.WriteMarkdown`,
    from the `Envelope` that `json` and `jsonl` encode, so every format exports the same

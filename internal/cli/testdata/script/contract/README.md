@@ -51,3 +51,13 @@ own database, ID counter and clock, so a fixture's bytes never depend on another
 A fixture failure that is not an export format change, such as renumbered IDs, is fixed in
 the script, for example by giving the new command its own section or pre-seeding that
 section's counter file, never in the fixture.
+
+`TestExportImportRoundTrip` in [`roundtrip_test.go`](../../../roundtrip_test.go) belongs
+to this suite, so changing it is a contract change too. It exports rapid-generated
+databases as JSONL, imports each export into an empty database and requires exporting that
+database to give the same bytes. A spec beside it imports every fixture and requires the
+export to equal the current `format_version`'s fixture of the same name, taking attachment
+files from those `export-fixtures.txtar` archives. rapid saves a failing case under
+`internal/cli/testdata/rapid/` and replays it at the start of every later run, or alone
+with the `-rapid.failfile` it prints. Git ignores those files, and rapid skips one another
+rapid version wrote, so a fix pins its bug with a named spec instead.
