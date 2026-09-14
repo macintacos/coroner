@@ -106,9 +106,6 @@ var _ = Describe("Frozen export fixtures", func() {
 		},
 		currentEntries,
 	)
-
-	// TODO: EXC-1284 makes this a store-backed property test.
-	PIt("round-trips each fixture through import into an empty store and export again (EXC-1284)")
 })
 
 var _ = Describe("Compatibility fixtures", func() {
