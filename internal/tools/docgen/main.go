@@ -104,8 +104,8 @@ func writeMan(root *cobra.Command, dir string, date time.Time) error {
 	return doc.GenManTree(root, &doc.GenManHeader{Source: root.Name(), Date: &utc}, dir)
 }
 
-// removeManPages removes name's pages from dir: name.1 and name-<subcommand>.1.
-func removeManPages(dir, name string) error {
+// removeManPages removes rootName's pages from dir: rootName.1 and rootName-<subcommand>.1.
+func removeManPages(dir, rootName string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -113,7 +113,7 @@ func removeManPages(dir, name string) error {
 
 	for _, entry := range entries {
 		page := entry.Name()
-		isPage := page == name+".1" || strings.HasPrefix(page, name+"-") && strings.HasSuffix(page, ".1")
+		isPage := page == rootName+".1" || strings.HasPrefix(page, rootName+"-") && strings.HasSuffix(page, ".1")
 		if !isPage {
 			continue
 		}
