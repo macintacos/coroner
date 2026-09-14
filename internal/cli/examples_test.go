@@ -489,7 +489,7 @@ func helpTarget(root *cobra.Command, positionals []string) error {
 
 	isTopic := func(topic cli.HelpTopic) bool { return topic.Name == positionals[0] }
 	_, _, err := root.Find(positionals)
-	if err != nil && positionals[0] != cli.ReferenceTopic && !slices.ContainsFunc(cli.HelpTopics(), isTopic) {
+	if err != nil && !slices.ContainsFunc(cli.CommandTopics(), isTopic) {
 		return fmt.Errorf("unknown help topic or command %q", positionals[0])
 	}
 

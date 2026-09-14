@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const ReferenceTopic = referenceTopic
+func CommandTopics() []HelpTopic { return commandTopics() }
 
 func OutputFormat(cmd *cobra.Command) error {
 	_, err := outputFormat(cmd)

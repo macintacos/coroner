@@ -8,8 +8,10 @@ cmp stdout reference.md
 -- reference.md --
 # coroner
 
+~~~text
 coroner records what happened during an investigation, in order: name a timeline,
 add timestamped events from logs, chat and people, then view and export it.
+~~~
 
 ~~~text
 coroner <command> [flags]
@@ -30,6 +32,16 @@ status       Show the database and the timeline commands act on
 tag          List the tags events carry
 timeline     Create, list and switch between timelines
 version      Show coroner's version
+~~~
+
+Help topics:
+
+~~~text
+environment  Environment variables coroner reads
+exit-codes   Exit codes and the JSON error envelope
+formatting   Output formats and what scripts can rely on
+time         How coroner reads the times you type
+reference    Every command and flag on one Markdown page
 ~~~
 
 Examples:
@@ -61,9 +73,11 @@ Global flags:
 
 ## coroner annotation
 
+~~~text
 An annotation is evidence, raw material kept verbatim such as a log line, or a comment,
 attached to an event or to the whole timeline. It has no time of its own in the
 chronology.
+~~~
 
 ~~~text
 coroner annotation [flags]
@@ -102,6 +116,7 @@ Global flags:
 
 ## coroner annotation add
 
+~~~text
 Attach an annotation to the event -e names, or to the whole timeline without -e. Evidence
 is kept verbatim: pass - to read a log line or chat message from stdin, which loses one
 trailing newline and is never read otherwise.
@@ -115,6 +130,7 @@ database, and prints its id, sha256, size and type.
 On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks
 the event from the timeline, and prints the command each entry equals. Under --json only
 --interactive opens it, and --no-input never does.
+~~~
 
 ~~~text
 coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
@@ -161,9 +177,11 @@ Global flags:
 
 ## coroner annotation delete
 
+~~~text
 Delete annotations by full id or unique id prefix, in any timeline, with their attachments
 and the blobs no other attachment uses. Every id is checked before anything is deleted, so
 an id that matches nothing deletes none. --dry-run shows what would be deleted instead.
+~~~
 
 ~~~text
 coroner annotation delete <id>... [flags]
@@ -199,10 +217,12 @@ Global flags:
 
 ## coroner annotation edit
 
+~~~text
 Change an annotation's body, kind, source or URL. Its author, event and timeline never
 change. <id> is a full id or a unique id prefix, in any timeline. --body - reads the body
 from stdin, which loses one trailing newline. --attach adds a file to the annotation's
 attachments; 'coroner attachment delete' removes one.
+~~~
 
 ~~~text
 coroner annotation edit <id> [flags]
@@ -244,11 +264,13 @@ Global flags:
 
 ## coroner annotation list
 
+~~~text
 List a timeline's annotations: those on the whole timeline first, then those on events in
 the order the events happened, oldest first. -e lists one event's. Each row is the id,
 kind, author, event and the body's first line; piped, the fields are tab-separated.
 
 Scripts should treat kind as an open set: later versions may add kinds.
+~~~
 
 ~~~text
 coroner annotation list [-e <ref>] [flags]
@@ -285,10 +307,12 @@ Global flags:
 
 ## coroner attachment
 
+~~~text
 An attachment is a file, such as a screenshot, kept with one event or annotation. Attach one
 with --attach on 'coroner event add', 'coroner event edit', 'coroner annotation add' or
 'coroner annotation edit'. Its bytes are stored once, as a blob named by their sha256, in
 the directory beside the database.
+~~~
 
 ~~~text
 coroner attachment [flags]
@@ -327,9 +351,11 @@ Global flags:
 
 ## coroner attachment delete
 
+~~~text
 Delete attachments by full id or unique id prefix, in any timeline, and the blobs no
 attachment uses any more. Every id is checked before anything is deleted, so an id that
 matches nothing deletes none. --dry-run shows what would be deleted instead.
+~~~
 
 ~~~text
 coroner attachment delete <id>... [flags]
@@ -365,9 +391,11 @@ Global flags:
 
 ## coroner attachment export
 
+~~~text
 Write the file an attachment holds, byte for byte, to the file -o names, or to stdout with
 -o -, the default, which refuses a terminal. -o never overwrites a file unless --force is
 given. <id> is a full id or a unique id prefix, in any timeline.
+~~~
 
 ~~~text
 coroner attachment export <id> [-o <file>] [flags]
@@ -404,9 +432,11 @@ Global flags:
 
 ## coroner attachment list
 
+~~~text
 List the attachments on a timeline's events and annotations, oldest first. -e lists those
 on that event itself. Each row is the id, what it is attached to (an event's seq or an
 annotation's id), the filename, size and type; piped, the fields are tab-separated.
+~~~
 
 ~~~text
 coroner attachment list [-e <ref>] [flags]
@@ -443,8 +473,10 @@ Global flags:
 
 ## coroner completion
 
+~~~text
 Generate the autocompletion script for coroner for the specified shell.
 See each sub-command's help for details on how to use the generated script.
+~~~
 
 ~~~text
 coroner completion [flags]
@@ -484,10 +516,12 @@ Global flags:
 
 ## coroner event
 
+~~~text
 An event is something that happened at a moment or over an interval, as a source reported
 it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else
 the one 'coroner timeline use' picked. view, edit, delete, link and unlink also take an
 event's id, from any timeline. list takes -t more than once to overlay several timelines.
+~~~
 
 ~~~text
 coroner event [flags]
@@ -536,6 +570,7 @@ Global flags:
 
 ## coroner event add
 
+~~~text
 Add an event to the current timeline, and print the time it resolved to.
 
 A time with no offset is read in --tz, then the config file's default_timezone, then the
@@ -551,6 +586,7 @@ added, so one that cannot be read adds nothing.
 On a terminal, with no text or with --interactive, a form asks for each flag, previews the
 time as you type it, and prints the command each entry equals. Under --json only --interactive
 opens it, and --no-input never does.
+~~~
 
 ~~~text
 coroner event add {<text> | -} [flags]
@@ -601,6 +637,7 @@ Global flags:
 
 ## coroner event delete
 
+~~~text
 Delete events with their tags, annotations and attachments, and the blobs no other
 attachment uses, then print each as it was, so its fields can be added again. Every event
 is found before any is deleted: when one does not exist, nothing is deleted and delete
@@ -611,6 +648,7 @@ event.
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
 are for people; scripts pass full ids.
+~~~
 
 ~~~text
 coroner event delete <event>... [flags]
@@ -647,6 +685,7 @@ Global flags:
 
 ## coroner event edit
 
+~~~text
 Change the fields of an event. --at and --ended are read as 'coroner event add' reads them,
 and the times they resolve to are printed on stderr. Tags are removed before they are
 added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to
@@ -657,6 +696,7 @@ stdin, which is never read otherwise. --attach adds a file to the event's attach
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
 are for people; scripts pass full ids.
+~~~
 
 ~~~text
 coroner event edit <event> [flags]
@@ -704,6 +744,7 @@ Global flags:
 
 ## coroner event link
 
+~~~text
 Link the first event to the second. --kind says how they relate: led_to when the first led
 to the second, same_as when both record one moment as two sources saw it, and copied_from
 when the first was copied from the second. The events may be in different timelines; an
@@ -715,6 +756,7 @@ carry every link between two exported events.
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
 are for people; scripts pass full ids.
+~~~
 
 ~~~text
 coroner event link <from-event> <to-event> --kind {led_to | same_as | copied_from} [flags]
@@ -753,6 +795,7 @@ Global flags:
 
 ## coroner event list
 
+~~~text
 List the current timeline's events in the order they happened: by occurred at, then seq.
 
 Repeat -t to overlay several timelines: their events merge into one list by occurred at,
@@ -765,6 +808,7 @@ overlay saved with 'coroner overlay create' holds, in place of -t.
 and repeated --tag flags must all match. Times with no offset are read, and times print,
 in --tz, then the config file's default_timezone, then the local zone. Piped, the
 fields are tab-separated.
+~~~
 
 ~~~text
 coroner event list [flags]
@@ -811,12 +855,14 @@ Global flags:
 
 ## coroner event unlink
 
+~~~text
 Remove the link of --kind from the first event to the second, and print it as it was. A link
 that does not exist exits 3. --dry-run shows the link it would remove instead.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
 are for people; scripts pass full ids.
+~~~
 
 ~~~text
 coroner event unlink <from-event> <to-event> --kind {led_to | same_as | copied_from} [flags]
@@ -854,12 +900,14 @@ Global flags:
 
 ## coroner event view
 
+~~~text
 Show every field of an event, then its annotations, then its links to and from other events
 in any timeline. --json prints the event object with its links.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
 are for people; scripts pass full ids.
+~~~
 
 ~~~text
 coroner event view <event> [flags]
@@ -890,6 +938,7 @@ Global flags:
 
 ## coroner import
 
+~~~text
 Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'
 writes it, into the database: its timelines, sources, events, annotations, attachments and
 links. Pass - to read the export from stdin, so concatenated exports import together. Every
@@ -909,6 +958,7 @@ file. Otherwise it is left out and listed.
 
 -t names a stored timeline that every record must belong to. Without -t, the export decides
 which timelines it imports into.
+~~~
 
 ~~~text
 coroner import {<file> | -} [flags]
@@ -948,9 +998,11 @@ Global flags:
 
 ## coroner overlay
 
+~~~text
 An overlay is several timelines read together as one chronology. Save one under a name with
 'coroner overlay create', then pass --overlay <name> to event list and timeline export instead
 of repeating -t. An overlay is kept in this database only: exports never carry it.
+~~~
 
 ~~~text
 coroner overlay [flags]
@@ -987,10 +1039,12 @@ Global flags:
 
 ## coroner overlay create
 
+~~~text
 Save the timelines -t names, in the order given, as an overlay called <name>: at most 64
 lowercase letters, digits, '.', '_' or '-', starting with a letter or digit. --overlay <name>
 then selects those timelines on event list and timeline export. Deleting a timeline removes it
 from its overlays. --dry-run shows the overlay and saves nothing.
+~~~
 
 ~~~text
 coroner overlay create <name> -t <timeline>... [flags]
@@ -1028,9 +1082,11 @@ Global flags:
 
 ## coroner source
 
+~~~text
 A source is the system, service or person an event or annotation came from. Sources
 belong to the whole database, not one timeline, and are created the first time an event
 or annotation names one.
+~~~
 
 ~~~text
 coroner source [flags]
@@ -1068,9 +1124,11 @@ Global flags:
 
 ## coroner source edit
 
+~~~text
 Rename a source everywhere it is used. Events and annotations refer to a source by id,
 so they all follow the new name. A name another source has is refused: merging sources
 is not supported yet.
+~~~
 
 ~~~text
 coroner source edit <name> --name <new-name> [flags]
@@ -1107,9 +1165,11 @@ Global flags:
 
 ## coroner source list
 
+~~~text
 List every source in the database by name. Each row is the name, its events, its
 annotations, and when its first and last events happened, or '-' when no event names it.
 Piped, the fields are tab-separated.
+~~~
 
 ~~~text
 coroner source list [flags]
@@ -1139,9 +1199,11 @@ Global flags:
 
 ## coroner status
 
+~~~text
 Show the database coroner uses, its schema version, the timeline commands act on, and
 whether -t, CORONER_TIMELINE or 'coroner timeline use' selected it. status never
 migrates the database or creates it. Its JSON fields are experimental until 1.0.
+~~~
 
 ~~~text
 coroner status [flags]
@@ -1177,8 +1239,10 @@ Global flags:
 
 ## coroner tag
 
+~~~text
 A tag is a free lowercase keyword on an event, such as phase:detect. Tags exist only on
 the events that carry them, across the whole database.
+~~~
 
 ~~~text
 coroner tag [flags]
@@ -1214,8 +1278,10 @@ Global flags:
 
 ## coroner tag list
 
+~~~text
 List every tag in the database by name. Each row is the tag, the events carrying it, and
 when the first and last of them happened. Piped, the fields are tab-separated.
+~~~
 
 ~~~text
 coroner tag list [flags]
@@ -1245,8 +1311,10 @@ Global flags:
 
 ## coroner timeline
 
+~~~text
 A timeline is the named chronology of one investigation. Create one per incident or
 ticket, then use it so later commands know where events go.
+~~~
 
 ~~~text
 coroner timeline [flags]
@@ -1290,6 +1358,7 @@ Global flags:
 
 ## coroner timeline create
 
+~~~text
 Create a timeline. Its name is how commands select it: at most 64 lowercase letters,
 digits, '.', '_' or '-', starting with a letter or digit. Put free text in --title.
 Creating a timeline does not make it current; run 'coroner timeline use' for that.
@@ -1297,6 +1366,7 @@ Creating a timeline does not make it current; run 'coroner timeline use' for tha
 On a terminal, with no name or with --interactive, a form asks for the name, title and
 refs, offers the existing timeline when the name is taken, and prints the command it equals.
 Under --json only --interactive opens it, and --no-input never does.
+~~~
 
 ~~~text
 coroner timeline create <name> [flags]
@@ -1337,10 +1407,12 @@ Global flags:
 
 ## coroner timeline delete
 
+~~~text
 Delete a timeline with its events, tags, annotations, attachments and links, and the blobs
 no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
 would be deleted instead. Deleting the current timeline leaves none current, and the
 overlays that read the timeline keep their other timelines.
+~~~
 
 ~~~text
 coroner timeline delete <name|id> {--yes | --dry-run} [flags]
@@ -1377,6 +1449,7 @@ Global flags:
 
 ## coroner timeline edit
 
+~~~text
 Change a timeline's name, title or refs. Its id never changes, so its events, and
 anything naming it by id, still resolve after a rename. Refs are removed before they are
 added; adding a ref it has, or removing one it lacks, changes nothing.
@@ -1385,6 +1458,7 @@ On a terminal, without --name, --title, --add-ref or --remove-ref, or with --int
 form opens on the timeline, or on the current one when none is named, applies only what you
 change, and prints the command it equals. Under --json only --interactive opens it, and
 --no-input never does.
+~~~
 
 ~~~text
 coroner timeline edit <name|id> [flags]
@@ -1426,6 +1500,7 @@ Global flags:
 
 ## coroner timeline export
 
+~~~text
 Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its
 events, their annotations, the sources they name and their attachments. --format json
 writes one document, indented on a terminal; --format jsonl writes a header record, then
@@ -1464,6 +1539,7 @@ is named after its timelines joined by +, as in mongo-failover+checkout-latency.
 in place of -t. json and jsonl carry every link between two exported events.
 
 --group-by is experimental and may change before 1.0.
+~~~
 
 ~~~text
 coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o {<file> | <directory>/}] [flags]
@@ -1519,6 +1595,7 @@ Global flags:
 
 ## coroner timeline list
 
+~~~text
 List every timeline, oldest first. A '*' marks the current timeline, the one
 'coroner timeline use' selected.
 
@@ -1526,6 +1603,7 @@ On a terminal it opens a picker that also shows each timeline's refs, event coun
 last event: / filters, enter makes the timeline under the cursor current, and q quits.
 --format text, --json, --no-input, CORONER_NO_INPUT or piping the output prints the list
 instead: a marker, the name and the title on each row, tab-separated when piped.
+~~~
 
 ~~~text
 coroner timeline list [flags]
@@ -1555,9 +1633,11 @@ Global flags:
 
 ## coroner timeline use
 
+~~~text
 Make a timeline current, so commands that act on a timeline use it when neither -t nor
 CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves
 none current.
+~~~
 
 ~~~text
 coroner timeline use {<name|id> | --clear} [flags]
@@ -1593,6 +1673,7 @@ Global flags:
 
 ## coroner timeline view
 
+~~~text
 Show a timeline and its events in the order they happened. Without a name, id or -t,
 show the timeline CORONER_TIMELINE or 'coroner timeline use' selects.
 
@@ -1609,6 +1690,7 @@ Repeat -t to view several timelines as one chronology: their events merge by occ
 timeline id, then seq. The viewer names each event's timeline in a column tinted with that
 timeline's color, and plain text prints each timeline's summary and starts each event's row
 with its timeline's name. --json prints one timeline object, so it takes one timeline.
+~~~
 
 ~~~text
 coroner timeline view [<name|id>] [flags]
@@ -1649,7 +1731,9 @@ Global flags:
 
 ## coroner version
 
+~~~text
 Show coroner's version
+~~~
 
 ~~~text
 coroner version [flags]

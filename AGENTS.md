@@ -116,11 +116,11 @@ digraph coroner_rules_router {
   `coroner help <topic>`, and copied into the CLI reference by `docgen`; those pages are
   also the site's reference pages for the topics. Specs fail when `exit-codes` disagrees
   with the exit-code map or `environment` misses an environment variable the code reads.
-  The `reference` topic is no file: `writeReference`
-  ([`reference.go`](internal/cli/reference.go)) renders the command tree as one Markdown
-  page, so `docgen` writes no page for it, and
-  [`help-reference.txtar`](internal/cli/testdata/script/help-reference.txtar) pins that
-  page, so any command or flag change rewrites its expected output.
+  The `reference` topic is not a file: `writeReference`
+  ([`reference.go`](internal/cli/reference.go)) renders it from the command tree, so
+  `docgen` writes no page for it.
+  [`help-reference.txtar`](internal/cli/testdata/script/help-reference.txtar) pins the
+  page, and any command or flag change rewrites it.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the

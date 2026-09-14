@@ -156,7 +156,7 @@ var _ = Describe("Run", func() {
 
 		It("names no help topic like a command, which help would then hide", func(ctx SpecContext) {
 			for _, cmd := range cli.NewRoot(ctx, cli.App{}).Commands() {
-				Expect(cli.HelpTopics()).NotTo(ContainElement(HaveField("Name", cmd.Name())), cmd.Name())
+				Expect(cli.CommandTopics()).NotTo(ContainElement(HaveField("Name", cmd.Name())), cmd.Name())
 			}
 		})
 

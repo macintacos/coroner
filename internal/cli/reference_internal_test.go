@@ -16,15 +16,15 @@ import (
 var _ = Describe("writeReference", func() {
 	noop := func(*cobra.Command, []string) {}
 
-	render := func(root *cobra.Command) string {
+	render := func(root *cobra.Command, topics ...HelpTopic) string {
 		GinkgoHelper()
 		var out strings.Builder
-		Expect(writeReference(&out, root)).To(Succeed())
+		Expect(writeReference(&out, root, topics)).To(Succeed())
 
 		return out.String()
 	}
 
-	It("writes each command's description, usage, subcommands, examples and flags under its path", func() {
+	It("writes each command's description, usage, subcommands, examples and flags under its path, and root's help topics", func() {
 		root := &cobra.Command{Use: "tool", Short: "A tool", Run: noop}
 		root.PersistentFlags().String("db", "", "Database `path` (env: TOOL_DB)")
 		root.PersistentFlags().BoolP("help", "h", false, "Show help")
@@ -34,9 +34,11 @@ var _ = Describe("writeReference", func() {
 		add.Flags().Bool("dry-run", false, "Add nothing")
 		root.AddCommand(add)
 
-		Expect(render(root)).To(Equal(`# tool
+		Expect(render(root, HelpTopic{Name: "time", Short: "Typing times"})).To(Equal(`# tool
 
+~~~text
 A tool
+~~~
 
 ~~~text
 tool [flags]
@@ -48,6 +50,12 @@ Commands:
 add          Add a thing
 ~~~
 
+Help topics:
+
+~~~text
+time         Typing times
+~~~
+
 Global flags:
 
 ~~~text
@@ -57,7 +65,9 @@ Global flags:
 
 ## tool add
 
+~~~text
 Add a thing to the list.
+~~~
 
 ~~~text
 tool add <text> [flags]
@@ -101,7 +111,7 @@ Global flags:
 
 		page := render(root)
 
-		Expect(headings(page)).To(Equal([]string{
+		Expect(markdownHeadings(page)).To(Equal([]string{
 			"# tool", "## tool completion", "## tool event", "## tool event add", "## tool event list", "## tool version",
 		}))
 		Expect(page).To(MatchRegexp(`(?m)^help +Help about any command$`))
@@ -110,36 +120,52 @@ Global flags:
 		Expect(page).NotTo(ContainSubstring("legacy"))
 	})
 
-	It("names every coroner command that is neither hidden nor deprecated, as a heading or a listed line", func(ctx SpecContext) {
+	It("gives every available coroner command a section, and help and the completion shells a listed line", func(ctx SpecContext) {
 		root := NewRoot(ctx, App{})
 		page := render(root)
 
-		var missing []string
+		expected := []string{"# coroner"}
+		var listedOnly []*cobra.Command
 		var visit func(*cobra.Command)
 		visit = func(cmd *cobra.Command) {
-			if cmd.Hidden || cmd.Deprecated != "" {
-				return
-			}
-
-			named := regexp.MustCompile(`(?m)^(#{1,2} ` + regexp.QuoteMeta(cmd.CommandPath()) + `|` +
-				regexp.QuoteMeta(cmd.Name()) + ` +` + regexp.QuoteMeta(cmd.Short) + `)$`)
-			if !named.MatchString(page) {
-				missing = append(missing, cmd.CommandPath())
-			}
 			for _, child := range cmd.Commands() {
-				visit(child)
+				switch {
+				case child.Name() == "help" || cmd.Name() == "completion":
+					listedOnly = append(listedOnly, child)
+				case child.IsAvailableCommand():
+					expected = append(expected, "## "+child.CommandPath())
+					visit(child)
+				}
 			}
 		}
 		visit(root)
 
-		Expect(missing).To(BeEmpty())
+		Expect(markdownHeadings(page)).To(Equal(expected))
+		Expect(listedOnly).NotTo(BeEmpty())
+		for _, cmd := range listedOnly {
+			Expect(page).To(MatchRegexp(`(?m)^`+regexp.QuoteMeta(cmd.Name())+` +`+regexp.QuoteMeta(cmd.Short)+`$`), cmd.CommandPath())
+		}
 	})
 
-	It("writes Markdown that passes rumdl check, line length aside", func(ctx SpecContext) {
+	It("writes no Markdown that renders as HTML, so placeholders such as <id> survive", func(ctx SpecContext) {
+		var html []string
+		walkMarkdown(render(NewRoot(ctx, App{})), func(n ast.Node, source []byte) {
+			switch n := n.(type) {
+			case *ast.RawHTML:
+				html = append(html, string(n.Segments.Value(source)))
+			case *ast.HTMLBlock:
+				html = append(html, string(n.Lines().Value(source)))
+			}
+		})
+
+		Expect(html).To(BeEmpty())
+	})
+
+	It("writes Markdown that passes rumdl check", func(ctx SpecContext) {
 		_, err := exec.LookPath("rumdl")
 		Expect(err).NotTo(HaveOccurred(), "rumdl is not on PATH: run the suite through mise run test")
 
-		cmd := exec.CommandContext(ctx, "rumdl", "check", "--extend-disable", "MD013", "-")
+		cmd := exec.CommandContext(ctx, "rumdl", "check", "-")
 		cmd.Stdin = strings.NewReader(render(NewRoot(ctx, App{})))
 		out, err := cmd.CombinedOutput()
 
@@ -147,20 +173,29 @@ Global flags:
 	})
 })
 
-// headings returns page's headings as goldmark parses them, each as its # markers and text.
-func headings(page string) []string {
+// markdownHeadings returns page's headings as goldmark parses them, each as its # markers and
+// text.
+func markdownHeadings(page string) []string {
+	var found []string
+	walkMarkdown(page, func(n ast.Node, source []byte) {
+		if heading, ok := n.(*ast.Heading); ok {
+			found = append(found, strings.Repeat("#", heading.Level)+" "+string(heading.Lines().Value(source)))
+		}
+	})
+
+	return found
+}
+
+// walkMarkdown calls visit with each node of page as goldmark parses it, parents first.
+func walkMarkdown(page string, visit func(n ast.Node, source []byte)) {
 	GinkgoHelper()
 	source := []byte(page)
-	var found []string
 
 	Expect(ast.Walk(goldmark.New().Parser().Parse(text.NewReader(source)), func(n ast.Node, entering bool) (ast.WalkStatus, error) {
-		if heading, ok := n.(*ast.Heading); ok && entering {
-			line := heading.Lines().At(0)
-			found = append(found, strings.Repeat("#", heading.Level)+" "+string(line.Value(source)))
+		if entering {
+			visit(n, source)
 		}
 
 		return ast.WalkContinue, nil
 	})).To(Succeed())
-
-	return found
 }
