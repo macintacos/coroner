@@ -332,7 +332,8 @@ type eventDraft struct {
 }
 
 // draftEvent returns the event in describes, with times read as of env, and gives it new ids,
-// rejecting anything the store would. It reads stdin last, so a bad field never waits on it.
+// keeping --id's event id when given, rejecting anything the store would. It reads stdin last,
+// so a bad field never waits on it.
 func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (eventDraft, error) {
 	fields := readEventFields(in, cfg.Author, app.LookupEnv)
 	times, err := resolveEventTimes(in, env)
