@@ -22,6 +22,10 @@ type listField struct {
 	picked int
 	check  func(string) error
 	err    error
+	// thumbnail, when set, returns what shows under the picked value, or the last one added, and
+	// the command the terminal needs to show it; send holds that command until the next update.
+	thumbnail func(value string) (string, tea.Cmd)
+	send      tea.Cmd
 }
 
 // listShown is how many values a list field shows at once, so a long list never pushes its typing
@@ -52,7 +56,28 @@ func newListField(input *huh.Input, help string, values []string, check func(str
 	return l
 }
 
+// withThumbnail returns l showing thumbnail's lines under its value.
+func (l *listField) withThumbnail(thumbnail func(value string) (string, tea.Cmd)) *listField {
+	l.thumbnail = thumbnail
+	l.show()
+
+	return l
+}
+
 func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	model, cmd := l.update(msg)
+	return model, tea.Batch(cmd, l.takeSend())
+}
+
+// takeSend returns the command the last show left, and forgets it.
+func (l *listField) takeSend() tea.Cmd {
+	send := l.send
+	l.send = nil
+
+	return send
+}
+
+func (l *listField) update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	press, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		_, cmd := l.Input.Update(msg)
@@ -93,7 +118,7 @@ func (l *listField) Blur() tea.Cmd {
 		added = l.addTyped()
 	}
 
-	return tea.Batch(added, l.Input.Blur())
+	return tea.Batch(added, l.Input.Blur(), l.takeSend())
 }
 
 func (l *listField) Error() error {
@@ -166,8 +191,8 @@ func (l *listField) pick(up bool) {
 }
 
 // show puts under the help at most listShown values, the last ones or a window holding the picked
-// one, after how many more there are. The picked one is marked ×, which backspace removes (> would
-// read as the Input's prompt).
+// one, after how many more there are, then the thumbnail of the picked value or the last one. The
+// picked one is marked ×, which backspace removes (> would read as the Input's prompt).
 func (l *listField) show() {
 	first := max(0, len(l.values)-listShown)
 	if l.picked != -1 {
@@ -186,6 +211,17 @@ func (l *listField) show() {
 			marker = "× "
 		}
 		b.WriteString("\n" + marker + pickerLabel(value))
+	}
+	if l.thumbnail != nil && len(l.values) > 0 {
+		shown := l.values[len(l.values)-1]
+		if l.picked != -1 {
+			shown = l.values[l.picked]
+		}
+		var lines string
+		lines, l.send = l.thumbnail(shown)
+		if lines != "" {
+			b.WriteString("\n" + lines)
+		}
 	}
 
 	l.Description(b.String())

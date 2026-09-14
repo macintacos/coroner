@@ -11,11 +11,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -54,6 +54,8 @@ type formSession struct {
 	// global are the --db and --config args the command line gave, which each echoed command repeats.
 	global []string
 	style  errorStyle
+	// thumbnails are what the form's list fields show under their values, by field name.
+	thumbnails map[string]func(value string) (string, tea.Cmd)
 }
 
 const interactiveUsage = "Open a form to fill in, prefilled from the other flags (needs a terminal)"
@@ -153,9 +155,15 @@ func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc)
 		}
 	}
 	noColor, _ := cmd.Flags().GetBool("no-color")
+	color := colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)
+	images := graphics.None
+	if color {
+		images = graphics.Detect(app.LookupEnv)
+	}
 
 	return formSession{
-		app: app, cfg: cfg, o: o, ask: forms(colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)), global: global,
+		app: app, cfg: cfg, o: o, ask: forms(color), global: global,
+		thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
 		// A rejected entry is reported to the person at the form, never as a JSON envelope.
 		style: errorStyle{color: colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv)},
 	}, nil
@@ -304,6 +312,7 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
 ) (fieldValues, error) {
+	choices.thumbnails = s.thumbnails
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
 		submitted, err := s.ask(ctx, fields...)
@@ -419,10 +428,7 @@ func onlyField(d definition, name string) definition {
 // is true.
 func terminalForms(app App) func(color bool) askFunc {
 	return func(color bool) askFunc {
-		profile := colorprofile.ASCII
-		if color {
-			profile = colorprofile.ANSI
-		}
+		profile := formProfile(color, app.LookupEnv)
 
 		return func(ctx context.Context, fields ...huh.Field) (bool, error) {
 			cancelled := false
