@@ -184,7 +184,10 @@
     nodes.push(fields);
 
     const annotations = annotationsOn.get(event.id) ?? [];
-    if (annotations.length) nodes.push(element("h3", "Annotations"), annotationList(annotations));
+    const drafts = draftsOn(event.id);
+    if (annotations.length || drafts.length) nodes.push(element("h3", "Annotations"));
+    if (annotations.length) nodes.push(annotationList(annotations));
+    nodes.push(...draftNodes(event.id, drafts));
     return nodes;
   };
 
@@ -470,6 +473,49 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  // uuidV7 returns the RFC 9562 version 7 UUID for ms since the Unix epoch and ten random bytes.
+  // crypto.randomUUID only makes version 4.
+  const uuidV7 = (ms, random) => {
+    const bytes = new Uint8Array(16);
+    for (let i = 0; i < 6; i++) bytes[i] = Math.floor(ms / 2 ** (40 - 8 * i)) & 0xff;
+    bytes.set(random, 6);
+    bytes[6] = (bytes[6] & 0x0f) | 0x70;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+  };
+
+  // canonicalInstant writes ms as an export instant, which import refuses without all nine
+  // fractional digits.
+  const canonicalInstant = (ms) => new Date(ms).toISOString().replace("Z", "000000Z");
+
+  // makeAnnotation returns the export record of a comment author wrote on an event at now, ms
+  // since the Unix epoch, with its ID's random part from ten random bytes.
+  const makeAnnotation = ({ timelineId, eventId, body, author }, now, random) => ({
+    type: "annotation",
+    id: uuidV7(now, random),
+    timeline_id: timelineId,
+    event_id: eventId,
+    kind: "comment",
+    body,
+    author,
+    source: null,
+    url: null,
+    created_at: canonicalInstant(now),
+    updated_at: canonicalInstant(now),
+  });
+
+  // annotationsHeader returns the header of an annotations export written at now from the page
+  // of exported: its format version, and a query naming its timelines that filters nothing.
+  const annotationsHeader = (exported, now) => ({
+    type: "header",
+    format: exported.format,
+    format_version: exported.format_version,
+    coroner_version: exported.coroner_version,
+    exported_at: canonicalInstant(now),
+    query: { timelines: exported.timelines.map((t) => t.name), since: null, until: null, sources: [], tags: [], contains: null, limit: null, order: "asc" },
+  });
+
   const exported = inZone(instant(data.exported_at));
   const shown = data.timelines[0];
   // An overlay is named by its timelines' names, as the Markdown export titles one.
@@ -736,6 +782,215 @@
     download(await png(svg), names.join("+") + ".png");
   });
 
+  // Comments drafted here are kept in this browser under the page's timeline ids and the reader's
+  // name, so the page of other timelines never shows them. The page never writes its own file:
+  // the reader exports the drafts and sends them on. Storage can throw, on file:// in WebKit for
+  // one, and then drafts last the visit and the page says so.
+  const reviewerKey = "coroner-reviewer";
+  const draftsKey = (name) => "coroner-drafts:" + data.timelines.map((t) => t.id).join("+") + ":" + name;
+  let storageFails = false;
+  const stored = (key) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      storageFails = true;
+      return null;
+    }
+  };
+  const store = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      storageFails = true;
+    }
+  };
+  // storedDrafts returns name's drafts, ignoring anything under the key that is not one. Drafts on
+  // events another export of the timeline holds are kept but not shown or exported here.
+  const storedDrafts = (name) => {
+    let parsed;
+    try {
+      parsed = JSON.parse(stored(draftsKey(name)) ?? "[]");
+    } catch {
+      return [];
+    }
+    return Array.isArray(parsed) ? parsed.filter((draft) => typeof draft?.id === "string" && typeof draft.body === "string") : [];
+  };
+
+  let reviewer = stored(reviewerKey);
+  let drafts = reviewer === null ? [] : storedDrafts(reviewer);
+  // editing is the event whose comment form is open, and the draft it edits or null for a new one.
+  let editing = null;
+  let exportedIDs = new Set();
+  let exportedFilename = "";
+  let commentAfterName = false;
+
+  const draftsOn = (eventID) => drafts.filter((draft) => draft.event_id === eventID);
+  const pageDrafts = () => drafts.filter((draft) => eventsById.has(draft.event_id));
+
+  const reviewerLine = document.getElementById("reviewer");
+  const nameForm = document.getElementById("name-form");
+  const nameInput = document.getElementById("your-name");
+  const draftsStatus = document.getElementById("drafts-status");
+  const exportAnnotations = document.getElementById("export-annotations");
+  const clearExported = document.getElementById("clear-exported");
+  document.getElementById("review").hidden = !data.events.length;
+
+  const plural = (count, noun) => count + " " + noun + (count === 1 ? "" : "s");
+
+  const showReview = () => {
+    reviewerLine.hidden = reviewer === null;
+    document.getElementById("commenting-as").textContent = "Commenting as " + reviewer + ".";
+    const shownDrafts = pageDrafts();
+    const exportedLeft = drafts.filter((draft) => exportedIDs.has(draft.id)).length;
+    const status = [
+      shownDrafts.length ? plural(shownDrafts.length, "draft comment") + (storageFails ? "." : ", kept in this browser.") : "No draft comments.",
+      storageFails && "This browser can't keep drafts, so they last until you close the page.",
+      exportedLeft && "Exported " + plural(exportedLeft, "draft comment") + " to " + exportedFilename + ".",
+    ];
+    draftsStatus.textContent = status.filter(Boolean).join(" ");
+    exportAnnotations.disabled = !shownDrafts.length;
+    clearExported.hidden = !exportedLeft;
+  };
+
+  const refresh = () => {
+    show(eventsById.get(view.selected) ?? null);
+    showReview();
+    detail.querySelector("textarea")?.focus();
+  };
+
+  const saveDrafts = () => {
+    store(draftsKey(reviewer), JSON.stringify(drafts));
+    refresh();
+  };
+
+  const button = (text, onClick) => {
+    const node = element("button", text);
+    node.type = "button";
+    node.addEventListener("click", onClick);
+    return node;
+  };
+
+  const edit = (eventID, draftID) => {
+    if (reviewer === null) {
+      commentAfterName = true;
+      askName();
+      return;
+    }
+    editing = eventID === null ? null : { eventID, draftID };
+    refresh();
+  };
+
+  const commentForm = (eventID, draft) => {
+    const form = element("form", undefined, "comment");
+    const label = element("label", draft ? "Edit your comment" : "Your comment");
+    const body = element("textarea");
+    body.rows = 4;
+    body.required = true;
+    body.value = draft?.body ?? "";
+    label.append(body);
+    const save = element("button", "Save draft");
+    save.type = "submit";
+    const actions = element("p", undefined, "actions");
+    actions.append(save, button("Cancel", () => edit(null)));
+    form.append(label, actions);
+    form.addEventListener("submit", (submitted) => {
+      submitted.preventDefault();
+      if (!body.value.trim()) {
+        body.value = "";
+        body.reportValidity();
+        return;
+      }
+      const now = Date.now();
+      drafts = draft
+        ? drafts.map((other) => (other.id === draft.id ? { ...other, body: body.value, updated_at: canonicalInstant(now) } : other))
+        : [...drafts, makeAnnotation({ timelineId: eventsById.get(eventID).timeline_id, eventId: eventID, body: body.value, author: reviewer }, now, crypto.getRandomValues(new Uint8Array(10)))];
+      editing = null;
+      saveDrafts();
+    });
+    return form;
+  };
+
+  const draftItem = (draft) => {
+    const item = element("li", undefined, "draft");
+    const actions = element("p", undefined, "actions");
+    actions.append(
+      button("Edit", () => edit(draft.event_id, draft.id)),
+      button("Discard", () => {
+        drafts = drafts.filter((other) => other.id !== draft.id);
+        saveDrafts();
+      }),
+    );
+    item.append(element("p", "Draft comment by " + draft.author, "label"), element("p", draft.body, "body"), actions);
+    return item;
+  };
+
+  // draftNodes returns an event's drafts, each editable, then a form for a new comment or the
+  // button that opens one.
+  const draftNodes = (eventID, eventDrafts) => {
+    const open = editing?.eventID === eventID ? editing : null;
+    const nodes = [];
+    if (eventDrafts.length) {
+      const list = element("ul", undefined, "annotations drafts");
+      for (const draft of eventDrafts) {
+        if (draft.id !== open?.draftID) {
+          list.append(draftItem(draft));
+          continue;
+        }
+        const item = element("li", undefined, "draft");
+        item.append(commentForm(eventID, draft));
+        list.append(item);
+      }
+      nodes.push(list);
+    }
+    if (open?.draftID === null) nodes.push(commentForm(eventID, null));
+    else if (!open) nodes.push(button("Add comment", () => edit(eventID, null)));
+    return nodes;
+  };
+
+  const askName = () => {
+    nameForm.hidden = false;
+    nameInput.value = reviewer ?? "";
+    nameInput.focus();
+  };
+
+  document.getElementById("change-name").addEventListener("click", askName);
+  document.getElementById("cancel-name").addEventListener("click", () => {
+    nameForm.hidden = true;
+    commentAfterName = false;
+  });
+  nameForm.addEventListener("submit", (submitted) => {
+    submitted.preventDefault();
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameInput.value = "";
+      nameInput.reportValidity();
+      return;
+    }
+    reviewer = name;
+    store(reviewerKey, name);
+    drafts = storedDrafts(name);
+    exportedIDs = new Set();
+    nameForm.hidden = true;
+    editing = commentAfterName && view.selected !== null ? { eventID: view.selected, draftID: null } : null;
+    commentAfterName = false;
+    refresh();
+  });
+
+  exportAnnotations.addEventListener("click", () => {
+    const exporting = pageDrafts();
+    const records = [annotationsHeader(data, Date.now()), ...exporting];
+    exportedFilename = names.join("+") + "-annotations-" + reviewer.replace(/[^A-Za-z0-9._-]+/g, "-") + ".jsonl";
+    exportedIDs = new Set(exporting.map((draft) => draft.id));
+    download(new Blob([records.map((record) => JSON.stringify(record) + "\n").join("")], { type: "application/x-ndjson" }), exportedFilename);
+    showReview();
+  });
+  clearExported.addEventListener("click", () => {
+    drafts = drafts.filter((draft) => !exportedIDs.has(draft.id));
+    exportedIDs = new Set();
+    saveDrafts();
+  });
+
+  showReview();
   if (view.selected !== null) timeline.setSelection(visibleItems.get(view.selected) ? [view.selected] : []);
   select(view.selected);
   showPrintList();

@@ -111,6 +111,13 @@
 <button type="button" id="export-png">Export PNG</button>
 </form>
 <div id="timeline"></div>
+<section id="review" aria-label="Your comments">
+<p id="reviewer" hidden><span id="commenting-as"></span> <button type="button" id="change-name">Change name</button></p>
+<form id="name-form" hidden><label>Your name <input type="text" id="your-name" autocomplete="name" required></label> <button type="submit">Save name</button> <button type="button" id="cancel-name">Cancel</button></form>
+<p class="hint" id="drafts-status" aria-live="polite"></p>
+<button type="button" id="export-annotations">Export annotations (.jsonl)</button>
+<button type="button" id="clear-exported" hidden>Clear exported drafts</button>
+</section>
 <section id="detail" aria-live="polite"></section>
 <section id="print"></section>
 </main>
