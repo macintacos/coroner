@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>coroner timeline</title>
+<style>:root {
+  color-scheme: light;
+  --paper: #f6f7f5;
+  --surface: #eaecea;
+  --selected: #dce7ef;
+  --ink: #1b1f22;
+  --muted: #545c63;
+  --rule: #d3d8d6;
+  --accent: #1f5f8b;
+  --source-0: #0b6aa8;
+  --source-1: #b35c00;
+  --source-2: #1f7a4d;
+  --source-3: #b0306e;
+  --source-4: #6a4fb0;
+  --source-5: #00797a;
+  --source-6: #876a00;
+  --source-7: #b3261e;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #121517;
+  --surface: #1b1f22;
+  --selected: #1d3140;
+  --ink: #e3e7e9;
+  --muted: #9ba4ab;
+  --rule: #30373c;
+  --accent: #7fb6dc;
+  --source-0: #5aaef0;
+  --source-1: #f0a050;
+  --source-2: #5cc28e;
+  --source-3: #e97fb4;
+  --source-4: #a996f0;
+  --source-5: #4fc4c4;
+  --source-6: #d8b64a;
+  --source-7: #f28b82;
+}
+@media (prefers-color-scheme: dark) {
+:root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --paper: #121517;
+  --surface: #1b1f22;
+  --selected: #1d3140;
+  --ink: #e3e7e9;
+  --muted: #9ba4ab;
+  --rule: #30373c;
+  --accent: #7fb6dc;
+  --source-0: #5aaef0;
+  --source-1: #f0a050;
+  --source-2: #5cc28e;
+  --source-3: #e97fb4;
+  --source-4: #a996f0;
+  --source-5: #4fc4c4;
+  --source-6: #d8b64a;
+  --source-7: #f28b82;
+}
+}
+@media print {
+:root:root:root {
+  color-scheme: light;
+  --paper: #f6f7f5;
+  --surface: #eaecea;
+  --selected: #dce7ef;
+  --ink: #1b1f22;
+  --muted: #545c63;
+  --rule: #d3d8d6;
+  --accent: #1f5f8b;
+  --source-0: #0b6aa8;
+  --source-1: #b35c00;
+  --source-2: #1f7a4d;
+  --source-3: #b0306e;
+  --source-4: #6a4fb0;
+  --source-5: #00797a;
+  --source-6: #876a00;
+  --source-7: #b3261e;
+}
+}
+.source-0 { --source: var(--source-0); }
+.source-1 { --source: var(--source-1); }
+.source-2 { --source: var(--source-2); }
+.source-3 { --source: var(--source-3); }
+.source-4 { --source: var(--source-4); }
+.source-5 { --source: var(--source-5); }
+.source-6 { --source: var(--source-6); }
+.source-7 { --source: var(--source-7); }
+.source-none { --source: var(--muted); }
+/* html/viewer.css */</style>
+</head>
+<body data-source-colors="8">
+<header>
+<h1 id="heading"></h1>
+<p class="refs" id="refs"></p>
+<p class="meta" id="meta"></p>
+<button type="button" id="theme" aria-pressed="false">Dark theme</button>
+</header>
+<main>
+<form id="filters">
+<fieldset id="sources"><legend>Sources</legend></fieldset>
+<fieldset id="tags"><legend>Tags</legend></fieldset>
+<label class="search">Search text <input type="search" id="q"></label>
+<fieldset class="range"><legend>Time</legend>
+<label>Since <input type="datetime-local" step="1" id="since"></label>
+<label>Until <input type="datetime-local" step="1" id="until"></label>
+<button type="button" id="all-times">All times</button>
+</fieldset>
+<button type="button" id="export-png">Export PNG</button>
+</form>
+<div id="timeline"></div>
+<section id="detail" aria-live="polite"></section>
+<section id="print"></section>
+</main>
+<noscript>This timeline needs JavaScript to show its events.</noscript>
+<script type="application/json" id="coroner-data">{"format":"coroner.export","format_version":"1.2","coroner_version":"0.1.0","exported_at":"2026-09-12T21:40:05.000000000Z","query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"},"timelines":[{"id":"t1","name":"mongo-failover","title":"MongoDB primary failover","refs":["INC-4820"],"created_at":"0001-01-01T00:00:00.000000000Z"},{"id":"t2","name":"checkout-latency","title":"Checkout latency","refs":["INC-4821","https://status.example.com/incidents/4821"],"created_at":"0001-01-01T00:00:00.000000000Z"}],"sources":[],"events":[{"id":"c1","timeline_id":"t2","seq":1,"occurred_at":"2026-09-10T14:01:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"slack","tags":[],"text":"maria: checkout p99 is 4s","url":null,"author":null,"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"m1","timeline_id":"t1","seq":1,"occurred_at":"2026-09-10T14:02:03.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"mongod","tags":["db"],"text":"Primary stepped down","url":null,"author":null,"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"m2","timeline_id":"t1","seq":2,"occurred_at":"2026-09-10T14:02:40.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"k8s:events","tags":[],"text":"db-2 pod restarted","url":null,"author":null,"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"c2","timeline_id":"t2","seq":2,"occurred_at":"2026-09-10T14:02:40.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"k8s:events","tags":[],"text":"checkout-api scaled to 12 pods","url":null,"author":null,"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"m3","timeline_id":"t1","seq":3,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":"2026-09-10T14:05:10.000000000Z","source":null,"tags":[],"text":"Replica set has no primary","url":null,"author":null,"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"c3","timeline_id":"t2","seq":3,"occurred_at":"2026-09-10T14:07:00.000000000Z","occurred_offset":null,"precision":"minute","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":["deploy"],"text":"Rolled back deploy 812","url":null,"author":null,"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"}],"annotations":[{"id":"a1","timeline_id":"t1","event_id":null,"kind":"comment","body":"Started from the replica set alert.","author":"sam","source":null,"url":null,"created_at":"2026-09-12T09:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"a2","timeline_id":"t2","event_id":null,"kind":"evidence","body":"PagerDuty incident 4821 opened","author":"julian","source":null,"url":null,"created_at":"2026-09-12T09:01:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"},{"id":"a3","timeline_id":"t1","event_id":"m1","kind":"evidence","body":"replSetStepDown in the mongod log","author":null,"source":null,"url":null,"created_at":"2026-09-12T09:30:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"}],"attachments":[],"links":[]}
+</script>
+<script type="application/json" id="coroner-zone">{"name":"UTC","spans":[{"start":1757512890000,"offset":0,"abbreviation":"UTC"}]}
+</script>
+<script>/* html/vendor/vis-timeline-graph2d.min.js */</script>
+<script>/* html/viewer.js */</script>
+</body>
+</html>

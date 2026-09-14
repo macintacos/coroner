@@ -146,6 +146,21 @@
     return list;
   };
 
+  // An overlay holds several timelines, and names an event's or annotation's timeline wherever
+  // it shows one; the page of a single timeline names none.
+  const overlay = data.timelines.length > 1;
+  const timelineNames = new Map(data.timelines.map((t) => [t.id, t.name]));
+
+  // wholeTimelineNotes returns the annotations on a whole timeline under a heading of tag: one
+  // for a single timeline's, or one for each timeline of an overlay that has any, naming it.
+  const wholeTimelineNotes = (tag) => {
+    if (!overlay) return onTimeline.length ? [element(tag, "On the whole timeline"), annotationList(onTimeline)] : [];
+    return data.timelines.flatMap((t) => {
+      const annotations = onTimeline.filter((annotation) => annotation.timeline_id === t.id);
+      return annotations.length ? [element(tag, "On " + t.name), annotationList(annotations)] : [];
+    });
+  };
+
   const field = (list, label, value) => {
     list.append(element("dt", label));
     const description = element("dd");
@@ -161,6 +176,7 @@
 
     const fields = element("dl");
     if (event.seq !== null) field(fields, "Event", "#" + event.seq);
+    if (overlay) field(fields, "Timeline", timelineNames.get(event.timeline_id));
     field(fields, "Source", event.source ?? "(no source)");
     field(fields, "Tags", event.tags.length ? event.tags.map((tag) => "#" + tag).join(" ") : "(untagged)");
     if (event.url !== null) field(fields, "URL", link(event.url));
@@ -218,7 +234,9 @@
     const { event } = row;
     const item = element("li");
     item.append(element("span", printTime(row, offsets), "time"));
-    if (event.source !== null) item.append(element("span", event.source, "source"));
+    // An overlay's event names its timeline before its source, as the Mermaid export's sections do.
+    const source = overlay ? [timelineNames.get(event.timeline_id), event.source].filter((part) => part !== null).join("/") : event.source;
+    if (source !== null) item.append(element("span", source, "source"));
     item.append(element("p", event.text, "text"));
     if (event.tags.length) item.append(element("p", event.tags.map((tag) => "#" + tag).join(" "), "tags"));
     if (annotationsOn.has(event.id)) item.append(annotationList(annotationsOn.get(event.id)));
@@ -228,8 +246,7 @@
   // printList returns the page as it prints: the annotations on the whole timeline, then
   // events a day at a time, as the Markdown export lists them.
   const printList = (events) => {
-    const nodes = [];
-    if (onTimeline.length) nodes.push(element("h2", "On the whole timeline"), annotationList(onTimeline));
+    const nodes = wholeTimelineNotes("h2");
     const days = printDays(events);
     for (const day of days) {
       const { label, offsets } = dayZone(day);
@@ -243,17 +260,16 @@
 
   const timelineDetail = () => {
     const hint = data.events.length ? "Select an event to see its full text and annotations." : "This export has no events.";
-    const nodes = [element("p", hint, "hint")];
-    if (onTimeline.length) nodes.push(element("h3", "On the whole timeline"), annotationList(onTimeline));
-    return nodes;
+    return [element("p", hint, "hint"), ...wholeTimelineNotes("h3")];
   };
 
   const foldASCII = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 
   // keeps selects what eventWhere in internal/store/event_filter.go does; keep them in step:
-  // any checked source, every checked tag, and text containing q folding ASCII only
-  // (SQLite's lower()).
+  // any checked timeline, any checked source, every checked tag, and text containing q folding
+  // ASCII only (SQLite's lower()).
   const keeps = (event, filter) => {
+    if (filter.timelines.size && !filter.timelines.has(event.timeline_id)) return false;
     if (filter.sources.size && !filter.sources.has(event.source)) return false;
     if (![...filter.tags].every((tag) => event.tags.includes(tag))) return false;
     if (filter.q.trim() && !foldASCII(event.text).includes(foldASCII(filter.q))) return false;
@@ -282,8 +298,8 @@
     filter.since !== null && filter.until !== null && filter.until <= filter.since ? { ...filter, until: null } : filter;
 
   // readHash returns the filter and selection a location hash names, dropping any value this
-  // export cannot show: a source, tag or event it lacks, an instant that is not a real UTC
-  // time to the millisecond, or an until not after since.
+  // export cannot show: a timeline, source, tag or event it lacks, an instant that is not a real
+  // UTC time to the millisecond, or an until not after since.
   const readHash = (hash, known) => {
     const params = new URLSearchParams(hash.slice(1));
     const bound = (key) => {
@@ -294,7 +310,8 @@
       return Number.isFinite(ms) && new Date(ms).toISOString().startsWith(text.slice(0, 19)) ? ms : null;
     };
     const filter = ordered({
-      sources: new Set(params.getAll("source").filter((source) => known.sources.includes(source))),
+      timelines: new Set(params.getAll("timeline").filter((id) => known.timelines.includes(id))),
+      sources:new Set(params.getAll("source").filter((source) => known.sources.includes(source))),
       tags: new Set(params.getAll("tag").filter((tag) => known.tags.includes(tag))),
       q: params.get("q") ?? "",
       since: bound("since"),
@@ -306,6 +323,7 @@
 
   const hashOf = (filter, selected) => {
     const params = new URLSearchParams();
+    for (const id of filter.timelines) params.append("timeline", id);
     for (const source of filter.sources) params.append("source", source);
     for (const tag of filter.tags) params.append("tag", tag);
     if (filter.q.trim()) params.set("q", filter.q);
@@ -318,7 +336,7 @@
     return text ? "#" + text : "";
   };
 
-  const checkboxes = (fieldset, names, checked) => {
+  const checkboxes = (fieldset, names, checked, labelOf = (name) => name) => {
     fieldset.hidden = !names.length;
     for (const name of names) {
       const box = element("input");
@@ -326,7 +344,7 @@
       box.value = name;
       box.checked = checked.has(name);
       const label = element("label");
-      label.append(box, name);
+      label.append(box, labelOf(name));
       fieldset.append(label);
     }
   };
@@ -455,10 +473,13 @@
 
   const exported = inZone(instant(data.exported_at));
   const shown = data.timelines[0];
-  const heading = shown.title.trim() ? shown.title + " (" + shown.name + ")" : shown.name;
+  // An overlay is named by its timelines' names, as the Markdown export titles one.
+  const names = data.timelines.map((t) => t.name);
+  const heading = overlay ? names.join(" + ") : shown.title.trim() ? shown.title + " (" + shown.name + ")" : shown.name;
   document.title = heading;
   document.getElementById("heading").textContent = heading;
-  if (shown.refs.length) document.getElementById("refs").textContent = shown.refs.join(", ");
+  const refs = [...new Set(data.timelines.flatMap((t) => t.refs))];
+  if (refs.length) document.getElementById("refs").textContent = refs.join(", ");
   else document.getElementById("refs").remove();
   document.getElementById("meta").textContent =
     "Times in " + zone.name + ". Exported " + exported.format("YYYY-MM-DD HH:mm") + " " +
@@ -469,22 +490,46 @@
 
   const sources = [...new Set(data.events.map((event) => event.source))];
   if (sources.includes(null)) sources.push(sources.splice(sources.indexOf(null), 1)[0]);
-  const groupOf = new Map(sources.map((source, i) => [source, i]));
   // A source's colour is its place in the export's first appearances, cycling through the palette.
   const sourceColorCount = Number(document.body.dataset.sourceColors);
-  const groups = sources.map((source, i) => ({
-    id: i,
-    order: i,
+  // A group's sources are those its rows show, which the source filter checks it against.
+  const sourceGroup = (source, id, order) => ({
+    id,
+    order,
+    sources: [source],
     content: element("span", source ?? "(no source)"),
-    className: source === null ? "source-none" : "source-" + (i % sourceColorCount),
-  }));
+    className: source === null ? "source-none" : "source-" + (sources.indexOf(source) % sourceColorCount),
+  });
+
+  // An overlay nests a row per source under a row per timeline, in the order they were
+  // selected. Two timelines can share a source, so a source's row id is its timeline's and its
+  // own; a single timeline keeps one row per source.
+  const rowOf = (event) => (overlay ? event.timeline_id + "/" + (event.source ?? "") : sources.indexOf(event.source));
+  const timelineGroups = () => {
+    const rows = new Set(data.events.map(rowOf));
+    return data.timelines.flatMap((t, order) => {
+      const own = sources.filter((source) => rows.has(t.id + "/" + (source ?? "")));
+      const children = own.map((source, i) => ({ ...sourceGroup(source, t.id + "/" + (source ?? ""), i), timeline: t.id, treeLevel: 1 }));
+      const label = element("span", undefined, "timeline");
+      label.append(element("span", t.name, "name"));
+      if (t.title.trim()) label.append(element("span", t.title, "title"));
+      const parent = { id: t.id, order, timeline: t.id, sources: own, content: label, nestedGroups: children.map((child) => child.id), showNested: true };
+      return [parent, ...children];
+    });
+  };
+  const groups = overlay ? timelineGroups() : sources.map((source, i) => sourceGroup(source, i, i));
+  // groupShows keeps a row whose timeline the timeline filter keeps and that shows a source the
+  // source filter keeps.
+  const groupShows = (group, filter) =>
+    (!filter.timelines.size || filter.timelines.has(group.timeline)) &&
+    (!filter.sources.size || group.sources.some((source) => filter.sources.has(source)));
 
   const coarsePrecisions = new Set(["day", "hour", "minute"]);
   const eventsById = new Map(data.events.map((event) => [event.id, event]));
   const items = data.events.map((event) => {
     const item = {
       id: event.id,
-      group: groupOf.get(event.source),
+      group: rowOf(event),
       start: instant(event.occurred_at),
       content: element("span", (event.approximate ? "~" : "") + firstLine(event.text)),
       type: event.ended_at === null ? "point" : "range",
@@ -498,13 +543,13 @@
   // one; keep it in step with gapThreshold in internal/viewer/render.go.
   const gapThreshold = 5 * 60 * 1000;
 
-  // rangeMidpoints holds each row's range midpoints in order, indexed by group id.
-  const rangeMidpoints = groups.map(() => []);
-  for (const item of items) if (item.end !== undefined) rangeMidpoints[item.group].push((+item.start + +item.end) / 2);
-  for (const midpoints of rangeMidpoints) midpoints.sort((a, b) => a - b);
+  // rangeMidpoints holds each row's range midpoints in order, by group id.
+  const rangeMidpoints = new Map(groups.map((group) => [group.id, []]));
+  for (const item of items) if (item.end !== undefined) rangeMidpoints.get(item.group).push((+item.start + +item.end) / 2);
+  for (const midpoints of rangeMidpoints.values()) midpoints.sort((a, b) => a - b);
 
   const rangeMidpointBetween = (group, from, to) => {
-    const midpoints = rangeMidpoints[group];
+    const midpoints = rangeMidpoints.get(group);
     let low = 0;
     let high = midpoints.length;
     while (low < high) {
@@ -560,9 +605,18 @@
 
   const namedSources = sources.filter((source) => source !== null);
   const tags = [...new Set(data.events.flatMap((event) => event.tags))].sort();
-  const view = readHash(location.hash, { sources: namedSources, tags, events: eventsById });
+  const timelineIds = overlay ? data.timelines.map((t) => t.id) : [];
+  const view = readHash(location.hash, { timelines: timelineIds, sources: namedSources, tags, events: eventsById });
 
   const sourceBoxes = document.getElementById("sources");
+  // Only an overlay has timelines to pick among, so only its page gets their checkboxes.
+  const timelineBoxes = element("fieldset");
+  timelineBoxes.id = "timelines";
+  timelineBoxes.append(element("legend", "Timelines"));
+  if (overlay) {
+    sourceBoxes.before(timelineBoxes);
+    checkboxes(timelineBoxes, timelineIds, view.filter.timelines, (id) => timelineNames.get(id));
+  }
   const tagBoxes = document.getElementById("tags");
   const search = document.getElementById("q");
   const since = document.getElementById("since");
@@ -582,12 +636,19 @@
   if (start < end) Object.assign(options, { start, end });
 
   // Filtering views of the items and groups, rather than replacing them, keeps the zoom.
+  // Collapsing a timeline marks its source rows not visible, and vis-timeline 8.5.4 fails to
+  // redraw an item added to a row while it is hidden, so a hidden row's items leave the view
+  // until the row shows again.
+  const groupSet = new vis.DataSet(groups);
   const visibleItems = new vis.DataView(new vis.DataSet(items), {
-    filter: (item) => keeps(eventsById.get(item.id), view.filter),
+    filter: (item) => keeps(eventsById.get(item.id), view.filter) && groupSet.get(item.group).visible !== false,
   });
-  const visibleGroups = new vis.DataView(new vis.DataSet(groups), {
-    filter: (group) => !view.filter.sources.size || view.filter.sources.has(sources[group.id]),
+  const visibleGroups = new vis.DataView(groupSet, {
+    filter: (group) => groupShows(group, view.filter),
   });
+  // A DataView hears its DataSet on "*", after every "update" listener, so this listens there
+  // too: items return to a row only once the group views have shown it again.
+  if (overlay) groupSet.on("*", () => visibleItems.refresh());
   const timeline = new vis.Timeline(document.getElementById("timeline"), visibleItems, visibleGroups, options);
   // vis-timeline 8.5.4 first clusters once the timeline has a width, a redraw too late to stack
   // the rows, so clustered events stay hidden until the window moves. Setting the groups again
@@ -640,6 +701,7 @@
   });
 
   document.getElementById("filters").addEventListener("submit", (event) => event.preventDefault());
+  timelineBoxes.addEventListener("change", () => update({ timelines: checkedIn(timelineBoxes) }));
   sourceBoxes.addEventListener("change", () => update({ sources: checkedIn(sourceBoxes) }));
   tagBoxes.addEventListener("change", () => update({ tags: checkedIn(tagBoxes) }));
   search.addEventListener("input", () => update({ q: search.value }));
@@ -658,7 +720,7 @@
   });
   document.getElementById("export-png").addEventListener("click", async () => {
     const svg = pageSVG(document.getElementById("heading"), document.getElementById("timeline"));
-    download(await png(svg), shown.name + ".png");
+    download(await png(svg), names.join("+") + ".png");
   });
 
   if (view.selected !== null) timeline.setSelection(visibleItems.get(view.selected) ? [view.selected] : []);

@@ -208,16 +208,42 @@ var _ = Describe("WriteHTML", func() {
 		}))
 	})
 
-	DescribeTable("fails, writing nothing, unless the export holds one timeline",
-		func(timelines []export.Timeline) {
-			env := checkoutSpike()
-			env.Timelines = timelines
+	It("fails, writing nothing, when the export holds no timeline", func() {
+		env := checkoutSpike()
+		env.Timelines = []export.Timeline{}
+		var b bytes.Buffer
+
+		Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("want a timeline")))
+		Expect(b.Len()).To(BeZero())
+	})
+
+	Describe("an overlay of several timelines", func() {
+		It("embeds every timeline, and their events by occurred at, then timeline id, then seq", func() {
+			matchGoldenFile(htmlGoldenDir, "overlay", ".html", elideAssets(page(overlay(), time.UTC)))
+		})
+
+		It("keeps hostile timeline titles and shared source names out of the markup", func() {
+			env := overlay()
+			env.Timelines[1].Title = hostile
+			env.Events[2].Source = new(hostile)
+			env.Events[3].Source = new(hostile)
+			p := page(env, time.UTC)
+
+			Expect(strings.Count(p, "<script")).To(Equal(4))
+			Expect(regexp.MustCompile(`(?i)</script`).FindAllStringIndex(p, -1)).To(HaveLen(4))
+			Expect(p).NotTo(ContainSubstring("<img"))
+			var got export.Envelope
+			Expect(json.Unmarshal(jsonBlock(p, "coroner-data"), &got)).To(Succeed())
+			Expect(got.Timelines[1].Title).To(Equal(hostile))
+		})
+
+		It("fails, writing nothing, when an event's timeline is not in the export", func() {
+			env := overlay()
+			env.Timelines[1].ID = "t3"
 			var b bytes.Buffer
 
-			Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("want one timeline")))
+			Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("its timeline t2 is not in the export")))
 			Expect(b.Len()).To(BeZero())
-		},
-		Entry("none", []export.Timeline{}),
-		Entry("two", []export.Timeline{{ID: "t1", Name: "a"}, {ID: "t2", Name: "b"}}),
-	)
+		})
+	})
 })
