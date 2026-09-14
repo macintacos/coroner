@@ -180,7 +180,7 @@ var _ = Describe("timelineLoader", func() {
 		})
 
 		DescribeTable("reads an attachment's image from its blob",
-			func(ctx SpecContext, protocol graphics.Protocol, png func(picture []byte) types.GomegaMatcher) {
+			func(ctx SpecContext, protocol graphics.Protocol, wantPNG func(picture []byte) types.GomegaMatcher) {
 				snapshot, err := timelineLoader(ctx, app, db, timelineID)(viewer.Match{})
 				Expect(err).NotTo(HaveOccurred())
 				logger, _ := viewerDiagnostics(false, &errOut)
@@ -188,7 +188,7 @@ var _ = Describe("timelineLoader", func() {
 				img, err := imageReader(app.ReadFile, db, protocol, logger)(snapshot.Attachments[0])
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(img).To(And(HaveField("Width", 4), HaveField("Height", 3), HaveField("PNG", png(picture))))
+				Expect(img).To(And(HaveField("Width", 4), HaveField("Height", 3), HaveField("PNG", wantPNG(picture))))
 			},
 			Entry("decoded for a terminal that shows images", graphics.Kitty, func(picture []byte) types.GomegaMatcher {
 				return Equal(picture)

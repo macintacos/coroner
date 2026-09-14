@@ -69,9 +69,9 @@ func (im inlineImages) read(attachmentID string, img graphics.Image, err error) 
 }
 
 // send marks each image of order that is read and not sent as sent, once a terminal that shows
-// images has answered, and returns the sequences sending it and placing it in grid's grid. A sent
-// image keeps only its size.
-func (im inlineImages) send(order []timeline.Attachment, grid func(timeline.Attachment, graphics.Image) graphics.Grid) (inlineImages, string) {
+// images has answered, and returns the sequences sending it and placing it in gridFor's grid. A
+// sent image keeps only its size.
+func (im inlineImages) send(order []timeline.Attachment, gridFor func(timeline.Attachment, graphics.Image) graphics.Grid) (inlineImages, string) {
 	if im.protocol != graphics.Kitty || !im.answered {
 		return im, ""
 	}
@@ -84,7 +84,7 @@ func (im inlineImages) send(order []timeline.Attachment, grid func(timeline.Atta
 			continue
 		}
 		im.last++
-		shown.state, shown.id, shown.grid = imageSent, im.last, grid(a, shown.img)
+		shown.state, shown.id, shown.grid = imageSent, im.last, gridFor(a, shown.img)
 		sends.WriteString(graphics.Transmit(shown.id, shown.img.PNG) + graphics.Place(shown.id, shown.grid))
 		shown.img = graphics.Image{Width: shown.img.Width, Height: shown.img.Height}
 		im.shown[a.ID] = shown
@@ -94,7 +94,7 @@ func (im inlineImages) send(order []timeline.Attachment, grid func(timeline.Atta
 }
 
 // place returns the sequences placing each sent image of order again whose grid has changed.
-func (im inlineImages) place(order []timeline.Attachment, grid func(timeline.Attachment, graphics.Image) graphics.Grid) (inlineImages, string) {
+func (im inlineImages) place(order []timeline.Attachment, gridFor func(timeline.Attachment, graphics.Image) graphics.Grid) (inlineImages, string) {
 	im.shown = maps.Clone(im.shown)
 	var places strings.Builder
 	for _, a := range order {
@@ -102,7 +102,7 @@ func (im inlineImages) place(order []timeline.Attachment, grid func(timeline.Att
 		if shown.state != imageSent {
 			continue
 		}
-		if g := grid(a, shown.img); g != shown.grid {
+		if g := gridFor(a, shown.img); g != shown.grid {
 			shown.grid = g
 			im.shown[a.ID] = shown
 			places.WriteString(graphics.Place(shown.id, g))

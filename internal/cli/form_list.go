@@ -216,12 +216,12 @@ func (l *listField) show() {
 		b.WriteString("\n" + marker + pickerLabel(value))
 	}
 	if l.thumbnail != nil && len(l.values) > 0 {
-		shown := l.values[len(l.values)-1]
+		value := l.values[len(l.values)-1]
 		if l.picked != -1 {
-			shown = l.values[l.picked]
+			value = l.values[l.picked]
 		}
 		var lines string
-		lines, l.send = l.thumbnail(shown)
+		lines, l.send = l.thumbnail(value)
 		if lines != "" {
 			b.WriteString("\n" + lines)
 		}

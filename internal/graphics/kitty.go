@@ -56,24 +56,24 @@ func Transmit(id uint32, png []byte) string {
 }
 
 // Place returns the sequence that shows the image with id wherever Cells for it are drawn,
-// scaled into g. A later Place for the same image replaces it. id must be in 1..(1<<24)-1.
-func Place(id uint32, g Grid) string {
+// scaled into grid. A later Place for the same image replaces it. id must be in 1..(1<<24)-1.
+func Place(id uint32, grid Grid) string {
 	return ansi.KittyGraphics(nil, "a=p", "U=1", "i="+strconv.FormatUint(uint64(id), 10), "p=1",
-		"c="+strconv.Itoa(g.Cols), "r="+strconv.Itoa(g.Rows), "q=2")
+		"c="+strconv.Itoa(grid.Cols), "r="+strconv.Itoa(grid.Rows), "q=2")
 }
 
-// Cells returns g's rows of placeholders showing the image with id, each naming its row and
+// Cells returns grid's rows of placeholders showing the image with id, each naming its row and
 // column, colored with the id, which the terminal reads back from the foreground color. id must be
-// in 1..(1<<24)-1, the 24 bits the color carries, and g is clamped to the 297 rows and columns a
+// in 1..(1<<24)-1, the 24 bits the color carries, and grid is clamped to the 297 rows and columns a
 // placeholder can name.
-func Cells(id uint32, g Grid) []string {
-	g = Grid{Cols: min(g.Cols, maxCells), Rows: min(g.Rows, maxCells)}
+func Cells(id uint32, grid Grid) []string {
+	grid = Grid{Cols: min(grid.Cols, maxCells), Rows: min(grid.Rows, maxCells)}
 	color := fmt.Sprintf("\x1b[38;2;%d;%d;%dm", id>>16&0xFF, id>>8&0xFF, id&0xFF)
-	rows := make([]string, g.Rows)
-	for r := range g.Rows {
+	rows := make([]string, grid.Rows)
+	for r := range grid.Rows {
 		var b strings.Builder
 		b.WriteString(color)
-		for c := range g.Cols {
+		for c := range grid.Cols {
 			b.WriteRune(kitty.Placeholder)
 			b.WriteRune(kitty.Diacritic(r))
 			b.WriteRune(kitty.Diacritic(c))

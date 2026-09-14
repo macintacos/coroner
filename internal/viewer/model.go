@@ -194,7 +194,7 @@ func (m Model) listKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.help):
 		m.showHelp = true
 		return m, nil
-	case key.Matches(msg, m.keys.annotations):
+	case key.Matches(msg, m.keys.expand):
 		if len(m.snapshot.Events) > 0 {
 			id := m.snapshot.Events[m.cursor].ID
 			m.expanded[id] = !m.expanded[id]
@@ -484,13 +484,13 @@ func (m Model) sendImages() (Model, tea.Cmd) {
 	return m.render(), raw(sends)
 }
 
-// raw is the command writing seq to the terminal, or nil for an empty seq.
-func raw(seq string) tea.Cmd {
-	if seq == "" {
+// raw is the command writing sequence to the terminal, or nil for an empty sequence.
+func raw(sequence string) tea.Cmd {
+	if sequence == "" {
 		return nil
 	}
 
-	return tea.Raw(seq)
+	return tea.Raw(sequence)
 }
 
 // placeImages rebuilds the event list and places each image sent to the terminal again whose

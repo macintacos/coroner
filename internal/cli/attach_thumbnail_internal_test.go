@@ -38,7 +38,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 		choices := formChoices{thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(readFile, images)}}
 		return namedField(attach.formFields(formCheckEnv(), fieldValues{}, choices), "attach")
 	}
-	field := func(images graphics.Protocol) huh.Field {
+	osField := func(images graphics.Protocol) huh.Field {
 		GinkgoHelper()
 		return fieldReading(os.ReadFile, images)
 	}
@@ -55,14 +55,14 @@ var _ = Describe("the attach field's thumbnail", func() {
 	})
 
 	It("shows the placeholder of the file last added, with an image's size in pixels", func() {
-		f := field(graphics.None)
+		f := osField(graphics.None)
 		add(f, pngFile("p99.png", 40, 30))
 
 		Expect(fieldView(f)).To(MatchRegexp(`\[image: p99\.png · 40×30 · \d+ B\]`))
 	})
 
 	It("shows a file that is not an image as its placeholder", func() {
-		f := field(graphics.Kitty)
+		f := osField(graphics.Kitty)
 		written := add(f, writeFile("notes.txt", []byte("hello")))
 
 		Expect(fieldView(f)).To(ContainSubstring("[file: notes.txt · 5 B]"))
@@ -70,7 +70,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 	})
 
 	It("captions an image it cannot decode as an image, without its size in pixels", func() {
-		f := field(graphics.Kitty)
+		f := osField(graphics.Kitty)
 		written := add(f, writeFile("x.webp", []byte("RIFF\x00\x00\x00\x00WEBPVP8 ")))
 
 		Expect(fieldView(f)).To(ContainSubstring("[image: x.webp · 16 B]"))
@@ -78,7 +78,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 	})
 
 	It("shows no thumbnail for a path it cannot read, until the file is there", func() {
-		f := field(graphics.Kitty)
+		f := osField(graphics.Kitty)
 		path := filepath.Join(dir, "later.txt")
 		written := add(f, path)
 
@@ -105,7 +105,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 	})
 
 	It("shows the picked value's thumbnail rather than the last one added", func() {
-		f := field(graphics.None)
+		f := osField(graphics.None)
 		add(f, pngFile("first.png", 16, 16))
 		add(f, pngFile("second.png", 32, 8))
 
@@ -115,7 +115,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 	})
 
 	It("shows no thumbnail once its last value is removed", func() {
-		f := field(graphics.None)
+		f := osField(graphics.None)
 		add(f, pngFile("p99.png", 40, 30))
 
 		press(f, tea.KeyUp, tea.KeyBackspace)
@@ -125,7 +125,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 
 	Describe("on a terminal with Kitty graphics", func() {
 		It("draws the image through placeholder cells over its caption, and sends it to the terminal", func() {
-			f := field(graphics.Kitty)
+			f := osField(graphics.Kitty)
 			written := add(f, pngFile("p99.png", 40, 30))
 
 			Expect(written).To(ContainSubstring("\x1b_Ga=t,f=100"))
@@ -134,7 +134,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 		})
 
 		It("sends an image once, however often its thumbnail shows again", func() {
-			f := field(graphics.Kitty)
+			f := osField(graphics.Kitty)
 			add(f, pngFile("p99.png", 40, 30))
 
 			_, cmd := f.Update(tea.KeyPressMsg{Code: tea.KeyUp})
