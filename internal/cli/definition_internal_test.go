@@ -36,6 +36,8 @@ func writeDefinitions() map[string]definition {
 		"annotation add":    annotationAddDefinition(),
 		"annotation edit":   annotationEditDefinition(),
 		"annotation delete": annotationDeleteDefinition(),
+
+		"attachment delete": attachmentDeleteDefinition(),
 	}
 }
 
@@ -201,6 +203,7 @@ var _ = Describe("write run functions", func() {
 		Entry("event delete", errorOf(deleteEvents), fieldValues{}),
 		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"kind": {"comment"}}),
 		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
+		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
 	)
 })
 
@@ -355,6 +358,7 @@ func badValues() []badValue {
 		{"annotation edit", "url", " ", []string{"0199a1b2"}},
 		{"annotation edit", "attach", "-", []string{"0199a1b2"}},
 		{"annotation delete", "ids", "Bad Ref!", nil},
+		{"attachment delete", "ids", "Bad Ref!", nil},
 	}
 }
 

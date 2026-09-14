@@ -96,6 +96,10 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 		if errors.Is(err, store.ErrNotFound) {
 			return annotationNotFoundError("an annotation was deleted by another command first, so none were", err)
 		}
+		if err != nil {
+			return err
+		}
+		_, err = s.GarbageCollectBlobs(ctx)
 
 		return err
 	})

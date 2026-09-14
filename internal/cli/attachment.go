@@ -9,14 +9,96 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
+
+const (
+	listAttachmentsHint = "Run 'coroner attachment list' to see a timeline's attachments and their ids."
+	// shownAttachments is how many attachments an ambiguous id prefix lists.
+	shownAttachments = 10
+)
+
+func newAttachmentCommand(ctx context.Context, app App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "attachment",
+		Short:   "List, delete and export files attached to events and annotations",
+		GroupID: coreCommands,
+		Long: "An attachment is a file, such as a screenshot, kept with one event or annotation. Attach one\n" +
+			"with --attach on 'coroner event add', 'coroner event edit', 'coroner annotation add' or\n" +
+			"'coroner annotation edit'. Its bytes are stored once, as a blob named by their sha256, in\n" +
+			"the directory beside the database.",
+		Example: "  $ coroner event edit 12 --attach ./grafana-p99.png\n" +
+			"  $ coroner attachment list -e 12",
+		// Help and the unknown-verb error print under any format.
+		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
+		RunE:        runNoun,
+	}
+
+	cmd.AddCommand(
+		newAttachmentListCommand(ctx, app),
+		newAttachmentExportCommand(ctx, app),
+		newAttachmentDeleteCommand(ctx, app),
+	)
+
+	return cmd
+}
+
+// parseAttachmentRef returns ref as an attachment id prefix, lowercased.
+func parseAttachmentRef(ref string) (string, error) {
+	prefix, ok := idPrefix(ref)
+	if !ok {
+		return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an attachment id", ref), Hint: listAttachmentsHint}
+	}
+
+	return prefix, nil
+}
+
+func checkAttachmentRef(ref string) error {
+	_, err := parseAttachmentRef(ref)
+	return err
+}
+
+// findAttachment returns the attachment whose id is, or uniquely starts with, prefix, in any
+// timeline.
+func findAttachment(ctx context.Context, s *store.Store, prefix string) (timeline.Attachment, error) {
+	attachments, err := s.AttachmentsByIDPrefix(ctx, prefix, shownAttachments+1)
+	switch {
+	case err != nil:
+		return timeline.Attachment{}, err
+	case len(attachments) == 1:
+		return attachments[0], nil
+	case len(attachments) == 0:
+		return timeline.Attachment{}, &Error{
+			Kind: KindAttachmentNotFound, Message: "no attachment has an id starting " + prefix, Hint: listAttachmentsHint,
+		}
+	}
+
+	lines := make([]string, 0, shownAttachments+1)
+	for _, a := range attachments[:min(len(attachments), shownAttachments)] {
+		lines = append(lines, fmt.Sprintf("  %s  %s", a.ID, a.Filename))
+	}
+	if len(attachments) > shownAttachments {
+		lines = append(lines, "  and more")
+	}
+
+	return timeline.Attachment{}, &Error{
+		Kind:    KindAmbiguousID,
+		Message: "more than one attachment has an id starting " + prefix,
+		Hint:    "Pass more of the id:\n" + strings.Join(lines, "\n"),
+	}
+}
+
+type attachmentListJSON struct {
+	Attachments []attachmentJSON `json:"attachments"`
+}
 
 // attachField is the --attach field of the commands that add or edit an event or annotation.
 func attachField() field {

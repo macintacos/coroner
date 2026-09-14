@@ -40,6 +40,7 @@ coroner <command> [flags]
 ### SEE ALSO
 
 * [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events and timelines
+* [coroner attachment](coroner_attachment.md)	 - List, delete and export files attached to events and annotations
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
 * [coroner event](coroner_event.md)	 - Add, list, view, edit and delete events
 * [coroner source](coroner_source.md)	 - List sources and fix their names

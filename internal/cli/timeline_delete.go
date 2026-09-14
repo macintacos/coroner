@@ -74,7 +74,12 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 		}
 		deleted.timeline = t
 		if !dryRun {
-			return s.DeleteTimeline(ctx, t.ID)
+			err = s.DeleteTimeline(ctx, t.ID)
+			if err != nil {
+				return err
+			}
+			_, err = s.GarbageCollectBlobs(ctx)
+			return err
 		}
 
 		events, err := s.Events(ctx, t.ID)

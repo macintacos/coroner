@@ -104,6 +104,10 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 		if errors.Is(err, store.ErrNotFound) {
 			return eventNotFoundError("another coroner deleted one of the events first; nothing was deleted", err)
 		}
+		if err != nil {
+			return err
+		}
+		_, err = s.GarbageCollectBlobs(ctx)
 
 		return err
 	})

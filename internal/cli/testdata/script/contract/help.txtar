@@ -29,6 +29,22 @@ exits 0 coroner annotation list --help
 cmp stdout coroner_annotation_list.txt
 ! stderr .
 
+exits 0 coroner attachment --help
+cmp stdout coroner_attachment.txt
+! stderr .
+
+exits 0 coroner attachment delete --help
+cmp stdout coroner_attachment_delete.txt
+! stderr .
+
+exits 0 coroner attachment export --help
+cmp stdout coroner_attachment_export.txt
+! stderr .
+
+exits 0 coroner attachment list --help
+cmp stdout coroner_attachment_list.txt
+! stderr .
+
 exits 0 coroner completion --help
 cmp stdout coroner_completion.txt
 ! stderr .
@@ -156,6 +172,7 @@ USAGE
 
 CORE COMMANDS
   annotation   Attach evidence and comments to events and timelines
+  attachment   List, delete and export files attached to events and annotations
   event        Add, list, view, edit and delete events
   source       List sources and fix their names
   tag          List the tags events carry
@@ -361,6 +378,132 @@ EXAMPLES
 
 FLAGS
   -e, --event ref          Only the annotations on this event, as a ref: seq, timeline#seq or id
+  -t, --timeline name|id   Timeline name|id to act on
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_attachment.txt --
+An attachment is a file, such as a screenshot, kept with one event or annotation. Attach one
+with --attach on 'coroner event add', 'coroner event edit', 'coroner annotation add' or
+'coroner annotation edit'. Its bytes are stored once, as a blob named by their sha256, in
+the directory beside the database.
+
+USAGE
+  coroner attachment [flags]
+  coroner attachment <command> [flags]
+
+COMMANDS
+  delete       Delete attachments
+  export       Write an attachment's file back out
+  list         List a timeline's attachments
+
+EXAMPLES
+  $ coroner event edit 12 --attach ./grafana-p99.png
+  $ coroner attachment list -e 12
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_attachment_delete.txt --
+Delete attachments by full id or unique id prefix, in any timeline, and the stored files no
+attachment uses any more. Every id is checked before anything is deleted, so an id that
+matches nothing deletes none. --dry-run shows what would be deleted instead.
+
+USAGE
+  coroner attachment delete <id>... [flags]
+
+EXAMPLES
+  $ coroner attachment delete 0199a1b2-7c1e --dry-run
+  $ coroner attachment delete 0199a1b2-7c1e 0199a1b2-7d40 --json
+
+FLAGS
+      --dry-run   Show what would be deleted, and delete nothing
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_attachment_export.txt --
+Write the file an attachment holds, byte for byte, to the file -o names, or to stdout with
+-o -, the default, which refuses a terminal. -o never overwrites a file unless --force is
+given. <id> is a full id or a unique id prefix, in any timeline.
+
+USAGE
+  coroner attachment export <id> [-o <file>] [flags]
+
+EXAMPLES
+  $ coroner attachment export 0199a1b2-7c1e -o grafana-p99.png
+  $ coroner attachment export 0199a1b2-7c1e > grafana-p99.png
+
+FLAGS
+      --force         Overwrite the file -o names when it exists
+  -o, --output file   Write the attachment to this file, or to stdout when it is - (default "-")
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_attachment_list.txt --
+List the attachments on a timeline's events and annotations, oldest first. -e lists those
+on that event itself. Each row is the id, what it is attached to (an event's seq or an
+annotation's id), the filename, size and type; piped, the fields are tab-separated.
+
+USAGE
+  coroner attachment list [-e <ref>] [flags]
+
+EXAMPLES
+  $ coroner attachment list
+  $ coroner attachment list -e 12 --json
+
+FLAGS
+  -e, --event ref          Only the attachments on this event, as a ref: seq, timeline#seq or id
   -t, --timeline name|id   Timeline name|id to act on
 
 GLOBAL FLAGS

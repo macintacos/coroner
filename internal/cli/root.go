@@ -63,7 +63,7 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 	root.SetCompletionCommandGroupID(additionalCommands)
 	root.AddCommand(
 		newVersionCommand(app), newTimelineCommand(ctx, app), newStatusCommand(ctx, app), newEventCommand(ctx, app),
-		newAnnotationCommand(ctx, app), newSourceCommand(ctx, app), newTagCommand(ctx, app),
+		newAnnotationCommand(ctx, app), newAttachmentCommand(ctx, app), newSourceCommand(ctx, app), newTagCommand(ctx, app),
 	)
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
