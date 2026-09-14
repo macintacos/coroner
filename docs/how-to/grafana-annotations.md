@@ -74,13 +74,18 @@ Grafana annotations data source by tag, delete the `dashboardUID: $dashboard,` l
 
 ## Send them to Grafana
 
-Set the Grafana address, then paste the token when `read -rs` waits for it, so it stays
-out of your shell history. The header goes in a file only you can read, which keeps the
-token off curl's command line. Send one request per body, then delete the file:
+Set the Grafana address and read the token with `read -rs`, so it stays out of your shell
+history. When the shell waits, paste the token and press Enter:
 
 ```sh
 GRAFANA_URL=https://grafana.example.com
 read -rs GRAFANA_TOKEN
+```
+
+The header goes in a file only you can read, which keeps the token off curl's command
+line. Send one request per body, then delete the file:
+
+```sh
 (umask 077; printf 'Authorization: Bearer %s\n' "$GRAFANA_TOKEN" > grafana.headers)
 
 jq -c --arg dashboard checkout-overview -f grafana.jq rca.jsonl |
