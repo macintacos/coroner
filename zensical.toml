@@ -23,6 +23,7 @@ nav = [
     { "Share a timeline in GitHub, Linear, Confluence and chat" = "how-to/export-to-github-linear-confluence.md" },
     { "Query a timeline with jq" = "how-to/query-with-jq.md" },
     { "Show a timeline's events on a Grafana dashboard" = "how-to/grafana-annotations.md" },
+    { "Use coroner with AI agents" = "how-to/use-with-ai-agents.md" },
   ] },
   { "Reference" = [
     "reference/index.md",
