@@ -18,7 +18,11 @@ variable that is empty or not an absolute path.
 | `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is a false value such as `0` or `false` |
 | `CORONER_NO_INPUT` | Never open a form, picker or viewer, as `--no-input` does, unless it is a false value such as `0` or `false` |
 | `NO_COLOR`, `CORONER_NO_COLOR` | Any non-empty value disables color, as `--no-color` does |
-| `TERM` | `dumb` disables color, the forms, the picker and the viewer |
+| `TERM` | `dumb` disables color, the forms, the picker and the viewer; `xterm-kitty` or `xterm-ghostty` shows images inline, and a `tmux` or `screen` value shows placeholders instead |
+| `KITTY_WINDOW_ID` | Set by kitty: images show inline |
+| `TERM_PROGRAM`, `TERM_PROGRAM_VERSION` | `ghostty`, or `iTerm.app` at version 3.7 or later, shows images inline |
+| `LC_TERMINAL`, `LC_TERMINAL_VERSION` | `iTerm2` at version 3.7 or later, as iTerm2 passes it through ssh, shows images inline |
+| `TMUX`, `STY`, `ZELLIJ` | Set inside tmux, screen or Zellij: images show as placeholders, since the multiplexer drops them |
 | `TZ` | The local time zone, used when neither `--tz` nor `default_timezone` names one |
 | `XDG_CONFIG_HOME` | The directory holding `coroner/config.toml` |
 | `XDG_DATA_HOME` | The directory holding `coroner/coroner.db` |
