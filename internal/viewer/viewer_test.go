@@ -67,7 +67,7 @@ func fixture() viewer.Snapshot {
 
 // overlay is two timelines read as one chronology, in timeline.CompareEvents order: their events
 // interleave, both name the source mongod, and the second timeline's name is wider than the
-// track column.
+// timeline column.
 func overlay() viewer.Snapshot {
 	failover, latency := "0199a1b2-0000-7000-8000-0000000000a0", "0199a1b2-0000-7000-8000-0000000000b0"
 	event := func(id, timelineID string, seq int64, at time.Time, source, text string) timeline.Event {
@@ -89,8 +89,8 @@ func overlay() viewer.Snapshot {
 	}
 }
 
-// sgrBefore returns the parameters of the SGR sequence that styles the last text on screen, or ""
-// when none does.
+// sgrBefore returns the parameters of the SGR sequence that styles the last occurrence of text on
+// screen, or "" when none does.
 func sgrBefore(screen, text string) string {
 	matches := regexp.MustCompile(`\x1b\[([0-9;]*)m[^\x1b\n]*`+regexp.QuoteMeta(text)).FindAllStringSubmatch(screen, -1)
 	if matches == nil {
@@ -278,11 +278,11 @@ var _ = Describe("the viewer", func() {
 	})
 
 	Describe("an overlay of several timelines", func() {
-		It("names each event's timeline in a track column, in the merged order", func() {
+		It("names each event's timeline in a timeline column, in the merged order", func() {
 			matchGolden("overlay", screen(open(overlay(), viewer.Match{}, l)))
 		})
 
-		It("tints each timeline's name with a colour of its own", func() {
+		It("tints each timeline's name with a color of its own", func() {
 			shown := profiled(open(overlay(), viewer.Match{}, l), colorprofile.ANSI)
 
 			failover, latency := sgrBefore(shown, "mongo-failover  "), sgrBefore(shown, "checkout-latenc…")
@@ -291,7 +291,7 @@ var _ = Describe("the viewer", func() {
 			Expect(failover).NotTo(Equal(latency))
 		})
 
-		It("keeps every timeline's name without colour", func() {
+		It("keeps every timeline's name without color", func() {
 			shown := profiled(open(overlay(), viewer.Match{}, l), colorprofile.ASCII)
 
 			Expect(shown).To(ContainSubstring("mongo-failover "))
@@ -299,7 +299,16 @@ var _ = Describe("the viewer", func() {
 			Expect(shown).NotTo(MatchRegexp(`\x1b\[[0-9;]*\b(3[0-9]|4[0-9]|9[0-7])m`))
 		})
 
-		It("keeps the track column when a filter reloads the timelines", func() {
+		It("widens the timeline column until names that share a long prefix differ", func() {
+			days := overlay()
+			days.Timelines[0].Name, days.Timelines[1].Name = "mongo-outage-2026-09-11", "mongo-outage-2026-09-12"
+			shown := screen(open(days, viewer.Match{}, l))
+
+			Expect(shown).To(MatchRegexp(`mongo-outage-2026-09-11 +#1 .*Primary stepped down`))
+			Expect(shown).To(MatchRegexp(`mongo-outage-2026-09-12 +#1 .*Checkout p99`))
+		})
+
+		It("keeps the timeline column when a filter reloads the timelines", func() {
 			l.next = overlay()
 			l.next.Events = l.next.Events[1:2]
 			m, _ := press(open(overlay(), viewer.Match{}, l), "s")

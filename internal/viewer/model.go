@@ -392,7 +392,7 @@ func (m Model) show(snapshot Snapshot, match Match) Model {
 func (m Model) render() Model {
 	m.cursor = max(min(m.cursor, len(m.snapshot.Events)-1), 0)
 	m.widths = measure(m.snapshot.Events, m.opts.Location)
-	m.widths.track = trackWidth(m.snapshot.Timelines)
+	m.widths.timeline = timelineWidth(m.snapshot.Timelines)
 	m.lines, m.blocks = m.bodyLines()
 
 	return m.scroll()

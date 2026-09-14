@@ -17,20 +17,20 @@ import (
 
 const (
 	// gapThreshold is the shortest silence between events that gets its own row.
-	gapThreshold   = 5 * time.Minute
-	maxSourceWidth = 16
-	maxTrackWidth  = 16
-	maxTagsWidth   = 24
-	maxNameWidth   = 32
-	maxTitleWidth  = 32
-	indent         = "  "
+	gapThreshold     = 5 * time.Minute
+	maxSourceWidth   = 16
+	maxTimelineWidth = 16
+	maxTagsWidth     = 24
+	maxNameWidth     = 32
+	maxTitleWidth    = 32
+	indent           = "  "
 	// expandedIndent is where an expanded event's attachments and annotations start.
 	expandedIndent = indent + "    "
 )
 
 type styles struct {
 	name, faint, time, source, tags, gap, day, evidence, comment, selected, failure, notice lipgloss.Style
-	// timelines are an overlay's timeline colours, taken in the order the timelines were selected
+	// timelines are an overlay's timeline colors, taken in the order the timelines were selected
 	// and wrapping after the last.
 	timelines []lipgloss.Style
 }
@@ -38,11 +38,10 @@ type styles struct {
 // newStyles uses only the 16 ANSI colors, so the terminal's theme picks the shades.
 func newStyles() styles {
 	s := lipgloss.NewStyle()
-	// The hues of sourcePalette in internal/export/theme.go, in its order, as ANSI names them;
-	// keep the two in step.
+	// Neither cyan nor magenta, which a row's source and tags already use.
 	timelineColors := []color.Color{
-		lipgloss.Blue, lipgloss.Yellow, lipgloss.Green, lipgloss.Magenta,
-		lipgloss.BrightMagenta, lipgloss.Cyan, lipgloss.BrightYellow, lipgloss.Red,
+		lipgloss.Blue, lipgloss.Yellow, lipgloss.Green, lipgloss.Red,
+		lipgloss.BrightBlue, lipgloss.BrightYellow, lipgloss.BrightGreen, lipgloss.BrightRed,
 	}
 	timelines := make([]lipgloss.Style, 0, len(timelineColors))
 	for _, c := range timelineColors {
@@ -189,25 +188,44 @@ func (m Model) rule(label string, style lipgloss.Style) string {
 	return m.fit(style.Render(text + strings.Repeat("─", max(m.width-lipgloss.Width(text), 2))))
 }
 
-// widths are the event list's column widths. track is 0 for a single timeline, which has no
-// track column.
+// widths are the event list's column widths.
 type widths struct {
-	track, seq, time, source, tags int
+	timeline, seq, time, source, tags int
 }
 
-// trackWidth is the track column's width: an overlay's widest timeline name, up to
-// maxTrackWidth, or 0 for a single timeline.
-func trackWidth(timelines []timeline.Timeline) int {
+// timelineWidth is the timeline column's width, or 0 for a single timeline, which has none: the
+// widest name up to maxTimelineWidth, widened up to maxNameWidth until no two cut names match,
+// since without color only the name tells rows apart.
+func timelineWidth(timelines []timeline.Timeline) int {
 	if len(timelines) < 2 {
 		return 0
 	}
 
-	width := 0
+	widest := 0
 	for _, t := range timelines {
-		width = max(width, min(lipgloss.Width(t.Name), maxTrackWidth))
+		widest = max(widest, lipgloss.Width(t.Name))
+	}
+	width := min(widest, maxTimelineWidth)
+	for width < min(widest, maxNameWidth) && !distinctNames(timelines, width) {
+		width++
 	}
 
 	return width
+}
+
+// distinctNames reports whether every one of timelines' names differs from the others when cut to
+// width.
+func distinctNames(timelines []timeline.Timeline, width int) bool {
+	seen := make(map[string]bool, len(timelines))
+	for _, t := range timelines {
+		name := ansi.Truncate(t.Name, width, "…")
+		if seen[name] {
+			return false
+		}
+		seen[name] = true
+	}
+
+	return true
 }
 
 func measure(events []timeline.Event, loc *time.Location) widths {
@@ -226,7 +244,6 @@ func measure(events []timeline.Event, loc *time.Location) widths {
 // annotations and attachments it has.
 func (m Model) row(e timeline.Event, selected bool) string {
 	w := m.widths
-	track, tintedTrack := m.track(e)
 	fields := []string{
 		pad(seqText(e), w.seq),
 		pad(eventTime(e, m.opts.Location), w.time),
@@ -246,29 +263,32 @@ func (m Model) row(e timeline.Event, selected bool) string {
 		count = "  (" + strings.Join(counts, ", ") + ")"
 	}
 
-	if selected {
-		return m.styles.selected.Render(m.fit("› " + track + strings.Join(fields, "  ") + count))
-	}
-
 	styled := []string{
 		m.styles.faint.Render(fields[0]), m.styles.time.Render(fields[1]), m.styles.source.Render(fields[2]),
 		m.styles.tags.Render(fields[3]), fields[4] + m.styles.faint.Render(count),
 	}
-	return m.fit(indent + tintedTrack + strings.Join(styled, "  "))
+	if name, tint := m.timelineCell(e); name != "" {
+		fields, styled = append([]string{name}, fields...), append([]string{tint.Render(name)}, styled...)
+	}
+
+	if selected {
+		return m.styles.selected.Render(m.fit("› " + strings.Join(fields, "  ") + count))
+	}
+
+	return m.fit(indent + strings.Join(styled, "  "))
 }
 
-// track is e's timeline name padded to the track column and followed by the column gap, plain and
-// in the timeline's colour, or two empty strings when there is no track column.
-func (m Model) track(e timeline.Event) (string, string) {
-	if m.widths.track == 0 {
-		return "", ""
+// timelineCell is e's timeline name padded to the timeline column, or "" when there is no timeline
+// column, and the timeline's style.
+func (m Model) timelineCell(e timeline.Event) (string, lipgloss.Style) {
+	if m.widths.timeline == 0 {
+		return "", lipgloss.Style{}
 	}
 
 	i := m.timelineIndex[e.TimelineID]
-	name := pad(ansi.Truncate(m.snapshot.Timelines[i].Name, m.widths.track, "…"), m.widths.track)
-	tint := m.styles.timelines[i%len(m.styles.timelines)]
+	name := pad(ansi.Truncate(m.snapshot.Timelines[i].Name, m.widths.timeline, "…"), m.widths.timeline)
 
-	return name + "  ", tint.Render(name) + "  "
+	return name, m.styles.timelines[i%len(m.styles.timelines)]
 }
 
 // annotationLines are the annotations on the event with eventID, evidence marked ▌ and comments │,

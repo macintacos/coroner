@@ -103,7 +103,7 @@ func viewTimelines(
 		case o.format == formatJSON && len(timelines) > 1:
 			return &Error{
 				Kind:    KindUsage,
-				Message: fmt.Sprintf("--json prints one timeline, and -t selects %d", len(timelines)),
+				Message: fmt.Sprintf("--format json prints one timeline, and -t selects %d", len(timelines)),
 				Hint:    "Pass -t once, or list the timelines' events with 'coroner event list -t <timeline>... --json'.",
 			}
 		case o.format == formatJSON:

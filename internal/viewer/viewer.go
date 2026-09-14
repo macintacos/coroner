@@ -20,7 +20,7 @@ var ErrInterrupted = errors.New("interrupted")
 
 // Snapshot is one read of a timeline, or of several read together as an overlay.
 type Snapshot struct {
-	// Timelines are in the order they were selected, which picks each one's colour.
+	// Timelines are in the order they were selected, which picks each one's color.
 	Timelines []timeline.Timeline
 	// Events are in timeline.CompareEvents order.
 	Events []timeline.Event

@@ -40,14 +40,23 @@ page inlines the file in a `<script>` element, which either would break. Then ru
 open an exported page in a browser to check the timeline still renders with no network
 requests.
 
-Two parts of `viewer.js` lean on 8.5.4's internals, and an upgrade that breaks either
-still renders a page. It sets the groups again after the first `changed` event, because
-8.5.4 first clusters in a redraw too late to restack the rows, which left clustered events
-hidden until the window moved. And its `clusterCriteria` keeps what it accepts contiguous:
-`getClusters` sorts a row by centre, a range's midpoint, collects the next items that pass
-the criterion against the cluster's first item, and resumes by a count, not a position, so
-a criterion that skips an item inside a run starts a second cluster on an existing member
-and counts it twice. After an upgrade, check that a row of dense events clusters on first
-open without moving the window, and whether it still does with the `setGroups` call
-removed; and, with a range among points in one row, that no event is drawn both alone and
-inside a cluster.
+Four parts of `viewer.js` lean on 8.5.4's internals, and an upgrade that breaks any of
+them still renders a page. It sets the groups again after the first `changed` event,
+because 8.5.4 first clusters in a redraw too late to restack the rows, which left
+clustered events hidden until the window moved. Its `clusterCriteria` keeps what it
+accepts contiguous: `getClusters` sorts a row by centre, a range's midpoint, collects the
+next items that pass the criterion against the cluster's first item, and resumes by a
+count, not a position, so a criterion that skips an item inside a run starts a second
+cluster on an existing member and counts it twice. Its `update` refreshes the group view
+before the item view, because adding items back redraws at once, and the redraw's
+`_orderGroups` calls `hide()` on every group the filter keeps, which throws for one not
+added back yet. And in an overlay the item view drops the items of a collapsed timeline's
+rows, because 8.5.4 fails to redraw an item added to a hidden row, and refreshes on the
+group DataSet's `"*"` event: that relies on `toggleGroupShowNested` writing `visible` onto
+the DataSet, and on the group DataView's own `"*"` listener, registered first, showing the
+rows before the items return. After an upgrade, check that a row of dense events clusters
+on first open without moving the window, and whether it still does with the `setGroups`
+call removed; with a range among points in one row, that no event is drawn both alone and
+inside a cluster; that unchecking and checking a source again brings its rows and items
+back with no console error; and, in an overlay, that collapsing a timeline, changing a
+filter and expanding it again redraws its items.

@@ -234,7 +234,6 @@
     const { event } = row;
     const item = element("li");
     item.append(element("span", printTime(row, offsets), "time"));
-    // An overlay's event names its timeline before its source, as the Mermaid export's sections do.
     const source = overlay ? [timelineNames.get(event.timeline_id), event.source].filter((part) => part !== null).join("/") : event.source;
     if (source !== null) item.append(element("span", source, "source"));
     item.append(element("p", event.text, "text"));
@@ -311,7 +310,7 @@
     };
     const filter = ordered({
       timelines: new Set(params.getAll("timeline").filter((id) => known.timelines.includes(id))),
-      sources:new Set(params.getAll("source").filter((source) => known.sources.includes(source))),
+      sources: new Set(params.getAll("source").filter((source) => known.sources.includes(source))),
       tags: new Set(params.getAll("tag").filter((tag) => known.tags.includes(tag))),
       q: params.get("q") ?? "",
       since: bound("since"),
@@ -336,15 +335,15 @@
     return text ? "#" + text : "";
   };
 
-  const checkboxes = (fieldset, names, checked, labelOf = (name) => name) => {
-    fieldset.hidden = !names.length;
-    for (const name of names) {
+  const checkboxes = (fieldset, values, checked, labelOf = (value) => value) => {
+    fieldset.hidden = !values.length;
+    for (const value of values) {
       const box = element("input");
       box.type = "checkbox";
-      box.value = name;
-      box.checked = checked.has(name);
+      box.value = value;
+      box.checked = checked.has(value);
       const label = element("label");
-      label.append(box, labelOf(name));
+      label.append(box, labelOf(value));
       fieldset.append(label);
     }
   };
@@ -475,7 +474,8 @@
   const shown = data.timelines[0];
   // An overlay is named by its timelines' names, as the Markdown export titles one.
   const names = data.timelines.map((t) => t.name);
-  const heading = overlay ? names.join(" + ") : shown.title.trim() ? shown.title + " (" + shown.name + ")" : shown.name;
+  let heading = names.join(" + ");
+  if (!overlay && shown.title.trim()) heading = shown.title + " (" + shown.name + ")";
   document.title = heading;
   document.getElementById("heading").textContent = heading;
   const refs = [...new Set(data.timelines.flatMap((t) => t.refs))];
@@ -492,7 +492,8 @@
   if (sources.includes(null)) sources.push(sources.splice(sources.indexOf(null), 1)[0]);
   // A source's colour is its place in the export's first appearances, cycling through the palette.
   const sourceColorCount = Number(document.body.dataset.sourceColors);
-  // A group's sources are those its rows show, which the source filter checks it against.
+  // sources are what the source filter checks a row against: its own source, or every source
+  // nested under a timeline.
   const sourceGroup = (source, id, order) => ({
     id,
     order,
@@ -501,25 +502,27 @@
     className: source === null ? "source-none" : "source-" + (sources.indexOf(source) % sourceColorCount),
   });
 
-  // An overlay nests a row per source under a row per timeline, in the order they were
-  // selected. Two timelines can share a source, so a source's row id is its timeline's and its
-  // own; a single timeline keeps one row per source.
-  const rowOf = (event) => (overlay ? event.timeline_id + "/" + (event.source ?? "") : sources.indexOf(event.source));
+  // Two timelines of an overlay can share a source, so a row's id is its timeline's and its
+  // source's.
+  const rowId = (timelineId, source) => timelineId + "/" + (source ?? "");
+  const rowOf = (event) => rowId(event.timeline_id, event.source);
+  // An overlay nests a row per source under a row per timeline, in the order they were selected.
   const timelineGroups = () => {
     const rows = new Set(data.events.map(rowOf));
     return data.timelines.flatMap((t, order) => {
-      const own = sources.filter((source) => rows.has(t.id + "/" + (source ?? "")));
-      const children = own.map((source, i) => ({ ...sourceGroup(source, t.id + "/" + (source ?? ""), i), timeline: t.id, treeLevel: 1 }));
-      const label = element("span", undefined, "timeline");
+      const own = sources.filter((source) => rows.has(rowId(t.id, source)));
+      // treeLevel gets the row vis-timeline's indent class.
+      const children = own.map((source, i) => ({ ...sourceGroup(source, rowId(t.id, source), i), timeline: t.id, treeLevel: 1 }));
+      const label = element("span", undefined, "timeline-label");
       label.append(element("span", t.name, "name"));
       if (t.title.trim()) label.append(element("span", t.title, "title"));
-      const parent = { id: t.id, order, timeline: t.id, sources: own, content: label, nestedGroups: children.map((child) => child.id), showNested: true };
+      const parent = { id: t.id, order, timeline: t.id, sources: own, content: label, className: "timeline-row" };
+      // vis-timeline gives a row with any nestedGroups, even none, an expand arrow.
+      if (children.length) Object.assign(parent, { nestedGroups: children.map((child) => child.id), showNested: true });
       return [parent, ...children];
     });
   };
-  const groups = overlay ? timelineGroups() : sources.map((source, i) => sourceGroup(source, i, i));
-  // groupShows keeps a row whose timeline the timeline filter keeps and that shows a source the
-  // source filter keeps.
+  const groups = overlay ? timelineGroups() : sources.map((source, i) => sourceGroup(source, rowId(shown.id, source), i));
   const groupShows = (group, filter) =>
     (!filter.timelines.size || filter.timelines.has(group.timeline)) &&
     (!filter.sources.size || group.sources.some((source) => filter.sources.has(source)));
@@ -609,14 +612,6 @@
   const view = readHash(location.hash, { timelines: timelineIds, sources: namedSources, tags, events: eventsById });
 
   const sourceBoxes = document.getElementById("sources");
-  // Only an overlay has timelines to pick among, so only its page gets their checkboxes.
-  const timelineBoxes = element("fieldset");
-  timelineBoxes.id = "timelines";
-  timelineBoxes.append(element("legend", "Timelines"));
-  if (overlay) {
-    sourceBoxes.before(timelineBoxes);
-    checkboxes(timelineBoxes, timelineIds, view.filter.timelines, (id) => timelineNames.get(id));
-  }
   const tagBoxes = document.getElementById("tags");
   const search = document.getElementById("q");
   const since = document.getElementById("since");
@@ -639,21 +634,32 @@
   // Collapsing a timeline marks its source rows not visible, and vis-timeline 8.5.4 fails to
   // redraw an item added to a row while it is hidden, so a hidden row's items leave the view
   // until the row shows again.
+  const kept = (id) => eventsById.has(id) && keeps(eventsById.get(id), view.filter);
   const groupSet = new vis.DataSet(groups);
   const visibleItems = new vis.DataView(new vis.DataSet(items), {
-    filter: (item) => keeps(eventsById.get(item.id), view.filter) && groupSet.get(item.group).visible !== false,
+    filter: (item) => kept(item.id) && groupSet.get(item.group).visible !== false,
   });
   const visibleGroups = new vis.DataView(groupSet, {
     filter: (group) => groupShows(group, view.filter),
   });
-  // A DataView hears its DataSet on "*", after every "update" listener, so this listens there
-  // too: items return to a row only once the group views have shown it again.
-  if (overlay) groupSet.on("*", () => visibleItems.refresh());
   const timeline = new vis.Timeline(document.getElementById("timeline"), visibleItems, visibleGroups, options);
   // vis-timeline 8.5.4 first clusters once the timeline has a width, a redraw too late to stack
   // the rows, so clustered events stay hidden until the window moves. Setting the groups again
   // restacks them.
   timeline.once("changed", () => timeline.setGroups(visibleGroups));
+  if (overlay) {
+    // Registered after visibleGroups, whose "*" listener runs first: items return to a row only
+    // once the group view shows it. vis-timeline writes every row whenever it sets the groups,
+    // so the items are refiltered only when the hidden rows change.
+    let hiddenRows = "";
+    groupSet.on("*", () => {
+      const hidden = groupSet.getIds({ filter: (group) => group.visible === false }).join("\n");
+      if (hidden === hiddenRows) return;
+      hiddenRows = hidden;
+      visibleItems.refresh();
+      if (view.selected !== null && visibleItems.get(view.selected)) timeline.setSelection([view.selected]);
+    });
+  }
 
   // Typing a search changes the filter with every keystroke. WebKit throws after 100 replaceState
   // calls in 10 seconds, and rebuilding the printed list of thousands of events takes tens of
@@ -669,7 +675,7 @@
     history.replaceState(null, "", location.href.split("#")[0] + hashOf(view.filter, view.selected)),
   );
   const select = (id) => {
-    view.selected = visibleItems.get(id) ? id : null;
+    view.selected = kept(id) ? id : null;
     show(eventsById.get(view.selected) ?? null);
   };
   const printed = document.getElementById("print");
@@ -684,7 +690,7 @@
     // keeps, so one not added back yet throws.
     visibleGroups.refresh();
     visibleItems.refresh();
-    if (view.selected !== null && !visibleItems.get(view.selected)) select(null);
+    if (view.selected !== null && !kept(view.selected)) select(null);
     showPrintListAfterPause();
     writeHash();
   };
@@ -701,7 +707,14 @@
   });
 
   document.getElementById("filters").addEventListener("submit", (event) => event.preventDefault());
-  timelineBoxes.addEventListener("change", () => update({ timelines: checkedIn(timelineBoxes) }));
+  if (overlay) {
+    const timelineBoxes = element("fieldset");
+    timelineBoxes.id = "timelines";
+    timelineBoxes.append(element("legend", "Timelines"));
+    sourceBoxes.before(timelineBoxes);
+    checkboxes(timelineBoxes, timelineIds, view.filter.timelines, (id) => timelineNames.get(id));
+    timelineBoxes.addEventListener("change", () => update({ timelines: checkedIn(timelineBoxes) }));
+  }
   sourceBoxes.addEventListener("change", () => update({ sources: checkedIn(sourceBoxes) }));
   tagBoxes.addEventListener("change", () => update({ tags: checkedIn(tagBoxes) }));
   search.addEventListener("input", () => update({ q: search.value }));
