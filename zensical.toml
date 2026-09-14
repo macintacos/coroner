@@ -5,7 +5,7 @@ site_url         = "https://macintacos.github.io/coroner/"
 repo_url         = "https://github.com/macintacos/coroner"
 repo_name        = "macintacos/coroner"
 
-# Unlisted pages, such as every CLI page but coroner.md, are still built and searchable.
+# Unlisted pages, such as every command page but coroner.md, are still built and searchable.
 nav = [
   { "Home" = "index.md" },
   { "Tutorial" = [
@@ -23,10 +23,21 @@ nav = [
     { "Show a timeline's events on a Grafana dashboard" = "how-to/grafana-annotations.md" },
   ] },
   { "Reference" = [
+    "reference/index.md",
     { "Export format" = "reference/export-format.md" },
+    { "Exit codes" = "reference/cli/coroner_help_exit-codes.md" },
+    { "Environment variables" = "reference/cli/coroner_help_environment.md" },
+    { "Time input" = "reference/cli/coroner_help_time.md" },
+    { "Output formats" = "reference/cli/coroner_help_formatting.md" },
+    { "Configuration" = "reference/configuration.md" },
     { "CLI" = "reference/cli/coroner.md" },
   ] },
-  { "Explanation" = "explanation/index.md" },
+  { "Explanation" = [
+    "explanation/index.md",
+    { "Data model" = "explanation/data-model.md" },
+    { "Timestamps and time zones" = "explanation/timestamps-and-timezones.md" },
+    { "Design principles" = "explanation/design-principles.md" },
+  ] },
   { "Contributing" = [
     { "Command checklist" = "contributing/command-checklist.md" },
     { "Migration policy" = "contributing/migrations.md" },

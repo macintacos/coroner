@@ -111,9 +111,11 @@ digraph coroner_rules_router {
   and with `--man <dir>` the man pages a release packs; `schemagen` the export schema;
   `compatfixture` a release's fixture database).
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
-  `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
-  `exit-codes` disagrees with the exit-code map or `environment` misses an environment
-  variable the code reads.
+  `coroner help <topic>`, and copied into the CLI reference by `docgen`; those pages are
+  also the site's reference pages for the topics. Specs fail when `exit-codes` disagrees
+  with the exit-code map or `environment` misses an environment variable the code reads,
+  and when [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a
+  key the config file accepts.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the
@@ -175,9 +177,12 @@ digraph coroner_rules_router {
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
   [`pyproject.toml`](pyproject.toml), locked by `uv.lock`. Every file under `docs/` is
   published, so agent-facing rules live in [`agents/`](agents/), never under `docs/`, and
-  a published page links a file outside `docs/` by its GitHub URL.
+  a published page links a file outside `docs/` by its GitHub URL, except the export
+  schema, which `docs:build` copies into the site at `/coroner/schema/`.
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
+  [`docs/explanation/data-model.md`](docs/explanation/data-model.md) carries the glossary
+  word for word, and a spec fails when the two differ.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not
   here.
 
