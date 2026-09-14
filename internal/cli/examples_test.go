@@ -315,16 +315,20 @@ var _ = Describe("checkDocExamples", func() {
 		))
 	})
 
-	It("finds no broken example on any docs page", func(ctx SpecContext) {
-		found, err := checkDocExamples(os.DirFS("../../docs"), freshRoots(ctx))
+	DescribeTable("finds no broken example on any page",
+		func(ctx SpecContext, dir string) {
+			found, err := checkDocExamples(os.DirFS(dir), freshRoots(ctx))
 
-		Expect(err).NotTo(HaveOccurred())
-		for _, line := range found.Skipped {
-			AddReportEntry("skipped example", line)
-		}
-		Expect(found.Broken).To(BeEmpty())
-		Expect(found.Checked).To(BeNumerically(">", 0))
-	})
+			Expect(err).NotTo(HaveOccurred())
+			for _, line := range found.Skipped {
+				AddReportEntry("skipped example", line)
+			}
+			Expect(found.Broken).To(BeEmpty())
+			Expect(found.Checked).To(BeNumerically(">", 0))
+		},
+		Entry("under docs", "../../docs"),
+		Entry("of the agent skills, references included", "../../skills"),
+	)
 })
 
 // freshRoots returns a func that builds a new coroner root command on each call.
