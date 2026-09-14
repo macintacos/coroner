@@ -32,6 +32,7 @@ error envelope:
 {"error":{"kind":"usage","message":"unknown flag: --no-such-flag","hint":"Run 'coroner --help' for usage."}}
 ```
 
-Every key is always present, and `hint` is `null` when there is none. `kind` is stable;
-`message` and `hint` are for people and may change, so branch on the exit code or `kind`,
-never on the text.
+Every key is always present, and `hint` is `null` when there is none. `kind` strings are
+experimental until 1.0 and stable from then on; `message` and `hint` are for people and
+may change, so branch on the exit code or `kind`, never on the text. The stability policy,
+<https://github.com/macintacos/coroner/blob/main/STABILITY.md>, says what may change.
