@@ -1,24 +1,4 @@
-:root {
-  color-scheme: light dark;
-  --paper: #f7f8f9;
-  --ink: #1e2328;
-  --muted: #5c6670;
-  --rule: #d6dbdf;
-  --well: #eceff2;
-  --accent: #2d6a8a;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #15181b;
-    --ink: #e2e6e9;
-    --muted: #9aa4ad;
-    --rule: #343b42;
-    --well: #1f2429;
-    --accent: #7db8d6;
-  }
-}
-
+/* Colours come from the theme's custom properties, which export's theme.go writes ahead of this sheet. */
 body {
   margin: 0;
   padding: 1.5rem 1rem 3rem;
@@ -114,7 +94,7 @@ header p {
 }
 
 #filters button {
-  background: var(--well);
+  background: var(--surface);
   cursor: pointer;
 }
 
@@ -162,7 +142,7 @@ header p {
 }
 
 #timeline .vis-item.vis-selected {
-  background: var(--well);
+  background: var(--surface);
   box-shadow: 0 0 0 2px var(--accent);
 }
 
@@ -210,7 +190,7 @@ a:focus-visible {
 
 pre.body {
   padding: 0.5rem 0.75rem;
-  background: var(--well);
+  background: var(--surface);
   border-left: 3px solid var(--rule);
   font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow-x: auto;

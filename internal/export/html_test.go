@@ -129,6 +129,13 @@ var _ = Describe("WriteHTML", func() {
 		Expect(string(viewer)).NotTo(MatchRegexp(`\b(innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser)\b|document\.write|\btitle\s*:`))
 	})
 
+	It("has a stylesheet that names no colour, reading each from the theme", func() {
+		css, err := os.ReadFile("html/viewer.css")
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(string(css)).NotTo(MatchRegexp(`(?i)#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|light-dark|color-mix)\(|[\s:,(](white|black|gr[ae]y)[\s;,)!]`))
+	})
+
 	It("inlines the vendored library whose SHA-256 its README records", func() {
 		library, err := os.ReadFile("html/vendor/vis-timeline-graph2d.min.js")
 		Expect(err).NotTo(HaveOccurred())
