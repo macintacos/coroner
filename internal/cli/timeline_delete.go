@@ -16,9 +16,10 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <name|id> {--yes | --dry-run}",
 		Short: "Delete a timeline and everything in it",
-		Long: "Delete a timeline with its events, tags, annotations and attachments, and the blobs no\n" +
-			"other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what\n" +
-			"would be deleted instead. Deleting the current timeline leaves none current.",
+		Long: "Delete a timeline with its events, tags, annotations, attachments and links, and the blobs\n" +
+			"no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what\n" +
+			"would be deleted instead. Deleting the current timeline leaves none current, and the\n" +
+			"overlays that read the timeline keep their other timelines.",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Example: "  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run\n" +
@@ -39,11 +40,12 @@ func timelineDeleteDefinition() definition {
 	}}
 }
 
-// timelineDeleted is the timeline delete removed or, with --dry-run, would remove; only --dry-run
-// counts its events and annotations, and only a delete says why the blobs it left unused were
-// not deleted.
+// timelineDeleted is the timeline delete removed or, with --dry-run, would remove, with the
+// overlays that lose it; only --dry-run counts its events and annotations, and only a delete says
+// why the blobs it left unused were not deleted.
 type timelineDeleted struct {
 	timeline            timeline.Timeline
+	overlays            []timeline.Overlay
 	dryRun              bool
 	events, annotations int
 	blobsErr            error
@@ -75,6 +77,10 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 			return err
 		}
 		deleted.timeline = t
+		deleted.overlays, err = s.TimelineOverlays(ctx, t.ID)
+		if err != nil {
+			return err
+		}
 		if !dryRun {
 			err = s.DeleteTimeline(ctx, t.ID)
 			if err != nil {
@@ -100,6 +106,9 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 func (d timelineDeleted) render(o output) error {
 	if !d.dryRun {
 		err := o.notify("Deleted timeline `%s`.", d.timeline.Name)
+		if err == nil {
+			err = d.notifyOverlays(o, "Removed")
+		}
 		if err != nil || d.blobsErr == nil {
 			return err
 		}
@@ -107,5 +116,22 @@ func (d timelineDeleted) render(o output) error {
 	}
 
 	_, err := fmt.Fprintf(o.out, "Would delete timeline `%s`: events: %d, annotations: %d\n", d.timeline.Name, d.events, d.annotations)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return d.notifyOverlays(o, "Would remove")
+}
+
+// notifyOverlays says which overlays verb the timeline from, if any.
+func (d timelineDeleted) notifyOverlays(o output, verb string) error {
+	if len(d.overlays) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(d.overlays))
+	for _, overlay := range d.overlays {
+		names = append(names, overlay.Name)
+	}
+
+	return o.notify("%s it from %s %s.", verb, pluralNoun(len(names), "overlay"), codeList(names))
 }

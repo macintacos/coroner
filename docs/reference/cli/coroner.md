@@ -44,6 +44,7 @@ coroner <command> [flags]
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
 * [coroner event](coroner_event.md)	 - Add, list, view, edit, delete and link events
 * [coroner import](coroner_import.md)	 - Import records from a JSONL export
+* [coroner overlay](coroner_overlay.md)	 - Save sets of timelines to read together
 * [coroner source](coroner_source.md)	 - List sources and fix their names
 * [coroner status](coroner_status.md)	 - Show the database and the timeline commands act on
 * [coroner tag](coroner_tag.md)	 - List the tags events carry

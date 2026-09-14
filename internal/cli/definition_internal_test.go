@@ -40,6 +40,8 @@ func writeDefinitions() map[string]definition {
 		"annotation delete": annotationDeleteDefinition(),
 
 		"attachment delete": attachmentDeleteDefinition(),
+
+		"overlay create": overlayCreateDefinition(),
 	}
 }
 
@@ -208,6 +210,7 @@ var _ = Describe("write run functions", func() {
 		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"kind": {"comment"}}),
 		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
 		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
+		Entry("overlay create", errorOf(createOverlay), fieldValues{"timeline": {"mongo-failover"}}),
 	)
 })
 
@@ -368,6 +371,7 @@ func badValues() []badValue {
 		{"annotation edit", "attach", "-", []string{"0199a1b2"}},
 		{"annotation delete", "ids", "Bad Ref!", nil},
 		{"attachment delete", "ids", "Bad Ref!", nil},
+		{"overlay create", "name", "Checkout Incident", []string{"-t", "mongo-failover"}},
 	}
 }
 

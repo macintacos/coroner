@@ -8,9 +8,10 @@ Delete a timeline and everything in it
 
 ### Synopsis
 
-Delete a timeline with its events, tags, annotations and attachments, and the blobs no
-other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
-would be deleted instead. Deleting the current timeline leaves none current.
+Delete a timeline with its events, tags, annotations, attachments and links, and the blobs
+no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
+would be deleted instead. Deleting the current timeline leaves none current, and the
+overlays that read the timeline keep their other timelines.
 
 ```
 coroner timeline delete <name|id> {--yes | --dry-run} [flags]

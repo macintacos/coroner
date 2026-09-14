@@ -1,0 +1,80 @@
+# Saved overlays: overlay create names a set of timelines, and --overlay selects them wherever
+# -t may be repeated, on event list and timeline export. Ids come from CORONER_TEST_IDS and
+# created at from CORONER_TEST_NOW, so whole documents are compared with the files below.
+
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-10T14:02:00Z -t mongo-failover
+exits 0 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:03:00Z -t checkout-latency
+
+# --dry-run prints the overlay object, and saves nothing.
+exits 0 coroner overlay create checkout-incident -t checkout-latency -t mongo-failover --dry-run --json
+cmp stdout dry-run.json
+exits 3 coroner event list --overlay checkout-incident --json
+stderr '^\{"error":\{"kind":"overlay_not_found",[^\n]+\}\}\n\z'
+
+# create prints the overlay object, its timelines by name in the order given.
+exits 0 coroner overlay create checkout-incident -t checkout-latency -t mongo-failover --json
+cmp stdout created.json
+stderr '^Created overlay `checkout-incident` of timelines `checkout-latency`, `mongo-failover`\.\n'
+
+# --overlay reads the same events, and exports the same export, as naming its timelines with -t.
+exits 0 coroner event list -t checkout-latency -t mongo-failover --json
+cp stdout by-timelines.json
+exits 0 coroner event list --overlay checkout-incident --json
+cmp stdout by-timelines.json
+exits 0 coroner timeline export -t checkout-latency -t mongo-failover --format jsonl
+cp stdout by-timelines.jsonl
+exits 0 coroner timeline export --overlay checkout-incident --format jsonl
+cmp stdout by-timelines.jsonl
+
+# --overlay with -t exits 2, kind usage, on both commands.
+exits 2 coroner event list --overlay checkout-incident -t mongo-failover --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 2 coroner timeline export --overlay checkout-incident -t mongo-failover --format jsonl
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+# A name no overlay has exits 3, kind overlay_not_found.
+exits 3 coroner timeline export --overlay checkout --format jsonl
+! stdout .
+stderr '^\{"error":\{"kind":"overlay_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# A taken name exits 4, kind overlay_exists; --if-not-exists prints the overlay that has it.
+exits 4 coroner overlay create checkout-incident -t mongo-failover --json
+! stdout .
+stderr '^\{"error":\{"kind":"overlay_exists","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 0 coroner overlay create checkout-incident -t mongo-failover --if-not-exists --json
+cmp stdout created.json
+stderr '^Overlay `checkout-incident` already exists\.\n\z'
+
+# A name outside the grammar exits 2, kind invalid_name.
+exits 2 coroner overlay create 'Checkout Incident' -t mongo-failover --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*checkout-incident[^\n]*"\}\}\n\z'
+
+# No -t exits 2, kind usage; a timeline that does not exist exits 3, kind timeline_not_found.
+exits 2 coroner overlay create db-2 --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 3 coroner overlay create db-2 -t db-2-disk --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+
+# Deleting a timeline removes it from its overlays, and says so on stderr.
+exits 0 coroner timeline delete mongo-failover --dry-run
+stderr '^Would remove it from overlay `checkout-incident`\.\n\z'
+exits 0 coroner timeline delete mongo-failover --yes
+stderr '^Removed it from overlay `checkout-incident`\.\n'
+exits 0 coroner event list --overlay checkout-incident --json
+jsonvalid stdout
+stdout '"timelines":\[\{"id":"[^"]+","name":"checkout-latency",'
+
+# An overlay whose timelines were all deleted exits 3, kind timeline_not_found.
+exits 0 coroner timeline delete checkout-latency --yes
+exits 3 coroner event list --overlay checkout-incident --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+
+-- dry-run.json --
+{"id":"01a09862-b1c0-7000-8000-000000000005","name":"checkout-incident","timelines":["checkout-latency","mongo-failover"],"created_at":"2026-09-13T01:30:00.000000000Z"}
+-- created.json --
+{"id":"01a09862-b1c0-7000-8000-000000000006","name":"checkout-incident","timelines":["checkout-latency","mongo-failover"],"created_at":"2026-09-13T01:30:00.000000000Z"}

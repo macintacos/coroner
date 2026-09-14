@@ -105,6 +105,14 @@ exits 0 coroner import --help
 cmp stdout coroner_import.txt
 ! stderr .
 
+exits 0 coroner overlay --help
+cmp stdout coroner_overlay.txt
+! stderr .
+
+exits 0 coroner overlay create --help
+cmp stdout coroner_overlay_create.txt
+! stderr .
+
 exits 0 coroner source --help
 cmp stdout coroner_source.txt
 ! stderr .
@@ -187,6 +195,7 @@ CORE COMMANDS
   attachment   List, delete and export files attached to events and annotations
   event        Add, list, view, edit, delete and link events
   import       Import records from a JSONL export
+  overlay      Save sets of timelines to read together
   source       List sources and fix their names
   tag          List the tags events carry
   timeline     Create, list and switch between timelines
@@ -963,7 +972,8 @@ List the current timeline's events in the order they happened: by occurred at, t
 Repeat -t to overlay several timelines: their events merge into one list by occurred at,
 then timeline id, then seq, and each text row starts with its timeline's name. --json lists
 the selected timelines under timelines, and --format jsonl starts with a timeline line for
-each, so an event's timeline_id names one of them.
+each, so an event's timeline_id names one of them. --overlay <name> reads the timelines an
+overlay saved with 'coroner overlay create' holds, in place of -t.
 
 --since is inclusive and --until exclusive. Repeated --source flags match any of them,
 and repeated --tag flags must all match. Times with no offset are read, and times print,
@@ -978,11 +988,13 @@ EXAMPLES
   $ coroner event list --since "2026-09-11T03:00Z" --until "2026-09-11T04:00Z" --tag election --format jsonl
   $ coroner event list --contains stepdown --order desc --limit 20
   $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json
+  $ coroner event list --overlay checkout-incident --tag phase:detect
 
 FLAGS
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
       --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
+      --overlay name    Read the timelines of the overlay called name, instead of -t
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
       --tag tag         Keep events with this tag; repeat to require all of them
@@ -1130,6 +1142,70 @@ FLAGS
       --dry-run              Show what the import would change, and write nothing
       --on-conflict policy   What to do with a record stored with different content, as a policy: {fail|skip|replace} (default "fail")
   -t, --timeline name|id     Timeline name|id to act on
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_overlay.txt --
+An overlay is several timelines read together as one chronology. Save one under a name with
+'coroner overlay create', then pass --overlay <name> to event list and timeline export instead
+of repeating -t. An overlay is kept in this database only: exports never carry it.
+
+USAGE
+  coroner overlay [flags]
+  coroner overlay <command> [flags]
+
+COMMANDS
+  create       Save a set of timelines under a name
+
+EXAMPLES
+  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency
+  $ coroner event list --overlay checkout-incident
+
+GLOBAL FLAGS
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+
+LEARN MORE
+  Use `coroner <command> --help` for more information about a command.
+  Report bugs and send feedback at https://github.com/macintacos/coroner/issues
+-- coroner_overlay_create.txt --
+Save the timelines -t names, in the order given, as an overlay called <name>: at most 64
+lowercase letters, digits, '.', '_' or '-', starting with a letter or digit. --overlay <name>
+then selects those timelines on event list and timeline export. Deleting a timeline removes it
+from its overlays. --dry-run shows the overlay and saves nothing.
+
+USAGE
+  coroner overlay create <name> -t <timeline>... [flags]
+
+EXAMPLES
+  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency
+  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency --if-not-exists --json
+
+FLAGS
+      --dry-run            Show the overlay as it would be saved, and save nothing
+      --if-not-exists      Print the existing overlay instead of failing when the name is taken
+  -t, --timeline name|id   Timeline name|id the overlay reads; repeat for each, in order
 
 GLOBAL FLAGS
       --config path     Config file path (env: CORONER_CONFIG)
@@ -1398,9 +1474,10 @@ LEARN MORE
   Use `coroner <command> --help` for more information about a command.
   Report bugs and send feedback at https://github.com/macintacos/coroner/issues
 -- coroner_timeline_delete.txt --
-Delete a timeline with its events, tags, annotations and attachments, and the blobs no
-other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
-would be deleted instead. Deleting the current timeline leaves none current.
+Delete a timeline with its events, tags, annotations, attachments and links, and the blobs
+no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
+would be deleted instead. Deleting the current timeline leaves none current, and the
+overlays that read the timeline keep their other timelines.
 
 USAGE
   coroner timeline delete <name|id> {--yes | --dry-run} [flags]
@@ -1503,6 +1580,8 @@ every timeline, and their events merge by occurred at, then timeline id, then se
 each event with its timeline, and mermaid draws a section per timeline and source, as in
 mongo-failover/mongod. html and svg export one timeline. An overlay written into a directory
 is named after its timelines joined by +, as in mongo-failover+checkout-latency.jsonl.
+--overlay <name> exports the timelines an overlay saved with 'coroner overlay create' holds,
+in place of -t. json and jsonl carry every link between two exported events.
 
 --group-by is experimental and may change before 1.0.
 
@@ -1519,6 +1598,7 @@ EXAMPLES
   $ coroner timeline export --format html -o inc-4821.html
   $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg
   $ coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl
+  $ coroner timeline export --overlay checkout-incident --format md -o rca/
 
 FLAGS
       --contains text      Keep events whose text contains this text, ignoring case
@@ -1528,6 +1608,7 @@ FLAGS
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
   -o, --output path        Write the export to this path, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
+      --overlay name       Read the timelines of the overlay called name, instead of -t
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them

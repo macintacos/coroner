@@ -49,7 +49,9 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"every timeline, and their events merge by occurred at, then timeline id, then seq. md labels\n" +
 			"each event with its timeline, and mermaid draws a section per timeline and source, as in\n" +
 			"mongo-failover/mongod. html and svg export one timeline. An overlay written into a directory\n" +
-			"is named after its timelines joined by +, as in mongo-failover+checkout-latency.jsonl.\n\n" +
+			"is named after its timelines joined by +, as in mongo-failover+checkout-latency.jsonl.\n" +
+			"--overlay <name> exports the timelines an overlay saved with 'coroner overlay create' holds,\n" +
+			"in place of -t. json and jsonl carry every link between two exported events.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html,svg", overlayAnnotation: "true"},
@@ -61,7 +63,8 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline export -t inc-4821 --format md -o rca/\n" +
 			"  $ coroner timeline export --format html -o inc-4821.html\n" +
 			"  $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg\n" +
-			"  $ coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl",
+			"  $ coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl\n" +
+			"  $ coroner timeline export --overlay checkout-incident --format md -o rca/",
 		PreRunE: requireFormat,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return exportTimeline(ctx, cmd, app)
@@ -70,6 +73,7 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 
 	addTimelineFlag(cmd.Flags())
 	cmd.Flags().Lookup("timeline").Usage = "Timeline `name|id` to export; repeat to overlay several (json, jsonl, md and mermaid only)"
+	addOverlayFlag(cmd.Flags())
 	addEventFilterFlags(cmd.Flags())
 	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc|desc}"
 	cmd.Flags().Lookup("limit").Usage = "Export at most this `number` of events (default: every one)"
@@ -94,7 +98,7 @@ func requireFormat(cmd *cobra.Command, _ []string) error {
 }
 
 func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
-	names, err := timelineFlags(cmd.Flags())
+	choice, err := readTimelineChoice(cmd.Flags())
 	if err != nil {
 		return err
 	}
@@ -124,7 +128,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	var input exportInput
 	var page store.EventPage
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		input, page, err = readExport(ctx, s, names, filter, app.LookupEnv)
+		input, page, err = readExport(ctx, s, choice, filter, app.LookupEnv)
 		return err
 	})
 	if err == nil {
@@ -201,13 +205,13 @@ func checkOverlayFormat(count int, chosen format) error {
 	}
 }
 
-// readExport reads what an export is made from: the timelines names select, the events filter
+// readExport reads what an export is made from: the timelines choice selects, the events filter
 // keeps in them and their page, every annotation, attachment and link from an event in those
 // timelines, and every source.
 func readExport(
-	ctx context.Context, s *store.Store, names []string, filter store.EventFilter, lookupEnv func(string) (string, bool),
+	ctx context.Context, s *store.Store, choice timelineChoice, filter store.EventFilter, lookupEnv func(string) (string, bool),
 ) (exportInput, store.EventPage, error) {
-	timelines, err := selectTimelines(ctx, s, names, lookupEnv)
+	timelines, err := selectChosenTimelines(ctx, s, choice, lookupEnv)
 	if err != nil {
 		return exportInput{}, store.EventPage{}, err
 	}
