@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"slices"
 	"strconv"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/viewer"
@@ -25,6 +28,9 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Show a timeline and its events in the order they happened. Without a name, id or -t,\n" +
 			"show the timeline CORONER_TIMELINE or 'coroner timeline use' selects.\n\n" +
 			"On a terminal it opens an interactive viewer, where ? lists the keys and q quits.\n" +
+			"Expanding an event shows its attachments: images inline in kitty, Ghostty and iTerm2 3.7 or\n" +
+			"later, outside tmux and with color on, and elsewhere a placeholder naming each file, which\n" +
+			"'coroner attachment export' copies out.\n" +
 			"--format text, piping the output, --no-input or CORONER_NO_INPUT prints plain text instead:\n" +
 			"a summary, then the events, each with the gap since the event before it. --source, --tag and\n" +
 			"--contains keep the events 'coroner event list' keeps with the same flags; --json prints the\n" +
@@ -101,13 +107,19 @@ func viewTimeline(
 	}
 
 	noColor, _ := cmd.Flags().GetBool("no-color")
-	err = viewer.Run(ctx, viewer.Terminal{In: app.In, Out: app.Out, NoColor: !colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)},
-		viewer.Options{
-			Snapshot: snapshot,
-			Match:    viewer.Match{Sources: filter.Sources, Tags: filter.Tags, Contains: filter.Contains},
-			Load:     timelineLoader(ctx, app, cfg.DBPath, snapshot.Timeline.ID),
-			Location: z.loc, ZoneLabel: z.label, Now: app.Now,
-		})
+	logger, flush := viewerDiagnostics(app)
+	term := viewer.Terminal{
+		In: app.In, Out: app.Out, NoColor: !colorEnabled(app.OutIsTTY, noColor, app.LookupEnv),
+		Graphics: graphics.Detect(app.LookupEnv),
+	}
+	err = viewer.Run(ctx, term, viewer.Options{
+		Snapshot: snapshot,
+		Match:    viewer.Match{Sources: filter.Sources, Tags: filter.Tags, Contains: filter.Contains},
+		Load:     timelineLoader(ctx, app, cfg.DBPath, snapshot.Timeline.ID),
+		Blob:     blobReader(ctx, app, cfg.DBPath, logger),
+		Location: z.loc, ZoneLabel: z.label, Now: app.Now,
+	})
+	err = errors.Join(err, flush())
 	if errors.Is(err, viewer.ErrInterrupted) {
 		return &Error{Kind: KindInterrupted, Message: "interrupted", Err: err}
 	}
@@ -148,6 +160,37 @@ func timelineLoader(ctx context.Context, app App, path, timelineID string) func(
 	}
 }
 
+// viewerDiagnostics returns a logger for debug detail found while the viewer holds the screen,
+// and a flush that writes what it logged to app.Err once the viewer has closed. Without --debug
+// or CORONER_DEBUG it logs nothing.
+func viewerDiagnostics(app App) (*slog.Logger, func() error) {
+	_, debug := errorStyleFor(app)
+	if !debug {
+		return slog.New(slog.DiscardHandler), func() error { return nil }
+	}
+
+	var logged bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	return logger, func() error {
+		_, err := app.Err.Write(logged.Bytes())
+		return err
+	}
+}
+
+// blobReader returns the viewer's Blob for the database at path: it reads an attachment's blob,
+// logging why it could not.
+func blobReader(ctx context.Context, app App, path string, logger *slog.Logger) func(timeline.Attachment) ([]byte, error) {
+	return func(a timeline.Attachment) ([]byte, error) {
+		content, err := app.ReadFile(store.BlobPath(path, a.SHA256))
+		if err != nil {
+			logger.DebugContext(ctx, "attachment blob unreadable", "attachment", a.ID, "sha256", a.SHA256, "error", err)
+		}
+
+		return content, err
+	}
+}
+
 // hintedError shows an *Error's message and hint as its text, for a screen that shows only
 // Error().
 type hintedError struct {
@@ -168,15 +211,19 @@ func hinted(err error) error {
 	return hintedError{err: typed}
 }
 
-// readSnapshot reads t's events that filter keeps and every annotation in t.
+// readSnapshot reads t's events that filter keeps, and every annotation and attachment in t.
 func readSnapshot(ctx context.Context, s *store.Store, t timeline.Timeline, filter store.EventFilter) (viewer.Snapshot, error) {
 	page, err := s.ListEvents(ctx, t.ID, filter)
 	if err != nil {
 		return viewer.Snapshot{}, err
 	}
 	annotations, err := s.Annotations(ctx, t.ID)
+	if err != nil {
+		return viewer.Snapshot{}, err
+	}
+	attachments, err := s.TimelineAttachments(ctx, t.ID)
 
-	return viewer.Snapshot{Timeline: t, Events: page.Events, Annotations: annotations}, err
+	return viewer.Snapshot{Timeline: t, Events: page.Events, Annotations: annotations, Attachments: attachments}, err
 }
 
 // keptAnnotations counts snapshot's annotations on its events or on the timeline itself.

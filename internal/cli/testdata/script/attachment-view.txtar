@@ -1,0 +1,19 @@
+# Off a terminal, timeline view prints plain text and never a graphics escape sequence, even
+# with an image attached and every hint of a terminal that shows images inline.
+env TERM=xterm-kitty KITTY_WINDOW_ID=1 TERM_PROGRAM=ghostty
+exec coroner timeline create mongo-outage
+exec coroner timeline use mongo-outage
+exec coroner event add 'Dashboard at peak' --at 2026-09-11T03:14:07Z --attach p99.gif
+exec coroner annotation add 'Same panel' -e 1 --kind evidence --attach p99.gif
+
+exec coroner timeline view
+stdout '^Annotations: 1$'
+! stdout '\x1b'
+exec coroner timeline view --format text
+! stdout '\x1b'
+exec coroner timeline view --no-input
+! stdout '\x1b'
+! stderr '\x1b'
+
+-- p99.gif --
+GIF89a p99 latency panel

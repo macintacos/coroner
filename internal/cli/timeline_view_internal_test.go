@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/viewer"
@@ -148,6 +149,61 @@ var _ = Describe("timelineLoader", func() {
 		Expect(m.View().Content).To(ContainSubstring(`tag "Election"`))
 		Expect(m.View().Content).To(ContainSubstring("Did you mean `election`?"))
 		Expect(shownSeqs(m)).To(Equal(shown))
+	})
+
+	Describe("attachments", func() {
+		var picture string
+
+		BeforeEach(func(ctx SpecContext) {
+			app.ReadFile = os.ReadFile
+			picture = filepath.Join(GinkgoT().TempDir(), "p99.png")
+			Expect(os.WriteFile(picture, []byte("\x89PNG\r\n\x1a\n p99 panel"), 0o600)).To(Succeed())
+			Expect(run(ctx, "event", "add", "Latency spike", "--at", "2026-09-11T03:20:00Z", "--attach", picture)).
+				To(Equal(0), errOut.String())
+		})
+
+		It("reads every attachment on the timeline into what the viewer shows", func(ctx SpecContext) {
+			snapshot, err := timelineLoader(ctx, app, db, timelineID)(viewer.Match{})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(snapshot.Attachments).To(HaveExactElements(HaveField("Filename", "p99.png")))
+		})
+
+		It("reads an attachment's content from its blob", func(ctx SpecContext) {
+			snapshot, err := timelineLoader(ctx, app, db, timelineID)(viewer.Match{})
+			Expect(err).NotTo(HaveOccurred())
+			logger, _ := viewerDiagnostics(app)
+
+			content, err := blobReader(ctx, app, db, logger)(snapshot.Attachments[0])
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(content).To(Equal([]byte("\x89PNG\r\n\x1a\n p99 panel")))
+		})
+
+		DescribeTable("a blob it cannot read",
+			func(ctx SpecContext, args []string, logged func(hash string) types.GomegaMatcher) {
+				snapshot, err := timelineLoader(ctx, app, db, timelineID)(viewer.Match{})
+				Expect(err).NotTo(HaveOccurred())
+				missing := snapshot.Attachments[0]
+				Expect(os.Remove(store.BlobPath(db, missing.SHA256))).To(Succeed())
+				app.Args = args
+				errOut.Reset()
+				logger, flush := viewerDiagnostics(app)
+
+				_, err = blobReader(ctx, app, db, logger)(missing)
+				Expect(err).To(MatchError(fs.ErrNotExist))
+				Expect(errOut.String()).To(BeEmpty(), "nothing reaches stderr while the viewer holds the screen")
+
+				Expect(flush()).To(Succeed())
+				Expect(errOut.String()).To(logged(missing.SHA256))
+			},
+			Entry("is logged with its hash once the viewer has closed, under --debug",
+				[]string{"timeline", "view", "--debug"}, func(hash string) types.GomegaMatcher {
+					return And(ContainSubstring("level=DEBUG"), ContainSubstring(hash))
+				}),
+			Entry("is logged nowhere without --debug",
+				[]string{"timeline", "view"}, func(string) types.GomegaMatcher { return BeEmpty() }),
+		)
 	})
 
 	It("never creates the database when it is gone before a refresh", func(ctx SpecContext) {
