@@ -65,6 +65,19 @@ var _ = Describe("Schema", func() {
 		}
 	}
 
+	linkParams := func(n int, toEventID string) sqlcgen.CreateLinkParams {
+		return sqlcgen.CreateLinkParams{
+			ID: id(n), FromEventID: pager.ID, ToEventID: toEventID, Kind: string(timeline.LinkLedTo), CreatedAt: now,
+		}
+	}
+	// secondEvent adds an event after pager in its timeline, for a link to reach.
+	secondEvent := func(ctx context.Context) string {
+		GinkgoHelper()
+		event, err := queries.CreateEvent(ctx, eventParams(90, 2))
+		Expect(err).NotTo(HaveOccurred())
+		return event.ID
+	}
+
 	BeforeEach(func(ctx SpecContext) {
 		s, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
 		Expect(err).NotTo(HaveOccurred())
@@ -211,6 +224,37 @@ var _ = Describe("Schema", func() {
 			_, err := queries.CreateAttachment(ctx, attachmentParams(10, new(id(99)), nil))
 			return err
 		}),
+		Entry("a link kind outside the list", "CHECK", func(ctx context.Context) error {
+			params := linkParams(10, secondEvent(ctx))
+			params.Kind = "after"
+			_, err := queries.CreateLink(ctx, params)
+			return err
+		}),
+		Entry("a link from an event to itself", "CHECK", func(ctx context.Context) error {
+			_, err := queries.CreateLink(ctx, linkParams(10, pager.ID))
+			return err
+		}),
+		Entry("a second link of one kind from one event to another", "UNIQUE", func(ctx context.Context) error {
+			to := secondEvent(ctx)
+			Expect(queries.CreateLink(ctx, linkParams(10, to))).Error().NotTo(HaveOccurred())
+			_, err := queries.CreateLink(ctx, linkParams(11, to))
+			return err
+		}),
+		Entry("a link to an event that does not exist", "FOREIGN KEY", func(ctx context.Context) error {
+			_, err := queries.CreateLink(ctx, linkParams(10, id(99)))
+			return err
+		}),
+		Entry("a link created at without nine fractional digits", "CHECK", func(ctx context.Context) error {
+			params := linkParams(10, secondEvent(ctx))
+			params.CreatedAt = "2026-09-13T09:00:00Z"
+			_, err := queries.CreateLink(ctx, params)
+			return err
+		}),
+		Entry("an overlay on a timeline that does not exist", "FOREIGN KEY", func(ctx context.Context) error {
+			_, err := queries.CreateOverlay(ctx, sqlcgen.CreateOverlayParams{ID: id(10), Name: "checkout-incident", CreatedAt: now})
+			Expect(err).NotTo(HaveOccurred())
+			return queries.AddOverlayTimeline(ctx, sqlcgen.AddOverlayTimelineParams{OverlayID: id(10), TimelineID: id(99), Position: 1})
+		}),
 	)
 
 	checkFailed := ContainSubstring("CHECK constraint failed")
@@ -240,6 +284,13 @@ var _ = Describe("Schema", func() {
 				ID: id(10), Name: name, CreatedAt: now, UpdatedAt: now,
 			})
 			expectCheckAgrees(err, timeline.ValidateTimelineName(name))
+		},
+	)
+
+	describeGrammar("checks an overlay name exactly as timeline.ValidateOverlayName does",
+		func(ctx SpecContext, name string) {
+			_, err := queries.CreateOverlay(ctx, sqlcgen.CreateOverlayParams{ID: id(10), Name: name, CreatedAt: now})
+			expectCheckAgrees(err, timeline.ValidateOverlayName(name))
 		},
 	)
 
@@ -283,6 +334,15 @@ var _ = Describe("Schema", func() {
 			params := annotationParams(10+n, incident.ID, nil)
 			params.Kind = string(kind)
 			Expect(queries.CreateAnnotation(ctx, params)).Error().NotTo(HaveOccurred(), string(kind))
+		}
+	})
+
+	It("accepts every link kind", func(ctx SpecContext) {
+		to := secondEvent(ctx)
+		for n, kind := range []timeline.LinkKind{timeline.LinkLedTo, timeline.LinkSameAs, timeline.LinkCopiedFrom} {
+			params := linkParams(10+n, to)
+			params.Kind = string(kind)
+			Expect(queries.CreateLink(ctx, params)).Error().NotTo(HaveOccurred(), string(kind))
 		}
 	})
 

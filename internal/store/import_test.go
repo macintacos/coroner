@@ -244,6 +244,31 @@ var _ = Describe("Import", func() {
 		)
 	})
 
+	It("writes links between the events it writes", func(ctx SpecContext) {
+		link := timeline.Link{
+			ID: uuid(50), FromEventID: uuid(10), ToEventID: uuid(11), Kind: timeline.LinkLedTo, CreatedAt: created, Author: new("sam"),
+		}
+
+		Expect(s.Import(ctx, store.ImportRecords{
+			Timelines: []timeline.Timeline{incident},
+			Events:    []timeline.Event{newEvent(10, 1), newEvent(11, 2)},
+			Links:     []timeline.Link{link},
+		})).To(Succeed())
+
+		Expect(s.EventLinks(ctx, uuid(11))).To(Equal([]timeline.Link{link}))
+	})
+
+	It("writes nothing when a link's event is missing", func(ctx SpecContext) {
+		err := s.Import(ctx, store.ImportRecords{
+			Timelines: []timeline.Timeline{incident},
+			Events:    []timeline.Event{newEvent(10, 1)},
+			Links:     []timeline.Link{{ID: uuid(50), FromEventID: uuid(10), ToEventID: uuid(11), Kind: timeline.LinkSameAs, CreatedAt: created}},
+		})
+
+		Expect(err).To(HaveOccurred())
+		Expect(s.Timelines(ctx)).To(BeEmpty())
+	})
+
 	It("writes nothing when a write midway fails", func(ctx SpecContext) {
 		twin := timeline.Timeline{ID: uuid(2), Name: incident.Name, Refs: []string{}, CreatedAt: created, UpdatedAt: created}
 

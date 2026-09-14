@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -37,26 +38,29 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 		expectCompatFixture(ctx, path)
 	})
 
-	It("upgrades a schema 1 database compatfixture filled, backing it up first", func(ctx SpecContext) {
-		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-		s, err := store.OpenWithMigrations(ctx, path, schemaOne())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(fixture.Fill(ctx, s)).To(Succeed())
-		Expect(s.Close()).To(Succeed())
+	for _, schema := range []int64{1, 2} {
+		It(fmt.Sprintf("upgrades a schema %d database compatfixture filled, backing it up first", schema), func(ctx SpecContext) {
+			path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+			s, err := store.OpenWithMigrations(ctx, path, schemaUpTo(schema))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(fixture.Fill(ctx, s)).To(Succeed())
+			Expect(s.Close()).To(Succeed())
 
-		expectCompatFixture(ctx, path)
+			expectCompatFixture(ctx, path)
 
-		backups, err := filepath.Glob(path + ".pre-v*.bak")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(backups).To(HaveLen(1))
-		backup := backups[0]
-		Expect(querySQLite(ctx, backup, "SELECT max(version_id) FROM goose_db_version")).To(Equal(int64(1)))
-		Expect(querySQLite(ctx, backup, "SELECT count(*) FROM event")).To(Equal(int64(len(fixture.Events()))))
-	})
+			backups, err := filepath.Glob(path + ".pre-v*.bak")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(backups).To(HaveLen(1))
+			backup := backups[0]
+			Expect(querySQLite(ctx, backup, "SELECT max(version_id) FROM goose_db_version")).To(Equal(schema))
+			Expect(querySQLite(ctx, backup, "SELECT count(*) FROM event")).To(Equal(int64(len(fixture.Events()))))
+		})
+	}
 })
 
 // expectCompatFixture opens the compatfixture database at path, reads back every record
-// fixture writes, and adds an event to check that the timeline's seq counter survived.
+// fixture writes, adds an event to check that the timeline's seq counter survived, and saves
+// an overlay and a link across the fixture's timelines.
 func expectCompatFixture(ctx context.Context, path string) {
 	GinkgoHelper()
 	s, err := store.Open(ctx, path)
@@ -81,4 +85,12 @@ func expectCompatFixture(ctx context.Context, path string) {
 	}, "")
 	Expect(err).NotTo(HaveOccurred())
 	Expect(added.Seq).To(Equal(int64(8)))
+
+	both := timeline.Overlay{ID: uuid(101), Name: "inc-2041-2042", TimelineIDs: []string{timelines[1].ID, timelines[0].ID}, CreatedAt: at}
+	Expect(s.CreateOverlay(ctx, both)).To(Succeed())
+	Expect(s.OverlayByName(ctx, both.Name)).To(Equal(both))
+	events := fixture.Events()
+	link := timeline.Link{ID: uuid(102), FromEventID: events[len(events)-1].ID, ToEventID: added.ID, Kind: timeline.LinkLedTo, CreatedAt: at}
+	Expect(s.AddLink(ctx, link)).To(Succeed())
+	Expect(s.EventLinks(ctx, added.ID)).To(Equal([]timeline.Link{link}))
 }
