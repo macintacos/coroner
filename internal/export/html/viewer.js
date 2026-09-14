@@ -144,6 +144,78 @@
     return nodes;
   };
 
+  // Filters mean what event list's flags do, so the same words select the same events: any
+  // checked source, every checked tag, text containing the search ignoring ASCII case only
+  // (SQLite's lower()), and occurred at from since, inclusive, to until, exclusive.
+  const foldASCII = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+
+  const keeps = (event, filter) => {
+    if (filter.sources.size && !filter.sources.has(event.source)) return false;
+    if (![...filter.tags].every((tag) => event.tags.includes(tag))) return false;
+    if (filter.q.trim() && !foldASCII(event.text).includes(foldASCII(filter.q))) return false;
+    const at = instant(event.occurred_at).valueOf();
+    return (filter.since === null || at >= filter.since) && (filter.until === null || at < filter.until);
+  };
+
+  // The time inputs hold wall-clock times in the export zone, as the axis shows. Subtracting
+  // the offset a second time settles a time within a transition of the first guess.
+  const wallToInstant = (value) => {
+    const wall = Date.parse(value + "Z");
+    return wall - spanAt(wall - spanAt(wall).offset * 1000).offset * 1000;
+  };
+
+  const instantToWall = (ms) => inZone(ms).format("YYYY-MM-DDTHH:mm:ss");
+
+  // A bound is compared in whole milliseconds, which is exact against event list only when it
+  // has no digits past the millisecond, so any past it must be zeros.
+  const rfc3339 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3}0{0,6})?Z$/;
+
+  // readHash returns the filter and selection a location hash names, dropping any value this
+  // export cannot show: a source, tag or event it lacks, an instant that is not RFC 3339 UTC
+  // to the millisecond, or an until not after since.
+  const readHash = (hash, known) => {
+    const params = new URLSearchParams(hash.slice(1));
+    const bound = (key) => (rfc3339.test(params.get(key)) ? instant(params.get(key)).valueOf() : null);
+    const filter = {
+      sources: new Set(params.getAll("source").filter((source) => known.sources.includes(source))),
+      tags: new Set(params.getAll("tag").filter((tag) => known.tags.includes(tag))),
+      q: params.get("q") ?? "",
+      since: bound("since"),
+      until: bound("until"),
+    };
+    if (filter.since !== null && filter.until !== null && filter.until <= filter.since) filter.until = null;
+    const selected = known.events.has(params.get("sel")) ? params.get("sel") : null;
+    return { filter, selected };
+  };
+
+  const hashOf = (filter, selected) => {
+    const params = new URLSearchParams();
+    for (const source of filter.sources) params.append("source", source);
+    for (const tag of filter.tags) params.append("tag", tag);
+    if (filter.q.trim()) params.set("q", filter.q);
+    for (const key of ["since", "until"]) {
+      if (filter[key] !== null) params.set(key, new Date(filter[key]).toISOString().replace(".000Z", "Z"));
+    }
+    if (selected !== null) params.set("sel", selected);
+    const text = params.toString().replaceAll("%3A", ":");
+    return text ? "#" + text : "";
+  };
+
+  const checkboxes = (fieldset, names, checked) => {
+    fieldset.hidden = !names.length;
+    for (const name of names) {
+      const box = element("input");
+      box.type = "checkbox";
+      box.value = name;
+      box.checked = checked.has(name);
+      const label = element("label");
+      label.append(box, name);
+      fieldset.append(label);
+    }
+  };
+
+  const checkedIn = (fieldset) => new Set([...fieldset.querySelectorAll("input:checked")].map((box) => box.value));
+
   const exported = inZone(instant(data.exported_at));
   const shown = data.timelines[0];
   const heading = shown.title.trim() ? shown.title + " (" + shown.name + ")" : shown.name;
@@ -186,7 +258,98 @@
     options.start = first - span * 0.05;
     options.end = last + span * 0.3;
   }
-  const timeline = new vis.Timeline(document.getElementById("timeline"), items, groups, options);
-  timeline.on("select", ({ items: selected }) => show(eventsById.get(selected[0]) ?? null));
-  show(null);
+  const allTimesWindow = { start: options.start, end: options.end };
+
+  const named = sources.filter((source) => source !== null);
+  const tags = [...new Set(data.events.flatMap((event) => event.tags))].sort();
+  const view = readHash(location.hash, { sources: named, tags, events: eventsById });
+
+  const sourceBoxes = document.getElementById("sources");
+  const tagBoxes = document.getElementById("tags");
+  const search = document.getElementById("q");
+  const since = document.getElementById("since");
+  const until = document.getElementById("until");
+  checkboxes(sourceBoxes, named, view.filter.sources);
+  checkboxes(tagBoxes, tags, view.filter.tags);
+  search.value = view.filter.q;
+  const showBounds = () => {
+    since.value = view.filter.since === null ? "" : instantToWall(view.filter.since);
+    until.value = view.filter.until === null ? "" : instantToWall(view.filter.until);
+  };
+  showBounds();
+
+  // A shared link opens on the time range it filters to.
+  const start = view.filter.since ?? options.start;
+  const end = view.filter.until ?? options.end;
+  if (start < end) Object.assign(options, { start, end });
+
+  // Filtering views of the items and groups, rather than replacing them, keeps the zoom.
+  const visibleItems = new vis.DataView(new vis.DataSet(items), {
+    filter: (item) => keeps(eventsById.get(item.id), view.filter),
+  });
+  const visibleGroups = new vis.DataView(new vis.DataSet(groups), {
+    filter: (group) => !view.filter.sources.size || view.filter.sources.has(sources[group.id]),
+  });
+  const timeline = new vis.Timeline(document.getElementById("timeline"), visibleItems, visibleGroups, options);
+
+  const writeHash = () => history.replaceState(null, "", location.href.split("#")[0] + hashOf(view.filter, view.selected));
+  const select = (id) => {
+    view.selected = visibleItems.get(id) ? id : null;
+    show(eventsById.get(view.selected) ?? null);
+  };
+  const refilter = () => {
+    visibleItems.refresh();
+    visibleGroups.refresh();
+    if (view.selected !== null) select(view.selected);
+    writeHash();
+  };
+
+  timeline.on("select", ({ items: picked }) => {
+    select(picked[0] ?? null);
+    writeHash();
+  });
+  // Panning or zooming is the time brush: the window becomes since and until, to the second.
+  timeline.on("rangechanged", ({ start: from, end: to, byUser }) => {
+    if (!byUser) return;
+    view.filter.since = Math.floor(+from / 1000) * 1000;
+    view.filter.until = Math.ceil(+to / 1000) * 1000;
+    showBounds();
+    refilter();
+  });
+
+  document.getElementById("filters").addEventListener("submit", (event) => event.preventDefault());
+  sourceBoxes.addEventListener("change", () => {
+    view.filter.sources = checkedIn(sourceBoxes);
+    refilter();
+  });
+  tagBoxes.addEventListener("change", () => {
+    view.filter.tags = checkedIn(tagBoxes);
+    refilter();
+  });
+  search.addEventListener("input", () => {
+    view.filter.q = search.value;
+    refilter();
+  });
+  const moveBounds = () => {
+    view.filter.since = since.value ? wallToInstant(since.value) : null;
+    view.filter.until = until.value ? wallToInstant(until.value) : null;
+    const shownWindow = timeline.getWindow();
+    const from = view.filter.since ?? +shownWindow.start;
+    const to = view.filter.until ?? +shownWindow.end;
+    if (from < to) timeline.setWindow(from, to);
+    refilter();
+  };
+  since.addEventListener("change", moveBounds);
+  until.addEventListener("change", moveBounds);
+  document.getElementById("all-times").addEventListener("click", () => {
+    view.filter.since = null;
+    view.filter.until = null;
+    showBounds();
+    if (allTimesWindow.start !== undefined) timeline.setWindow(allTimesWindow.start, allTimesWindow.end);
+    refilter();
+  });
+
+  if (view.selected !== null) timeline.setSelection(visibleItems.get(view.selected) ? [view.selected] : []);
+  select(view.selected);
+  writeHash();
 }
