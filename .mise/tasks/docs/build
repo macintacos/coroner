@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#MISE description="Build the docs site into site/, failing on any warning"
+
+set -euo pipefail
+
+uv run zensical build --clean --strict
+
+# Zensical publishes only what is under docs/, and a symlink there empties the build.
+mkdir -p site/schema
+cp schema/export-v1.schema.json site/schema/
