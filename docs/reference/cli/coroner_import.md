@@ -4,24 +4,26 @@ title: coroner import
 
 ## coroner import
 
-Merge a JSONL export into the database
+Import records from a JSONL export
 
 ### Synopsis
 
-Merge a coroner JSONL export, as 'coroner timeline export --format jsonl' writes it, into the
-database: its timelines, sources, events, annotations and attachments. - reads the export
-from stdin, so concatenated exports import together. Every record is checked before
-anything is written, and the import is written in one transaction.
+Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'
+writes it, into the database: its timelines, sources, events, annotations and attachments.
+- reads the export from stdin, so concatenated exports import together. Every record is
+checked before anything is written, and the import is written in one transaction.
 
-Records match by id, and sources by name. A record stored unchanged is skipped, so importing
-a file twice changes nothing. A record stored with different content is a conflict: by
-default the import writes nothing and exits 4; --on-conflict skip keeps the stored record,
-and --on-conflict replace takes the import's. Authors and created and updated times come
-from the export. An imported event keeps its seq unless its timeline has already used it.
+Records match by id, and sources by name. A record stored unchanged is skipped, so importing a
+file twice changes nothing. A record stored with different content is a conflict: by default
+the import writes nothing and exits 4; --on-conflict skip keeps the stored record, and
+--on-conflict replace takes the import's. Replace never changes an attachment or moves an event
+or annotation, so such a conflict exits 4 under replace too. Authors and created and updated
+times come from the export. An imported event keeps its seq unless its timeline has already
+reached that seq, when it gets the next one.
 
 An attachment is imported with its file from the attachments/ directory beside the export,
-which 'coroner timeline export -o <directory>/' writes, or when the database already has
-that file. Otherwise it is skipped and listed.
+which 'coroner timeline export -o <directory>/' writes, or when the database already has that
+file. Otherwise it is left out and listed.
 
 -t names a stored timeline that every record must belong to. Without -t, the export decides
 which timelines it imports into.

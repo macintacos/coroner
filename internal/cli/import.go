@@ -21,20 +21,22 @@ import (
 func newImportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "import {<file> | -}",
-		Short:   "Merge a JSONL export into the database",
+		Short:   "Import records from a JSONL export",
 		GroupID: coreCommands,
-		Long: "Merge a coroner JSONL export, as 'coroner timeline export --format jsonl' writes it, into the\n" +
-			"database: its timelines, sources, events, annotations and attachments. - reads the export\n" +
-			"from stdin, so concatenated exports import together. Every record is checked before\n" +
-			"anything is written, and the import is written in one transaction.\n\n" +
-			"Records match by id, and sources by name. A record stored unchanged is skipped, so importing\n" +
-			"a file twice changes nothing. A record stored with different content is a conflict: by\n" +
-			"default the import writes nothing and exits 4; --on-conflict skip keeps the stored record,\n" +
-			"and --on-conflict replace takes the import's. Authors and created and updated times come\n" +
-			"from the export. An imported event keeps its seq unless its timeline has already used it.\n\n" +
+		Long: "Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'\n" +
+			"writes it, into the database: its timelines, sources, events, annotations and attachments.\n" +
+			"- reads the export from stdin, so concatenated exports import together. Every record is\n" +
+			"checked before anything is written, and the import is written in one transaction.\n\n" +
+			"Records match by id, and sources by name. A record stored unchanged is skipped, so importing a\n" +
+			"file twice changes nothing. A record stored with different content is a conflict: by default\n" +
+			"the import writes nothing and exits 4; --on-conflict skip keeps the stored record, and\n" +
+			"--on-conflict replace takes the import's. Replace never changes an attachment or moves an event\n" +
+			"or annotation, so such a conflict exits 4 under replace too. Authors and created and updated\n" +
+			"times come from the export. An imported event keeps its seq unless its timeline has already\n" +
+			"reached that seq, when it gets the next one.\n\n" +
 			"An attachment is imported with its file from the attachments/ directory beside the export,\n" +
-			"which 'coroner timeline export -o <directory>/' writes, or when the database already has\n" +
-			"that file. Otherwise it is skipped and listed.\n\n" +
+			"which 'coroner timeline export -o <directory>/' writes, or when the database already has that\n" +
+			"file. Otherwise it is left out and listed.\n\n" +
 			"-t names a stored timeline that every record must belong to. Without -t, the export decides\n" +
 			"which timelines it imports into.",
 		Args:        cobra.ExactArgs(1),
@@ -73,13 +75,13 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	records, err := readImportRecords(path, app)
+	records, err := readImportRecords(path, app.ReadFile, app.In, app.InIsTTY)
 	if err != nil {
 		return err
 	}
-	// Read before the store opens: withStorePath would report a permission error on either as the
-	// database's.
-	sidecars, err := readSidecars(path, records, app.ReadFile)
+	// Read before the store opens: withStoreOpenedBy would report a permission error on either as
+	// the database's.
+	sidecars, err := readSidecars(path, records, app.ReadDir, app.ReadFile)
 	if err != nil {
 		return err
 	}
@@ -88,21 +90,28 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		records: records, sidecars: sidecars, localBlobs: localBlobs(cfg.DBPath, records, app.Stat),
 		onConflict: policy, newID: app.NewID, now: app.Now(),
 	}
+	open := app.OpenStore
+	if dryRun {
+		open = app.OpenStoreReadOnly
+	}
 	var plan importPlan
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		plan, err = planStoredImport(ctx, s, in, flag, app.LookupEnv)
+	err = withStoreOpenedBy(ctx, open, cfg.DBPath, func(s *store.Store) error {
+		plan, err = planStoredImport(ctx, s, in, flag)
 		if err != nil || dryRun || plan.blocked != nil {
 			return err
 		}
 
-		return s.Import(ctx, plan.write)
+		return importWriteError(s.Import(ctx, plan.write))
 	})
+	if dryRun && errors.Is(err, fs.ErrNotExist) {
+		plan, err = planUnstoredImport(in, flag)
+	}
 	if err != nil {
 		return err
 	}
 
 	plan.result.DryRun = dryRun
-	err = renderImport(o, plan.result, dryRun || plan.blocked != nil)
+	err = renderImport(o, plan, dryRun || plan.blocked != nil)
 	if err != nil || plan.blocked == nil {
 		return err
 	}
@@ -110,15 +119,16 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	return plan.blocked
 }
 
-// planStoredImport plans in against what s holds, within the timeline flag selects when it is
-// set.
-// ponytail: the plan reads outside the write transaction, so a writer in between surfaces as a
-// constraint error rather than a conflict; plan inside Store.write if concurrent imports matter.
-func planStoredImport(
-	ctx context.Context, s *store.Store, in importInput, flag *string, lookupEnv func(string) (string, bool),
-) (importPlan, error) {
+// planStoredImport plans in against what s holds, within the timeline flag names when it is set.
+// ponytail: the plan reads outside the write transaction, so a writer in between can fail the
+// import; plan inside Store.write if concurrent imports matter.
+func planStoredImport(ctx context.Context, s *store.Store, in importInput, flag *string) (importPlan, error) {
 	if flag != nil {
-		guard, _, err := lookupTimeline(ctx, s, flag, lookupEnv)
+		guard, err := findTimeline(ctx, s, *flag)
+		notFound, ok := errors.AsType[*Error](err)
+		if ok && notFound.Kind == KindTimelineNotFound {
+			return importPlan{}, noSuchGuard(*flag, notFound.Err)
+		}
 		if err != nil {
 			return importPlan{}, err
 		}
@@ -132,6 +142,37 @@ func planStoredImport(
 	}
 
 	return planImport(in)
+}
+
+// planUnstoredImport plans in against a database that does not exist yet, which holds no timeline
+// for -t to name.
+func planUnstoredImport(in importInput, flag *string) (importPlan, error) {
+	if flag != nil {
+		return importPlan{}, noSuchGuard(*flag, nil)
+	}
+
+	return planImport(in)
+}
+
+// noSuchGuard returns the timeline_not_found error for -t naming name, wrapping err.
+func noSuchGuard(name string, err error) error {
+	return &Error{
+		Kind: KindTimelineNotFound, Message: fmt.Sprintf("-t %q: no such timeline", name),
+		Hint: "Run 'coroner timeline list' to see the timelines.", Err: err,
+	}
+}
+
+// importWriteError returns id_conflict when another write added a record the import holds, and
+// any other error as it is.
+func importWriteError(err error) error {
+	if !errors.Is(err, store.ErrConflict) {
+		return err
+	}
+
+	return &Error{
+		Kind: KindIDConflict, Message: "the database changed during the import, so nothing was imported",
+		Hint: "Another write changed the database; import again.", Err: err,
+	}
 }
 
 // readConflictPolicy returns the policy --on-conflict names.
@@ -150,71 +191,88 @@ func readConflictPolicy(flags *pflag.FlagSet) (conflictPolicy, error) {
 }
 
 // readImportRecords reads and decodes the export at path, or on stdin when path is -. It never
-// reads a terminal.
-// ponytail: the whole export is read into memory; stream it through export.Decode if exports
-// grow past what fits.
-func readImportRecords(path string, app App) ([]export.Record, error) {
-	var data []byte
-	var err error
+// reads a terminal stdin.
+func readImportRecords(
+	path string, readFile func(string) ([]byte, error), stdin io.Reader, stdinIsTTY bool,
+) ([]export.Record, error) {
 	switch {
-	case path == "-" && app.InIsTTY:
+	case path == "-" && stdinIsTTY:
 		return nil, &Error{
 			Kind: KindUsage, Message: "- reads the export from stdin, which is a terminal",
 			Hint: "Pipe an export in, as in: cat inc-4821.jsonl | coroner import -",
 		}
-	case path == "-":
-		data, err = io.ReadAll(app.In)
-		if err != nil {
-			return nil, fmt.Errorf("read the export from stdin: %w", err)
-		}
-	default:
-		data, err = app.ReadFile(path)
+	case path != "-":
+		data, err := readFile(path)
 		if err != nil {
 			return nil, &Error{
 				Kind: KindUsage, Message: "cannot read " + path, Err: err,
 				Hint: "Pass an export file that exists and you can read, or - to read one from stdin.",
 			}
 		}
+		stdin = bytes.NewReader(data)
 	}
 
-	records, err := export.Decode(bytes.NewReader(data))
+	records, err := export.Decode(stdin)
 	if invalid, ok := errors.AsType[*export.DecodeError](err); ok {
 		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: invalidImportHint, Err: err}
 	}
+	if err != nil {
+		return nil, fmt.Errorf("read the export: %w", err)
+	}
 
-	return records, err
+	return records, nil
 }
 
-// readSidecars returns the content of each attachment's file in the attachments/ directory
-// beside the export at path, by attachment id, leaving out files that are not there. Stdin has
-// no directory beside it.
-func readSidecars(path string, records []export.Record, readFile func(string) ([]byte, error)) (map[string][]byte, error) {
+// readSidecars returns the content of the attachments' files in the attachments/ directory beside
+// the export at path, by sha256, which is a file's name up to its first dot. It leaves out files
+// that are not there; stdin has no directory beside it.
+// ponytail: every sidecar file is read into memory, once per sha256; stream them into the store if
+// attachments grow large.
+func readSidecars(
+	path string, records []export.Record, readDir func(string) ([]fs.DirEntry, error), readFile func(string) ([]byte, error),
+) (map[string][]byte, error) {
 	sidecars := map[string][]byte{}
 	if path == "-" {
 		return sidecars, nil
 	}
+	dir := filepath.Join(filepath.Dir(path), "attachments")
+	entries, err := readDir(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return sidecars, nil
+	case err != nil:
+		return nil, unreadableSidecar(dir, err)
+	}
 
+	files := map[string]string{}
+	for _, e := range entries {
+		sha256, _, _ := strings.Cut(e.Name(), ".")
+		files[sha256] = filepath.Join(dir, e.Name())
+	}
 	for _, r := range records {
 		a, ok := r.(export.Attachment)
 		if !ok {
 			continue
 		}
-		file := filepath.Join(filepath.Dir(path), filepath.FromSlash(export.AttachmentPath(a)))
-		content, err := readFile(file)
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-		case err != nil:
-			return nil, &Error{Kind: KindUsage, Message: "cannot read " + file, Hint: "Check that file's permissions, then import again.", Err: err}
-		default:
-			sidecars[a.ID] = content
+		file, found := files[a.SHA256]
+		if _, read := sidecars[a.SHA256]; !found || read {
+			continue
+		}
+		sidecars[a.SHA256], err = readFile(file)
+		if err != nil {
+			return nil, unreadableSidecar(file, err)
 		}
 	}
 
 	return sidecars, nil
 }
 
-// localBlobs returns the sha256 of each attachment in records whose blob is beside the database
-// at dbPath.
+func unreadableSidecar(path string, err error) error {
+	return &Error{Kind: KindUsage, Message: "cannot read " + path, Hint: "Check its permissions, then import again.", Err: err}
+}
+
+// localBlobs reports, by sha256, whether each attachment in records has its blob beside the
+// database at dbPath.
 func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.FileInfo, error)) map[string]bool {
 	blobs := map[string]bool{}
 	for _, r := range records {
@@ -247,17 +305,6 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 		return storedRecords{}, err
 	}
 
-	attachment := func(ctx context.Context, id string) (timeline.Attachment, error) {
-		found, err := s.AttachmentsByIDPrefix(ctx, id, 1)
-		if err == nil && len(found) == 0 {
-			err = store.ErrNotFound
-		}
-		if err != nil {
-			return timeline.Attachment{}, err
-		}
-
-		return found[0], nil
-	}
 	for _, r := range records {
 		switch r := r.(type) {
 		case export.Event:
@@ -266,7 +313,7 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 			err = errors.Join(addStored(ctx, &r.ID, stored.annotations, s.Annotation), addStored(ctx, r.EventID, stored.events, s.Event))
 		case export.Attachment:
 			err = errors.Join(
-				addStored(ctx, &r.ID, stored.attachments, attachment),
+				addStored(ctx, &r.ID, stored.attachments, s.Attachment),
 				addStored(ctx, r.EventID, stored.events, s.Event), addStored(ctx, r.AnnotationID, stored.annotations, s.Annotation),
 			)
 		}
@@ -300,14 +347,22 @@ func addStored[T any](ctx context.Context, id *string, into map[string]T, get fu
 	return nil
 }
 
-// renderImport says on stderr what the import did, or would do when unwritten, and prints the
-// result object under --json.
-func renderImport(o output, r importResult, unwritten bool) error {
+// renderImport says on stderr what plan did, or would do when unwritten, and prints its result
+// object under --json.
+func renderImport(o output, plan importPlan, unwritten bool) error {
 	verb := "Imported"
 	if unwritten {
 		verb = "Would import"
 	}
-	lines := make([]string, 0, 6+len(r.Conflicts))
+	r := plan.result
+	lines := make([]string, 0, 7+len(r.Conflicts))
+	if n := len(plan.timelineNames); n > 0 {
+		noun := "timelines"
+		if n == 1 {
+			noun = "timeline"
+		}
+		lines = append(lines, fmt.Sprintf("%s into %s `%s`", verb, noun, strings.Join(plan.timelineNames, "`, `")))
+	}
 	for _, c := range []struct {
 		name   string
 		counts importCounts
@@ -326,7 +381,7 @@ func renderImport(o output, r importResult, unwritten bool) error {
 			noun = "attachment"
 		}
 		lines = append(lines, fmt.Sprintf(
-			"Skipped %d %s whose files are neither beside the export nor in the database; import an export written with -o <directory>/ to bring them",
+			"Left out %d %s whose files are neither beside the export nor in the database; import an export written with -o <directory>/ to bring them",
 			n, noun))
 	}
 

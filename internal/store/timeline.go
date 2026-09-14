@@ -10,18 +10,7 @@ import (
 // CreateTimeline adds t with its refs, kept in the order given.
 func (s *Store) CreateTimeline(ctx context.Context, t timeline.Timeline) error {
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		_, err := q.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
-			ID:        t.ID,
-			Name:      t.Name,
-			Title:     t.Title,
-			CreatedAt: timeline.FormatInstant(t.CreatedAt),
-			UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
-		})
-		if err != nil {
-			return err
-		}
-
-		return addRefs(ctx, q, t.ID, t.Refs)
+		return createTimeline(ctx, q, t)
 	})
 }
 
@@ -144,6 +133,21 @@ func loadTimeline(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Timeline)
 	}
 
 	return t, p.err
+}
+
+func createTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timeline) error {
+	_, err := q.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
+		ID:        t.ID,
+		Name:      t.Name,
+		Title:     t.Title,
+		CreatedAt: timeline.FormatInstant(t.CreatedAt),
+		UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
+	})
+	if err != nil {
+		return err
+	}
+
+	return addRefs(ctx, q, t.ID, t.Refs)
 }
 
 func addRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []string) error {

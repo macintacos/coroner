@@ -115,6 +115,17 @@ var _ = Describe("Import", func() {
 		Expect(added.Seq).To(Equal(int64(6)))
 	})
 
+	It("gives an imported event with no seq the timeline's next seq after keeping the others'", func(ctx SpecContext) {
+		Expect(s.Import(ctx, store.ImportRecords{
+			Timelines: []timeline.Timeline{incident},
+			Events:    []timeline.Event{newEvent(10, 0), newEvent(11, 1), newEvent(12, 2)},
+		})).To(Succeed())
+
+		Expect(s.Event(ctx, uuid(11))).To(HaveField("Seq", int64(1)))
+		Expect(s.Event(ctx, uuid(12))).To(HaveField("Seq", int64(2)))
+		Expect(s.Event(ctx, uuid(10))).To(HaveField("Seq", int64(3)))
+	})
+
 	It("renumbers an imported event whose seq the timeline has already given, and keeps one past it",
 		func(ctx SpecContext) {
 			Expect(s.CreateTimeline(ctx, incident)).To(Succeed())

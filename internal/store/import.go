@@ -16,7 +16,8 @@ import (
 )
 
 // ImportRecords is what Import writes: new records under the ids, seqs and instants they
-// carry, and replacements of stored ones.
+// carry, and replacements of stored ones. A replacement keeps the stored record's seq,
+// timeline and event: Import never moves a record.
 type ImportRecords struct {
 	Sources                             []timeline.Source
 	Timelines, TimelineReplacements     []timeline.Timeline
@@ -39,14 +40,13 @@ type ImportAttachment struct {
 // must already be stored or be in Sources. It returns an error wrapping ErrNotFound when an
 // attachment with nil Content has no blob.
 func (s *Store) Import(ctx context.Context, records ImportRecords) error {
-	staged, discard, err := stageImportAttachments(s.blobDir, records.Attachments)
+	staged, err := stageImportAttachments(s.blobDir, records.Attachments)
 	if err != nil {
 		return err
 	}
-	defer discard()
 
 	events := inSeqOrder(records.Events)
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+	return s.writeStaged(ctx, staged, func(q *sqlcgen.Queries) error {
 		for _, step := range []func() error{
 			func() error { return each(ctx, q, records.Sources, createSource) },
 			func() error { return each(ctx, q, records.Timelines, createTimeline) },
@@ -55,7 +55,6 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 			func() error { return each(ctx, q, records.EventReplacements, replaceEvent) },
 			func() error { return each(ctx, q, records.Annotations, importAnnotation) },
 			func() error { return each(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
-			func() error { return insertAttachments(ctx, q, s.blobDir, staged) },
 			func() error { return insertStoredBlobAttachments(ctx, q, s.blobDir, records.Attachments) },
 		} {
 			err := step()
@@ -83,30 +82,22 @@ func each[T any](
 }
 
 // stageImportAttachments stages the content of each attachment that has it, outside any
-// transaction. On failure it removes what it staged; otherwise discard removes whatever
-// insertAttachments did not name, so the caller defers it.
-func stageImportAttachments(blobDir string, attachments []ImportAttachment) ([]stagedAttachment, func(), error) {
+// transaction, removing what it staged when one fails.
+func stageImportAttachments(blobDir string, attachments []ImportAttachment) ([]stagedAttachment, error) {
 	staged := make([]stagedAttachment, 0, len(attachments))
-	discard := func() {
-		for _, a := range staged {
-			// Once insertAttachments has renamed or discarded the file, the error is expected.
-			_ = os.Remove(a.blob.tempPath)
-		}
-	}
-
 	for _, a := range attachments {
 		if a.Content == nil {
 			continue
 		}
 		blob, err := stageMatchingBlob(blobDir, a)
 		if err != nil {
-			discard()
-			return nil, nil, err
+			discardStaged(staged)
+			return nil, err
 		}
 		staged = append(staged, stagedAttachment{attachment: a.Attachment, blob: blob})
 	}
 
-	return staged, discard, nil
+	return staged, nil
 }
 
 // stageMatchingBlob stages a's content, removing it again when its hash or size is not a's.
@@ -126,11 +117,16 @@ func stageMatchingBlob(blobDir string, a ImportAttachment) (stagedBlob, error) {
 	return blob, nil
 }
 
-// inSeqOrder returns a copy of events sorted by timeline, then seq.
+// inSeqOrder returns a copy of events sorted by timeline, then seq, with no seq (zero) last
+// so it never takes a seq another event keeps.
 func inSeqOrder(events []timeline.Event) []timeline.Event {
 	sorted := slices.Clone(events)
 	slices.SortStableFunc(sorted, func(a, b timeline.Event) int {
-		return cmp.Or(strings.Compare(a.TimelineID, b.TimelineID), cmp.Compare(a.Seq, b.Seq))
+		return cmp.Or(
+			strings.Compare(a.TimelineID, b.TimelineID),
+			cmp.Compare(sqliteBool(a.Seq == 0), sqliteBool(b.Seq == 0)),
+			cmp.Compare(a.Seq, b.Seq),
+		)
 	})
 
 	return sorted
@@ -143,21 +139,6 @@ func createSource(ctx context.Context, q *sqlcgen.Queries, source timeline.Sourc
 		CreatedAt: timeline.FormatInstant(source.CreatedAt),
 	})
 	return err
-}
-
-func createTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timeline) error {
-	_, err := q.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
-		ID:        t.ID,
-		Name:      t.Name,
-		Title:     t.Title,
-		CreatedAt: timeline.FormatInstant(t.CreatedAt),
-		UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
-	})
-	if err != nil {
-		return err
-	}
-
-	return addRefs(ctx, q, t.ID, t.Refs)
 }
 
 func replaceTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timeline) error {
@@ -185,28 +166,7 @@ func importEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event) erro
 		return err
 	}
 
-	_, err = q.CreateEvent(ctx, sqlcgen.CreateEventParams{
-		ID:                e.ID,
-		TimelineID:        e.TimelineID,
-		Seq:               seq,
-		OccurredAt:        timeline.FormatInstant(e.OccurredAt),
-		OccurredOffset:    offsetParam(e.OccurredOffset),
-		OccurredPrecision: string(e.Precision),
-		Approximate:       sqliteBool(e.Approximate),
-		OccurredRaw:       e.OccurredRaw,
-		EndedAt:           formatOptional(e.EndedAt),
-		SourceID:          source,
-		Text:              e.Text,
-		Url:               e.URL,
-		Author:            e.Author,
-		CreatedAt:         timeline.FormatInstant(e.CreatedAt),
-		UpdatedAt:         timeline.FormatInstant(e.UpdatedAt),
-	})
-	if err != nil {
-		return err
-	}
-
-	return addTags(ctx, q, e.ID, e.Tags)
+	return createEvent(ctx, q, e, seq, source)
 }
 
 // importSeq returns e.Seq, moving its timeline's next seq past it, unless the timeline has
@@ -257,19 +217,7 @@ func importAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annota
 		return err
 	}
 
-	_, err = q.CreateAnnotation(ctx, sqlcgen.CreateAnnotationParams{
-		ID:         a.ID,
-		TimelineID: a.TimelineID,
-		EventID:    a.EventID,
-		Kind:       string(a.Kind),
-		Body:       a.Body,
-		Author:     a.Author,
-		SourceID:   source,
-		Url:        a.URL,
-		CreatedAt:  timeline.FormatInstant(a.CreatedAt),
-		UpdatedAt:  timeline.FormatInstant(a.UpdatedAt),
-	})
-	return err
+	return createAnnotation(ctx, q, a, source)
 }
 
 func replaceAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annotation) error {

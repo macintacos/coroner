@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,7 +41,7 @@ var _ = Describe("planImport", func() {
 
 	It("inserts every record into an empty database and counts each type", func() {
 		in := planInput(all(), storedRecords{})
-		in.sidecars = map[string][]byte{screenshot.ID: content}
+		in.sidecars = map[string][]byte{screenshot.SHA256: content}
 
 		plan, err := planImport(in)
 
@@ -79,6 +80,51 @@ var _ = Describe("planImport", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.result.Events).To(Equal(importCounts{Identical: 1}))
+	})
+
+	It("accepts one event twice that differs only in seq, and plans it once", func() {
+		renumbered := stepdown
+		renumbered.Seq = new(int64(9))
+
+		plan, err := planImport(planInput([]export.Record{tl, stepdown, renumbered}, storedRecords{}))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plan.write.Events).To(Equal([]timeline.Event{stepdown.Domain()}))
+	})
+
+	It("compares tags sorted and once each, and refs once each, as the database stores them", func() {
+		repeatedRefs, storedRefs := tl, tl
+		repeatedRefs.Refs = []string{"OPS-2", "OPS-1", "OPS-2"}
+		storedRefs.Refs = []string{"OPS-2", "OPS-1"}
+		unsortedTags, storedTags := stepdown, stepdown
+		unsortedTags.Tags = []string{"team:db", "phase:detect", "team:db"}
+		storedTags.Tags = []string{"phase:detect", "team:db"}
+
+		plan, err := planImport(planInput([]export.Record{repeatedRefs, unsortedTags}, storedFrom(storedRefs, storedTags)))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plan.result.Conflicts).To(BeEmpty())
+		Expect(plan.result.Timelines).To(Equal(importCounts{Identical: 1}))
+		Expect(plan.result.Events).To(Equal(importCounts{Identical: 1}))
+	})
+
+	It("names the timelines it writes to, sorted, and not those it only finds unchanged", func() {
+		unchanged := planTimeline(6, "z-unchanged")
+		unchangedEvent := planEvent(7, unchanged.ID, "Secondary caught up")
+		shots := planTimeline(8, "b-shots")
+		shotEvent := planEvent(9, shots.ID, "Dashboard went red")
+		lagging := planTimeline(10, "a-lagging")
+		screenshot.EventID = &shotEvent.ID
+		in := planInput(
+			[]export.Record{tl, unchangedEvent, planEvent(11, lagging.ID, "Secondary lagged"), screenshot},
+			storedFrom(tl, unchanged, unchangedEvent, shots, shotEvent, lagging),
+		)
+		in.localBlobs = map[string]bool{screenshot.SHA256: true}
+
+		plan, err := planImport(in)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plan.timelineNames).To(Equal([]string{"a-lagging", "b-shots", "inc-4821"}))
 	})
 
 	Describe("a record stored with different content", func() {
@@ -121,6 +167,20 @@ var _ = Describe("planImport", func() {
 			Expect(plan.blocked).NotTo(HaveOccurred())
 			Expect(plan.write.EventReplacements).To(Equal([]timeline.Event{edited.Domain()}))
 			Expect(plan.write.Events).To(BeEmpty())
+		})
+
+		It("replaces a stored annotation whose body differs under replace", func() {
+			reworded := evidence
+			reworded.Body = "replSetStepDown and an election in the log"
+			in := planInput([]export.Record{tl, stepdown, reworded}, storedFrom(tl, stepdown, evidence))
+			in.onConflict = onConflictReplace
+
+			plan, err := planImport(in)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.blocked).NotTo(HaveOccurred())
+			Expect(plan.result.Conflicts).To(Equal([]importConflict{{Type: "annotation", ID: evidence.ID, Fields: []string{"body"}}}))
+			Expect(plan.write.AnnotationReplacements).To(Equal([]timeline.Annotation{reworded.Domain()}))
 		})
 
 		It("gives a replaced timeline the importer's clock as its updated at, which exports do not carry", func() {
@@ -220,9 +280,40 @@ var _ = Describe("planImport", func() {
 				in.guard = &other
 				in.stored = storedFrom(planTimeline(6, "other"))
 			}, planID(3)),
+		Entry("an attachment whose stored owner is outside the timeline -t selects",
+			func() []export.Record { return []export.Record{screenshot} },
+			func(in *importInput) {
+				other := planTimeline(6, "other")
+				in.stored = storedFrom(tl, other, stepdown)
+				guard := other.Domain()
+				in.guard = &guard
+			}, planID(5)),
+		Entry("an annotation on a stored event that the import would move to another timeline",
+			func() []export.Record {
+				other := planTimeline(6, "other")
+				moved, misplaced := stepdown, evidence
+				moved.TimelineID, misplaced.TimelineID = other.ID, other.ID
+				return []export.Record{other, moved, misplaced}
+			},
+			func(in *importInput) {
+				in.stored = storedFrom(tl, planTimeline(6, "other"), stepdown)
+				in.onConflict = onConflictSkip
+			}, planID(4)),
+		Entry("an event whose occurred_offset is more than a day",
+			func() []export.Record {
+				far := stepdown
+				far.OccurredOffset = new(86401)
+				return []export.Record{tl, far}
+			}, nil, "occurred_offset"),
+		Entry("an event whose seq leaves its timeline no room to number more events",
+			func() []export.Record {
+				huge := stepdown
+				huge.Seq = new(int64(math.MaxInt64/2 + 1))
+				return []export.Record{tl, huge}
+			}, nil, "seq"),
 		Entry("an attachment file whose content does not match its sha256",
 			func() []export.Record { return []export.Record{tl, stepdown, screenshot} },
-			func(in *importInput) { in.sidecars = map[string][]byte{screenshot.ID: []byte("something else")} }, planID(5)),
+			func(in *importInput) { in.sidecars = map[string][]byte{screenshot.SHA256: []byte("something else")} }, planID(5)),
 	)
 
 	It("lists the first five problems, then how many more there are", func() {

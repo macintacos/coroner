@@ -145,7 +145,8 @@ digraph coroner_rules_router {
   fails when a command with `--interactive`, or `timeline view` or `timeline list`, which
   it lists by name, has no run there; a new command that opens a viewer or picker joins
   that list.
-- `import` ([`internal/cli/import.go`](internal/cli/import.go)) reads JSONL only through
+- `import` ([`internal/cli/import.go`](internal/cli/import.go)), a top-level verb since it
+  ingests every record type (S-2's glossary lists `import`), reads JSONL only through
   `export.Decode`, and decides what to insert, skip or replace in `planImport`
   ([`import_plan.go`](internal/cli/import_plan.go)), which does no I/O; `Store.Import`
   ([`internal/store/import.go`](internal/store/import.go)) writes that plan in one

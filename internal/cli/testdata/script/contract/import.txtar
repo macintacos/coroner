@@ -1,5 +1,5 @@
 # import's result object and exit codes, and the round trip it promises: an export imported into
-# an empty database exports again byte for byte. Each section names its own database.
+# an empty database exports again byte for byte. Each section sets the database it uses.
 
 # A timeline with every record type, exported with its attachment files beside it.
 env CORONER_DB=$WORK/source.db
@@ -13,11 +13,16 @@ exits 0 coroner timeline export --format jsonl -o $WORK/out/
 exits 0 coroner timeline export --format jsonl
 cp stdout original.jsonl
 
-# --dry-run reports what the import would do, exits as it would, and writes nothing.
+# --dry-run reports what the import would do, exits as it would, and writes nothing, not even a
+# new database: -t then names no timeline.
 env CORONER_DB=$WORK/copy.db
 exits 0 coroner import $WORK/out/inc-4821.jsonl --dry-run --json
 cmp stdout dry-run.json
+stderr '^Would import into timeline `inc-4821`$'
 stderr '^Would import timelines: 1 inserted, 0 identical, 0 conflicting$'
+exits 3 coroner import $WORK/out/inc-4821.jsonl --dry-run -t inc-4821 --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+! exists $WORK/copy.db
 exits 0 coroner timeline list --json
 stdout '"timelines":\[\]'
 
@@ -53,6 +58,8 @@ cmp stdout conflict.json
 stderr '^\{"error":\{"kind":"id_conflict","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
 exits 0 coroner event view 2 -t inc-4821 --json
 stdout '"text":"Pager fires for db-2",'
+exits 4 coroner import $WORK/edited/inc-4821.jsonl --dry-run --json
+cmp stdout conflict-dry-run.json
 
 # --on-conflict skip keeps the stored record; replace takes the import's.
 exits 0 coroner import $WORK/edited/inc-4821.jsonl --on-conflict skip
@@ -94,7 +101,7 @@ stdout '"sources":\{"inserted":1,"identical":0,"conflicting":0\}'
 env CORONER_DB=$WORK/bare.db
 exits 0 coroner import original.jsonl --json
 cmp stdout missing-attachments.json
-stderr 'Skipped 2 attachments'
+stderr '^Left out 2 attachments '
 
 # Keys and record types this coroner does not know are ignored.
 env CORONER_DB=$WORK/compat.db
@@ -144,5 +151,7 @@ stdout '"name":"later-minor"'
 {"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":2,"conflicting":0},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[],"missing_attachments":[]}
 -- conflict.json --
 {"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
+-- conflict-dry-run.json --
+{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
 -- missing-attachments.json --
 {"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[{"id":"01a09862-b1c0-7000-8000-000000000004","sha256":"bc082b2ec4e84fa588e9fc93b3a8bd08c32fa91db36475a20ccdd93d0d37e369"},{"id":"01a09862-b1c0-7000-8000-000000000009","sha256":"61428d234f39bedd8934cbbf2a3e1217c29e5b72e234ef5b074cb7be51a7fe8a"}]}

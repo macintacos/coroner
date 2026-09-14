@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json/v2"
+	"errors"
 	"fmt"
-	"reflect"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -45,7 +45,7 @@ type storedRecords struct {
 type importInput struct {
 	records []export.Record
 	stored  storedRecords
-	// sidecars are the attachment files found beside the input, by attachment id.
+	// sidecars are the attachment files found beside the input, by sha256.
 	sidecars map[string][]byte
 	// localBlobs are the sha256s whose blobs are beside the database.
 	localBlobs map[string]bool
@@ -59,13 +59,15 @@ type importInput struct {
 // importPlan is what an import writes and reports.
 type importPlan struct {
 	write  store.ImportRecords
-	result importResult
+	result importResultJSON
 	// blocked is the id_conflict that stops the import from writing anything, or nil.
-	blocked *Error
+	blocked error
+	// timelineNames are the sorted names of the timelines the import writes to, or would.
+	timelineNames []string
 }
 
-// importResult is import's result object: every key always present.
-type importResult struct {
+// importResultJSON is import's result object: every key always present.
+type importResultJSON struct {
 	DryRun             bool                `json:"dry_run"`
 	OnConflict         conflictPolicy      `json:"on_conflict"`
 	Timelines          importCounts        `json:"timelines"`
@@ -112,7 +114,8 @@ type incomingRecords struct {
 // timeline with another id. A conflict the policy does not resolve sets the plan's blocked.
 func planImport(in importInput) (importPlan, error) {
 	incoming, problems := collectRecords(in.records)
-	problems = append(problems, checkRecords(incoming, in)...)
+	refs := newRecordIndex(incoming, in.stored)
+	problems = append(problems, checkRecords(incoming, refs, in)...)
 	if len(problems) > 0 {
 		return importPlan{}, invalidImportError(problems)
 	}
@@ -121,75 +124,106 @@ func planImport(in importInput) (importPlan, error) {
 		return importPlan{}, err
 	}
 
-	p := planner{in: in, sources: newSourceIndex(in.stored.sources)}
-	p.result = importResult{OnConflict: in.onConflict, Conflicts: []importConflict{}, MissingAttachments: []missingAttachment{}}
+	p := planner{in: in, refs: refs, sources: newSourceIndex(in.stored.sources), timelineIDs: map[string]bool{}}
+	p.result = importResultJSON{OnConflict: in.onConflict, Conflicts: []importConflict{}, MissingAttachments: []missingAttachment{}}
 	p.planTimelines(incoming.timelines)
 	p.planSources(incoming.sources)
-	p.planEvents(incoming.events)
-	p.planAnnotations(incoming.annotations)
+	uses := slices.Concat(p.planEvents(incoming.events), p.planAnnotations(incoming.annotations))
 	p.planAttachments(incoming.attachments)
-	err = p.planUnrecordedSources()
+	p.planUnrecordedSources(uses)
+	err = p.assignSourceIDs()
 	if err != nil {
 		return importPlan{}, err
 	}
 
-	return importPlan{write: p.write, result: p.result, blocked: p.blocked()}, nil
+	return importPlan{write: p.write, result: p.result, blocked: p.blocked(), timelineNames: p.timelineNames()}, nil
 }
 
-// collectRecords returns records by type without headers and repeats, and a problem for each id
-// the input holds twice with different content, or each timeline name it gives two ids.
+// The export keys the planner treats specially.
+const (
+	keySeq        = "seq"
+	keyTimelineID = "timeline_id"
+	keyEventID    = "event_id"
+)
+
+// collectRecords returns records by type without headers and repeats, with event tags sorted and
+// timeline refs once each as the database stores them, and a problem for each id the input holds
+// twice with different content, or each timeline name it gives two ids.
 func collectRecords(records []export.Record) (incomingRecords, []string) {
-	var in incomingRecords
+	var incoming incomingRecords
 	for _, r := range records {
 		switch r := r.(type) {
 		case export.Timeline:
-			in.timelines = append(in.timelines, r)
+			r.Refs = firstOccurrences(r.Refs)
+			incoming.timelines = append(incoming.timelines, r)
 		case export.Source:
-			in.sources = append(in.sources, r)
+			incoming.sources = append(incoming.sources, r)
 		case export.Event:
-			in.events = append(in.events, r)
+			r.Tags = sortedUnique(r.Tags)
+			incoming.events = append(incoming.events, r)
 		case export.Annotation:
-			in.annotations = append(in.annotations, r)
+			incoming.annotations = append(incoming.annotations, r)
 		case export.Attachment:
-			in.attachments = append(in.attachments, r)
+			incoming.attachments = append(incoming.attachments, r)
 		}
 	}
 
-	var problems []string
-	in.timelines = uniqueRecords("timeline", in.timelines, func(t export.Timeline) string { return t.ID }, &problems)
-	in.timelines = uniqueRecords("timeline", in.timelines, func(t export.Timeline) string { return t.Name }, &problems)
-	in.sources = uniqueRecords("", in.sources, func(s export.Source) string { return s.Name }, nil)
-	in.events = uniqueRecords("event", in.events, func(e export.Event) string { return e.ID }, &problems)
-	in.annotations = uniqueRecords("annotation", in.annotations, func(a export.Annotation) string { return a.ID }, &problems)
-	in.attachments = uniqueRecords("attachment", in.attachments, func(a export.Attachment) string { return a.ID }, &problems)
+	eventsWithoutSeq := func(a, b export.Event) []string { return withoutKey(export.DifferingKeys(a, b), keySeq) }
+	var idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats []string
+	incoming.timelines, idRepeats = uniqueRecords("timeline", incoming.timelines, func(t export.Timeline) string { return t.ID }, export.DifferingKeys)
+	incoming.timelines, nameRepeats = uniqueRecords("timeline", incoming.timelines, func(t export.Timeline) string { return t.Name }, export.DifferingKeys)
+	// Two ids for one source name are expected: each database gives a source its own id.
+	incoming.sources, _ = uniqueRecords("source", incoming.sources, func(s export.Source) string { return s.Name }, export.DifferingKeys)
+	incoming.events, eventRepeats = uniqueRecords("event", incoming.events, func(e export.Event) string { return e.ID }, eventsWithoutSeq)
+	incoming.annotations, annotationRepeats = uniqueRecords("annotation", incoming.annotations, func(a export.Annotation) string { return a.ID }, export.DifferingKeys)
+	incoming.attachments, attachmentRepeats = uniqueRecords("attachment", incoming.attachments, func(a export.Attachment) string { return a.ID }, export.DifferingKeys)
 
-	return in, problems
+	return incoming, slices.Concat(idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats)
 }
 
-// uniqueRecords returns records with each key once, keeping the first. When problems is not nil,
-// a later record under a key with different content adds a problem naming typ and the key.
-func uniqueRecords[T any](typ string, records []T, key func(T) string, problems *[]string) []T {
+// sortedUnique returns tags sorted, each once, without changing tags.
+func sortedUnique(tags []string) []string {
+	sorted := slices.Clone(tags)
+	slices.Sort(sorted)
+
+	return slices.Compact(sorted)
+}
+
+// firstOccurrences returns refs with each ref once, where it first appears, without changing refs.
+func firstOccurrences(refs []string) []string {
+	seen := map[string]bool{}
+	return slices.DeleteFunc(slices.Clone(refs), func(ref string) bool {
+		repeat := seen[ref]
+		seen[ref] = true
+		return repeat
+	})
+}
+
+// uniqueRecords returns records with each key once, keeping the first, and a problem naming typ
+// and the key for each later record under that key that differ finds different.
+func uniqueRecords[T any](typ string, records []T, key func(T) string, differ func(T, T) []string) ([]T, []string) {
 	first := map[string]T{}
 	unique := records[:0:0]
+	var problems []string
 	for _, r := range records {
 		kept, seen := first[key(r)]
-		switch {
-		case !seen:
+		if !seen {
 			first[key(r)] = r
 			unique = append(unique, r)
-		case problems != nil && len(differingKeys(kept, r)) > 0:
-			*problems = append(*problems, fmt.Sprintf("%s %s: appears twice with different %s", typ, key(r), strings.Join(differingKeys(kept, r), ", ")))
+			continue
+		}
+		if keys := differ(kept, r); len(keys) > 0 {
+			problems = append(problems, fmt.Sprintf("%s %s: appears twice with different %s", typ, key(r), strings.Join(keys, ", ")))
 		}
 	}
 
-	return unique
+	return unique, problems
 }
 
-// checkRecords returns a problem for each record that breaks a domain rule, lies outside the -t
-// timeline, names a timeline, event or owner neither the input nor the database holds, or has an
-// attachment file that does not match it.
-func checkRecords(in incomingRecords, input importInput) []string {
-	refs := newRecordIndex(in, input.stored)
+// checkRecords returns a problem for each record that breaks a domain rule or a bound the database
+// holds it to, lies outside the -t timeline, names a timeline, event or owner neither the input
+// nor the database holds, or has an attachment file that does not match it.
+func checkRecords(incoming incomingRecords, refs recordIndex, in importInput) []string {
 	var problems []string
 	add := func(typ, id string, errs ...error) {
 		for _, err := range errs {
@@ -199,34 +233,63 @@ func checkRecords(in incomingRecords, input importInput) []string {
 		}
 	}
 
-	for _, t := range in.timelines {
-		add("timeline", t.ID, t.Domain().Validate(), refs.inGuard(t.ID, input.guard))
+	for _, t := range incoming.timelines {
+		add("timeline", t.ID, t.Domain().Validate(), checkGuard(t.ID, in.guard))
 	}
-	for _, e := range in.events {
-		add("event", e.ID, e.Domain().Validate(), refs.timelineKnown(e.TimelineID), refs.inGuard(e.TimelineID, input.guard))
+	for _, e := range incoming.events {
+		add("event", e.ID, e.Domain().Validate(), checkEventBounds(e), refs.timelineKnown(e.TimelineID), checkGuard(e.TimelineID, in.guard))
 	}
-	for _, a := range in.annotations {
+	for _, a := range incoming.annotations {
 		add("annotation", a.ID, a.Domain().Validate(), refs.timelineKnown(a.TimelineID), refs.eventInTimeline(a.EventID, a.TimelineID),
-			refs.inGuard(a.TimelineID, input.guard))
+			checkGuard(a.TimelineID, in.guard))
 	}
-	for _, a := range in.attachments {
+	for _, a := range incoming.attachments {
 		ownerTimeline, err := refs.ownerTimeline(a)
-		add("attachment", a.ID, err, refs.inGuard(ownerTimeline, input.guard), checkSidecar(a, input.sidecars))
+		add("attachment", a.ID, err, checkGuard(ownerTimeline, in.guard), checkSidecar(a, in.sidecars))
 	}
 
 	return problems
 }
 
-// recordIndex finds the timeline, event or annotation a record refers to, in the input first and
-// then in the database.
+// maxOccurredOffset is the event table's CHECK bound on occurred_offset, in seconds either side of
+// UTC.
+const maxOccurredOffset = 86400
+
+// checkEventBounds returns an error when e's occurred_offset is beyond what the database stores,
+// or its seq is so large that its timeline's next seq could overflow.
+func checkEventBounds(e export.Event) error {
+	var errs []error
+	if e.OccurredOffset != nil && (*e.OccurredOffset < -maxOccurredOffset || *e.OccurredOffset > maxOccurredOffset) {
+		errs = append(errs, fmt.Errorf("occurred_offset %d is more than %d seconds from UTC", *e.OccurredOffset, maxOccurredOffset))
+	}
+	if e.Seq != nil && *e.Seq > math.MaxInt64/2 {
+		errs = append(errs, fmt.Errorf("seq %d is larger than %d", *e.Seq, int64(math.MaxInt64/2)))
+	}
+
+	return errors.Join(errs...)
+}
+
+// recordIndex finds the timeline, event or annotation a record refers to, in the input or the
+// database.
 type recordIndex struct {
 	timelines   map[string]bool
 	events      map[string]string // id -> timeline id
 	annotations map[string]string // id -> timeline id
 }
 
-func newRecordIndex(in incomingRecords, stored storedRecords) recordIndex {
+// newRecordIndex indexes incoming and stored records, taking a stored event's or annotation's
+// timeline over the input's, since an import never moves a record.
+func newRecordIndex(incoming incomingRecords, stored storedRecords) recordIndex {
 	idx := recordIndex{timelines: map[string]bool{}, events: map[string]string{}, annotations: map[string]string{}}
+	for _, t := range incoming.timelines {
+		idx.timelines[t.ID] = true
+	}
+	for _, e := range incoming.events {
+		idx.events[e.ID] = e.TimelineID
+	}
+	for _, a := range incoming.annotations {
+		idx.annotations[a.ID] = a.TimelineID
+	}
 	for id := range stored.timelines {
 		idx.timelines[id] = true
 	}
@@ -235,15 +298,6 @@ func newRecordIndex(in incomingRecords, stored storedRecords) recordIndex {
 	}
 	for id, a := range stored.annotations {
 		idx.annotations[id] = a.TimelineID
-	}
-	for _, t := range in.timelines {
-		idx.timelines[t.ID] = true
-	}
-	for _, e := range in.events {
-		idx.events[e.ID] = e.TimelineID
-	}
-	for _, a := range in.annotations {
-		idx.annotations[a.ID] = a.TimelineID
 	}
 
 	return idx
@@ -286,9 +340,9 @@ func (idx recordIndex) ownerTimeline(a export.Attachment) (string, error) {
 	return timelineID, nil
 }
 
-// inGuard returns an error when -t selected a timeline other than the one with timelineID. An
+// checkGuard returns an error when -t selected a timeline other than the one with timelineID. An
 // empty timelineID is a record whose timeline is unknown, which another problem names.
-func (recordIndex) inGuard(timelineID string, guard *timeline.Timeline) error {
+func checkGuard(timelineID string, guard *timeline.Timeline) error {
 	if guard == nil || timelineID == "" || timelineID == guard.ID {
 		return nil
 	}
@@ -299,7 +353,7 @@ func (recordIndex) inGuard(timelineID string, guard *timeline.Timeline) error {
 // checkSidecar returns an error when a's file beside the input does not hold the content its
 // sha256 and size name.
 func checkSidecar(a export.Attachment, sidecars map[string][]byte) error {
-	content, ok := sidecars[a.ID]
+	content, ok := sidecars[a.SHA256]
 	if !ok {
 		return nil
 	}
@@ -349,37 +403,38 @@ func checkTimelineNames(incoming []export.Timeline, stored map[string]timeline.T
 // planner accumulates an import's writes and result.
 type planner struct {
 	in     importInput
+	refs   recordIndex
 	write  store.ImportRecords
-	result importResult
+	result importResultJSON
 	// unreplaceable are the conflicts --on-conflict replace cannot overwrite.
 	unreplaceable []importConflict
 	sources       sourceIndex
-	// sourceUses are the source names new and replaced events and annotations name, with when
-	// the first of them was created.
-	sourceUses []sourceUse
+	// timelineIDs are the timelines the import writes to.
+	timelineIDs map[string]bool
 }
 
+// sourceUse is a source name a new or replaced event or annotation names, with when that record
+// was created.
 type sourceUse struct {
 	name      *string
 	createdAt export.Instant
 }
 
-// resolve counts a record stored with the keys fields differing, and reports whether to replace
-// it. fixed are the keys a replacement cannot change.
-func (p *planner) resolve(counts *importCounts, typ, id string, fields, fixed []string) bool {
-	if len(fields) == 0 {
+// resolve counts a record stored with c.Fields differing, and reports whether to replace it with
+// the import's, which only a replaceable conflict under --on-conflict replace does.
+func (p *planner) resolve(counts *importCounts, c importConflict, replaceable bool) bool {
+	if len(c.Fields) == 0 {
 		counts.Identical++
 		return false
 	}
 
 	counts.Conflicting++
-	conflict := importConflict{Type: typ, ID: id, Fields: fields}
-	p.result.Conflicts = append(p.result.Conflicts, conflict)
+	p.result.Conflicts = append(p.result.Conflicts, c)
 	if p.in.onConflict != onConflictReplace {
 		return false
 	}
-	if slices.ContainsFunc(fields, func(f string) bool { return slices.Contains(fixed, f) }) {
-		p.unreplaceable = append(p.unreplaceable, conflict)
+	if !replaceable {
+		p.unreplaceable = append(p.unreplaceable, c)
 		return false
 	}
 
@@ -388,12 +443,13 @@ func (p *planner) resolve(counts *importCounts, typ, id string, fields, fixed []
 
 func (p *planner) planTimelines(timelines []export.Timeline) {
 	for _, t := range timelines {
+		p.timelineIDs[t.ID] = true
 		stored, ok := p.in.stored.timelines[t.ID]
 		switch {
 		case !ok:
 			p.result.Timelines.Inserted++
 			p.write.Timelines = append(p.write.Timelines, t.Domain())
-		case p.resolve(&p.result.Timelines, "timeline", t.ID, differingKeys(export.NewTimeline(stored), t), nil):
+		case p.resolve(&p.result.Timelines, importConflict{Type: "timeline", ID: t.ID, Fields: export.DifferingKeys(export.NewTimeline(stored), t)}, true):
 			replacement := t.Domain()
 			replacement.UpdatedAt = p.in.now
 			p.write.TimelineReplacements = append(p.write.TimelineReplacements, replacement)
@@ -416,36 +472,47 @@ func (p *planner) planSources(sources []export.Source) {
 	}
 }
 
-func (p *planner) planEvents(events []export.Event) {
+// planEvents returns the source names of the events it inserts or replaces.
+func (p *planner) planEvents(events []export.Event) []sourceUse {
+	var uses []sourceUse
 	for _, e := range events {
-		stored, ok := p.in.stored.events[e.ID]
-		switch {
-		case !ok:
+		if stored, ok := p.in.stored.events[e.ID]; ok {
+			fields := withoutKey(export.DifferingKeys(export.NewEvent(stored), e), keySeq)
+			if !p.resolve(&p.result.Events, importConflict{Type: "event", ID: e.ID, Fields: fields}, !slices.Contains(fields, keyTimelineID)) {
+				continue
+			}
+			p.write.EventReplacements = append(p.write.EventReplacements, e.Domain())
+		} else {
 			p.result.Events.Inserted++
 			p.write.Events = append(p.write.Events, e.Domain())
-		case p.resolve(&p.result.Events, "event", e.ID, withoutKey(differingKeys(export.NewEvent(stored), e), "seq"), []string{"timeline_id"}):
-			p.write.EventReplacements = append(p.write.EventReplacements, e.Domain())
-		default:
-			continue
 		}
-		p.sourceUses = append(p.sourceUses, sourceUse{name: e.Source, createdAt: e.CreatedAt})
+		p.timelineIDs[e.TimelineID] = true
+		uses = append(uses, sourceUse{name: e.Source, createdAt: e.CreatedAt})
 	}
+
+	return uses
 }
 
-func (p *planner) planAnnotations(annotations []export.Annotation) {
+// planAnnotations returns the source names of the annotations it inserts or replaces.
+func (p *planner) planAnnotations(annotations []export.Annotation) []sourceUse {
+	var uses []sourceUse
 	for _, a := range annotations {
-		stored, ok := p.in.stored.annotations[a.ID]
-		switch {
-		case !ok:
+		if stored, ok := p.in.stored.annotations[a.ID]; ok {
+			fields := export.DifferingKeys(export.NewAnnotation(stored), a)
+			replaceable := !slices.Contains(fields, keyTimelineID) && !slices.Contains(fields, keyEventID)
+			if !p.resolve(&p.result.Annotations, importConflict{Type: "annotation", ID: a.ID, Fields: fields}, replaceable) {
+				continue
+			}
+			p.write.AnnotationReplacements = append(p.write.AnnotationReplacements, a.Domain())
+		} else {
 			p.result.Annotations.Inserted++
 			p.write.Annotations = append(p.write.Annotations, a.Domain())
-		case p.resolve(&p.result.Annotations, "annotation", a.ID, differingKeys(export.NewAnnotation(stored), a), []string{"timeline_id", "event_id"}):
-			p.write.AnnotationReplacements = append(p.write.AnnotationReplacements, a.Domain())
-		default:
-			continue
 		}
-		p.sourceUses = append(p.sourceUses, sourceUse{name: a.Source, createdAt: a.CreatedAt})
+		p.timelineIDs[a.TimelineID] = true
+		uses = append(uses, sourceUse{name: a.Source, createdAt: a.CreatedAt})
 	}
+
+	return uses
 }
 
 // planAttachments inserts each new attachment whose content is beside the input or already beside
@@ -454,13 +521,12 @@ func (p *planner) planAnnotations(annotations []export.Annotation) {
 func (p *planner) planAttachments(attachments []export.Attachment) {
 	for _, a := range attachments {
 		if stored, ok := p.in.stored.attachments[a.ID]; ok {
-			fields := differingKeys(export.NewAttachment(stored), a)
-			p.resolve(&p.result.Attachments, "attachment", a.ID, fields, fields)
+			p.resolve(&p.result.Attachments, importConflict{Type: "attachment", ID: a.ID, Fields: export.DifferingKeys(export.NewAttachment(stored), a)}, false)
 			continue
 		}
 
 		imported := store.ImportAttachment{Attachment: a.Domain()}
-		content, hasSidecar := p.in.sidecars[a.ID]
+		content, hasSidecar := p.in.sidecars[a.SHA256]
 		switch {
 		case hasSidecar:
 			imported.Content = bytes.NewReader(content)
@@ -470,20 +536,25 @@ func (p *planner) planAttachments(attachments []export.Attachment) {
 		}
 		p.result.Attachments.Inserted++
 		p.write.Attachments = append(p.write.Attachments, imported)
+		// checkRecords has already rejected an attachment whose owner is unknown.
+		ownerTimeline, _ := p.refs.ownerTimeline(a)
+		p.timelineIDs[ownerTimeline] = true
 	}
 }
 
-// planUnrecordedSources creates each source a written event or annotation names that is neither
-// stored nor in the input, created when the first record naming it was, and gives every source
-// being created without an id a new one.
-func (p *planner) planUnrecordedSources() error {
-	for _, use := range p.sourceUses {
+// planUnrecordedSources creates each source uses name that is neither stored nor being created,
+// created when the first record naming it was.
+func (p *planner) planUnrecordedSources(uses []sourceUse) {
+	for _, use := range uses {
 		if use.name != nil && !p.sources.has(*use.name) {
 			p.result.Sources.Inserted++
 			p.addSource(timeline.Source{Name: *use.name, CreatedAt: time.Time(use.createdAt)})
 		}
 	}
+}
 
+// assignSourceIDs gives every source being created without an id a new one.
+func (p *planner) assignSourceIDs() error {
 	for i, s := range p.write.Sources {
 		if s.ID != "" {
 			continue
@@ -504,7 +575,7 @@ func (p *planner) addSource(s timeline.Source) {
 }
 
 // blocked returns the id_conflict that stops the import, or nil when it may write.
-func (p *planner) blocked() *Error {
+func (p *planner) blocked() error {
 	switch {
 	case len(p.result.Conflicts) > 0 && p.in.onConflict == onConflictFail:
 		return &Error{
@@ -522,6 +593,24 @@ func (p *planner) blocked() *Error {
 	}
 
 	return nil
+}
+
+// timelineNames returns the sorted names the timelines the import writes to have once it has.
+func (p *planner) timelineNames() []string {
+	names := map[string]string{}
+	for id, t := range p.in.stored.timelines {
+		names[id] = t.Name
+	}
+	for _, t := range slices.Concat(p.write.Timelines, p.write.TimelineReplacements) {
+		names[t.ID] = t.Name
+	}
+	written := make([]string, 0, len(p.timelineIDs))
+	for id := range p.timelineIDs {
+		written = append(written, names[id])
+	}
+	slices.Sort(written)
+
+	return written
 }
 
 func recordCount(n int) string {
@@ -556,23 +645,6 @@ func (idx sourceIndex) add(s timeline.Source) {
 	if s.ID != "" {
 		idx.ids[s.ID] = true
 	}
-}
-
-// differingKeys returns the JSON keys of struct type T whose values encode differently in a and
-// b, in declaration order.
-func differingKeys[T any](a, b T) []string {
-	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
-	var keys []string
-	for field := range reflect.TypeFor[T]().Fields() {
-		ja, errA := json.Marshal(va.FieldByIndex(field.Index).Interface())
-		jb, errB := json.Marshal(vb.FieldByIndex(field.Index).Interface())
-		if errA != nil || errB != nil || !bytes.Equal(ja, jb) {
-			name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
-			keys = append(keys, name)
-		}
-	}
-
-	return keys
 }
 
 // withoutKey returns keys without key.
