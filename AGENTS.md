@@ -3,6 +3,61 @@
 These rules apply to anyone changing coroner, human or agent. This file holds rules and
 where to find things, not tutorials.
 
+coroner is a Go CLI that records root-cause investigation timelines, with their events,
+annotations and sources, in one SQLite file. Commands are noun-verb (`coroner event add`),
+and exports are the only sharing contract.
+
+## How to work here
+
+Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
+
+- `mise run setup` installs the pinned tools and Go modules and registers the git hooks.
+- `mise run build` builds the binary into `bin/`.
+- `mise run format` runs every formatter in write mode, plus `go mod tidy` and
+  `sqlc generate`.
+- `mise run lint` runs the linters without writing. It does not check YAML, TOML, shell or
+  Pkl formatting, `go mod tidy` or `sqlc generate`; only `mise run format` and
+  `pre-commit` apply those.
+- `mise run test` runs the Ginkgo suite; a package pattern or `--focus <regexp>` narrows
+  it.
+- `mise run preflight` runs lint, test and build. It is the gate before declaring work
+  done (Rule 7).
+
+The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
+linter and applies fixes, and `pre-push` runs `mise run test` when Go files, `go.mod` or
+`go.sum` change.
+
+## Routing
+
+Read the digraph as a checklist, not a single path:
+**load every file whose edge matches the change** before editing that area. A box marked
+"not in the repo yet" names the issue that will land that file. Until it lands there is
+nothing to load: skip the box, and never create its file early.
+
+```graphviz
+digraph coroner_rules_router {
+    "Working on coroner" [shape=doublecircle];
+    "What does the change touch?" [shape=diamond];
+
+    "Load AGENTS.md § Rules" [shape=box];
+    "Load docs/contributing/command-checklist.md" [shape=box];
+    "Load .golangci.yml" [shape=box];
+    "Load CONTEXT.md (not in the repo yet — EXC-1320)" [shape=box];
+    "Load STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
+    "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
+    "Load docs/agents/documentation-rules.md" [shape=box];
+
+    "Working on coroner" -> "What does the change touch?";
+    "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
+    "What does the change touch?" -> "Load docs/contributing/command-checklist.md" [label="a command, flag, output or error message (Rule 1)"];
+    "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
+    "What does the change touch?" -> "Load CONTEXT.md (not in the repo yet — EXC-1320)" [label="naming something in code, flags, JSON or docs"];
+    "What does the change touch?" -> "Load STABILITY.md (not in the repo yet — EXC-1303)" [label="JSON output, exports or another contract (Rule 3)"];
+    "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
+    "What does the change touch?" -> "Load docs/agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task or hk hook, a docs/agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
+}
+```
+
 ## Where things live and what to call them
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
@@ -11,8 +66,7 @@ where to find things, not tutorials.
 - Vocabulary: use the glossary in `CONTEXT.md` (not in the repo yet) for names in code,
   flags, JSON and docs. The noun is `annotation`, not `note`.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not
-  here. Layering checks are not in the repo yet.
-- Tasks: `.mise/tasks/` (`mise tasks` lists them).
+  here. Layering checks are not in the repo yet (EXC-1328).
 
 ## Rules
 
