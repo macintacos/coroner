@@ -17,7 +17,7 @@ where to find things, not tutorials.
 
 1. **clig.dev is mandatory:** check every new or changed command, flag, output or error
    message against [clig.dev](https://clig.dev/) using
-   `docs/contributing/command-checklist.md` (not in the repo yet). Cite its rule IDs, as
+   [the command checklist](docs/contributing/command-checklist.md). Cite its rule IDs, as
    in "violates OUT-3".
 2. **Never hand-edit generated files:** `internal/store/sqlcgen/**` (today
    `internal/db/db.go`, `internal/db/models.go` and `internal/db/*.sql.go`) is regenerated
