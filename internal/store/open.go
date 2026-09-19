@@ -1,5 +1,6 @@
-// Package db is coroner's SQLite store: sqlc-generated queries plus goose migrations.
-package db
+// Package store is coroner's SQLite store: goose migrations plus the sqlc-generated
+// queries in sqlcgen.
+package store
 
 import (
 	"context"

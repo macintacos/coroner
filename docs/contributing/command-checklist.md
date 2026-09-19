@@ -15,10 +15,10 @@ never renumber a rule, only retire it.
   distinct exit codes. ([clig.dev](https://clig.dev/#the-basics))
 - **B-3** Primary output, and anything machine-readable, goes to stdout.
   ([clig.dev](https://clig.dev/#the-basics))
-- **B-4** Messages, warnings, progress, and errors go to stderr. Data goes to
-  `cmd.OutOrStdout()`, messages to `cmd.ErrOrStderr()`. Never `root.SetOut(os.Stdout)`:
-  cobra prints deprecation notices via `OutOrStderr()`, so they would corrupt JSON on
-  stdout. ([clig.dev](https://clig.dev/#the-basics))
+- **B-4** Messages, warnings, progress, and errors go to stderr. Data goes to `app.Out`,
+  messages to `app.Err` (the `cli.App` writers). Never `root.SetOut`: cobra prints
+  deprecation notices via `OutOrStderr()`, so they would corrupt JSON on stdout.
+  ([clig.dev](https://clig.dev/#the-basics))
 
 ## Help
 
