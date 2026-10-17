@@ -7,8 +7,10 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/pressly/goose/v3 v3.28.0
+	github.com/rogpeppe/go-internal v1.16.0
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.58.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (

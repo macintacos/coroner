@@ -1,0 +1,20 @@
+# --help prints usage to stdout and exits 0.
+exec coroner --help
+cmp stdout help.txt
+! stderr .
+
+# An unknown flag exits non-zero and names the flag on stderr.
+! exec coroner --no-such-flag
+! stdout .
+stderr 'unknown flag: --no-such-flag'
+
+-- help.txt --
+coroner CLI
+
+Usage:
+  coroner [flags]
+
+Flags:
+      --config string   path to the config file
+      --db string       path to the database file
+  -h, --help            help for coroner

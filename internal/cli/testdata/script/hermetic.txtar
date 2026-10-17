@@ -1,0 +1,6 @@
+# coroner reads its config from $WORK's XDG config directory, never the developer's.
+! exec coroner
+stderr '^Error: config file '${WORK@R}'/\.config/coroner/config\.toml: unknown config key bogus$'
+
+-- .config/coroner/config.toml --
+bogus = 1
