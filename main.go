@@ -1,5 +1,5 @@
 // Command coroner is the coroner CLI. It hands the process's args, stdio, environment,
-// clock and signals to cli.Run and exits with its code.
+// file reads, clock and signals to cli.Run and exits with its code.
 package main
 
 import (
@@ -24,6 +24,7 @@ func main() {
 		Out:       os.Stdout,
 		Err:       os.Stderr,
 		LookupEnv: os.LookupEnv,
+		ReadFile:  os.ReadFile,
 		Now:       time.Now,
 		OpenStore: store.Open,
 	})

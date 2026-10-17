@@ -63,8 +63,9 @@ digraph coroner_rules_router {
 ## Where things live and what to call them
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
-  `main.go` hands args, stdio, env, clock and signals to `cli.Run`; code below it takes
-  them from `cli.App`, never from `os`.
+  Config file, XDG paths and precedence: `internal/config`. `main.go` hands args, stdio,
+  env, file reads, clock and signals to `cli.Run`; code below it takes them from
+  `cli.App`, never from `os`.
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not

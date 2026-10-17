@@ -16,7 +16,9 @@ type App struct {
 	In        io.Reader
 	Out, Err  io.Writer
 	LookupEnv func(key string) (string, bool)
-	Now       func() time.Time
+	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
+	ReadFile func(name string) ([]byte, error)
+	Now      func() time.Time
 	// OpenStore creates the database at path, so only commands that use it may call it, and
 	// never from PersistentPreRunE.
 	OpenStore func(ctx context.Context, path string) (*sql.DB, error)

@@ -3,6 +3,7 @@ module github.com/macintacos/coroner
 go 1.27.1
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
 	github.com/pressly/goose/v3 v3.28.0
