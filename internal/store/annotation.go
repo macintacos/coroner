@@ -9,10 +9,10 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// AddAnnotation adds a. When no source is called a.Source yet, it creates one with id
-// newSourceID.
-func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string) error {
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+// AddAnnotation adds a with attachments. When no source is called a.Source yet, it creates
+// one with id newSourceID.
+func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		err := checkTarget(ctx, q, a.TimelineID, a.EventID)
 		if err != nil {
 			return err
@@ -36,6 +36,7 @@ func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSou
 		})
 		return err
 	})
+	return err
 }
 
 // Annotation returns the annotation with id.
@@ -75,10 +76,10 @@ func (s *Store) EventAnnotations(ctx context.Context, eventID string) ([]timelin
 	})
 }
 
-// UpdateAnnotation stores a's kind, body, author, source, URL and updated at. When no
-// source is called a.Source yet, it creates one with id newSourceID.
-func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string) error {
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+// UpdateAnnotation stores a's kind, body, author, source, URL and updated at, and adds
+// attachments. When no source is called a.Source yet, it creates one with id newSourceID.
+func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, a.Source, newSourceID, a.UpdatedAt)
 		if err != nil {
 			return err
@@ -95,6 +96,7 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 		})
 		return err
 	})
+	return err
 }
 
 // AnnotationsByIDPrefix returns up to limit annotations, in any timeline, whose id starts

@@ -28,8 +28,10 @@ Pin each JSON document shape with `cmp stdout <name>.json` against a file in the
 own archive. When a later command only shows a behaviour through one field, such as
 `current`, `truncated` or which timeline was selected, check that field with a `stdout`
 pattern preceded by `jsonvalid stdout`, which fails unless stdout is empty or holds only
-JSON values. Output that differs by machine or build, such as a path under `$WORK`, the
-version or the schema version, stays a pattern. A `cmp` file may still hold
+JSON values. Output that differs by machine or build, such as the version or the schema
+version, stays a pattern. A document that holds a path under `$WORK` may be compared whole
+with `cmpenv` against a hand-written file, which `-update` never rewrites, so an additive
+key or a renumbered ID means editing that file by hand. A `cmp` file may still hold
 `coroner_version` `(devel)`: `runCoroner` reads the test binary's build info, which
 `go test` never stamps with a version, so whole export documents can be compared. Match an
 error envelope as the last line of stderr by pattern: its `kind` is the contract, its

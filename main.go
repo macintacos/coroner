@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -41,10 +43,16 @@ func main() {
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
+		OpenFile:          openFile,
+		RemoveFile:        os.Remove,
 		Now:               time.Now,
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
 	})
 	os.Exit(code)
+}
+
+func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
+	return os.OpenFile(filepath.Clean(name), flag, perm)
 }

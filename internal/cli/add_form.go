@@ -465,7 +465,7 @@ func filtering(formField huh.Field) bool {
 func eventAddForm() addForm[eventAdded] {
 	return addForm[eventAdded]{
 		path: "event add", def: eventAddDefinition(), run: addEvent,
-		cleared: []string{"text", "at", "ended", "approximate", "url"},
+		cleared: []string{"text", "at", "ended", "approximate", "url", "attach"},
 		choices: func(ctx context.Context, s *store.Store, _ timeline.Timeline, _ zone) (formChoices, error) {
 			return sourceChoices(ctx, s)
 		},
@@ -475,7 +475,7 @@ func eventAddForm() addForm[eventAdded] {
 func annotationAddForm() addForm[annotationAdded] {
 	return addForm[annotationAdded]{
 		path: "annotation add", def: annotationAddDefinition(), run: addAnnotation,
-		cleared: []string{"body", "url"},
+		cleared: []string{"body", "url", "attach"},
 		choices: annotationChoices,
 	}
 }

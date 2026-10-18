@@ -150,6 +150,50 @@ func (q *Queries) ListAttachmentHashes(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
+const listAttachmentsByIDPrefix = `-- name: ListAttachmentsByIDPrefix :many
+SELECT id, event_id, annotation_id, filename, mime, sha256, size, created_at FROM attachment
+WHERE id GLOB ?
+ORDER BY id
+LIMIT ?
+`
+
+type ListAttachmentsByIDPrefixParams struct {
+	ID    string
+	Limit int64
+}
+
+func (q *Queries) ListAttachmentsByIDPrefix(ctx context.Context, arg ListAttachmentsByIDPrefixParams) ([]Attachment, error) {
+	rows, err := q.db.QueryContext(ctx, listAttachmentsByIDPrefix, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Attachment{}
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.AnnotationID,
+			&i.Filename,
+			&i.Mime,
+			&i.Sha256,
+			&i.Size,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEventAttachments = `-- name: ListEventAttachments :many
 SELECT id, event_id, annotation_id, filename, mime, sha256, size, created_at FROM attachment
 WHERE event_id = ?
@@ -158,6 +202,45 @@ ORDER BY created_at, id
 
 func (q *Queries) ListEventAttachments(ctx context.Context, eventID *string) ([]Attachment, error) {
 	rows, err := q.db.QueryContext(ctx, listEventAttachments, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Attachment{}
+	for rows.Next() {
+		var i Attachment
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.AnnotationID,
+			&i.Filename,
+			&i.Mime,
+			&i.Sha256,
+			&i.Size,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTimelineAttachments = `-- name: ListTimelineAttachments :many
+SELECT id, event_id, annotation_id, filename, mime, sha256, size, created_at FROM attachment
+WHERE event_id IN (SELECT event.id FROM event WHERE event.timeline_id = ?1)
+  OR annotation_id IN (SELECT annotation.id FROM annotation WHERE annotation.timeline_id = ?1)
+ORDER BY created_at, id
+`
+
+func (q *Queries) ListTimelineAttachments(ctx context.Context, timelineID string) ([]Attachment, error) {
+	rows, err := q.db.QueryContext(ctx, listTimelineAttachments, timelineID)
 	if err != nil {
 		return nil, err
 	}

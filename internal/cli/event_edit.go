@@ -23,7 +23,7 @@ const clearKeyword = "none"
 
 // eventEditFlags are the flags that change a field; edit needs at least one.
 func eventEditFlags() []string {
-	return []string{"text", "at", "ended", "approximate", "source", "add-tag", "remove-tag", "url", "author"}
+	return []string{"text", "at", "ended", "approximate", "source", "add-tag", "remove-tag", "url", "author", "attach"}
 }
 
 func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
@@ -35,10 +35,12 @@ func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
 			"and the times they resolve to are printed on stderr. Tags are removed before they are\n" +
 			"added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to\n" +
 			"--source, --url, --author or --ended to clear it. Pass --text - to read the text from\n" +
-			"stdin, which is never read otherwise.\n\n" + eventRefHelp,
+			"stdin, which is never read otherwise. --attach adds a file to the event's attachments;\n" +
+			"'coroner attachment delete' removes one.\n\n" + eventRefHelp,
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run\n" +
+			"  $ coroner event edit 12 --attach ./grafana-p99.png\n" +
 			"  $ coroner event edit mongo-outage-2026-09-11#12 --at \"2026-09-11T03:14:07.412Z\" --source none",
 		RunE: writeRunE(ctx, app, def, editEvent),
 	}
@@ -70,6 +72,7 @@ func eventEditDefinition() definition {
 		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more"},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("--url")},
 		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("--author")},
+		attachField(),
 		{name: "dry-run", typ: boolField, usage: "Show the edited event, and change nothing"},
 		tzField(),
 	}}
@@ -110,6 +113,7 @@ type eventEdited struct {
 	zone     zone
 	// when is the edit's resolved times as the command echoes them, or "" when it sets none.
 	when   string
+	attach attachResult
 	dryRun bool
 }
 
@@ -132,13 +136,20 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	if err != nil {
 		return eventEdited{}, err
 	}
+	req, err := readAttachRequest(in, app.ReadFile)
+	if err != nil {
+		return eventEdited{}, err
+	}
 	edit, err := readEventEdit(in, app, env)
 	if err != nil {
 		return eventEdited{}, err
 	}
-	dryRun, _ := in.boolean("dry-run")
+	req, err = req.staged(app.NewID, now)
+	if err != nil {
+		return eventEdited{}, err
+	}
 
-	edited := eventEdited{zone: z, when: edit.when, dryRun: dryRun}
+	edited := eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// event is overwritten; apply the edit inside one store write if that matters.
@@ -151,15 +162,17 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 			return err
 		}
 		edited.event, edited.timeline = e, t
-		if dryRun {
-			return nil
+		if !req.dryRun {
+			err = s.UpdateEvent(ctx, e, edit.newSourceID, req.toAdd...)
+			if errors.Is(err, store.ErrNotFound) {
+				return eventNotFoundError("another coroner deleted the event first", err)
+			}
+			if err != nil {
+				return err
+			}
 		}
 
-		err = s.UpdateEvent(ctx, e, edit.newSourceID)
-		if errors.Is(err, store.ErrNotFound) {
-			return eventNotFoundError("another coroner deleted the event first", err)
-		}
-
+		edited.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &e.ID}, cfg.DBPath)
 		return err
 	})
 
@@ -168,7 +181,10 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 
 func (e eventEdited) render(o output) error {
 	if e.dryRun {
-		err := previewEventEdit(o, e.zone, e.event, e.timeline)
+		err := previewEventEdit(o, e.zone, e.event, e.attach.objects, e.timeline)
+		if err == nil {
+			err = e.attach.notify(o)
+		}
 		if err != nil {
 			return err
 		}
@@ -176,7 +192,10 @@ func (e eventEdited) render(o output) error {
 		return o.notify("Would edit event #%d in timeline `%s`%s", e.event.Seq, e.timeline.Name, e.when)
 	}
 
-	err := printEvent(o, e.event)
+	err := printEvent(o, e.event, e.attach.objects)
+	if err == nil {
+		err = e.attach.notify(o)
+	}
 	if err != nil {
 		return err
 	}
@@ -366,10 +385,11 @@ func checkEditedEvent(ev timeline.Event, z zone) error {
 	return nil
 }
 
-// previewEventEdit prints ev as the edit would store it: its JSON object, or its summary.
-func previewEventEdit(o output, z zone, ev timeline.Event, t timeline.Timeline) error {
+// previewEventEdit prints ev as the edit would store it: its JSON object with attachments, or
+// its summary.
+func previewEventEdit(o output, z zone, ev timeline.Event, attachments []attachmentJSON, t timeline.Timeline) error {
 	if o.format == formatJSON {
-		return o.json(newEventJSON(ev))
+		return o.json(newEventJSON(ev, attachments))
 	}
 
 	_, err := io.WriteString(o.out, eventSummary(ev, t, z))

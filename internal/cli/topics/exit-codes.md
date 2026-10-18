@@ -10,8 +10,8 @@ envelope names.
 | 0 | Success | |
 | 1 | Unexpected error, such as a bug | `internal` |
 | 2 | Usage error or invalid input; nothing was written | `usage`, `invalid_time`, `invalid_name`, `timeline_required`, `ambiguous_id` |
-| 3 | Not found | `timeline_not_found`, `event_not_found`, `annotation_not_found`, `source_not_found` |
-| 4 | Conflicts with what is already stored | `timeline_exists`, `source_exists`, `id_conflict` |
+| 3 | Not found | `timeline_not_found`, `event_not_found`, `annotation_not_found`, `source_not_found`, `attachment_not_found` |
+| 4 | Conflicts with what is already stored, or a file that is already there | `timeline_exists`, `source_exists`, `id_conflict`, `file_exists` |
 | 5 | Database unavailable: busy, unreadable or too new | `db_busy`, `db_unreadable`, `db_too_new` |
 | 130 | Interrupted | `interrupted` |
 

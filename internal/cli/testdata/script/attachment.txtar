@@ -1,0 +1,68 @@
+# A command line rejected before it reaches the database never creates one.
+exits 2 coroner attachment delete
+stderr 'coroner attachment delete --help'
+exits 2 coroner attachment export 'Bad Id!'
+stderr 'not an attachment id'
+exits 2 coroner attachment export 0199a1b2 -o ''
+stderr '-o must not be empty'
+! exists $WORK/.local/share/coroner
+
+exec coroner timeline create mongo-outage
+exec coroner timeline use mongo-outage
+exec coroner event add 'Dashboard at peak' --at 2026-09-11T03:14:07Z --attach p99.gif --attach trace.pdf
+exec coroner annotation add 'Same panel' -e 1 --kind evidence --attach p99.gif
+
+# Piped, list prints one tab-separated row per attachment: id, owner, filename, size, type.
+exec coroner attachment list
+stdout '\A[0-9a-f-]{36}\t#1\tp99\.gif\t25 B\timage/gif\n[0-9a-f-]{36}\t#1\ttrace\.pdf\t24 B\tapplication/pdf\n[0-9a-f-]{36}\t[0-9a-f-]{36}\tp99\.gif\t25 B\timage/gif\n\z'
+
+# export says where it wrote the file.
+exec coroner attachment export 01a09862-b1c0-7000-8000-000000000003 -o p99-copy.gif
+stderr '^Wrote p99-copy\.gif$'
+cmp p99-copy.gif p99.gif
+
+# Deleting one of two attachments that share a blob keeps the blob, and says what it deleted.
+exec coroner attachment delete 01a09862-b1c0-7000-8000-000000000003 --dry-run
+stdout '^Would delete attachment 01a09862-b1c0-7000-8000-000000000003 \(p99\.gif\) from timeline `mongo-outage`$'
+exec coroner attachment delete 01a09862-b1c0-7000-8000-000000000003
+stderr '^Deleted attachment 01a09862-b1c0-7000-8000-000000000003 \(p99\.gif\) from timeline `mongo-outage`$'
+exists $WORK/.local/share/coroner/blobs/dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df
+
+# Deleting an event, an annotation or a timeline deletes the blobs no attachment uses any more.
+exec coroner event delete 1
+! exists $WORK/.local/share/coroner/blobs/dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df
+! exists $WORK/.local/share/coroner/blobs/bf0bb1ac33c15d55e0dc526f817f1611054021131c22c47fa378adac3139aade
+exec coroner annotation add 'Oplog window' --kind evidence --attach p99.gif
+exec coroner annotation delete 0
+! exists $WORK/.local/share/coroner/blobs/dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df
+exec coroner event add 'Failover' --attach trace.pdf
+exists $WORK/.local/share/coroner/blobs/bf0bb1ac33c15d55e0dc526f817f1611054021131c22c47fa378adac3139aade
+exec coroner timeline delete mongo-outage --yes
+! exists $WORK/.local/share/coroner/blobs/bf0bb1ac33c15d55e0dc526f817f1611054021131c22c47fa378adac3139aade
+
+# A delete that cannot delete the blobs no attachment uses any more still deletes, and says so last.
+exec coroner timeline create replica-lag
+exec coroner timeline use replica-lag
+exec coroner event add 'Lag alert' --attach p99.gif
+exec coroner annotation add 'Lag graph' --kind evidence
+exec coroner timeline create failover-drill
+exec coroner event add 'Failover' -t failover-drill --attach trace.pdf
+chmod 500 $WORK/.local/share/coroner/blobs
+exec coroner event delete 1
+stderr '^Deleted 1 event from timeline `replica-lag`\.$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+exec coroner annotation delete 0
+stderr '^Deleted evidence annotation [0-9a-f-]{36} from timeline `replica-lag`$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+exec coroner timeline delete replica-lag --yes
+stderr '^Deleted timeline `replica-lag`\.$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+exec coroner attachment delete 0
+stderr '^Deleted attachment [0-9a-f-]{36} \(trace\.pdf\) from timeline `failover-drill`$'
+stderr '^Could not delete the blobs no attachment uses any more, so the next delete will: .+\n\z'
+chmod 700 $WORK/.local/share/coroner/blobs
+
+-- p99.gif --
+GIF89a p99 latency panel
+-- trace.pdf --
+%PDF-1.7 failover trace

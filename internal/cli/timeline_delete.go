@@ -16,9 +16,9 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <name|id> {--yes | --dry-run}",
 		Short: "Delete a timeline and everything in it",
-		Long: "Delete a timeline with its events, tags and annotations. This cannot be undone, so it\n" +
-			"needs --yes; --dry-run shows what would be deleted instead. Deleting the current\n" +
-			"timeline leaves none current.",
+		Long: "Delete a timeline with its events, tags, annotations and attachments, and the blobs no\n" +
+			"other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what\n" +
+			"would be deleted instead. Deleting the current timeline leaves none current.",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Example: "  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run\n" +
@@ -40,11 +40,13 @@ func timelineDeleteDefinition() definition {
 }
 
 // timelineDeleted is the timeline delete removed or, with --dry-run, would remove; only --dry-run
-// counts its events and annotations.
+// counts its events and annotations, and only a delete says why the blobs it left unused were
+// not deleted.
 type timelineDeleted struct {
 	timeline            timeline.Timeline
 	dryRun              bool
 	events, annotations int
+	blobsErr            error
 }
 
 func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineDeleted, error) {
@@ -74,7 +76,12 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 		}
 		deleted.timeline = t
 		if !dryRun {
-			return s.DeleteTimeline(ctx, t.ID)
+			err = s.DeleteTimeline(ctx, t.ID)
+			if err != nil {
+				return err
+			}
+			_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
+			return nil
 		}
 
 		events, err := s.Events(ctx, t.ID)
@@ -92,7 +99,11 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 
 func (d timelineDeleted) render(o output) error {
 	if !d.dryRun {
-		return o.notify("Deleted timeline `%s`.", d.timeline.Name)
+		err := o.notify("Deleted timeline `%s`.", d.timeline.Name)
+		if err != nil || d.blobsErr == nil {
+			return err
+		}
+		return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
 	}
 
 	_, err := fmt.Fprintf(o.out, "Would delete timeline `%s`: events: %d, annotations: %d\n", d.timeline.Name, d.events, d.annotations)

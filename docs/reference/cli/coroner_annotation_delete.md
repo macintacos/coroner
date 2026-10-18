@@ -8,9 +8,9 @@ Delete annotations
 
 ### Synopsis
 
-Delete annotations by full id or unique id prefix, in any timeline. Every id is checked
-before anything is deleted, so an id that matches nothing deletes none. --dry-run shows
-what would be deleted instead.
+Delete annotations by full id or unique id prefix, in any timeline, with their attachments
+and the blobs no other attachment uses. Every id is checked before anything is deleted, so
+an id that matches nothing deletes none. --dry-run shows what would be deleted instead.
 
 ```
 coroner annotation delete <id>... [flags]

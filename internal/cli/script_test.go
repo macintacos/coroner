@@ -245,6 +245,8 @@ func runCoroner() {
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
+		OpenFile:          openFile,
+		RemoveFile:        os.Remove,
 		Now:               time.Now,
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
@@ -259,6 +261,10 @@ func runCoroner() {
 		os.Exit(125)
 	}
 	os.Exit(cli.Run(ctx, app))
+}
+
+func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
+	return os.OpenFile(filepath.Clean(name), flag, perm)
 }
 
 func withTestClock(app cli.App) (cli.App, error) {

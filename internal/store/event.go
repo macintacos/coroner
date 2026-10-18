@@ -9,11 +9,14 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// AddEvent adds e to its timeline under the timeline's next seq and returns e with that
-// Seq. When no source is called e.Source yet, it creates one with id newSourceID.
-func (s *Store) AddEvent(ctx context.Context, e timeline.Event, newSourceID string) (timeline.Event, error) {
+// AddEvent adds e to its timeline under the timeline's next seq, with attachments, and
+// returns e with that Seq. When no source is called e.Source yet, it creates one with id
+// newSourceID.
+func (s *Store) AddEvent(
+	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
+) (timeline.Event, error) {
 	var seq int64
-	err := s.write(ctx, func(q *sqlcgen.Queries) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		var err error
 		seq, err = q.AllocateSeq(ctx, e.TimelineID)
 		if err != nil {
@@ -112,10 +115,10 @@ func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event
 }
 
 // UpdateEvent stores every field of e but its timeline, seq and created at, and replaces
-// its tags with e.Tags. When no source is called e.Source yet, it creates one with id
-// newSourceID.
-func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string) error {
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
+// its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
+// creates one with id newSourceID.
+func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, e.Source, newSourceID, e.UpdatedAt)
 		if err != nil {
 			return err
@@ -152,6 +155,7 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 
 		return addTags(ctx, q, e.ID, e.Tags)
 	})
+	return err
 }
 
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of

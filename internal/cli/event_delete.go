@@ -19,11 +19,12 @@ func newEventDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <event>...",
 		Short: "Delete events and their annotations",
-		Long: "Delete events, with their tags and annotations, and print each as it was, so its fields\n" +
-			"can be added again. Every event is found before any is deleted: when one does not exist,\n" +
-			"nothing is deleted and delete exits 3. Exit 3 means one of the events does not exist: if\n" +
-			"a retry exits 3, the first attempt may already have deleted them. A deleted event's seq\n" +
-			"is never given to another event.\n\n" + eventRefHelp,
+		Long: "Delete events with their tags, annotations and attachments, and the blobs no other\n" +
+			"attachment uses, then print each as it was, so its fields can be added again. Every event\n" +
+			"is found before any is deleted: when one does not exist, nothing is deleted and delete\n" +
+			"exits 3. Exit 3 means one of the events does not exist: if a retry exits 3, the first\n" +
+			"attempt may already have deleted them. A deleted event's seq is never given to another\n" +
+			"event.\n\n" + eventRefHelp,
 		Args:        cobra.MinimumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event delete 12 14 --dry-run\n" +
@@ -61,10 +62,13 @@ func eventDeleteDefinition() definition {
 	}}
 }
 
-// eventsDeleted are the events delete removed or, with --dry-run, would remove.
+// eventsDeleted are the events delete removed or, with --dry-run, would remove, with their
+// attachments' objects keyed by event id, and why the blobs they left unused were not deleted.
 type eventsDeleted struct {
-	found  foundEvents
-	dryRun bool
+	found    foundEvents
+	attached map[string][]attachmentJSON
+	dryRun   bool
+	blobsErr error
 }
 
 func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventsDeleted, error) {
@@ -92,16 +96,22 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 			return err
 		}
 		deleted.found = found
-		if dryRun {
-			return nil
+		attachments, err := ownersAttachments(ctx, s, found.owners())
+		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+		if err != nil || dryRun {
+			return err
 		}
 
 		err = s.DeleteEvents(ctx, found.ids()...)
 		if errors.Is(err, store.ErrNotFound) {
 			return eventNotFoundError("another coroner deleted one of the events first; nothing was deleted", err)
 		}
+		if err != nil {
+			return err
+		}
+		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
 
-		return err
+		return nil
 	})
 
 	return deleted, err
@@ -109,7 +119,7 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 
 // render prints the events as they were, with times in z, and says what happened to them.
 func (d eventsDeleted) render(o output, z zone) error {
-	err := writeDeletion(o, z, d.found)
+	err := writeDeletion(o, z, d.found, d.attached)
 	if err != nil {
 		return err
 	}
@@ -117,7 +127,12 @@ func (d eventsDeleted) render(o output, z zone) error {
 		return notifyDeletion(o, "Would delete", d.found)
 	}
 
-	return notifyDeletion(o, "Deleted", d.found)
+	err = notifyDeletion(o, "Deleted", d.found)
+	if err != nil || d.blobsErr == nil {
+		return err
+	}
+
+	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
 }
 
 // foundEvents are events with their timelines, each once, in the order first named.
@@ -152,11 +167,20 @@ func (f foundEvents) ids() []string {
 	return ids
 }
 
-// writeDeletion prints the events f holds as they were: the event list's JSON, or a summary
-// of each.
-func writeDeletion(o output, z zone, f foundEvents) error {
+func (f foundEvents) owners() []timeline.AttachmentOwner {
+	owners := make([]timeline.AttachmentOwner, 0, len(f.events))
+	for _, e := range f.events {
+		owners = append(owners, timeline.AttachmentOwner{EventID: &e.ID})
+	}
+
+	return owners
+}
+
+// writeDeletion prints the events f holds as they were: the event list's JSON, with attachments
+// from attached keyed by event id, or a summary of each.
+func writeDeletion(o output, z zone, f foundEvents, attached map[string][]attachmentJSON) error {
 	if o.format == formatJSON {
-		return o.json(newEventListJSON(store.EventPage{Events: f.events, Total: len(f.events)}))
+		return o.json(newEventListJSON(eventListing{page: store.EventPage{Events: f.events, Total: len(f.events)}, attached: attached}))
 	}
 
 	summaries := make([]string, 0, len(f.events))

@@ -17,9 +17,9 @@ func newAnnotationDeleteCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>...",
 		Short: "Delete annotations",
-		Long: "Delete annotations by full id or unique id prefix, in any timeline. Every id is checked\n" +
-			"before anything is deleted, so an id that matches nothing deletes none. --dry-run shows\n" +
-			"what would be deleted instead.",
+		Long: "Delete annotations by full id or unique id prefix, in any timeline, with their attachments\n" +
+			"and the blobs no other attachment uses. Every id is checked before anything is deleted, so\n" +
+			"an id that matches nothing deletes none. --dry-run shows what would be deleted instead.",
 		Args:        cobra.MinimumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation delete 0199a1b2-7c1e --dry-run\n" +
@@ -43,11 +43,14 @@ func annotationDeleteDefinition() definition {
 }
 
 // annotationsDeleted are the annotations delete removed or, with --dry-run, would remove, with
-// their timelines' names by timeline id.
+// their timelines' names by timeline id, their attachments' objects by annotation id, and why
+// the blobs they left unused were not deleted.
 type annotationsDeleted struct {
 	annotations   []timeline.Annotation
 	timelineNames map[string]string
+	attached      map[string][]attachmentJSON
 	dryRun        bool
+	blobsErr      error
 }
 
 func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationsDeleted, error) {
@@ -76,31 +79,51 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 		}
 		deleted.annotations = annotations
 		deleted.timelineNames, err = annotationTimelineNames(ctx, s, annotations)
+		if err != nil {
+			return err
+		}
+		ids := make([]string, 0, len(annotations))
+		owners := make([]timeline.AttachmentOwner, 0, len(annotations))
+		for _, a := range annotations {
+			ids = append(ids, a.ID)
+			owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
+		}
+		attachments, err := ownersAttachments(ctx, s, owners)
+		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
 		if err != nil || dryRun {
 			return err
 		}
 
-		ids := make([]string, 0, len(annotations))
-		for _, a := range annotations {
-			ids = append(ids, a.ID)
-		}
 		err = s.DeleteAnnotations(ctx, ids...)
 		if errors.Is(err, store.ErrNotFound) {
 			return annotationNotFoundError("an annotation was deleted by another command first, so none were", err)
 		}
+		if err != nil {
+			return err
+		}
+		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
 
-		return err
+		return nil
 	})
 
 	return deleted, err
 }
 
 func (d annotationsDeleted) render(o output) error {
-	if d.dryRun {
+	var err error
+	switch {
+	case o.format == formatJSON:
+		err = o.json(newAnnotationListJSON(d.annotations, d.attached))
+	case d.dryRun:
 		return previewAnnotationDeletion(o, d.annotations, d.timelineNames)
+	default:
+		err = reportAnnotationDeletion(o, d.annotations, d.timelineNames)
+	}
+	if err != nil || d.blobsErr == nil {
+		return err
 	}
 
-	return reportAnnotationDeletion(o, d.annotations, d.timelineNames)
+	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
 }
 
 // findAnnotations returns the annotation each id prefix names, in order and once each.
@@ -138,13 +161,8 @@ func annotationTimelineNames(ctx context.Context, s *store.Store, annotations []
 	return names, nil
 }
 
-// previewAnnotationDeletion prints the annotations a delete would remove, as JSON or a line
-// each.
+// previewAnnotationDeletion prints a line for each annotation a delete would remove.
 func previewAnnotationDeletion(o output, annotations []timeline.Annotation, timelineNames map[string]string) error {
-	if o.format == formatJSON {
-		return o.json(newAnnotationListJSON(annotations))
-	}
-
 	for _, a := range annotations {
 		_, err := fmt.Fprintf(o.out, "Would delete %s annotation %s from timeline `%s`\n", a.Kind, a.ID, timelineNames[a.TimelineID])
 		if err != nil {
@@ -155,13 +173,8 @@ func previewAnnotationDeletion(o output, annotations []timeline.Annotation, time
 	return nil
 }
 
-// reportAnnotationDeletion prints the deleted annotations as JSON, or says on stderr what was
-// deleted.
+// reportAnnotationDeletion says on stderr what was deleted.
 func reportAnnotationDeletion(o output, annotations []timeline.Annotation, timelineNames map[string]string) error {
-	if o.format == formatJSON {
-		return o.json(newAnnotationListJSON(annotations))
-	}
-
 	for _, a := range annotations {
 		err := o.notify("Deleted %s annotation %s from timeline `%s`", a.Kind, a.ID, timelineNames[a.TimelineID])
 		if err != nil {

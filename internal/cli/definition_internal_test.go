@@ -36,6 +36,8 @@ func writeDefinitions() map[string]definition {
 		"annotation add":    annotationAddDefinition(),
 		"annotation edit":   annotationEditDefinition(),
 		"annotation delete": annotationDeleteDefinition(),
+
+		"attachment delete": attachmentDeleteDefinition(),
 	}
 }
 
@@ -201,6 +203,7 @@ var _ = Describe("write run functions", func() {
 		Entry("event delete", errorOf(deleteEvents), fieldValues{}),
 		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"kind": {"comment"}}),
 		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
+		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
 	)
 })
 
@@ -329,6 +332,7 @@ func badValues() []badValue {
 		{"event add", "tag", "Bad Tag", []string{"Pager fires"}},
 		{"event add", "url", " ", []string{"Pager fires"}},
 		{"event add", "author", " ", []string{"Pager fires"}},
+		{"event add", "attach", "-", []string{"Pager fires"}},
 		{"event edit", "event", "Bad Ref!", []string{"--dry-run"}},
 		{"event edit", "text", " ", []string{"12"}},
 		{"event edit", "at", "2026-13-45", []string{"12"}},
@@ -338,6 +342,7 @@ func badValues() []badValue {
 		{"event edit", "url", " ", []string{"12"}},
 		{"event edit", "author", " ", []string{"12"}},
 		{"event edit", "tz", "Mars/Olympus", []string{"12"}},
+		{"event edit", "attach", "-", []string{"12"}},
 		{"event delete", "events", "Bad Ref!", nil},
 		{"annotation add", "body", " ", []string{"--kind", "comment"}},
 		{"annotation add", "event", "Bad Ref!", []string{"--kind", "comment", "Election timeout"}},
@@ -345,12 +350,15 @@ func badValues() []badValue {
 		{"annotation add", "source", "DB 2", []string{"--kind", "comment", "Election timeout"}},
 		{"annotation add", "url", " ", []string{"--kind", "comment", "Election timeout"}},
 		{"annotation add", "author", " ", []string{"--kind", "comment", "Election timeout"}},
+		{"annotation add", "attach", "-", []string{"--kind", "comment", "Election timeout"}},
 		{"annotation edit", "id", "Bad Ref!", []string{"--kind", "comment"}},
 		{"annotation edit", "body", " ", []string{"0199a1b2"}},
 		{"annotation edit", "kind", "note", []string{"0199a1b2"}},
 		{"annotation edit", "source", "DB 2", []string{"0199a1b2"}},
 		{"annotation edit", "url", " ", []string{"0199a1b2"}},
+		{"annotation edit", "attach", "-", []string{"0199a1b2"}},
 		{"annotation delete", "ids", "Bad Ref!", nil},
+		{"attachment delete", "ids", "Bad Ref!", nil},
 	}
 }
 

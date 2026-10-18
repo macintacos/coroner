@@ -71,11 +71,15 @@
    because goose has no SQLite locker; never delete that file, or a waiter locks a file no
    later process opens.
 9. **An attachment's blob is named before its row is written, and only garbage collection
-   deletes a blob:** `AddAttachment` streams the content into a synced temporary file in
-   the blob directory outside any transaction, then, inside one `Store.write`, checks the
-   owner, renames the file to its SHA-256 and inserts the row, so a missing owner leaves
-   nothing. `GarbageCollectBlobs` deletes unreferenced blobs inside `Store.write` too, so
-   the write lock keeps it from deleting a blob between an add's rename and its insert. A
+   deletes a blob:** `AddEvent`, `UpdateEvent`, `AddAnnotation` and `UpdateAnnotation`
+   stream each attachment's content into a synced temporary file in the blob directory
+   outside any transaction, then, after the owner's row in its one `Store.write`, rename
+   each file to its SHA-256 and insert its row, so the owner and its attachments commit
+   together and a failed owner write names no blob. `AddAttachment` follows the same order
+   for an existing owner, checking the owner where the others write its row.
+   `writeWithAttachments` is that order; every write that adds attachments goes through
+   it. `GarbageCollectBlobs` deletes unreferenced blobs inside `Store.write` too, so the
+   write lock keeps it from deleting a blob between an add's rename and its insert. A
    crash leaves at most an unreferenced blob or a staged `.tmp-*` file, which garbage
    collection leaves, never a row without its blob. Nothing else deletes a blob, not
    `Open`, a delete or a migration. A `<db>.pre-v<N>.bak` backup copies the database file

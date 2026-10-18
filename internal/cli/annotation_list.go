@@ -50,8 +50,12 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
+	cfg, err := resolveConfig(cmd, app)
+	if err != nil {
+		return err
+	}
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
@@ -62,6 +66,13 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 		}
 		order := orderEvents(events)
 		sortAnnotations(annotations, order)
+		if o.format == formatJSON {
+			attachments, err := s.TimelineAttachments(ctx, t.ID)
+			if err != nil {
+				return err
+			}
+			return o.json(newAnnotationListJSON(annotations, attachmentsByOwner(attachments, cfg.DBPath)))
+		}
 
 		return printAnnotations(o, annotations, order)
 	})
@@ -131,9 +142,6 @@ func sortAnnotations(annotations []timeline.Annotation, order eventOrder) {
 }
 
 func printAnnotations(o output, annotations []timeline.Annotation, order eventOrder) error {
-	if o.format == formatJSON {
-		return o.json(newAnnotationListJSON(annotations))
-	}
 	if len(annotations) == 0 {
 		return o.notify("No annotations yet. Add one with: coroner annotation add <body> --kind comment")
 	}

@@ -172,6 +172,10 @@ the schema does not restrict its values, and a consumer accepts one it does not 
 coarse event stands for the start of its window, so an event at `10:15` with precision
 `minute` sorts before one at `10:15:30`.
 
+`coroner event add`, `view`, `list`, `edit`, and `delete` also print `attachments`, an
+array of the event's [attachments](#attachment), oldest first. It is output only: an
+export does not carry attachments yet, so an exported event never holds it.
+
 ### Annotation
 
 | Key | Type | Meaning |
@@ -186,6 +190,32 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 | `url` | string or null | Permalink to the thing itself. |
 | `created_at` | instant | When the annotation was added to coroner. |
 | `updated_at` | instant | When the annotation was last changed in coroner. |
+
+`coroner annotation add`, `list`, `edit`, and `delete` also print `attachments`, an array
+of the annotation's [attachments](#attachment), oldest first. It is output only: an export
+does not carry attachments yet, so an exported annotation never holds it.
+
+### Attachment
+
+An attachment object appears only in command output, in an event's or annotation's
+`attachments` and in what `coroner attachment list` and `attachment delete` print. No
+export holds one.
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `id` | string or null | The attachment's ID; null only in a preview, see below. |
+| `event_id` | string or null | ID of the event the file is kept with; null when an annotation keeps it. |
+| `annotation_id` | string or null | ID of the annotation the file is kept with; null when an event keeps it. |
+| `filename` | string | The attached file's name, as display text; never a path. |
+| `mime` | string | Media type detected when the file was attached, such as `image/png`; may carry parameters, such as `text/plain; charset=utf-8`. |
+| `sha256` | string | SHA-256 of the file's content, as 64 lowercase hex digits. |
+| `size` | integer | Size of the file's content, in bytes. |
+| `path` | string or null | Path of the blob holding the content, beside the database; relative when the database path is, as with a relative `--db`. Null only in a preview. |
+| `created_at` | instant | When the file was attached in coroner. |
+
+Exactly one of `event_id` and `annotation_id` is set. `id` and `path` are `null` only in a
+preview of an attachment not yet added, such as
+`coroner event add --attach <file> --dry-run`.
 
 ## The JSONL stream
 

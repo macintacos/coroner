@@ -54,7 +54,11 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 			return err
 		}
 		if o.format == formatJSON {
-			return o.json(newEventJSON(e))
+			attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
+			if err != nil {
+				return err
+			}
+			return o.json(newEventJSON(e, newAttachmentJSONs(attachments, cfg.DBPath)))
 		}
 
 		annotations, err := s.EventAnnotations(ctx, e.ID)

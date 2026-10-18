@@ -25,6 +25,8 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"trailing newline and is never read otherwise.\n\n" +
 			"-e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or\n" +
 			"unique id prefix. The event must be in the timeline the annotation goes to.\n\n" +
+			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
+			"database, and prints its id, sha256, size and type.\n\n" +
 			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks\n" +
 			"the event from the timeline, and prints the command each entry equals. Under --json only\n" +
 			"--interactive opens it, and --no-input never does.",
@@ -32,6 +34,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +
 			"  $ coroner annotation add \"Step-down lands 5 s after the COLLSCAN burst\" -e 12 --kind comment\n" +
+			"  $ coroner annotation add \"Grafana panel at the step-down\" -e 12 --kind evidence --attach ./panel.png\n" +
 			"  $ coroner annotation add \"Root cause: undersized oplog\" --kind comment --dry-run --json\n" +
 			"  $ coroner annotation add --interactive -e 12",
 	}
@@ -51,6 +54,7 @@ func annotationAddDefinition() definition {
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		attachField(),
 		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
 	}}
 }
@@ -61,6 +65,7 @@ type annotationAdded struct {
 	annotation timeline.Annotation
 	timeline   timeline.Timeline
 	event      *timeline.Event
+	attach     attachResult
 	dryRun     bool
 }
 
@@ -73,13 +78,20 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if err != nil {
 		return annotationAdded{}, err
 	}
+	req, err := readAttachRequest(in, app.ReadFile)
+	if err != nil {
+		return annotationAdded{}, err
+	}
 	draft, err := draftAnnotation(in, app, cfg)
 	if err != nil {
 		return annotationAdded{}, err
 	}
-	dryRun, _ := in.boolean("dry-run")
+	req, err = req.staged(app.NewID, draft.annotation.CreatedAt)
+	if err != nil {
+		return annotationAdded{}, err
+	}
 
-	added := annotationAdded{dryRun: dryRun}
+	added := annotationAdded{dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
 		if err != nil {
@@ -95,11 +107,15 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 			a.EventID = &e.ID
 		}
 		added.annotation, added.timeline, added.event = a, t, e
-		if dryRun {
-			return nil
+		if !req.dryRun {
+			err = s.AddAnnotation(ctx, a, draft.newSourceID, req.toAdd...)
+			if err != nil {
+				return err
+			}
 		}
 
-		return s.AddAnnotation(ctx, a, draft.newSourceID)
+		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{AnnotationID: &a.ID}, cfg.DBPath)
+		return err
 	})
 
 	return added, err
@@ -108,10 +124,18 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 func (a annotationAdded) render(o output) error {
 	target := annotationTarget(a.timeline, a.event)
 	if a.dryRun {
-		return previewAnnotation(o, a.annotation, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+		err := previewAnnotation(o, a.annotation, a.attach.objects, fmt.Sprintf("Would add %s annotation to %s", a.annotation.Kind, target))
+		if err == nil {
+			err = a.attach.notify(o)
+		}
+
+		return err
 	}
 
-	err := printAnnotation(o, a.annotation)
+	err := printAnnotation(o, a.annotation, a.attach.objects)
+	if err == nil {
+		err = a.attach.notify(o)
+	}
 	if err != nil {
 		return err
 	}
