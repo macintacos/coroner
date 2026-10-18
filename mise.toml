@@ -32,6 +32,8 @@ golangci-lint        = "latest"
 sqlc                 = "latest"
 "aqua:pressly/goose" = "latest"
 
+git-cliff = "latest" # Changelog generator (config in cliff.toml)
+
 # (Re)register git hooks whenever tools are installed or updated.
 [hooks]
 postinstall = "hk install --mise"

@@ -113,6 +113,26 @@ hooks {
     }
   }
 
+  ["commit-msg"] {
+    steps = new Mapping<String, Step> {
+      // The util rejects the merge, revert and reapply subjects git writes, so those pass
+      // first. Keep the set in sync with cliff.toml's commit_parsers.
+      ["Git(CommitMsg)    [[builtins.check_conventional_commit]]"] = (
+        Builtins.check_conventional_commit
+      ) {
+        check {
+          command =
+            """
+            sed -n '/^[^#]/{p;q;}' "{{commit_msg_file}}" |
+              grep -qE '^(Merge (branch(es)?|remote-tracking branch(es)?|tags?|commits?) |(Revert|Reapply) ")' ||
+              hk util check-conventional-commit "{{commit_msg_file}}" ||
+              { echo 'Expected a Conventional Commit, such as: feat(cli): add timeline list' >&2; exit 1; }
+            """
+        }
+      }
+    }
+  }
+
   ["pre-push"] {
     steps = new Mapping<String, Step> {
       ["Go(Test)          [[mise run test]]"] = new Step {
