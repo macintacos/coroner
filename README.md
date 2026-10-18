@@ -1,5 +1,10 @@
 # coroner
 
+> [!WARNING]
+> coroner is changing quickly and is not stable, so use it at your own risk for now. I
+> reserve the right to make breaking changes in any release before v1.0.0. See
+> [Status](#status).
+
 coroner is a command-line tool for building root-cause investigation timelines. Name a
 timeline for a ticket, add timestamped events from logs, chat, and people, attach evidence
 and comments to those events, then view, query, and export the timeline to share what
