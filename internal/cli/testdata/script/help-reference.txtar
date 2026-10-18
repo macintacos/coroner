@@ -1,0 +1,1762 @@
+# help reference prints every command as one Markdown page on stdout, and opens no database.
+env CORONER_DB=$WORK/absent/coroner.db
+exec coroner help reference
+cmp stdout reference.md
+! stderr .
+! exists $WORK/absent
+
+-- reference.md --
+# coroner
+
+~~~text
+coroner records what happened during an investigation, in order: name a timeline,
+add timestamped events from logs, chat and people, then view and export it.
+~~~
+
+~~~text
+coroner <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+annotation   Attach evidence and comments to events and timelines
+attachment   List, delete and export files attached to events and annotations
+completion   Generate the autocompletion script for the specified shell
+event        Add, list, view, edit, delete and link events
+help         Help about any command or topic
+import       Import records from a JSONL export
+overlay      Save sets of timelines to read together
+source       List sources and fix their names
+status       Show the database and the timeline commands act on
+tag          List the tags events carry
+timeline     Create, list and switch between timelines
+version      Show coroner's version
+~~~
+
+Help topics:
+
+~~~text
+environment  Environment variables coroner reads
+exit-codes   Exit codes and the JSON error envelope
+formatting   Output formats and what scripts can rely on
+time         How coroner reads the times you type
+reference    Every command and flag on one Markdown page
+~~~
+
+Examples:
+
+~~~console
+  $ coroner version --json
+~~~
+
+Flags:
+
+~~~text
+      --version   Show coroner's version
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner annotation
+
+~~~text
+An annotation is evidence, raw material kept verbatim such as a log line, or a comment,
+attached to an event or to the whole timeline. It has no time of its own in the
+chronology.
+~~~
+
+~~~text
+coroner annotation [flags]
+coroner annotation <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+add          Attach evidence or a comment to an event or the timeline
+delete       Delete annotations
+edit         Change an annotation's body, kind, source or URL, or attach files
+list         List a timeline's annotations
+~~~
+
+Examples:
+
+~~~console
+  $ pbpaste | coroner annotation add - -e 12 --kind evidence --source mongod
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner annotation add
+
+~~~text
+Attach an annotation to the event -e names, or to the whole timeline without -e. Evidence
+is kept verbatim: pass - to read a log line or chat message from stdin, which loses one
+trailing newline and is never read otherwise.
+
+-e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or
+unique id prefix. The event must be in the timeline the annotation goes to.
+
+Each --attach copies a file, such as a screenshot, into the blob directory beside the
+database, and prints its id, sha256, size and type.
+
+On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks
+the event from the timeline, and prints the command each entry equals. Under --json only
+--interactive opens it, and --no-input never does.
+~~~
+
+~~~text
+coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log
+  $ coroner annotation add "Step-down lands 5 s after the COLLSCAN burst" -e 12 --kind comment
+  $ coroner annotation add "Grafana panel at the step-down" -e 12 --kind evidence --attach ./panel.png
+  $ coroner annotation add "Root cause: undersized oplog" --kind comment --dry-run --json
+  $ coroner annotation add --interactive -e 12
+~~~
+
+Flags:
+
+~~~text
+      --attach file        Copy this file in as an attachment; repeat for more
+      --author name        Who is adding it, as a name (default: config author, then USER)
+      --dry-run            Show the annotation as it would be added, and add nothing
+  -e, --event ref          Event to attach it to, as a ref: seq, timeline#seq or id (default: the timeline)
+      --interactive        Open a form to fill in, prefilled from the other flags (needs a terminal)
+      --kind kind          Annotation kind: {evidence | comment}
+      --source source      System, service or person it came from, as a source, created on first use
+  -t, --timeline name|id   Timeline name|id to act on
+      --url url            Permalink to the log line or message, as a url
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner annotation delete
+
+~~~text
+Delete annotations by full id or unique id prefix, in any timeline, with their attachments
+and the blobs no other attachment uses. Every id is checked before anything is deleted, so
+an id that matches nothing deletes none. --dry-run shows what would be deleted instead.
+~~~
+
+~~~text
+coroner annotation delete <id>... [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner annotation delete 0199a1b2-7c1e --dry-run
+  $ coroner annotation delete 0199a1b2-7c1e 0199a1b2-7d40 --json
+~~~
+
+Flags:
+
+~~~text
+      --dry-run   Show what would be deleted, and delete nothing
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner annotation edit
+
+~~~text
+Change an annotation's body, kind, source or URL. Its author, event and timeline never
+change. <id> is a full id or a unique id prefix, in any timeline. --body - reads the body
+from stdin, which loses one trailing newline. --attach adds a file to the annotation's
+attachments; 'coroner attachment delete' removes one.
+~~~
+
+~~~text
+coroner annotation edit <id> [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner annotation edit 0199a1b2-7c1e --kind comment
+  $ coroner annotation edit 0199a1b2-7c1e --attach ./stepdown-trace.pdf
+  $ coroner annotation edit 0199a1b2-7c1e --body - --dry-run --json < stepdown.log
+~~~
+
+Flags:
+
+~~~text
+      --attach file     Copy this file in as an attachment; repeat for more
+      --body body       New body, or - to read it from stdin
+      --dry-run         Show the edited annotation, and change nothing
+      --kind kind       New annotation kind: {evidence | comment}
+      --source source   New source, created on first use
+      --url url         New permalink, as a url
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner annotation list
+
+~~~text
+List a timeline's annotations: those on the whole timeline first, then those on events in
+the order the events happened, oldest first. -e lists one event's. Each row is the id,
+kind, author, event and the body's first line; piped, the fields are tab-separated.
+
+Scripts should treat kind as an open set: later versions may add kinds.
+~~~
+
+~~~text
+coroner annotation list [-e <ref>] [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner annotation list
+  $ coroner annotation list -e 12 --json
+~~~
+
+Flags:
+
+~~~text
+  -e, --event ref          Only the annotations on this event, as a ref: seq, timeline#seq or id
+  -t, --timeline name|id   Timeline name|id to act on
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner attachment
+
+~~~text
+An attachment is a file, such as a screenshot, kept with one event or annotation. Attach one
+with --attach on 'coroner event add', 'coroner event edit', 'coroner annotation add' or
+'coroner annotation edit'. Its bytes are stored once, as a blob named by their sha256, in
+the directory beside the database.
+~~~
+
+~~~text
+coroner attachment [flags]
+coroner attachment <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+delete       Delete attachments
+export       Write an attachment's file back out
+list         List a timeline's attachments
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event edit 12 --attach ./grafana-p99.png
+  $ coroner attachment list -e 12
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner attachment delete
+
+~~~text
+Delete attachments by full id or unique id prefix, in any timeline, and the blobs no
+attachment uses any more. Every id is checked before anything is deleted, so an id that
+matches nothing deletes none. --dry-run shows what would be deleted instead.
+~~~
+
+~~~text
+coroner attachment delete <id>... [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner attachment delete 0199a1b2-7c1e --dry-run
+  $ coroner attachment delete 0199a1b2-7c1e 0199a1b2-7d40 --json
+~~~
+
+Flags:
+
+~~~text
+      --dry-run   Show what would be deleted, and delete nothing
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner attachment export
+
+~~~text
+Write the file an attachment holds, byte for byte, to the file -o names, or to stdout with
+-o -, the default, which refuses a terminal. -o never overwrites a file unless --force is
+given. <id> is a full id or a unique id prefix, in any timeline.
+~~~
+
+~~~text
+coroner attachment export <id> [-o <file>] [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner attachment export 0199a1b2-7c1e -o grafana-p99.png
+  $ coroner attachment export 0199a1b2-7c1e > grafana-p99.png
+~~~
+
+Flags:
+
+~~~text
+      --force         Overwrite the file -o names when it exists
+  -o, --output file   Write the attachment to this file, or to stdout when it is - (default "-")
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner attachment list
+
+~~~text
+List the attachments on a timeline's events and annotations, oldest first. -e lists those
+on that event itself. Each row is the id, what it is attached to (an event's seq or an
+annotation's id), the filename, size and type; piped, the fields are tab-separated.
+~~~
+
+~~~text
+coroner attachment list [-e <ref>] [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner attachment list
+  $ coroner attachment list -e 12 --json
+~~~
+
+Flags:
+
+~~~text
+  -e, --event ref          Only the attachments on this event, as a ref: seq, timeline#seq or id
+  -t, --timeline name|id   Timeline name|id to act on
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner completion
+
+~~~text
+Generate the autocompletion script for coroner for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+~~~
+
+~~~text
+coroner completion [flags]
+coroner completion <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+bash         Generate the autocompletion script for bash
+fish         Generate the autocompletion script for fish
+powershell   Generate the autocompletion script for powershell
+zsh          Generate the autocompletion script for zsh
+~~~
+
+Examples:
+
+~~~console
+  $ coroner completion zsh > "${fpath[1]}/_coroner"
+  $ coroner completion fish > ~/.config/fish/completions/coroner.fish
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event
+
+~~~text
+An event is something that happened at a moment or over an interval, as a source reported
+it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else
+the one 'coroner timeline use' picked. view, edit, delete, link and unlink also take an
+event's id, from any timeline. list takes -t more than once to overlay several timelines.
+~~~
+
+~~~text
+coroner event [flags]
+coroner event <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+add          Add an event to the current timeline
+delete       Delete events and their annotations
+edit         Change an event's text, time, source, tags or other fields
+link         Link one event to another, in any timeline
+list         List a timeline's events, filtered
+unlink       Remove the link of a kind from one event to another
+view         Show an event, its annotations and its links
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event add "Primary stepped down" --at 2026-09-11T03:14:07Z --source mongod
+  $ coroner event list --tag election
+~~~
+
+Flags:
+
+~~~text
+  -t, --timeline name|id   Timeline name|id to act on
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event add
+
+~~~text
+Add an event to the current timeline, and print the time it resolved to.
+
+A time with no offset is read in --tz, then the config file's default_timezone, then the
+local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
+Run 'coroner help time' for the times you can type.
+
+Pass - to read the text from stdin, which is never read otherwise.
+
+Each --attach copies a file, such as a screenshot, into the blob directory beside the
+database, and prints its id, sha256, size and type. Every file is read before anything is
+added, so one that cannot be read adds nothing.
+
+On a terminal, with no text or with --interactive, a form asks for each flag, previews the
+time as you type it, and prints the command each entry equals. Under --json only --interactive
+opens it, and --no-input never does.
+~~~
+
+~~~text
+coroner event add {<text> | -} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event add "Primary stepped down: replSetStepDown" --at 2026-09-11T03:14:07.412Z \
+      --source mongod --tag election
+  $ coroner event add "Dashboard at peak" --at 14:02 --attach ./p99.png --attach ./cpu.png
+  $ pbpaste | coroner event add - --source slack --at "yesterday 23:02"
+  $ coroner event add "Deploy started" --at "around 2026-09-11 14:00" \
+      --ended "2026-09-11 14:20" --dry-run --json
+  $ coroner event add --interactive --source mongod
+~~~
+
+Flags:
+
+~~~text
+      --approximate     Mark the time as a guess, as a ~ or around prefix does
+      --at time         When it happened, as a time (default: now)
+      --attach file     Copy this file in as an attachment; repeat for more
+      --author name     Who is adding it, as a name (default: config author, then USER)
+      --dry-run         Show the event as it would be added, and add nothing
+      --ended time      When it ended, as a time, for an event that lasted
+      --interactive     Open a form to fill in, prefilled from the other flags (needs a terminal)
+      --source source   System, service or person it came from, as a source, created on first use
+      --tag tag         Keyword such as phase:detect, as a tag; repeat for more
+      --url url         Permalink to the log line or message, as a url
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event delete
+
+~~~text
+Delete events with their tags, annotations and attachments, and the blobs no other
+attachment uses, then print each as it was, so its fields can be added again. Every event
+is found before any is deleted: when one does not exist, nothing is deleted and delete
+exits 3. Exit 3 means one of the events does not exist: if a retry exits 3, the first
+attempt may already have deleted them. A deleted event's seq is never given to another
+event.
+
+An event is named by its seq in the current timeline (12), by a timeline and seq
+(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
+are for people; scripts pass full ids.
+~~~
+
+~~~text
+coroner event delete <event>... [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event delete 12 14 --dry-run
+  $ coroner event delete mongo-outage-2026-09-11#12 --json
+~~~
+
+Flags:
+
+~~~text
+      --dry-run   Show what would be deleted, and delete nothing
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event edit
+
+~~~text
+Change the fields of an event. --at and --ended are read as 'coroner event add' reads them,
+and the times they resolve to are printed on stderr. Tags are removed before they are
+added; adding a tag it has, or removing one it lacks, changes nothing. Pass none to
+--source, --url, --author or --ended to clear it. Pass --text - to read the text from
+stdin, which is never read otherwise. --attach adds a file to the event's attachments;
+'coroner attachment delete' removes one.
+
+An event is named by its seq in the current timeline (12), by a timeline and seq
+(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
+are for people; scripts pass full ids.
+~~~
+
+~~~text
+coroner event edit <event> [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run
+  $ coroner event edit 12 --attach ./grafana-p99.png
+  $ coroner event edit mongo-outage-2026-09-11#12 --at "2026-09-11T03:14:07.412Z" --source none
+~~~
+
+Flags:
+
+~~~text
+      --add-tag tag      Add a tag; repeat for more
+      --approximate      Mark the time as a guess; --approximate=false unmarks it
+      --at time          When it happened, as a time
+      --attach file      Copy this file in as an attachment; repeat for more
+      --author name      Who added it, as a name, or none
+      --dry-run          Show the edited event, and change nothing
+      --ended time       When it ended, as a time, or none
+      --remove-tag tag   Remove a tag; repeat for more
+      --source source    System, service or person it came from, as a source, or none
+      --text text        New text, or - to read it from stdin
+      --url url          Permalink to the log line or message, as a url, or none
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event link
+
+~~~text
+Link the first event to the second. --kind says how they relate: led_to when the first led
+to the second, same_as when both record one moment as two sources saw it, and copied_from
+when the first was copied from the second. The events may be in different timelines; an
+event cannot link to itself. From one event to another there is at most one link of each
+kind, so another exits 4; a link in the opposite direction is a separate link. --dry-run
+checks the link and adds nothing. 'coroner event view' shows an event's links, and exports
+carry every link between two exported events.
+
+An event is named by its seq in the current timeline (12), by a timeline and seq
+(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
+are for people; scripts pass full ids.
+~~~
+
+~~~text
+coroner event link <from-event> <to-event> --kind {led_to | same_as | copied_from} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event link mongo-failover#12 checkout-latency#3 --kind led_to
+  $ coroner event link 0199a1b2-7c1e 0199a1b2-7d40 --kind same_as --json
+~~~
+
+Flags:
+
+~~~text
+      --author name   Who is adding it, as a name (default: config author, then USER)
+      --dry-run       Show the link as it would be added, and add nothing
+      --kind kind     Link kind: {led_to | same_as | copied_from}
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event list
+
+~~~text
+List the current timeline's events in the order they happened: by occurred at, then seq.
+
+Repeat -t to overlay several timelines: their events merge into one list by occurred at,
+then timeline id, then seq, and each text row starts with its timeline's name. --json lists
+the selected timelines under timelines, and --format jsonl starts with a timeline line for
+each, so an event's timeline_id names one of them. --overlay <name> reads the timelines an
+overlay saved with 'coroner overlay create' holds, in place of -t.
+
+--since is inclusive and --until exclusive. Repeated --source flags match any of them,
+and repeated --tag flags must all match. Times with no offset are read, and times print,
+in --tz, then the config file's default_timezone, then the local zone. Piped, the
+fields are tab-separated.
+~~~
+
+~~~text
+coroner event list [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event list --tag election --source mongod
+  $ coroner event list --since "2026-09-11T03:00Z" --until "2026-09-11T04:00Z" --tag election --format jsonl
+  $ coroner event list --contains stepdown --order desc --limit 20
+  $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json
+  $ coroner event list --overlay checkout-incident --tag phase:detect
+~~~
+
+Flags:
+
+~~~text
+      --contains text   Keep events whose text contains this text, ignoring case
+      --limit number    Show at most this number of events (default: every one)
+      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
+      --overlay name    Read the timelines of the overlay called name, instead of -t
+      --since time      Keep events at or after this time
+      --source source   Keep events from this source; repeat to match any of several
+      --tag tag         Keep events with this tag; repeat to require all of them
+      --until time      Keep events before this time
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event unlink
+
+~~~text
+Remove the link of --kind from the first event to the second, and print it as it was. A link
+that does not exist exits 3. --dry-run shows the link it would remove instead.
+
+An event is named by its seq in the current timeline (12), by a timeline and seq
+(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
+are for people; scripts pass full ids.
+~~~
+
+~~~text
+coroner event unlink <from-event> <to-event> --kind {led_to | same_as | copied_from} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event unlink mongo-failover#12 checkout-latency#3 --kind led_to --dry-run
+  $ coroner event unlink mongo-failover#12 checkout-latency#3 --kind led_to --json
+~~~
+
+Flags:
+
+~~~text
+      --dry-run     Show the link that would be removed, and remove nothing
+      --kind kind   Link kind: {led_to | same_as | copied_from}
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner event view
+
+~~~text
+Show every field of an event, then its annotations, then its links to and from other events
+in any timeline. --json prints the event object with its links.
+
+An event is named by its seq in the current timeline (12), by a timeline and seq
+(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
+are for people; scripts pass full ids.
+~~~
+
+~~~text
+coroner event view <event> [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner event view 12
+  $ coroner event view mongo-outage-2026-09-11#12 --json
+~~~
+
+Global flags:
+
+~~~text
+      --config path        Config file path (env: CORONER_CONFIG)
+      --db path            Database file path (env: CORONER_DB)
+      --debug              Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help               Show help for a command
+      --json               Short for --format json
+      --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet              Print only essential output
+  -t, --timeline name|id   Timeline name|id to act on
+      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner import
+
+~~~text
+Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'
+writes it, into the database: its timelines, sources, events, annotations, attachments and
+links. Pass - to read the export from stdin, so concatenated exports import together. Every
+record is checked before anything is written, and the import is written in one transaction.
+
+Records match by id, and sources by name. A record stored unchanged is skipped, so importing a
+file twice changes nothing. A record stored with different content is a conflict: by default
+the import writes nothing and exits 4; --on-conflict skip keeps the stored record, and
+--on-conflict replace takes the import's. Replace never changes an attachment or link, or moves
+an event or annotation, so such a conflict exits 4 under replace too. Authors and created and
+updated times come from the export. An imported event keeps its seq unless its timeline has
+already reached that seq, when it gets the next one.
+
+An attachment is imported with its file from the attachments/ directory beside the export,
+which 'coroner timeline export -o <directory>/' writes, or when the database already has that
+file. Otherwise it is left out and listed.
+
+-t names a stored timeline that every record must belong to. Without -t, the export decides
+which timelines it imports into.
+~~~
+
+~~~text
+coroner import {<file> | -} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner import colleague-annotations.jsonl --dry-run --json
+  $ coroner import colleague-annotations.jsonl
+  $ cat a.jsonl b.jsonl | coroner import -
+  $ coroner import inc-4821.jsonl --on-conflict skip
+~~~
+
+Flags:
+
+~~~text
+      --dry-run              Show what the import would change, and write nothing
+      --on-conflict policy   What to do with a record stored with different content, as a policy: {fail|skip|replace} (default "fail")
+  -t, --timeline name|id     Timeline name|id to act on
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner overlay
+
+~~~text
+An overlay is several timelines read together as one chronology. Save one under a name with
+'coroner overlay create', then pass --overlay <name> to event list and timeline export instead
+of repeating -t. An overlay is kept in this database only: exports never carry it.
+~~~
+
+~~~text
+coroner overlay [flags]
+coroner overlay <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+create       Save a set of timelines under a name
+~~~
+
+Examples:
+
+~~~console
+  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency
+  $ coroner event list --overlay checkout-incident
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner overlay create
+
+~~~text
+Save the timelines -t names, in the order given, as an overlay called <name>: at most 64
+lowercase letters, digits, '.', '_' or '-', starting with a letter or digit. --overlay <name>
+then selects those timelines on event list and timeline export. Deleting a timeline removes it
+from its overlays. --dry-run shows the overlay and saves nothing.
+~~~
+
+~~~text
+coroner overlay create <name> -t <timeline>... [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency
+  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency --if-not-exists --json
+~~~
+
+Flags:
+
+~~~text
+      --dry-run            Show the overlay as it would be saved, and save nothing
+      --if-not-exists      Print the existing overlay instead of failing when the name is taken
+  -t, --timeline name|id   Timeline name|id the overlay reads; repeat for each, in order
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner source
+
+~~~text
+A source is the system, service or person an event or annotation came from. Sources
+belong to the whole database, not one timeline, and are created the first time an event
+or annotation names one.
+~~~
+
+~~~text
+coroner source [flags]
+coroner source <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+edit         Rename a source
+list         List sources with how often and when they were used
+~~~
+
+Examples:
+
+~~~console
+  $ coroner source list
+  $ coroner source edit mongo --name mongodb
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner source edit
+
+~~~text
+Rename a source everywhere it is used. Events and annotations refer to a source by id,
+so they all follow the new name. A name another source has is refused: merging sources
+is not supported yet.
+~~~
+
+~~~text
+coroner source edit <name> --name <new-name> [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner source edit mongo --name mongodb --dry-run
+  $ coroner source edit mongo --name db-2/mongod
+~~~
+
+Flags:
+
+~~~text
+      --dry-run         Show how many events and annotations the rename touches, and change nothing
+      --name new-name   Rename it to new-name
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner source list
+
+~~~text
+List every source in the database by name. Each row is the name, its events, its
+annotations, and when its first and last events happened, or '-' when no event names it.
+Piped, the fields are tab-separated.
+~~~
+
+~~~text
+coroner source list [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner source list
+  $ coroner source list --json
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner status
+
+~~~text
+Show the database coroner uses, its schema version, the timeline commands act on, and
+whether -t, CORONER_TIMELINE or 'coroner timeline use' selected it. status never
+migrates the database or creates it. Its JSON fields are experimental until 1.0.
+~~~
+
+~~~text
+coroner status [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner status
+  $ CORONER_TIMELINE=mongo-outage-2026-09-11 coroner status --json
+~~~
+
+Flags:
+
+~~~text
+  -t, --timeline name|id   Timeline name|id to act on
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner tag
+
+~~~text
+A tag is a free lowercase keyword on an event, such as phase:detect. Tags exist only on
+the events that carry them, across the whole database.
+~~~
+
+~~~text
+coroner tag [flags]
+coroner tag <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+list         List tags with how often and when they were used
+~~~
+
+Examples:
+
+~~~console
+  $ coroner tag list
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner tag list
+
+~~~text
+List every tag in the database by name. Each row is the tag, the events carrying it, and
+when the first and last of them happened. Piped, the fields are tab-separated.
+~~~
+
+~~~text
+coroner tag list [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner tag list
+  $ coroner tag list --json
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline
+
+~~~text
+A timeline is the named chronology of one investigation. Create one per incident or
+ticket, then use it so later commands know where events go.
+~~~
+
+~~~text
+coroner timeline [flags]
+coroner timeline <command> [flags]
+~~~
+
+Commands:
+
+~~~text
+create       Create a timeline
+delete       Delete a timeline and everything in it
+edit         Rename a timeline or change its title and refs
+export       Export a timeline as JSON, JSONL, Markdown, Mermaid, HTML or SVG
+list         List timelines, marking the current one
+use          Set the current timeline
+view         Show a timeline and its events
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline create mongo-outage-2026-09-11 --ref INC-4821
+  $ coroner timeline use mongo-outage-2026-09-11
+  $ coroner timeline list
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline create
+
+~~~text
+Create a timeline. Its name is how commands select it: at most 64 lowercase letters,
+digits, '.', '_' or '-', starting with a letter or digit. Put free text in --title.
+Creating a timeline does not make it current; run 'coroner timeline use' for that.
+
+On a terminal, with no name or with --interactive, a form asks for the name, title and
+refs, offers the existing timeline when the name is taken, and prints the command it equals.
+Under --json only --interactive opens it, and --no-input never does.
+~~~
+
+~~~text
+coroner timeline create <name> [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline create mongo-outage-2026-09-11 --title "Primary election storm" \
+      --ref INC-4821 --ref https://jira.example.com/browse/INC-4821
+  $ coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json
+  $ coroner timeline create --interactive
+~~~
+
+Flags:
+
+~~~text
+      --if-not-exists     Print the existing timeline instead of failing when the name is taken
+      --interactive       Open a form to fill in, prefilled from the other flags (needs a terminal)
+      --ref stringArray   Ticket key or URL the timeline belongs to; repeat for more
+      --title title       Free-text title
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline delete
+
+~~~text
+Delete a timeline with its events, tags, annotations, attachments and links, and the blobs
+no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what
+would be deleted instead. Deleting the current timeline leaves none current, and the
+overlays that read the timeline keep their other timelines.
+~~~
+
+~~~text
+coroner timeline delete <name|id> {--yes | --dry-run} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run
+  $ coroner timeline delete mongo-outage-2026-09-11 --yes
+~~~
+
+Flags:
+
+~~~text
+      --dry-run   Show what would be deleted, and delete nothing
+      --yes       Delete without asking
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline edit
+
+~~~text
+Change a timeline's name, title or refs. Its id never changes, so its events, and
+anything naming it by id, still resolve after a rename. Refs are removed before they are
+added; adding a ref it has, or removing one it lacks, changes nothing.
+
+On a terminal, without --name, --title, --add-ref or --remove-ref, or with --interactive, a
+form opens on the timeline, or on the current one when none is named, applies only what you
+change, and prints the command it equals. Under --json only --interactive opens it, and
+--no-input never does.
+~~~
+
+~~~text
+coroner timeline edit <name|id> [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822
+  $ coroner timeline edit mongo-failover --title "" --dry-run --json
+  $ coroner timeline edit mongo-failover --interactive
+~~~
+
+Flags:
+
+~~~text
+      --add-ref stringArray      Add a ticket key or URL; repeat for more
+      --dry-run                  Show the edited timeline, and change nothing
+      --interactive              Open a form to fill in, prefilled from the other flags (needs a terminal)
+      --name name                New name
+      --remove-ref stringArray   Remove a ref; repeat for more
+      --title title              New title; an empty one clears it
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline export
+
+~~~text
+Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its
+events, their annotations, the sources they name and their attachments. --format json
+writes one document, indented on a terminal; --format jsonl writes a header record, then
+one record per line; --format md writes a CommonMark outline for people, with times in
+UTC unless --tz names a zone.
+
+--format mermaid writes a Mermaid gantt diagram of the events, one section per source, in
+the same zone as md; --diagram appends that diagram to --format md.
+
+--format html writes one self-contained page that shows the events on a timeline in a
+browser, in the same zone as md, and needs -o.
+
+--format svg writes a static SVG picture of the events, one lane per source, in the same
+zone as md, for documents and slides that draw neither Mermaid nor HTML.
+
+The filter flags mean what they do on event list, and annotations on the events they
+leave out are left out too. --order picks which end --limit keeps events from; exported
+events are always in the order they happened.
+
+-o writes a file instead of stdout. For md and jsonl, -o may instead name a directory, one
+that exists or a path ending in /: coroner writes <timeline>.md or <timeline>.jsonl into
+it and each attachment's file under attachments/ beside it, named by its sha256, so the
+Markdown's images show wherever the directory is committed or unzipped. Otherwise md links
+attachments to the files beside the database, which only this machine has, and says so on
+stderr, and a jsonl export's attachment records carry metadata and sha256 only, so their
+files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of
+its images.
+
+Repeat -t to overlay several timelines in one json, jsonl, md, mermaid or html export: it
+holds every timeline, and their events merge by occurred at, then timeline id, then seq. md
+labels each event with its timeline, mermaid draws a section per timeline and source, as in
+mongo-failover/mongod, and html nests each timeline's sources under a row for the timeline,
+with a checkbox to filter by it. svg exports one timeline. An overlay written into a directory
+is named after its timelines joined by +, as in mongo-failover+checkout-latency.jsonl.
+--overlay <name> exports the timelines an overlay saved with 'coroner overlay create' holds,
+in place of -t. json and jsonl carry every link between two exported events.
+
+--group-by is experimental and may change before 1.0.
+~~~
+
+~~~text
+coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o {<file> | <directory>/}] [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline export -t mongo-outage --format json > rca.json
+  $ coroner timeline export --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
+  $ coroner timeline export --format md --tz America/New_York > rca.md
+  $ coroner timeline export --format mermaid --source mongod > timeline.mmd
+  $ coroner timeline export --format md --diagram > rca.md
+  $ coroner timeline export -t inc-4821 --format md -o rca/
+  $ coroner timeline export --format html -o inc-4821.html
+  $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg
+  $ coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl
+  $ coroner timeline export --overlay checkout-incident --format md -o rca/
+~~~
+
+Flags:
+
+~~~text
+      --contains text      Keep events whose text contains this text, ignoring case
+      --diagram            Append a Mermaid gantt diagram of the events (--format md only)
+      --group-by field     Section Markdown events by a field: {source|tag} (experimental)
+      --include-raw        Add each event's time as it was given (--format md only)
+      --limit number       Export at most this number of events (default: every one)
+      --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
+  -o, --output path        Write the export to this path, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
+      --overlay name       Read the timelines of the overlay called name, instead of -t
+      --since time         Keep events at or after this time
+      --source source      Keep events from this source; repeat to match any of several
+      --tag tag            Keep events with this tag; repeat to require all of them
+  -t, --timeline name|id   Timeline name|id to export; repeat to overlay several (json, jsonl, md, mermaid and html only)
+      --until time         Keep events before this time
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline list
+
+~~~text
+List every timeline, oldest first. A '*' marks the current timeline, the one
+'coroner timeline use' selected.
+
+On a terminal it opens a picker that also shows each timeline's refs, event count and
+last event: / filters, enter makes the timeline under the cursor current, and q quits.
+--format text, --json, --no-input, CORONER_NO_INPUT or piping the output prints the list
+instead: a marker, the name and the title on each row, tab-separated when piped.
+~~~
+
+~~~text
+coroner timeline list [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline list
+  $ coroner timeline list --json
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline use
+
+~~~text
+Make a timeline current, so commands that act on a timeline use it when neither -t nor
+CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves
+none current.
+~~~
+
+~~~text
+coroner timeline use {<name|id> | --clear} [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline use mongo-outage-2026-09-11
+  $ coroner timeline use --clear
+~~~
+
+Flags:
+
+~~~text
+      --clear   Leave no timeline current
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner timeline view
+
+~~~text
+Show a timeline and its events in the order they happened. Without a name, id or -t,
+show the timeline CORONER_TIMELINE or 'coroner timeline use' selects.
+
+On a terminal it opens an interactive viewer, where ? lists the keys and q quits.
+Expanding an event shows its attachments: images inline in kitty, Ghostty and iTerm2 3.7 or
+later, outside a multiplexer such as tmux and with color on, and elsewhere a placeholder
+naming each file, which 'coroner attachment export' copies out.
+--format text, piping the output, --no-input or CORONER_NO_INPUT prints plain text instead:
+a summary, then the events, each with the gap since the event before it. --source, --tag and
+--contains keep the events 'coroner event list' keeps with the same flags; --json prints the
+timeline object alone.
+
+Repeat -t to view several timelines as one chronology: their events merge by occurred at, then
+timeline id, then seq. The viewer names each event's timeline in a column tinted with that
+timeline's color, and plain text prints each timeline's summary and starts each event's row
+with its timeline's name. --json prints one timeline object, so it takes one timeline.
+~~~
+
+~~~text
+coroner timeline view [<name|id>] [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner timeline view mongo-outage-2026-09-11
+  $ coroner timeline view --tag election --source mongod
+  $ coroner timeline view -t mongo-failover -t checkout-latency
+  $ coroner timeline view --json
+~~~
+
+Flags:
+
+~~~text
+      --contains text      Keep events whose text contains this text, ignoring case
+      --source source      Keep events from this source; repeat to match any of several
+      --tag tag            Keep events with this tag; repeat to require all of them
+  -t, --timeline name|id   Timeline name|id to view; repeat to view several as one chronology
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~
+
+## coroner version
+
+~~~text
+Show coroner's version
+~~~
+
+~~~text
+coroner version [flags]
+~~~
+
+Examples:
+
+~~~console
+  $ coroner version
+  $ coroner version --json
+~~~
+
+Global flags:
+
+~~~text
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+~~~

@@ -193,6 +193,7 @@ var _ = Describe("checkInvocation", func() {
 		Entry("a command's own shorthand flag", "coroner status -t mongo"),
 		Entry("--help without the required positional", "coroner timeline create --help"),
 		Entry("help naming a help topic", "coroner help time"),
+		Entry("help naming the reference topic", "coroner help reference"),
 		Entry("help naming a command", "coroner help timeline create"),
 		Entry("help, which ignores --json", "coroner help version --json"),
 		Entry("root's own flag", "coroner --version"),
@@ -488,7 +489,7 @@ func helpTarget(root *cobra.Command, positionals []string) error {
 
 	isTopic := func(topic cli.HelpTopic) bool { return topic.Name == positionals[0] }
 	_, _, err := root.Find(positionals)
-	if err != nil && !slices.ContainsFunc(cli.HelpTopics(), isTopic) {
+	if err != nil && !slices.ContainsFunc(cli.CommandTopics(), isTopic) {
 		return fmt.Errorf("unknown help topic or command %q", positionals[0])
 	}
 

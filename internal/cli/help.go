@@ -7,10 +7,10 @@ import (
 	"text/template"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
-// helpTemplate renders help for any command. Root's persistent flags are its GLOBAL FLAGS;
-// a subcommand's are the ones it inherits.
+// helpTemplate renders help for any command.
 const helpTemplate = `{{trimRight (or .Long .Short)}}
 
 USAGE
@@ -45,8 +45,7 @@ HELP TOPICS
 EXAMPLES
 {{.Example}}
 {{- end}}
-{{- $flags := .LocalFlags}}{{$global := .InheritedFlags}}
-{{- if not .HasParent}}{{$flags = .LocalNonPersistentFlags}}{{$global = .PersistentFlags}}{{end}}
+{{- $flags := ownFlags .}}{{$global := inheritedFlags .}}
 {{- if $flags.HasAvailableFlags}}
 
 FLAGS
@@ -64,22 +63,50 @@ LEARN MORE
 `
 
 func newHelpTemplate(topics []HelpTopic) *template.Template {
+	return template.Must(template.New("help").Funcs(helpFuncs(topics)).Parse(helpTemplate))
+}
+
+// helpFuncs are the functions help's and the reference's templates call; topics pad root's name
+// column and fill HELP TOPICS.
+func helpFuncs(topics []HelpTopic) template.FuncMap {
 	// Local funcs: cobra's own register through the package-global cobra.AddTemplateFunc.
-	return template.Must(template.New("help").Funcs(template.FuncMap{
+	return template.FuncMap{
 		"helpTopics": func() []HelpTopic {
 			return topics
 		},
-		"listed": listed,
+		"inheritedFlags": inheritedFlags,
+		"listed":         listed,
 		"namePadding": func(cmd *cobra.Command) int {
 			return namePadding(cmd, topics)
 		},
+		"ownFlags": ownFlags,
 		"rpad": func(s string, width int) string {
 			return fmt.Sprintf("%-*s", width, s)
 		},
 		"trimRight": func(s string) string {
 			return strings.TrimRight(s, " \n")
 		},
-	}).Parse(helpTemplate))
+	}
+}
+
+// ownFlags are the flags cmd's help lists under FLAGS, which on root leave out its persistent
+// flags.
+func ownFlags(cmd *cobra.Command) *pflag.FlagSet {
+	if cmd.HasParent() {
+		return cmd.LocalFlags()
+	}
+
+	return cmd.LocalNonPersistentFlags()
+}
+
+// inheritedFlags are the flags cmd's help lists under GLOBAL FLAGS: root's persistent flags, or
+// those a subcommand inherits.
+func inheritedFlags(cmd *cobra.Command) *pflag.FlagSet {
+	if cmd.HasParent() {
+		return cmd.InheritedFlags()
+	}
+
+	return cmd.PersistentFlags()
 }
 
 // listed reports whether help lists cmd.
@@ -112,7 +139,7 @@ func addHelpCommand(root *cobra.Command, app App, topics []HelpTopic) {
 		Use:     "help [<command> | <topic>]",
 		Short:   "Help about any command or topic",
 		GroupID: additionalCommands,
-		Example: "  $ coroner help\n  $ coroner help version\n  $ coroner help time",
+		Example: "  $ coroner help\n  $ coroner help version\n  $ coroner help time\n  $ coroner help reference",
 		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			var completions []cobra.Completion
 			for _, candidate := range helpNames(root, args, topics) {
@@ -125,6 +152,10 @@ func addHelpCommand(root *cobra.Command, app App, topics []HelpTopic) {
 		},
 		RunE: typedHook(func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
+				if args[0] == referenceTopic {
+					return writeReference(app.Out, root, topics)
+				}
+
 				if topic, ok := topicNamed(topics, args[0]); ok {
 					_, err := io.WriteString(app.Out, topic.Body)
 					return err
