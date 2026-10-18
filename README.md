@@ -14,6 +14,20 @@ go install github.com/macintacos/coroner@latest
 [Install coroner](docs/how-to/install.md) covers Homebrew, release archives, shell
 completions, uninstalling, and why `go install` is the macOS method for now.
 
+## Use with AI agents
+
+coroner ships an Agent Skill that teaches coding agents, such as Claude Code, to record
+timelines with coroner. In Claude Code:
+
+```text
+/plugin marketplace add macintacos/coroner
+/plugin install coroner@coroner
+```
+
+[Use coroner with AI agents](docs/how-to/use-with-ai-agents.md) covers copying the skill
+into any agent's skills directory instead, removing it, and checking it matches your
+coroner.
+
 ## Development
 
 ```sh

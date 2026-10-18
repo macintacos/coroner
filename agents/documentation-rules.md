@@ -35,10 +35,10 @@ digraph coroner_docs_router {
     "Edit docs/reference/configuration.md" [shape=box];
     "Regenerate CHANGELOG.md (committed by the first release)" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
-    "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
+    "Edit skills/coroner/ (SKILL.md and references/)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
-    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
+    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, installing the agent skill, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks, hk hooks and what CI runs, the routing digraph, where things live, the repository rules"];
     "Which doc does the change affect?" -> "Edit agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
@@ -56,15 +56,15 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/reference/configuration.md" [label="a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule"];
     "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (committed by the first release)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
     "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site"];
-    "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
+    "Which doc does the change affect?" -> "Edit skills/coroner/ (SKILL.md and references/)" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed"];
 }
 ```
 
 ## The doc landscape
 
 - **[`README.md`](../README.md)** (human-facing) — the front door: what coroner is,
-  install, the development tasks and CI, project status, and the license, which points at
-  `LICENSE`.
+  install, installing the agent skill, the development tasks and CI, project status, and
+  the license, which points at `LICENSE`.
 - **[`AGENTS.md`](../AGENTS.md)** (agent-facing) — the router: what coroner is, the `mise`
   tasks, `hk` hooks and what CI runs, the routing digraph, where things live, and the
   repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through
@@ -153,8 +153,22 @@ digraph coroner_docs_router {
   input and Output formats pages, so a topic's title or structure changes a published
   reference page. Specs pin the `exit-codes` table and the `environment` variables to the
   code.
-- **`skills/coroner/SKILL.md`** (not in the repo yet — EXC-1277) — the agent skill that
-  ships with coroner, with its references.
+- **[`skills/coroner/SKILL.md`](../skills/coroner/SKILL.md)** (coding agents that drive
+  coroner) — the Agent Skill: the rules for running coroner from an agent and a recipe per
+  investigation step, with `references/jsonl-events.md` for `event add --from-file`
+  records and `references/log-sources.md` for reading log and Slack times. It teaches only
+  stable surfaces and points to `coroner help reference` for the rest.
+  `coroner agent skill` prints the copy embedded in the binary, and the examples test
+  fails when a `coroner` line in its shell code blocks, or its references', stops parsing.
+  Nothing checks the JSON keys, exit codes or experimental list it names, nor the facts it
+  shares with [adding log lines](../docs/how-to/add-log-lines.md),
+  [capturing Slack messages](../docs/how-to/capture-slack-messages.md) and
+  [the export format's Event](../docs/reference/export-format.md#event), so a change to
+  any of them updates the skill by hand.
+  [The how-to](../docs/how-to/use-with-ai-agents.md) documents installing it.
+  [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json) offers it as a
+  plugin; `README.md` and the how-to repeat its plugin and marketplace names, so a rename
+  there updates both.
 
 ## Audience, stated at the top of every new doc
 

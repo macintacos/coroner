@@ -225,6 +225,9 @@ Rejected synonyms: `show`, `get`, `describe`, and `inspect` (use `view`); `rm` a
 `remove` (use `delete`); `update` (use `edit`). S-3 forbids `show` next to `view`, so
 "show a timeline" is `timeline view`.
 
+A command that prints a document built into the binary takes the document's name instead
+of a verb: `help <topic>`, `completion <shell>` and `agent skill`.
+
 Help text follows
 [gh's command-line syntax](https://github.com/cli/cli/blob/trunk/docs/command-line-syntax.md):
 `<placeholder>`, `[optional]`, `{a | b}` for a required choice, `...` for a repeatable

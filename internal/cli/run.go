@@ -27,7 +27,9 @@ type App struct {
 	// Color and layout are decided per stream.
 	OutIsTTY, ErrIsTTY bool
 	// Version is the build's module version, as debug.ReadBuildInfo reports it.
-	Version   string
+	Version string
+	// Skill is skills.Coroner, the agent skill's SKILL.md, which `agent skill` prints.
+	Skill     string
 	LookupEnv func(key string) (string, bool)
 	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
 	ReadFile func(name string) ([]byte, error)

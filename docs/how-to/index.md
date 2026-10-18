@@ -20,3 +20,5 @@ see the [CLI reference](../reference/cli/coroner.md).
 - [Query a timeline with jq](query-with-jq.md): answer questions about a JSONL export.
 - [Show a timeline's events on a Grafana dashboard](grafana-annotations.md): send each
   event to Grafana as an annotation.
+- [Use coroner with AI agents](use-with-ai-agents.md): install the agent skill that
+  teaches a coding agent to record timelines, and give it the whole CLI in one page.

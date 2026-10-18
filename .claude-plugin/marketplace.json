@@ -1,0 +1,20 @@
+{
+  "name": "coroner",
+  "description": "The coroner CLI's Agent Skill, published from its own repository.",
+  "owner": {
+    "name": "macintacos",
+    "url": "https://github.com/macintacos"
+  },
+  "plugins": [
+    {
+      "name": "coroner",
+      "source": "./skills",
+      "strict": false,
+      "skills": ["./coroner"],
+      "description": "Agent Skill for building root-cause investigation timelines with the coroner CLI.",
+      "homepage": "https://github.com/macintacos/coroner/blob/main/docs/how-to/use-with-ai-agents.md",
+      "repository": "https://github.com/macintacos/coroner",
+      "license": "MIT"
+    }
+  ]
+}

@@ -39,6 +39,7 @@ coroner <command> [flags]
 
 ### SEE ALSO
 
+* [coroner agent](coroner_agent.md)	 - Print what coding agents need to drive coroner
 * [coroner annotation](coroner_annotation.md)	 - Attach evidence and comments to events and timelines
 * [coroner attachment](coroner_attachment.md)	 - List, delete and export files attached to events and annotations
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
