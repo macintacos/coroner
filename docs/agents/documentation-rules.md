@@ -28,6 +28,7 @@ digraph coroner_docs_router {
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
+    "Edit docs/reference/export-format.md" [shape=box];
     "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
@@ -44,6 +45,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
+    "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the encoding rules or the evolution rules"];
     "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
     "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables"];
     "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
@@ -83,6 +85,11 @@ digraph coroner_docs_router {
   page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never
   hand-edited.
+- **[`docs/reference/export-format.md`](../reference/export-format.md)** (anyone reading
+  or writing coroner's JSON: people with jq, scripts, agents, importers) — the export
+  envelope, every key of the canonical objects, the encoding rules and the evolution
+  rules. Its machine-readable twin, `schema/export-v1.schema.json`, is generated from the
+  `internal/export` types by `go run ./internal/tools/schemagen` and never hand-edited.
 - **`CHANGELOG.md`** (not in the repo yet — EXC-1304; human-facing) — every release's
   changes grouped by commit type, **Breaking** first, written at release by
   `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../../cliff.toml). Never
