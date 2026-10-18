@@ -144,6 +144,211 @@
     return nodes;
   };
 
+  const foldASCII = (text) => text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+
+  // keeps selects what eventWhere in internal/store/event_filter.go does; keep them in step:
+  // any checked source, every checked tag, and text containing q folding ASCII only
+  // (SQLite's lower()).
+  const keeps = (event, filter) => {
+    if (filter.sources.size && !filter.sources.has(event.source)) return false;
+    if (![...filter.tags].every((tag) => event.tags.includes(tag))) return false;
+    if (filter.q.trim() && !foldASCII(event.text).includes(foldASCII(filter.q))) return false;
+    const at = instant(event.occurred_at).valueOf();
+    return (filter.since === null || at >= filter.since) && (filter.until === null || at < filter.until);
+  };
+
+  // The time inputs hold wall-clock times in the export zone, as the axis shows. The second
+  // lookup corrects a first guess that lands across a transition; a wall time the zone skips
+  // or repeats resolves to one of its two offsets, so showBounds rewrites the input. No time,
+  // or a year outside the 0000-9999 store.EventFilter accepts, is null.
+  const wallToInstant = (value) => {
+    const wall = Date.parse(value + "Z");
+    const ms = wall - spanAt(wall - spanAt(wall).offset * 1000).offset * 1000;
+    const year = new Date(ms).getUTCFullYear();
+    return year >= 0 && year <= 9999 ? ms : null;
+  };
+
+  const instantToWall = (ms) => inZone(ms).format("YYYY-MM-DDTHH:mm:ss");
+
+  // A bound is compared in whole milliseconds, which is exact against event list only when it
+  // has no digits past the millisecond, so any past it must be zeros.
+  const utcToMillisecond = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3}0{0,6})?Z$/;
+
+  const ordered = (filter) =>
+    filter.since !== null && filter.until !== null && filter.until <= filter.since ? { ...filter, until: null } : filter;
+
+  // readHash returns the filter and selection a location hash names, dropping any value this
+  // export cannot show: a source, tag or event it lacks, an instant that is not a real UTC
+  // time to the millisecond, or an until not after since.
+  const readHash = (hash, known) => {
+    const params = new URLSearchParams(hash.slice(1));
+    const bound = (key) => {
+      const text = params.get(key);
+      if (!utcToMillisecond.test(text)) return null;
+      const ms = instant(text).valueOf();
+      // Date turns 13-01 into NaN and rolls 02-30 over to 03-02.
+      return Number.isFinite(ms) && new Date(ms).toISOString().startsWith(text.slice(0, 19)) ? ms : null;
+    };
+    const filter = ordered({
+      sources: new Set(params.getAll("source").filter((source) => known.sources.includes(source))),
+      tags: new Set(params.getAll("tag").filter((tag) => known.tags.includes(tag))),
+      q: params.get("q") ?? "",
+      since: bound("since"),
+      until: bound("until"),
+    });
+    const selected = known.events.has(params.get("sel")) ? params.get("sel") : null;
+    return { filter, selected };
+  };
+
+  const hashOf = (filter, selected) => {
+    const params = new URLSearchParams();
+    for (const source of filter.sources) params.append("source", source);
+    for (const tag of filter.tags) params.append("tag", tag);
+    if (filter.q.trim()) params.set("q", filter.q);
+    for (const key of ["since", "until"]) {
+      if (filter[key] !== null) params.set(key, new Date(filter[key]).toISOString().replace(".000Z", "Z"));
+    }
+    if (selected !== null) params.set("sel", selected);
+    // Colons are legal in a fragment; keeping them leaves instants and phase:detect tags readable.
+    const text = params.toString().replaceAll("%3A", ":");
+    return text ? "#" + text : "";
+  };
+
+  const checkboxes = (fieldset, names, checked) => {
+    fieldset.hidden = !names.length;
+    for (const name of names) {
+      const box = element("input");
+      box.type = "checkbox";
+      box.value = name;
+      box.checked = checked.has(name);
+      const label = element("label");
+      label.append(box, name);
+      fieldset.append(label);
+    }
+  };
+
+  const checkedIn = (fieldset) => new Set([...fieldset.querySelectorAll("input:checked")].map((box) => box.value));
+
+  const svgElement = (tag, attributes) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+    return node;
+  };
+
+  const transparent = (color) => color === "transparent" || /^rgba\(.*,\s*0\)$/.test(color);
+
+  // paintBox draws background and borders; it uses the top-left radius for every corner and
+  // drops box shadows.
+  const paintBox = (parent, style, x, y, width, height) => {
+    const sides = ["Top", "Right", "Bottom", "Left"].map((side) => ({
+      width: parseFloat(style["border" + side + "Width"]),
+      color: style["border" + side + "Color"],
+    }));
+    const uniform = sides.every((side) => side.width === sides[0].width && side.color === sides[0].color);
+    const stroke = uniform ? sides[0].width : 0;
+    const fill = transparent(style.backgroundColor) ? "none" : style.backgroundColor;
+    if (fill !== "none" || stroke) {
+      parent.append(svgElement("rect", {
+        x: x + stroke / 2, y: y + stroke / 2,
+        width: Math.max(width - stroke, 0), height: Math.max(height - stroke, 0),
+        rx: Math.min(parseFloat(style.borderTopLeftRadius) || 0, width / 2, height / 2),
+        fill, stroke: stroke ? sides[0].color : "none", "stroke-width": stroke,
+      }));
+    }
+    if (uniform) return;
+    const [top, right, bottom, left] = sides;
+    const edges = [
+      [top, x, y, width, top.width], [right, x + width - right.width, y, right.width, height],
+      [bottom, x, y + height - bottom.width, width, bottom.width], [left, x, y, left.width, height],
+    ];
+    for (const [side, edgeX, edgeY, edgeWidth, edgeHeight] of edges) {
+      if (side.width) parent.append(svgElement("rect", { x: edgeX, y: edgeY, width: edgeWidth, height: edgeHeight, fill: side.color }));
+    }
+  };
+
+  // redraw copies node's visible boxes and text into parent, with origin the page point drawn
+  // at the SVG's top left. A text node is drawn as one line at its first line box; children
+  // of an element that hides its overflow are clipped to it.
+  const redraw = (node, parent, origin, defs) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // XML 1.0 has no C0 control but tab, LF and CR; one makes the SVG image fail to decode.
+      const text = node.textContent
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "\uFFFD")
+        .replace(/\s+/g, " ")
+        .trim();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const line = range.getClientRects()[0];
+      const style = getComputedStyle(node.parentElement);
+      if (!text || !line || style.visibility === "hidden") return;
+      const label = svgElement("text", {
+        x: line.left - origin.x, y: line.top + line.height / 2 - origin.y, "dominant-baseline": "central",
+        fill: style.color, "font-family": style.fontFamily, "font-size": style.fontSize, "font-weight": style.fontWeight,
+      });
+      label.textContent = text;
+      parent.append(label);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const style = getComputedStyle(node);
+    if (style.display === "none") return;
+    const box = node.getBoundingClientRect();
+    const x = box.left - origin.x;
+    const y = box.top - origin.y;
+    // A hidden element's children can still be visible.
+    if (style.visibility !== "hidden") paintBox(parent, style, x, y, box.width, box.height);
+    let group = parent;
+    if (style.overflowX !== "visible" || style.overflowY !== "visible") {
+      const id = "clip" + defs.childElementCount;
+      const clip = svgElement("clipPath", { id });
+      clip.append(svgElement("rect", { x, y, width: box.width, height: box.height }));
+      defs.append(clip);
+      group = svgElement("g", { "clip-path": "url(#" + id + ")" });
+      parent.append(group);
+    }
+    for (const child of node.childNodes) redraw(child, group, origin, defs);
+  };
+
+  // pageSVG draws the page heading above the timeline as they are shown, at the screen's
+  // pixel density. A foreignObject copy of the page rasterised fully transparent in Chromium,
+  // Firefox and WebKit, so boxes and text are redrawn as SVG from the laid-out page.
+  const pageSVG = (headingElement, timelineElement) => {
+    const pad = 16;
+    const headingBox = headingElement.getBoundingClientRect();
+    const timelineBox = timelineElement.getBoundingClientRect();
+    const width = Math.ceil(timelineBox.width + 2 * pad);
+    const height = Math.ceil(headingBox.height + timelineBox.height + 3 * pad);
+    const svg = svgElement("svg", {
+      width: width * devicePixelRatio, height: height * devicePixelRatio, viewBox: "0 0 " + width + " " + height,
+    });
+    const defs = svgElement("defs", {});
+    svg.append(defs, svgElement("rect", { width, height, fill: getComputedStyle(document.body).backgroundColor }));
+    redraw(headingElement, svg, { x: headingBox.left - pad, y: headingBox.top - pad }, defs);
+    redraw(timelineElement, svg, { x: timelineBox.left - pad, y: timelineBox.top - headingBox.height - 2 * pad }, defs);
+    return svg;
+  };
+
+  const png = async (svg) => {
+    const image = new Image();
+    image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+    await image.decode();
+    const canvas = element("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext("2d").drawImage(image, 0, 0);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  };
+
+  const download = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = element("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    // The download starts after click returns, and Safari fails one whose URL is already revoked.
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const exported = inZone(instant(data.exported_at));
   const shown = data.timelines[0];
   const heading = shown.title.trim() ? shown.title + " (" + shown.name + ")" : shown.name;
@@ -186,7 +391,96 @@
     options.start = first - span * 0.05;
     options.end = last + span * 0.3;
   }
-  const timeline = new vis.Timeline(document.getElementById("timeline"), items, groups, options);
-  timeline.on("select", ({ items: selected }) => show(eventsById.get(selected[0]) ?? null));
-  show(null);
+  const allTimesWindow = { start: options.start, end: options.end };
+
+  const namedSources = sources.filter((source) => source !== null);
+  const tags = [...new Set(data.events.flatMap((event) => event.tags))].sort();
+  const view = readHash(location.hash, { sources: namedSources, tags, events: eventsById });
+
+  const sourceBoxes = document.getElementById("sources");
+  const tagBoxes = document.getElementById("tags");
+  const search = document.getElementById("q");
+  const since = document.getElementById("since");
+  const until = document.getElementById("until");
+  checkboxes(sourceBoxes, namedSources, view.filter.sources);
+  checkboxes(tagBoxes, tags, view.filter.tags);
+  search.value = view.filter.q;
+  const showBounds = () => {
+    since.value = view.filter.since === null ? "" : instantToWall(view.filter.since);
+    until.value = view.filter.until === null ? "" : instantToWall(view.filter.until);
+  };
+  showBounds();
+
+  // A shared link opens on the time range it filters to.
+  const start = view.filter.since ?? options.start;
+  const end = view.filter.until ?? options.end;
+  if (start < end) Object.assign(options, { start, end });
+
+  // Filtering views of the items and groups, rather than replacing them, keeps the zoom.
+  const visibleItems = new vis.DataView(new vis.DataSet(items), {
+    filter: (item) => keeps(eventsById.get(item.id), view.filter),
+  });
+  const visibleGroups = new vis.DataView(new vis.DataSet(groups), {
+    filter: (group) => !view.filter.sources.size || view.filter.sources.has(sources[group.id]),
+  });
+  const timeline = new vis.Timeline(document.getElementById("timeline"), visibleItems, visibleGroups, options);
+
+  // WebKit throws after 100 replaceState calls in 10 seconds, which typing a search reaches.
+  let hashWriteTimer;
+  const writeHash = () => {
+    clearTimeout(hashWriteTimer);
+    hashWriteTimer = setTimeout(
+      () => history.replaceState(null, "", location.href.split("#")[0] + hashOf(view.filter, view.selected)),
+      250,
+    );
+  };
+  const select = (id) => {
+    view.selected = visibleItems.get(id) ? id : null;
+    show(eventsById.get(view.selected) ?? null);
+  };
+  const update = (changes) => {
+    view.filter = ordered({ ...view.filter, ...changes });
+    showBounds();
+    visibleItems.refresh();
+    visibleGroups.refresh();
+    if (view.selected !== null && !visibleItems.get(view.selected)) select(null);
+    writeHash();
+  };
+
+  timeline.on("select", ({ items: picked }) => {
+    select(picked[0] ?? null);
+    writeHash();
+  });
+  // Panning or zooming is the time brush: the window becomes since and until, to the second.
+  // Like event list --since, it hides a range that began before the window and clears a
+  // selection outside it.
+  timeline.on("rangechanged", ({ start: from, end: to, byUser }) => {
+    if (byUser) update({ since: Math.floor(+from / 1000) * 1000, until: Math.ceil(+to / 1000) * 1000 });
+  });
+
+  document.getElementById("filters").addEventListener("submit", (event) => event.preventDefault());
+  sourceBoxes.addEventListener("change", () => update({ sources: checkedIn(sourceBoxes) }));
+  tagBoxes.addEventListener("change", () => update({ tags: checkedIn(tagBoxes) }));
+  search.addEventListener("input", () => update({ q: search.value }));
+  const moveBound = (changes) => {
+    update(changes);
+    const shownWindow = timeline.getWindow();
+    const from = view.filter.since ?? +shownWindow.start;
+    const to = view.filter.until ?? +shownWindow.end;
+    if (from < to) timeline.setWindow(from, to);
+  };
+  since.addEventListener("change", () => moveBound({ since: wallToInstant(since.value) }));
+  until.addEventListener("change", () => moveBound({ until: wallToInstant(until.value) }));
+  document.getElementById("all-times").addEventListener("click", () => {
+    if (allTimesWindow.start !== undefined) timeline.setWindow(allTimesWindow.start, allTimesWindow.end);
+    update({ since: null, until: null });
+  });
+  document.getElementById("export-png").addEventListener("click", async () => {
+    const svg = pageSVG(document.getElementById("heading"), document.getElementById("timeline"));
+    download(await png(svg), shown.name + ".png");
+  });
+
+  if (view.selected !== null) timeline.setSelection(visibleItems.get(view.selected) ? [view.selected] : []);
+  select(view.selected);
+  writeHash();
 }

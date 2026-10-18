@@ -62,6 +62,76 @@ header p {
   overflow-wrap: anywhere;
 }
 
+#filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1.5rem;
+  margin: 1.25rem 0 0;
+}
+
+#filters fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* A legend is not a flex item; floating it puts it on its own row inside the fieldset's flex box. */
+#filters legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  color: var(--muted);
+}
+
+#filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--ink);
+}
+
+#filters .search,
+#filters .range label {
+  display: flex;
+  flex-direction: column;
+  color: var(--muted);
+}
+
+#filters input:not([type="checkbox"]),
+#filters button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.125rem 0.375rem;
+}
+
+#filters button {
+  background: var(--well);
+  cursor: pointer;
+}
+
+#filters .range {
+  align-items: flex-end;
+}
+
+#export-png {
+  margin-left: auto;
+}
+
+#filters input:focus-visible,
+#filters button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 #timeline {
   margin: 1.25rem 0;
   border-top: 1px solid var(--rule);
