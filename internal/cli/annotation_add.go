@@ -17,7 +17,6 @@ const missingBodyHint = "Pass the body, or - to read it from stdin:\n" +
 	"Run 'coroner annotation add --help' for more."
 
 func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
-	def := annotationAddDefinition()
 	cmd := &cobra.Command{
 		Use:   "add {<body> | -} --kind {evidence | comment}",
 		Short: "Attach evidence or a comment to an event or the timeline",
@@ -25,29 +24,29 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"is kept verbatim: pass - to read a log line or chat message from stdin, which loses one\n" +
 			"trailing newline and is never read otherwise.\n\n" +
 			"-e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or\n" +
-			"unique id prefix. The event must be in the timeline the annotation goes to.",
+			"unique id prefix. The event must be in the timeline the annotation goes to.\n\n" +
+			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks\n" +
+			"the event from the timeline, and prints the command each entry equals.",
 		Args:        annotationBodyArg,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +
 			"  $ coroner annotation add \"Step-down lands 5 s after the COLLSCAN burst\" -e 12 --kind comment\n" +
-			"  $ coroner annotation add \"Root cause: undersized oplog\" --kind comment --dry-run --json",
-		RunE: writeRunE(ctx, app, def, addAnnotation),
+			"  $ coroner annotation add \"Root cause: undersized oplog\" --kind comment --dry-run --json\n" +
+			"  $ coroner annotation add --interactive -e 12",
 	}
 
-	def.addFlags(cmd.Flags())
-
-	return cmd
+	return annotationAddForm().attach(ctx, cmd, app, terminalForms(app))
 }
 
 func annotationAddDefinition() definition {
 	return definition{fields: []field{
 		timelineField(),
-		{name: "body", arg: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
+		{name: "body", arg: true, required: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
 		{
 			name: "event", shorthand: "e", check: withoutEnv(checkEventRef),
 			usage: "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)",
 		},
-		{name: "kind", usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
+		{name: "kind", required: true, usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},

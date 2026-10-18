@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"errors"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -120,6 +123,38 @@ var _ = Describe("time input", func() {
 			resolved(0, timeline.PrecisionSecond, true), "local",
 			"~2026-09-11T03:14:07Z (-03:00 local: 00:14:07)"),
 	)
+
+	DescribeTable("event add's time previews show what a time resolves to in the zone, or why its check rejects it",
+		func(name, input string, want types.GomegaMatcher) {
+			z, err := timeZone(new("America/New_York"), "local", local)
+			Expect(err).NotTo(HaveOccurred())
+			def := eventAddDefinition()
+			found := def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == name })]
+
+			// testNow is 2026-09-12T17:30:00-04:00.
+			Expect(found.preview(input, checkEnv{now: testNow(), zone: z})).To(want)
+		},
+		Entry("RFC 3339", "at", "2026-09-11T03:14:07Z",
+			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),
+		Entry("a naive wall clock, read in the zone", "at", "2026-09-11 03:14",
+			Equal("2026-09-11T07:14:00Z (-04:00 America/New_York: 03:14:00), minute precision")),
+		Entry("an approximate relative time", "at", "~ yesterday 23:02",
+			Equal("~2026-09-12T03:02:00Z (-04:00 America/New_York: 23:02:00), minute precision, approximate")),
+		Entry("epoch seconds", "at", "1789096447",
+			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),
+		Entry("no --at, as now", "at", "",
+			Equal("2026-09-12T21:30:00Z (-04:00 America/New_York: 17:30:00), second precision")),
+		Entry("nothing for no --ended", "ended", "", BeEmpty()),
+		Entry("a DST gap's rejection, then its hint naming the offsets", "ended", "2026-03-08 02:30",
+			MatchRegexp(`^--ended: .+\n.*-05:00`)),
+		Entry("an approximate --ended's rejection, then its hint", "ended", "~ 2026-09-11 14:20",
+			Equal("--ended must not be approximate\n"+addedEndedHint)),
+	)
+
+	It("timePreview shows an error that carries no hint as its text", func() {
+		Expect(timePreview(timeparse.Resolved{}, errors.New("disk on fire"), zone{loc: time.UTC, label: "UTC"})).
+			To(Equal("disk on fire"))
+	})
 
 	DescribeTable("displayTime shows an instant's wall clock in the zone, to its precision, with the zone's offset",
 		func(nanos int, precision timeline.Precision, zoneName, want string) {

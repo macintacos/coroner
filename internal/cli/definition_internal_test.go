@@ -39,10 +39,11 @@ func writeDefinitions() map[string]definition {
 	}
 }
 
-// formExemptFlags are the output and process globals a form never asks for. tz changes what is
-// written only where a command reads typed times, and those definitions declare it.
+// formExemptFlags are the output and process globals a form never asks for, and --interactive,
+// which opens the form. tz changes what is written only where a command reads typed times, and
+// those definitions declare it.
 func formExemptFlags() []string {
-	return []string{"db", "config", "format", "json", "quiet", "no-color", "debug", "help", "tz"}
+	return []string{"db", "config", "format", "json", "quiet", "no-color", "debug", "help", "tz", "interactive"}
 }
 
 var _ = Describe("write command definitions", func() {
@@ -57,19 +58,42 @@ var _ = Describe("write command definitions", func() {
 		Expect(problems).To(BeEmpty())
 	})
 
-	It("accept every form field's zero value, which a form reads as not given", func() {
+	It("accept every optional form field's zero value, which a form reads as not given, and reject a required one's", func() {
 		var problems []string
 		for path, def := range writeDefinitions() {
-			for _, formField := range def.formFields(formCheckEnv()) {
+			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
 				formField.Blur()
 				err := formField.Error()
-				if err != nil {
+				switch required := def.fields[i].required; {
+				case required && err == nil:
+					problems = append(problems, fmt.Sprintf("coroner %s: required form field %s accepts its zero value", path, formField.GetKey()))
+				case !required && err != nil:
 					problems = append(problems, fmt.Sprintf("coroner %s: form field %s rejects its zero value: %v", path, formField.GetKey(), err))
 				}
 			}
 		}
 
 		Expect(problems).To(BeEmpty())
+	})
+
+	It("return usage by flag for each required field left out", func(ctx SpecContext) {
+		given := map[string]string{"text": "Pager fires", "body": "Election timeout", "kind": "comment"}
+		for path, def := range writeDefinitions() {
+			for _, missing := range def.fields {
+				if !missing.required {
+					continue
+				}
+				args := strings.Fields(path)
+				for _, f := range def.fields {
+					if f.required && f.name != missing.name {
+						Expect(given).To(HaveKey(f.name), "no value to give coroner %s's required field", path)
+						args = append(args, fieldArg(f, given[f.name]))
+					}
+				}
+
+				Expect(flagError(ctx, args)).To(HaveField("Kind", KindUsage), "coroner %s", strings.Join(args, " "))
+			}
+		}
 	})
 
 	DescribeTable("reject a bad value the same way by flag and by form field",
@@ -95,8 +119,8 @@ var _ = Describe("write command definitions", func() {
 		var missing []string
 		for path, def := range writeDefinitions() {
 			for _, f := range def.fields {
-				// -t's check rejects only an empty value, which a form reads as not given.
-				exempt := f.name == "timeline" && !f.arg
+				// -t's and --add-ref's checks reject only a blank value, which a form reads as not given.
+				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref"
 				if f.check != nil && !exempt && !covered[path+" "+f.name] {
 					missing = append(missing, path+" "+f.name)
 				}
@@ -201,7 +225,7 @@ func parityProblems(root *cobra.Command, path string, def definition) []string {
 	problems := duplicateFieldProblems(path, def)
 	form := map[string]huh.Field{}
 	declared := map[string]field{}
-	for i, formField := range def.formFields(checkEnv{}) {
+	for i, formField := range def.formFields(checkEnv{}, fieldValues{}, formChoices{}) {
 		// A positional argument's form field never stands for a flag.
 		if !def.fields[i].arg {
 			form[formField.GetKey()] = formField
@@ -297,7 +321,6 @@ func badValues() []badValue {
 	return []badValue{
 		{"timeline create", "name", "Mongo Outage", nil},
 		{"timeline edit", "name", "Bad Name", []string{"mongo-outage"}},
-		{"timeline edit", "add-ref", " ", []string{"mongo-outage"}},
 		{"event add", "text", " ", nil},
 		{"event add", "tz", "Mars/Olympus", []string{"Pager fires"}},
 		{"event add", "at", "2026-13-45", []string{"Pager fires"}},
@@ -346,11 +369,18 @@ func commandLine(def definition, bad badValue) []string {
 	args := append(strings.Fields(bad.path), bad.otherArgs...)
 	i := slices.IndexFunc(def.fields, func(f field) bool { return f.name == bad.field })
 	Expect(i).NotTo(Equal(-1), "%s has no field %s", bad.path, bad.field)
-	if def.fields[i].arg {
-		return append(args, bad.value)
+
+	return append(args, fieldArg(def.fields[i], bad.value))
+}
+
+// fieldArg returns the argument that gives f value: value itself for the positional argument, or
+// f's flag.
+func fieldArg(f field, value string) string {
+	if f.arg {
+		return value
 	}
 
-	return append(args, "--"+bad.field+"="+bad.value)
+	return "--" + f.name + "=" + value
 }
 
 // flagError runs args, with a store that fails the spec when opened, and returns the *Error it
@@ -383,7 +413,7 @@ func flagError(ctx context.Context, args []string) *Error {
 // formError returns the error def's form field called name shows once it holds value and loses
 // focus, with times read as the flag side reads them.
 func formError(def definition, name, value string) error {
-	for _, formField := range def.formFields(formCheckEnv()) {
+	for _, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
 		if formField.GetKey() != name {
 			continue
 		}

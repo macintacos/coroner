@@ -24,7 +24,6 @@ const missingTextHint = "Pass the text, or - to read it from stdin:\n" +
 	"Run 'coroner event add --help' for more."
 
 func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
-	def := eventAddDefinition()
 	cmd := &cobra.Command{
 		Use:   "add {<text> | -}",
 		Short: "Add an event to the current timeline",
@@ -32,32 +31,51 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"A time with no offset is read in --tz, then the config file's default_timezone, then the\n" +
 			"local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.\n" +
 			"Run 'coroner help time' for the times you can type.\n\n" +
-			"Pass - to read the text from stdin, which is never read otherwise.",
+			"Pass - to read the text from stdin, which is never read otherwise.\n\n" +
+			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
+			"time as you type it, and prints the command each entry equals.",
 		Args:        eventTextArg,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
 			"      --source mongod --tag election\n" +
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
-			"      --ended \"2026-09-11 14:20\" --dry-run --json",
-		RunE: writeRunE(ctx, app, def, addEvent),
+			"      --ended \"2026-09-11 14:20\" --dry-run --json\n" +
+			"  $ coroner event add --interactive --source mongod",
 	}
 
-	def.addFlags(cmd.Flags())
-
-	return cmd
+	return eventAddForm().attach(ctx, cmd, app, terminalForms(app))
 }
 
 func eventAddDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
-		{name: "text", arg: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
-		{name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt},
+		{name: "text", arg: true, required: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
+		// Before at, so a form asks for the zone before the times read in it.
+		tzField(),
+		{
+			name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt,
+			preview: func(at string, env checkEnv) string {
+				raw := &at
+				if at == "" {
+					raw = nil
+				}
+				r, err := resolveTime("--at", raw, env.now, env.zone.loc)
+				return timePreview(r, err, env.zone)
+			},
+		},
 		{
 			name: "ended", usage: "When it ended, as a `time`, for an event that lasted",
 			check: func(ended string, env checkEnv) error {
 				_, err := resolveEnded(ended, env, addedEndedHint)
 				return err
+			},
+			preview: func(ended string, env checkEnv) string {
+				if ended == "" {
+					return ""
+				}
+				r, err := resolveEnded(ended, env, addedEndedHint)
+				return timePreview(r, err, env.zone)
 			},
 		},
 		{name: "approximate", typ: boolField, usage: "Mark the time as a guess, as a ~ or around prefix does"},
@@ -66,7 +84,6 @@ func eventAddDefinition() definition {
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
 		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
-		tzField(),
 	}}
 }
 

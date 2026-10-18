@@ -104,6 +104,23 @@ func resolveTime(flag string, input *string, now time.Time, loc *time.Location) 
 	return r, err
 }
 
+// timePreview renders a resolved time as the echo prints it, with its precision, or a rejected
+// input's message and hint; another error renders as its own text.
+func timePreview(r timeparse.Resolved, err error, z zone) string {
+	if rejected, ok := errors.AsType[*Error](err); ok {
+		return rejected.Message + "\n" + rejected.Hint
+	}
+	if err != nil {
+		return err.Error()
+	}
+	preview := formatResolved(r, z) + ", " + string(r.Precision) + " precision"
+	if r.Approximate {
+		preview += ", approximate"
+	}
+
+	return preview
+}
+
 // formatResolved renders r's instant in UTC with the fractional digits its precision states,
 // then its offset, label and wall clock in z.
 func formatResolved(r timeparse.Resolved, z zone) string {

@@ -233,6 +233,9 @@ trailing newline and is never read otherwise.
 -e takes a seq such as 12, a timeline and seq such as mongo-outage#12, or an event id or
 unique id prefix. The event must be in the timeline the annotation goes to.
 
+On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks
+the event from the timeline, and prints the command each entry equals.
+
 USAGE
   coroner annotation add {<body> | -} --kind {evidence | comment} [flags]
 
@@ -240,11 +243,13 @@ EXAMPLES
   $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log
   $ coroner annotation add "Step-down lands 5 s after the COLLSCAN burst" -e 12 --kind comment
   $ coroner annotation add "Root cause: undersized oplog" --kind comment --dry-run --json
+  $ coroner annotation add --interactive -e 12
 
 FLAGS
       --author name        Who is adding it, as a name (default: config author, then USER)
       --dry-run            Show the annotation as it would be added, and add nothing
   -e, --event ref          Event to attach it to, as a ref: seq, timeline#seq or id (default: the timeline)
+      --interactive        Open a form to fill in, prefilled from the other flags (needs a terminal)
       --kind kind          Annotation kind: {evidence | comment}
       --source source      System, service or person it came from, as a source, created on first use
   -t, --timeline name|id   Timeline name|id to act on
@@ -598,6 +603,9 @@ Run 'coroner help time' for the times you can type.
 
 Pass - to read the text from stdin, which is never read otherwise.
 
+On a terminal, with no text or with --interactive, a form asks for each flag, previews the
+time as you type it, and prints the command each entry equals.
+
 USAGE
   coroner event add {<text> | -} [flags]
 
@@ -607,6 +615,7 @@ EXAMPLES
   $ pbpaste | coroner event add - --source slack --at "yesterday 23:02"
   $ coroner event add "Deploy started" --at "around 2026-09-11 14:00" \
       --ended "2026-09-11 14:20" --dry-run --json
+  $ coroner event add --interactive --source mongod
 
 FLAGS
       --approximate     Mark the time as a guess, as a ~ or around prefix does
@@ -614,6 +623,7 @@ FLAGS
       --author name     Who is adding it, as a name (default: config author, then USER)
       --dry-run         Show the event as it would be added, and add nothing
       --ended time      When it ended, as a time, for an event that lasted
+      --interactive     Open a form to fill in, prefilled from the other flags (needs a terminal)
       --source source   System, service or person it came from, as a source, created on first use
       --tag tag         Keyword such as phase:detect, as a tag; repeat for more
       --url url         Permalink to the log line or message, as a url

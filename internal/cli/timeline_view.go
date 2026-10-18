@@ -115,11 +115,9 @@ func viewTimeline(
 	return err
 }
 
-// interactive reports whether cmd may take over the terminal: keys can arrive, the screen is a
-// terminal that can draw one, and no --format asked for plain output (I-1).
+// interactive is interactiveTerminal, unless --format asked for plain output (I-1).
 func interactive(cmd *cobra.Command, app App) bool {
-	term, _ := app.LookupEnv("TERM")
-	return app.InIsTTY && app.OutIsTTY && term != "dumb" && !cmd.Flags().Changed("format")
+	return interactiveTerminal(app) && !cmd.Flags().Changed("format")
 }
 
 // timelineLoader returns the viewer's Load for the timeline with timelineID in the database at
