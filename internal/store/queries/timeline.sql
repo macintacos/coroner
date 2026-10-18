@@ -26,6 +26,19 @@ SET name = ?,
 WHERE id = ?
 RETURNING *;
 
+-- name: ReplaceTimeline :exec
+UPDATE timeline
+SET name = ?,
+  title = ?,
+  created_at = ?,
+  updated_at = ?
+WHERE id = ?;
+
+-- name: SetNextSeq :exec
+UPDATE timeline
+SET next_seq = ?
+WHERE id = ?;
+
 -- name: DeleteTimeline :exec
 DELETE FROM timeline
 WHERE id = ?;

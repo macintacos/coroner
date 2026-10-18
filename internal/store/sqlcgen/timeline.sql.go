@@ -144,6 +144,50 @@ func (q *Queries) ListTimelines(ctx context.Context) ([]Timeline, error) {
 	return items, nil
 }
 
+const replaceTimeline = `-- name: ReplaceTimeline :exec
+UPDATE timeline
+SET name = ?,
+  title = ?,
+  created_at = ?,
+  updated_at = ?
+WHERE id = ?
+`
+
+type ReplaceTimelineParams struct {
+	Name      string
+	Title     string
+	CreatedAt string
+	UpdatedAt string
+	ID        string
+}
+
+func (q *Queries) ReplaceTimeline(ctx context.Context, arg ReplaceTimelineParams) error {
+	_, err := q.db.ExecContext(ctx, replaceTimeline,
+		arg.Name,
+		arg.Title,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const setNextSeq = `-- name: SetNextSeq :exec
+UPDATE timeline
+SET next_seq = ?
+WHERE id = ?
+`
+
+type SetNextSeqParams struct {
+	NextSeq int64
+	ID      string
+}
+
+func (q *Queries) SetNextSeq(ctx context.Context, arg SetNextSeqParams) error {
+	_, err := q.db.ExecContext(ctx, setNextSeq, arg.NextSeq, arg.ID)
+	return err
+}
+
 const updateTimeline = `-- name: UpdateTimeline :one
 UPDATE timeline
 SET name = ?,

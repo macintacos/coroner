@@ -1,0 +1,157 @@
+# import's result object and exit codes, and the round trip it promises: an export imported into
+# an empty database exports again byte for byte. Each section sets the database it uses.
+
+# A timeline with every record type, exported with its attachment files beside it.
+env CORONER_DB=$WORK/source.db
+exits 0 coroner timeline create inc-4821 --title 'Mongo primary election' --ref INC-4821
+exits 0 coroner timeline use inc-4821
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T05:14:07+02:00 --source mongod --tag election --author julian --attach stepdown.log
+exits 0 coroner event add 'Pager fires for db-2' --at 2026-09-11T03:15:00Z --source pagerduty
+exits 0 coroner annotation add 'rs.status() showed no primary' -e 1 --kind evidence --source mongod --attach rs-status.json
+exits 0 coroner annotation add 'Paged the on-call DBA' --kind comment --author julian
+exits 0 coroner timeline export --format jsonl -o $WORK/out/
+exits 0 coroner timeline export --format jsonl
+cp stdout original.jsonl
+
+# --dry-run reports what the import would do, exits as it would, and writes nothing, not even a
+# new database: -t then names no timeline.
+env CORONER_DB=$WORK/copy.db
+exits 0 coroner import $WORK/out/inc-4821.jsonl --dry-run --json
+cmp stdout dry-run.json
+stderr '^Would import into timeline `inc-4821`$'
+stderr '^Would import timelines: 1 inserted, 0 identical, 0 conflicting$'
+exits 3 coroner import $WORK/out/inc-4821.jsonl --dry-run -t inc-4821 --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+! exists $WORK/copy.db
+exits 0 coroner timeline list --json
+stdout '"timelines":\[\]'
+
+# Into an empty database the import recreates the timeline exactly: authors, created and updated
+# ats, seqs and attachments, so its export is the original's bytes.
+exits 0 coroner import $WORK/out/inc-4821.jsonl --json
+cmp stdout imported.json
+stderr '^Imported events: 2 inserted, 0 identical, 0 conflicting$'
+exits 0 coroner timeline export -t inc-4821 --format jsonl
+cmp stdout original.jsonl
+
+# Importing the same file again changes nothing and exits 0.
+exits 0 coroner import $WORK/out/inc-4821.jsonl --json
+cmp stdout reimported.json
+
+# -t guards the import: it must name a stored timeline, which every record belongs to.
+exits 0 coroner import $WORK/out/inc-4821.jsonl -t inc-4821
+exits 3 coroner import $WORK/out/inc-4821.jsonl -t no-such-timeline --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+exits 0 coroner timeline create elsewhere
+exits 2 coroner import $WORK/out/inc-4821.jsonl -t elsewhere --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input",[^\n]+\}\}\n\z'
+
+# A record changed since the import conflicts: exit 4 and nothing written by default, and --json
+# lists each conflicting record with the keys that differ.
+env CORONER_DB=$WORK/source.db
+exits 0 coroner event edit 2 --text 'Pager fires for db-2 and db-3'
+exits 0 coroner timeline export --format jsonl -o $WORK/edited/
+env CORONER_DB=$WORK/copy.db
+exits 4 coroner import $WORK/edited/inc-4821.jsonl --json
+cmp stdout conflict.json
+stderr '^\{"error":\{"kind":"id_conflict","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 0 coroner event view 2 -t inc-4821 --json
+stdout '"text":"Pager fires for db-2",'
+exits 4 coroner import $WORK/edited/inc-4821.jsonl --dry-run --json
+cmp stdout conflict-dry-run.json
+
+# --on-conflict skip keeps the stored record; replace takes the import's.
+exits 0 coroner import $WORK/edited/inc-4821.jsonl --on-conflict skip
+exits 0 coroner event view 2 -t inc-4821 --json
+stdout '"text":"Pager fires for db-2",'
+exits 0 coroner import $WORK/edited/inc-4821.jsonl --on-conflict replace
+exits 0 coroner event view 2 -t inc-4821 --json
+stdout '"text":"Pager fires for db-2 and db-3",'
+exits 2 coroner import $WORK/edited/inc-4821.jsonl --on-conflict merge --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+# A timeline record whose name another stored timeline holds exits 4, kind timeline_exists.
+env CORONER_DB=$WORK/clash.db
+exits 0 coroner timeline create inc-4821
+exits 4 coroner import $WORK/out/inc-4821.jsonl --json
+stderr '^\{"error":\{"kind":"timeline_exists","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# Concatenated exports import from stdin, repeated headers and all.
+env CORONER_DB=$WORK/source.db
+exits 0 coroner timeline create inc-4822
+exits 0 coroner event add 'Checkout p99 alert' -t inc-4822 --at 2026-09-11T04:00:00Z --source grafana
+exits 0 coroner timeline create inc-4823
+exits 0 coroner event add 'Checkout p99 recovers' -t inc-4823 --at 2026-09-11T04:20:00Z --source grafana
+exits 0 coroner timeline export -t inc-4822 --format jsonl
+cp stdout inc-4822.jsonl
+exits 0 coroner timeline export -t inc-4823 --format jsonl
+cp stdout inc-4823.jsonl
+exec cat inc-4822.jsonl inc-4823.jsonl
+cp stdout both.jsonl
+env CORONER_DB=$WORK/concat.db
+stdin both.jsonl
+exits 0 coroner import - --json
+jsonvalid stdout
+stdout '"timelines":\{"inserted":2,"identical":0,"conflicting":0\}'
+stdout '"sources":\{"inserted":1,"identical":0,"conflicting":0\}'
+
+# An export without its attachment files imports everything else, and lists the attachments it
+# skipped: their files are neither beside it nor in the database.
+env CORONER_DB=$WORK/bare.db
+exits 0 coroner import original.jsonl --json
+cmp stdout missing-attachments.json
+stderr '^Left out 2 attachments '
+
+# Keys and record types this coroner does not know are ignored.
+env CORONER_DB=$WORK/compat.db
+exits 0 coroner import later-minor.jsonl --json
+jsonvalid stdout
+stdout '"events":\{"inserted":1,"identical":0,"conflicting":0\}'
+
+# Invalid input exits 2, kind invalid_input, and writes nothing: an unsupported major version, a
+# line that is not a valid record, and a reference to a timeline neither the file nor the
+# database holds.
+exits 2 coroner import major-2.jsonl --json
+! stdout .
+stderr '"2\.0"'
+stderr '^\{"error":\{"kind":"invalid_input","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 2 coroner import invalid-line.jsonl --json
+stderr '^Error: 1 line is not a valid export record:'
+stderr '^\{"error":\{"kind":"invalid_input",[^\n]+\}\}\n\z'
+exits 2 coroner import dangling.jsonl --json
+stderr '^Error: 1 record cannot be imported:'
+stderr '^\{"error":\{"kind":"invalid_input",[^\n]+\}\}\n\z'
+exits 0 coroner timeline list --json
+stdout '"name":"later-minor"'
+! stdout '"name":"invalid-line"'
+
+-- stepdown.log --
+2026-09-11T03:14:07.412Z I REPL [replexec-0] Stepping down from primary
+-- rs-status.json --
+{"ok": 1, "members": [{"name": "db-2:27017", "stateStr": "SECONDARY"}]}
+-- later-minor.jsonl --
+{"type":"header","format":"coroner.export","format_version":"1.9","coroner_version":"1.9.0","exported_at":"2027-03-02T09:00:00.000000000Z","query":{"timelines":["later-minor"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc","reactions":true},"host":"laptop-7"}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-0000000000a1","name":"later-minor","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z","closed_at":null}
+{"type":"event","id":"01a09862-b1c0-7000-8000-0000000000a2","timeline_id":"01a09862-b1c0-7000-8000-0000000000a1","seq":1,"occurred_at":"2026-09-11T03:14:07.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":"julian","created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","severity":"high"}
+{"type":"reaction","id":"01a09862-b1c0-7000-8000-0000000000a3","event_id":"01a09862-b1c0-7000-8000-0000000000a2","emoji":"eyes","author":"julian"}
+-- major-2.jsonl --
+{"type":"header","format":"coroner.export","format_version":"2.0","coroner_version":"2.0.0","exported_at":"2028-01-10T12:00:00.000000000Z","selection":{"timelines":["full-model"]}}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-0000000000b1","slug":"full-model","title":"Mongo primary election","created":"2026-09-13T01:30:00Z"}
+-- invalid-line.jsonl --
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-0000000000c1","name":"invalid-line","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"not-a-uuid"}
+-- dangling.jsonl --
+{"type":"event","id":"01a09862-b1c0-7000-8000-0000000000d2","timeline_id":"01a09862-b1c0-7000-8000-0000000000d1","seq":1,"occurred_at":"2026-09-11T03:14:07.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+-- dry-run.json --
+{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":2,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
+-- imported.json --
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":2,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
+-- reimported.json --
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":2,"conflicting":0},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[],"missing_attachments":[]}
+-- conflict.json --
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
+-- conflict-dry-run.json --
+{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
+-- missing-attachments.json --
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[{"id":"01a09862-b1c0-7000-8000-000000000004","sha256":"bc082b2ec4e84fa588e9fc93b3a8bd08c32fa91db36475a20ccdd93d0d37e369"},{"id":"01a09862-b1c0-7000-8000-000000000009","sha256":"61428d234f39bedd8934cbbf2a3e1217c29e5b72e234ef5b074cb7be51a7fe8a"}]}

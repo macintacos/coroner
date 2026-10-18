@@ -10,18 +10,7 @@ import (
 // CreateTimeline adds t with its refs, kept in the order given.
 func (s *Store) CreateTimeline(ctx context.Context, t timeline.Timeline) error {
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		_, err := q.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
-			ID:        t.ID,
-			Name:      t.Name,
-			Title:     t.Title,
-			CreatedAt: timeline.FormatInstant(t.CreatedAt),
-			UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
-		})
-		if err != nil {
-			return err
-		}
-
-		return addRefs(ctx, q, t.ID, t.Refs)
+		return createTimeline(ctx, q, t)
 	})
 }
 
@@ -92,18 +81,7 @@ func (s *Store) UpdateTimeline(ctx context.Context, t timeline.Timeline) error {
 			return err
 		}
 
-		refs, err := q.ListTimelineRefs(ctx, t.ID)
-		if err != nil {
-			return err
-		}
-		for _, ref := range refs {
-			err = q.DeleteTimelineRef(ctx, sqlcgen.DeleteTimelineRefParams{TimelineID: t.ID, Ref: ref})
-			if err != nil {
-				return err
-			}
-		}
-
-		return addRefs(ctx, q, t.ID, t.Refs)
+		return replaceRefs(ctx, q, t.ID, t.Refs)
 	})
 }
 
@@ -157,6 +135,21 @@ func loadTimeline(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Timeline)
 	return t, p.err
 }
 
+func createTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timeline) error {
+	_, err := q.CreateTimeline(ctx, sqlcgen.CreateTimelineParams{
+		ID:        t.ID,
+		Name:      t.Name,
+		Title:     t.Title,
+		CreatedAt: timeline.FormatInstant(t.CreatedAt),
+		UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
+	})
+	if err != nil {
+		return err
+	}
+
+	return addRefs(ctx, q, t.ID, t.Refs)
+}
+
 func addRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []string) error {
 	for _, ref := range refs {
 		err := q.AddTimelineRef(ctx, sqlcgen.AddTimelineRefParams{TimelineID: timelineID, Ref: ref})
@@ -166,4 +159,20 @@ func addRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []
 	}
 
 	return nil
+}
+
+// replaceRefs replaces the refs of the timeline with timelineID with refs, in the order given.
+func replaceRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []string) error {
+	stored, err := q.ListTimelineRefs(ctx, timelineID)
+	if err != nil {
+		return err
+	}
+	for _, ref := range stored {
+		err = q.DeleteTimelineRef(ctx, sqlcgen.DeleteTimelineRefParams{TimelineID: timelineID, Ref: ref})
+		if err != nil {
+			return err
+		}
+	}
+
+	return addRefs(ctx, q, timelineID, refs)
 }

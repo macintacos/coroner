@@ -37,6 +37,9 @@ type App struct {
 	OpenFile func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
 	// RemoveFile removes name as os.Remove does.
 	RemoveFile func(name string) error
+	// ReadDir lists the directory at name as os.ReadDir does, reporting a missing one as
+	// fs.ErrNotExist.
+	ReadDir func(name string) ([]fs.DirEntry, error)
 	// Stat describes the file at name as os.Stat does.
 	Stat func(name string) (fs.FileInfo, error)
 	// MkdirAll creates the directory at path and any missing parents, as os.MkdirAll does.

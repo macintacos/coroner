@@ -37,6 +37,17 @@ SET kind = ?,
 WHERE id = ?
 RETURNING *;
 
+-- name: ReplaceAnnotation :exec
+UPDATE annotation
+SET kind = ?,
+  body = ?,
+  author = ?,
+  source_id = ?,
+  url = ?,
+  created_at = ?,
+  updated_at = ?
+WHERE id = ?;
+
 -- name: DeleteAnnotation :exec
 DELETE FROM annotation
 WHERE id = ?;

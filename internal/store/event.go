@@ -28,28 +28,7 @@ func (s *Store) AddEvent(
 			return err
 		}
 
-		_, err = q.CreateEvent(ctx, sqlcgen.CreateEventParams{
-			ID:                e.ID,
-			TimelineID:        e.TimelineID,
-			Seq:               seq,
-			OccurredAt:        timeline.FormatInstant(e.OccurredAt),
-			OccurredOffset:    offsetParam(e.OccurredOffset),
-			OccurredPrecision: string(e.Precision),
-			Approximate:       sqliteBool(e.Approximate),
-			OccurredRaw:       e.OccurredRaw,
-			EndedAt:           formatOptional(e.EndedAt),
-			SourceID:          source,
-			Text:              e.Text,
-			Url:               e.URL,
-			Author:            e.Author,
-			CreatedAt:         timeline.FormatInstant(e.CreatedAt),
-			UpdatedAt:         timeline.FormatInstant(e.UpdatedAt),
-		})
-		if err != nil {
-			return err
-		}
-
-		return addTags(ctx, q, e.ID, e.Tags)
+		return createEvent(ctx, q, e, seq, source)
 	})
 	if err != nil {
 		return timeline.Event{}, err
@@ -142,18 +121,7 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 			return err
 		}
 
-		tags, err := q.ListEventTags(ctx, e.ID)
-		if err != nil {
-			return err
-		}
-		for _, tag := range tags {
-			err = q.DeleteEventTag(ctx, sqlcgen.DeleteEventTagParams{EventID: e.ID, Tag: tag})
-			if err != nil {
-				return err
-			}
-		}
-
-		return addTags(ctx, q, e.ID, e.Tags)
+		return replaceTags(ctx, q, e.ID, e.Tags)
 	})
 	return err
 }
@@ -217,6 +185,32 @@ func eventFromRow(row sqlcgen.Event, source *string, tags []string) (timeline.Ev
 	return e, p.err
 }
 
+// createEvent inserts e's row under seq, naming the source with sourceID, and its tags.
+func createEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event, seq int64, sourceID *string) error {
+	_, err := q.CreateEvent(ctx, sqlcgen.CreateEventParams{
+		ID:                e.ID,
+		TimelineID:        e.TimelineID,
+		Seq:               seq,
+		OccurredAt:        timeline.FormatInstant(e.OccurredAt),
+		OccurredOffset:    offsetParam(e.OccurredOffset),
+		OccurredPrecision: string(e.Precision),
+		Approximate:       sqliteBool(e.Approximate),
+		OccurredRaw:       e.OccurredRaw,
+		EndedAt:           formatOptional(e.EndedAt),
+		SourceID:          sourceID,
+		Text:              e.Text,
+		Url:               e.URL,
+		Author:            e.Author,
+		CreatedAt:         timeline.FormatInstant(e.CreatedAt),
+		UpdatedAt:         timeline.FormatInstant(e.UpdatedAt),
+	})
+	if err != nil {
+		return err
+	}
+
+	return addTags(ctx, q, e.ID, e.Tags)
+}
+
 func addTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []string) error {
 	for _, tag := range tags {
 		err := q.AddEventTag(ctx, sqlcgen.AddEventTagParams{EventID: eventID, Tag: tag})
@@ -226,6 +220,21 @@ func addTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []str
 	}
 
 	return nil
+}
+
+func replaceTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []string) error {
+	stored, err := q.ListEventTags(ctx, eventID)
+	if err != nil {
+		return err
+	}
+	for _, tag := range stored {
+		err = q.DeleteEventTag(ctx, sqlcgen.DeleteEventTagParams{EventID: eventID, Tag: tag})
+		if err != nil {
+			return err
+		}
+	}
+
+	return addTags(ctx, q, eventID, tags)
 }
 
 func offsetParam(offset *int) *int64 {

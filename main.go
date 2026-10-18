@@ -45,6 +45,7 @@ func main() {
 		WriteFile:         os.WriteFile,
 		OpenFile:          openFile,
 		RemoveFile:        os.Remove,
+		ReadDir:           os.ReadDir,
 		Stat:              os.Stat,
 		MkdirAll:          os.MkdirAll,
 		Now:               time.Now,

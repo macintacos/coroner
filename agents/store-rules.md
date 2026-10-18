@@ -14,10 +14,11 @@
    grammars, the canonical instant, the precisions, the annotation kinds, the not-blank
    checks on ref, text and body, ended at not before occurred at, and an attachment's
    single owner, sha256 and non-negative size. Change the Go and the SQL in the same
-   change. Only the table enforces that `id` is 36 characters, `seq > 0`,
-   `occurred_offset` is within ±86400 seconds and `approximate` is 0 or 1; no Go rule
-   mirrors them. SQLite cannot alter a CHECK, so changing one, even to add a precision or
-   an annotation kind, needs a migration that rebuilds the table
+   change. No rule in `internal/timeline` mirrors the table's checks that `id` is 36
+   characters, `seq > 0`, `occurred_offset` is within ±86400 seconds and `approximate` is
+   0 or 1; `import` checks the `occurred_offset` bound, and a `seq` headroom bound, on
+   JSONL input before writing. SQLite cannot alter a CHECK, so changing one, even to add a
+   precision or an annotation kind, needs a migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
    another table references (`timeline`, `event`, `annotation`, `source`) is rebuilt in a
    migration marked `-- +goose NO TRANSACTION`, because inside goose's transaction
@@ -71,20 +72,20 @@
    because goose has no SQLite locker; never delete that file, or a waiter locks a file no
    later process opens.
 9. **An attachment's blob is named before its row is written, and only garbage collection
-   deletes a blob:** `AddEvent`, `UpdateEvent`, `AddAnnotation` and `UpdateAnnotation`
-   stream each attachment's content into a synced temporary file in the blob directory
-   outside any transaction, then, after the owner's row in its one `Store.write`, rename
-   each file to its SHA-256 and insert its row, so the owner and its attachments commit
-   together and a failed owner write names no blob. `AddAttachment` follows the same order
-   for an existing owner, checking the owner where the others write its row.
-   `writeWithAttachments` is that order; every write that adds attachments goes through
-   it. `GarbageCollectBlobs` deletes unreferenced blobs inside `Store.write` too, so the
-   write lock keeps it from deleting a blob between an add's rename and its insert. A
-   crash leaves at most an unreferenced blob or a staged `.tmp-*` file, which garbage
-   collection leaves, never a row without its blob. Nothing else deletes a blob, not
-   `Open`, a delete or a migration. A `<db>.pre-v<N>.bak` backup copies the database file
-   only: restored to the database's own path, it finds its blobs until
-   `GarbageCollectBlobs` deletes those whose rows were removed.
+   deletes a blob:** `AddEvent`, `UpdateEvent`, `AddAnnotation`, `UpdateAnnotation` and
+   `Import` stream each attachment's content into a synced temporary file in the blob
+   directory outside any transaction, then, after the owner's row in its one
+   `Store.write`, rename each file to its SHA-256 and insert its row, so the owner and its
+   attachments commit together and a failed owner write names no blob. `AddAttachment`
+   follows the same order for an existing owner, checking the owner where the others write
+   its row. `writeStaged` is that order; every write that adds attachments goes through
+   it, `writeWithAttachments` included. `GarbageCollectBlobs` deletes unreferenced blobs
+   inside `Store.write` too, so the write lock keeps it from deleting a blob between an
+   add's rename and its insert. A crash leaves at most an unreferenced blob or a staged
+   `.tmp-*` file, which garbage collection leaves, never a row without its blob. Nothing
+   else deletes a blob, not `Open`, a delete or a migration. A `<db>.pre-v<N>.bak` backup
+   copies the database file only: restored to the database's own path, it finds its blobs
+   until `GarbageCollectBlobs` deletes those whose rows were removed.
 10. **The blob directory comes from `config.BlobDir`, and a filename is never a path:**
     `Open` and `OpenReadOnly` derive the directory from the database path, so two
     databases never share one and one's garbage collection never deletes another's blobs.

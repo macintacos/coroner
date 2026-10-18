@@ -71,6 +71,18 @@ func (s *Store) ListAttachments(ctx context.Context, owner timeline.AttachmentOw
 	})
 }
 
+// Attachment returns the attachment with id.
+func (s *Store) Attachment(ctx context.Context, id string) (timeline.Attachment, error) {
+	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Attachment, error) {
+		row, err := q.GetAttachment(ctx, id)
+		if err != nil {
+			return timeline.Attachment{}, err
+		}
+
+		return loadAttachment(row)
+	})
+}
+
 // TimelineAttachments returns the attachments on the events and annotations of the timeline
 // with timelineID, oldest first, then by id.
 func (s *Store) TimelineAttachments(ctx context.Context, timelineID string) ([]timeline.Attachment, error) {
@@ -149,20 +161,12 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 func (s *Store) writeWithAttachments(
 	ctx context.Context, owner timeline.AttachmentOwner, attachments []NewAttachment, fn func(*sqlcgen.Queries) error,
 ) ([]timeline.Attachment, error) {
-	staged, discard, err := stageAttachments(s.blobDir, owner, attachments)
+	staged, err := stageAttachments(s.blobDir, owner, attachments)
 	if err != nil {
 		return nil, err
 	}
-	defer discard()
 
-	err = s.write(ctx, func(q *sqlcgen.Queries) error {
-		err := fn(q)
-		if err != nil {
-			return err
-		}
-
-		return insertAttachments(ctx, q, s.blobDir, staged)
-	})
+	err = s.writeStaged(ctx, staged, fn)
 	if err != nil {
 		return nil, err
 	}
@@ -175,25 +179,39 @@ func (s *Store) writeWithAttachments(
 	return rows, nil
 }
 
+// writeStaged runs fn, then names each staged blob and inserts its row after it, in one
+// write, so a failed fn names no blob. It removes whatever staged file it did not name.
+func (s *Store) writeStaged(ctx context.Context, staged []stagedAttachment, fn func(*sqlcgen.Queries) error) error {
+	defer discardStaged(staged)
+
+	return s.write(ctx, func(q *sqlcgen.Queries) error {
+		err := fn(q)
+		if err != nil {
+			return err
+		}
+
+		return insertAttachments(ctx, q, s.blobDir, staged)
+	})
+}
+
+func discardStaged(staged []stagedAttachment) {
+	for _, a := range staged {
+		// Once insertAttachments has renamed or discarded the file, the error is expected.
+		_ = os.Remove(a.blob.tempPath)
+	}
+}
+
 // stageAttachments stages the content of each of attachments, owned by owner, outside any
-// transaction. On failure it removes what it staged; otherwise discard removes whatever
-// insertAttachments did not name, so the caller defers it.
+// transaction, removing what it staged when one fails.
 func stageAttachments(
 	blobDir string, owner timeline.AttachmentOwner, attachments []NewAttachment,
-) ([]stagedAttachment, func(), error) {
+) ([]stagedAttachment, error) {
 	staged := make([]stagedAttachment, 0, len(attachments))
-	discard := func() {
-		for _, a := range staged {
-			// Once insertAttachments has renamed or discarded the file, the error is expected.
-			_ = os.Remove(a.blob.tempPath)
-		}
-	}
-
 	for _, a := range attachments {
 		blob, err := stageBlob(blobDir, a.Content)
 		if err != nil {
-			discard()
-			return nil, nil, err
+			discardStaged(staged)
+			return nil, err
 		}
 		staged = append(staged, stagedAttachment{
 			attachment: timeline.Attachment{
@@ -204,7 +222,7 @@ func stageAttachments(
 		})
 	}
 
-	return staged, discard, nil
+	return staged, nil
 }
 
 // insertAttachments names each staged blob by its hash and inserts its row, inside the write
@@ -217,22 +235,27 @@ func insertAttachments(ctx context.Context, q *sqlcgen.Queries, blobDir string, 
 			return err
 		}
 
-		_, err = q.CreateAttachment(ctx, sqlcgen.CreateAttachmentParams{
-			ID:           a.attachment.ID,
-			EventID:      a.attachment.Owner.EventID,
-			AnnotationID: a.attachment.Owner.AnnotationID,
-			Filename:     a.attachment.Filename,
-			Mime:         a.attachment.MIME,
-			Sha256:       a.attachment.SHA256,
-			Size:         a.attachment.Size,
-			CreatedAt:    timeline.FormatInstant(a.attachment.CreatedAt),
-		})
+		err = createAttachment(ctx, q, a.attachment)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func createAttachment(ctx context.Context, q *sqlcgen.Queries, a timeline.Attachment) error {
+	_, err := q.CreateAttachment(ctx, sqlcgen.CreateAttachmentParams{
+		ID:           a.ID,
+		EventID:      a.Owner.EventID,
+		AnnotationID: a.Owner.AnnotationID,
+		Filename:     a.Filename,
+		Mime:         a.MIME,
+		Sha256:       a.SHA256,
+		Size:         a.Size,
+		CreatedAt:    timeline.FormatInstant(a.CreatedAt),
+	})
+	return err
 }
 
 // checkOwner returns an error wrapping ErrNotFound unless owner's event or annotation exists.

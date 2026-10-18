@@ -43,6 +43,7 @@ coroner <command> [flags]
 * [coroner attachment](coroner_attachment.md)	 - List, delete and export files attached to events and annotations
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
 * [coroner event](coroner_event.md)	 - Add, list, view, edit and delete events
+* [coroner import](coroner_import.md)	 - Import records from a JSONL export
 * [coroner source](coroner_source.md)	 - List sources and fix their names
 * [coroner status](coroner_status.md)	 - Show the database and the timeline commands act on
 * [coroner tag](coroner_tag.md)	 - List the tags events carry

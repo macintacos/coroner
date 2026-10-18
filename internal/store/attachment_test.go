@@ -323,6 +323,13 @@ var _ = Describe("Attachments", func() {
 			Expect(s.TimelineAttachments(ctx, incident.ID)).To(Equal([]timeline.Attachment{onPagerFile, onEvidenceFile}))
 		})
 
+	It("finds an attachment by its exact id, reporting ErrNotFound for any other", func(ctx SpecContext) {
+		added := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
+
+		Expect(s.Attachment(ctx, added.ID)).To(Equal(added))
+		Expect(s.Attachment(ctx, added.ID[:8])).Error().To(MatchError(store.ErrNotFound))
+	})
+
 	It("finds attachments by id prefix, in id order, up to a limit", func(ctx SpecContext) {
 		first := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
 		second := add(ctx, newAttachment(11, onPager, "trace.png"), screenshot)

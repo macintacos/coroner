@@ -219,6 +219,43 @@ func (q *Queries) ListEventAnnotations(ctx context.Context, eventID *string) ([]
 	return items, nil
 }
 
+const replaceAnnotation = `-- name: ReplaceAnnotation :exec
+UPDATE annotation
+SET kind = ?,
+  body = ?,
+  author = ?,
+  source_id = ?,
+  url = ?,
+  created_at = ?,
+  updated_at = ?
+WHERE id = ?
+`
+
+type ReplaceAnnotationParams struct {
+	Kind      string
+	Body      string
+	Author    *string
+	SourceID  *string
+	Url       *string
+	CreatedAt string
+	UpdatedAt string
+	ID        string
+}
+
+func (q *Queries) ReplaceAnnotation(ctx context.Context, arg ReplaceAnnotationParams) error {
+	_, err := q.db.ExecContext(ctx, replaceAnnotation,
+		arg.Kind,
+		arg.Body,
+		arg.Author,
+		arg.SourceID,
+		arg.Url,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const updateAnnotation = `-- name: UpdateAnnotation :one
 UPDATE annotation
 SET kind = ?,

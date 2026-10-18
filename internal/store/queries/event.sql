@@ -42,6 +42,22 @@ SET occurred_at = ?,
 WHERE id = ?
 RETURNING *;
 
+-- name: ReplaceEvent :exec
+UPDATE event
+SET occurred_at = ?,
+  occurred_offset = ?,
+  occurred_precision = ?,
+  approximate = ?,
+  occurred_raw = ?,
+  ended_at = ?,
+  source_id = ?,
+  text = ?,
+  url = ?,
+  author = ?,
+  created_at = ?,
+  updated_at = ?
+WHERE id = ?;
+
 -- name: DeleteEvent :exec
 DELETE FROM event
 WHERE id = ?;

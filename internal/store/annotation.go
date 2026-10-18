@@ -22,19 +22,7 @@ func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSou
 			return err
 		}
 
-		_, err = q.CreateAnnotation(ctx, sqlcgen.CreateAnnotationParams{
-			ID:         a.ID,
-			TimelineID: a.TimelineID,
-			EventID:    a.EventID,
-			Kind:       string(a.Kind),
-			Body:       a.Body,
-			Author:     a.Author,
-			SourceID:   source,
-			Url:        a.URL,
-			CreatedAt:  timeline.FormatInstant(a.CreatedAt),
-			UpdatedAt:  timeline.FormatInstant(a.UpdatedAt),
-		})
-		return err
+		return createAnnotation(ctx, q, a, source)
 	})
 	return err
 }
@@ -155,6 +143,23 @@ func checkTarget(ctx context.Context, q *sqlcgen.Queries, timelineID string, eve
 	}
 
 	return nil
+}
+
+// createAnnotation inserts a's row, naming the source with sourceID.
+func createAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annotation, sourceID *string) error {
+	_, err := q.CreateAnnotation(ctx, sqlcgen.CreateAnnotationParams{
+		ID:         a.ID,
+		TimelineID: a.TimelineID,
+		EventID:    a.EventID,
+		Kind:       string(a.Kind),
+		Body:       a.Body,
+		Author:     a.Author,
+		SourceID:   sourceID,
+		Url:        a.URL,
+		CreatedAt:  timeline.FormatInstant(a.CreatedAt),
+		UpdatedAt:  timeline.FormatInstant(a.UpdatedAt),
+	})
+	return err
 }
 
 func loadAnnotation(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Annotation) (timeline.Annotation, error) {
