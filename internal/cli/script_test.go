@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"database/sql"
@@ -29,9 +30,11 @@ import (
 	"github.com/mattn/go-isatty"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/rogpeppe/go-internal/diff"
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 )
 
@@ -44,12 +47,14 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
+	update := flag.Lookup(updateFlag).Value.String() == "true"
+	fixturesDir := filepath.Join("..", "..", "testdata", "export", "v"+export.FormatVersion)
 	params := testscript.Params{
-		UpdateScripts:      flag.Lookup(updateFlag).Value.String() == "true",
+		UpdateScripts:      update,
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
 		Cmds: map[string]func(*testscript.TestScript, bool, []string){
-			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid,
+			"exits": exits, "bumpschema": bumpSchema, "jsonvalid": jsonValid, "exportfixture": exportFixture(fixturesDir, update),
 		},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
@@ -128,6 +133,82 @@ func onlyJSON(data string) error {
 		}
 	}
 }
+
+// exportFixture returns `exportfixture <name> <file>...`, which passes when the files, such as
+// stdout, joined in order, equal the fixture dir/name. Under -update it writes that fixture when
+// it does not exist.
+func exportFixture(dir string, update bool) func(*testscript.TestScript, bool, []string) {
+	return func(ts *testscript.TestScript, neg bool, args []string) {
+		if neg || len(args) < 2 {
+			ts.Fatalf("usage: exportfixture <name> <file>...")
+		}
+
+		var got []byte
+		for _, file := range args[1:] {
+			got = append(got, ts.ReadFile(file)...)
+		}
+		ts.Check(checkFixture(filepath.Join(dir, args[0]), got, update))
+	}
+}
+
+// checkFixture returns an error unless the file at path holds got. With update it first writes
+// path when it does not exist, but never rewrites it: a released fixture is frozen.
+func checkFixture(path string, got []byte, update bool) error {
+	want, err := os.ReadFile(filepath.Clean(path))
+	switch {
+	case errors.Is(err, fs.ErrNotExist) && update:
+		err = os.MkdirAll(filepath.Dir(path), 0o750)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(path, got, 0o600)
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("%w; run go test ./internal/cli -run 'TestScripts/contract$' -update to write it", err)
+	case err != nil:
+		return err
+	case !bytes.Equal(want, got):
+		return fmt.Errorf("the export differs from %s, a frozen fixture: fix the change that altered the export, "+
+			"or the script when the format did not change, such as renumbered IDs, never the fixture; before the "+
+			"first release that ships export, delete the fixture and rerun -update instead:\n%s",
+			path, diff.Diff(path, want, "export", got))
+	}
+
+	return nil
+}
+
+var _ = Describe("checkFixture", func() {
+	var path string
+
+	BeforeEach(func() {
+		path = filepath.Join(GinkgoT().TempDir(), "v1.0", "minimal.jsonl")
+	})
+
+	It("passes when the fixture holds the export", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o750)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("{}\n"), 0o600)).To(Succeed())
+
+		Expect(checkFixture(path, []byte("{}\n"), false)).To(Succeed())
+	})
+
+	It("writes a fixture that does not exist yet under -update", func() {
+		Expect(checkFixture(path, []byte("{}\n"), true)).To(Succeed())
+
+		Expect(os.ReadFile(filepath.Clean(path))).To(Equal([]byte("{}\n")))
+	})
+
+	It("fails on a missing fixture without -update", func() {
+		Expect(checkFixture(path, []byte("{}\n"), false)).To(MatchError(ContainSubstring("-update")))
+		Expect(path).NotTo(BeAnExistingFile())
+	})
+
+	It("never rewrites a fixture that differs, even under -update, and shows how it differs", func() {
+		Expect(os.MkdirAll(filepath.Dir(path), 0o750)).To(Succeed())
+		Expect(os.WriteFile(path, []byte("{\"a\":1}\n"), 0o600)).To(Succeed())
+
+		Expect(checkFixture(path, []byte("{\"a\":2}\n"), true)).To(MatchError(ContainSubstring(`+{"a":2}`)))
+		Expect(os.ReadFile(filepath.Clean(path))).To(Equal([]byte("{\"a\":1}\n")))
+	})
+})
 
 // bumpSchema is `bumpschema <db>`: it records one migration past the highest db applied, as a
 // newer coroner would. On a database coroner just wrote, that is past every embedded one.
