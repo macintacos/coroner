@@ -84,7 +84,7 @@ digraph coroner_rules_router {
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not
-  here. Layering checks are not in the repo yet (EXC-1328).
+  here.
 
 ## Rules
 

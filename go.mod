@@ -43,6 +43,8 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
+	// Must equal the version modernc.org/sqlite requires, or sqlite breaks at runtime; never
+	// bump it alone (`go get -u`, a dependency bot).
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
