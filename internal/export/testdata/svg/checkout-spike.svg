@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1224.00" height="304.00" viewBox="0 0 1224.00 304.00" font-family="system-ui, sans-serif" font-size="12" role="img">
+<title>Checkout latency spike (checkout-spike)</title>
+<rect width="1224.00" height="304.00" fill="#ffffff"/>
+<text x="24.00" y="34.00" font-size="18" font-weight="600" fill="#1b1f22">Checkout latency spike (checkout-spike)</text>
+<text x="24.00" y="58.00" fill="#545c63">INC-4821, https://status.example.com/incidents/4821</text>
+<text x="24.00" y="76.00" fill="#545c63">Times in UTC</text>
+<text x="24.00" y="94.00" fill="#545c63">Exported 2026-09-12 21:40 UTC by coroner 0.1.0</text>
+<g transform="translate(0 116.00)">
+<line x1="379.27" y1="40.00" x2="379.27" y2="164.00" stroke="#d3d8d6"/>
+<text x="379.27" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-11</text>
+<text x="379.27" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:00</text>
+<line x1="578.45" y1="40.00" x2="578.45" y2="164.00" stroke="#d3d8d6"/>
+<text x="578.45" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:02</text>
+<line x1="777.63" y1="40.00" x2="777.63" y2="164.00" stroke="#d3d8d6"/>
+<text x="777.63" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:04</text>
+<line x1="976.82" y1="40.00" x2="976.82" y2="164.00" stroke="#d3d8d6"/>
+<text x="976.82" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:06</text>
+<line x1="1176.00" y1="40.00" x2="1176.00" y2="164.00" stroke="#d3d8d6"/>
+<text x="1176.00" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:08</text>
+<line x1="0" y1="40.00" x2="1224.00" y2="40.00" stroke="#d3d8d6"/>
+<g>
+<title>slack</title>
+<text x="24.00" y="61.00" font-weight="600" fill="#0b6aa8">slack</text>
+</g>
+<g>
+<title>23:58:12 maria: checkout p99 is 4s</title>
+<circle cx="200.00" cy="57.00" r="4" fill="#0b6aa8"/>
+<text x="208.00" y="61.00" text-anchor="start" font-size="11" fill="#1b1f22">23:58:12 maria: checkout p99 is 4s</text>
+</g>
+<line x1="0" y1="74.00" x2="1224.00" y2="74.00" stroke="#d3d8d6"/>
+<g>
+<title>mongod</title>
+<text x="24.00" y="95.00" font-weight="600" fill="#b35c00">mongod</text>
+</g>
+<g>
+<title>~23:59 Slow query on checkout.orders: 2150 ms</title>
+<rect x="279.67" y="84.00" width="99.59" height="14" fill="#b35c00" fill-opacity="0.15"/>
+<circle cx="279.67" cy="91.00" r="4" fill="#ffffff" stroke="#b35c00" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="387.27" y="95.00" text-anchor="start" font-size="11" fill="#1b1f22">~23:59 Slow query on checkout.orders: 2150 ms</text>
+</g>
+<g>
+<title>00:02:30–00:05:40 Replica set has no primary</title>
+<rect x="628.24" y="108.00" width="315.37" height="10" rx="2" fill="#b35c00" stroke="#b35c00" fill-opacity="0.35"/>
+<text x="636.24" y="117.00" text-anchor="start" font-size="11" fill="#1b1f22">00:02:30–00:05:40 Replica set has no primary</text>
+</g>
+<line x1="0" y1="130.00" x2="1224.00" y2="130.00" stroke="#d3d8d6"/>
+<g>
+<title>(no source)</title>
+<text x="24.00" y="151.00" font-weight="600" fill="#545c63">(no source)</text>
+</g>
+<g>
+<title>00:07 Rolled back deploy 812</title>
+<rect x="1076.41" y="140.00" width="99.59" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="1076.41" cy="147.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="1068.41" y="151.00" text-anchor="end" font-size="11" fill="#1b1f22">00:07 Rolled back deploy 812</text>
+</g>
+<line x1="0" y1="164.00" x2="1224.00" y2="164.00" stroke="#d3d8d6"/>
+</g>
+</svg>

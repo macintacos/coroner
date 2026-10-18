@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1224.00" height="438.00" viewBox="0 0 1224.00 438.00" font-family="system-ui, sans-serif" font-size="12" role="img">
+<title>precisions</title>
+<rect width="1224.00" height="438.00" fill="#ffffff"/>
+<text x="24.00" y="34.00" font-size="18" font-weight="600" fill="#1b1f22">precisions</text>
+<text x="24.00" y="58.00" fill="#545c63">Times in UTC</text>
+<text x="24.00" y="76.00" fill="#545c63">Exported 2026-09-12 21:40 UTC by coroner 0.1.0</text>
+<g transform="translate(0 98.00)">
+<line x1="200.00" y1="40.00" x2="200.00" y2="316.00" stroke="#d3d8d6"/>
+<text x="200.00" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-11</text>
+<text x="200.00" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:00</text>
+<line x1="444.00" y1="40.00" x2="444.00" y2="316.00" stroke="#d3d8d6"/>
+<text x="444.00" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">12:00</text>
+<line x1="688.00" y1="40.00" x2="688.00" y2="316.00" stroke="#d3d8d6"/>
+<text x="688.00" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-12</text>
+<text x="688.00" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:00</text>
+<line x1="932.00" y1="40.00" x2="932.00" y2="316.00" stroke="#d3d8d6"/>
+<text x="932.00" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">12:00</text>
+<line x1="1176.00" y1="40.00" x2="1176.00" y2="316.00" stroke="#d3d8d6"/>
+<text x="1176.00" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-13</text>
+<text x="1176.00" y="30.00" text-anchor="middle" font-size="11" fill="#545c63">00:00</text>
+<line x1="0" y1="40.00" x2="1224.00" y2="40.00" stroke="#d3d8d6"/>
+<g>
+<title>(no source)</title>
+<text x="24.00" y="61.00" font-weight="600" fill="#545c63">(no source)</text>
+</g>
+<g>
+<title>2026-09-11–2026-09-12 Error budget burned</title>
+<rect x="200.00" y="52.00" width="488.00" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.12" stroke-dasharray="3 2"/>
+<text x="696.00" y="61.00" text-anchor="start" font-size="11" fill="#1b1f22">2026-09-11–2026-09-12 Error budget burned</text>
+</g>
+<g>
+<title>03:-- Traffic started climbing</title>
+<rect x="261.00" y="72.00" width="20.33" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="261.00" cy="79.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="289.33" y="83.00" text-anchor="start" font-size="11" fill="#1b1f22">03:-- Traffic started climbing</text>
+</g>
+<g>
+<title>~03:14 Someone restarted db-2</title>
+<rect x="265.74" y="94.00" width="0.34" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="265.74" cy="101.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="274.08" y="105.00" text-anchor="start" font-size="11" fill="#1b1f22">~03:14 Someone restarted db-2</text>
+</g>
+<g>
+<title>03:14:07 Primary stepped down</title>
+<circle cx="265.78" cy="123.00" r="4" fill="#545c63"/>
+<text x="273.78" y="127.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07 Primary stepped down</text>
+</g>
+<g>
+<title>03:14:07.180 Slow query logged</title>
+<circle cx="265.78" cy="145.00" r="4" fill="#545c63"/>
+<text x="273.78" y="149.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07.180 Slow query logged</text>
+</g>
+<g>
+<title>03:14:07.180342 Driver retried</title>
+<circle cx="265.79" cy="167.00" r="4" fill="#545c63"/>
+<text x="273.79" y="171.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07.180342 Driver retried</text>
+</g>
+<g>
+<title>03:14:07.180342917 Kernel dropped a packet</title>
+<circle cx="265.79" cy="189.00" r="4" fill="#545c63"/>
+<text x="273.79" y="193.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07.180342917 Kernel dropped a packet</text>
+</g>
+<g>
+<title>03:15:00–03:16:30 Replica set has no primary</title>
+<rect x="266.08" y="206.00" width="2.00" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.35"/>
+<text x="276.08" y="215.00" text-anchor="start" font-size="11" fill="#1b1f22">03:15:00–03:16:30 Replica set has no primary</text>
+</g>
+<g>
+<title>04:30 Support in Bengaluru escalated</title>
+<rect x="291.50" y="226.00" width="20.33" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="291.50" cy="233.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="319.83" y="237.00" text-anchor="start" font-size="11" fill="#1b1f22">04:30 Support in Bengaluru escalated</text>
+</g>
+<g>
+<title>2026-09-11 Deploy window opened</title>
+<rect x="301.67" y="248.00" width="488.00" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="301.67" cy="255.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="309.67" y="259.00" text-anchor="start" font-size="11" fill="#1b1f22">2026-09-11 Deploy window opened</text>
+</g>
+<g>
+<title>23:50–2026-09-12 00:20 Nightly backup ran</title>
+<rect x="684.61" y="272.00" width="10.17" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.12" stroke-dasharray="3 2"/>
+<text x="692.61" y="281.00" text-anchor="start" font-size="11" fill="#1b1f22">23:50–2026-09-12 00:20 Nightly backup ran</text>
+</g>
+<g>
+<title>~2026-09-12 Customer reports trickled in</title>
+<rect x="688.00" y="292.00" width="488.00" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="688.00" cy="299.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="680.00" y="303.00" text-anchor="end" font-size="11" fill="#1b1f22">~2026-09-12 Customer reports trickled in</text>
+</g>
+<line x1="0" y1="316.00" x2="1224.00" y2="316.00" stroke="#d3d8d6"/>
+</g>
+</svg>

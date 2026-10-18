@@ -102,6 +102,7 @@ var _ = Describe("timeline export", func() {
 		Entry("json", "json", `"exported_at":"[^"]*"`),
 		Entry("jsonl", "jsonl", `"exported_at":"[^"]*"`),
 		Entry("md", "md", `(?m)^- \*\*Exported:\*\*.*$`),
+		Entry("svg", "svg", `Exported [^<]*`),
 	)
 
 	It("writes JSONL that decodes and re-encodes to the same bytes", func(ctx SpecContext) {
@@ -245,6 +246,7 @@ var _ = Describe("timeline export", func() {
 		Entry("--diagram with json", "--diagram", "--format", "json", "--diagram"),
 		Entry("--diagram with mermaid", "--diagram", "--format", "mermaid", "--diagram"),
 		Entry("--group-by with html", "--group-by", "--format", "html", "-o", "-", "--group-by", "source"),
+		Entry("--diagram with svg", "--diagram", "--format", "svg", "--diagram"),
 	)
 
 	Describe("-o", func() {
@@ -454,6 +456,27 @@ var _ = Describe("timeline export", func() {
 			var env export.Envelope
 			Expect(json.Unmarshal(out.Bytes(), &env)).To(Succeed())
 			Expect(env.Attachments).To(ConsistOf(HaveField("Filename", "stepdown.log")))
+		})
+	})
+
+	Describe("--format svg", func() {
+		BeforeEach(func() {
+			configFile = `default_timezone = "America/New_York"`
+		})
+
+		It("writes an SVG picture of the events to stdout, in UTC whatever zone the config file sets", func(ctx SpecContext) {
+			picture := exportAs(ctx, "svg")
+
+			Expect(picture).To(ContainSubstring(`<svg xmlns="http://www.w3.org/2000/svg"`))
+			Expect(picture).To(ContainSubstring(">Times in UTC<"))
+			Expect(picture).To(ContainSubstring("Primary stepped down</text>"))
+			Expect(errOut.String()).To(BeEmpty())
+		})
+
+		It("shows times in the zone --tz names", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "svg", "--tz", "America/New_York")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring(">Times in America/New_York<"))
 		})
 	})
 

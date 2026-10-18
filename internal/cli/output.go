@@ -20,11 +20,12 @@ const (
 	formatText  format = "text"
 	formatJSON  format = "json"
 	formatJSONL format = "jsonl"
-	// formatMarkdown, formatMermaid and formatHTML are not machine(), so errors under them print
-	// as text.
+	// formatMarkdown, formatMermaid, formatHTML and formatSVG are not machine(), so errors under
+	// them print as text.
 	formatMarkdown format = "md"
 	formatMermaid  format = "mermaid"
 	formatHTML     format = "html"
+	formatSVG      format = "svg"
 )
 
 // formatsAnnotation is the cmd.Annotations key listing the formats a command prints,
