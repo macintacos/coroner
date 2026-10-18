@@ -42,5 +42,6 @@ The config file is taken from `--config`, then `CORONER_CONFIG`, then the defaul
 database is taken from `--db`, then `CORONER_DB`, then `db` in the config file, then the
 default.
 
-There is no `CORONER_FORMAT`: pass `--format` or `--json` to each command that should
-print JSON.
+There is deliberately no `CORONER_FORMAT`: one exported in a shell would silently change
+what every script run from it receives. Pass `--format` or `--json` to each command that
+should print JSON.

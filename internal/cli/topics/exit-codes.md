@@ -16,7 +16,7 @@ envelope names.
 | 130 | Interrupted | `interrupted` |
 
 New exit codes and kinds will be added over time. If an unknown exit code is returned, it
-MUST be treated as a command failure.
+MUST be treated as a command failure. A code's meaning never changes.
 
 ## The JSON error envelope
 

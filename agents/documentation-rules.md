@@ -32,6 +32,7 @@ digraph coroner_docs_router {
     "Edit the docs site: docs/ and zensical.toml" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
     "Edit docs/reference/export-format.md" [shape=box];
+    "Edit docs/reference/configuration.md" [shape=box];
     "Regenerate CHANGELOG.md (committed by the first release)" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
@@ -47,13 +48,14 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
     "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, what a diff under contract/ means, and the export round trip in internal/cli/roundtrip_test.go"];
     "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
-    "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
+    "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun, repeated word for word in docs/explanation/data-model.md"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site: docs/ and zensical.toml" [label="user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav"];
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
+    "Which doc does the change affect?" -> "Edit docs/reference/configuration.md" [label="a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule"];
     "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (committed by the first release)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
-    "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables"];
+    "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site"];
     "Which doc does the change affect?" -> "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses changed"];
 }
 ```
@@ -92,7 +94,10 @@ digraph coroner_docs_router {
   (anyone updating the library) — the vis-timeline version the HTML export embeds, the
   committed file's checksum and licence, and how to update it.
 - **[`CONTEXT.md`](../CONTEXT.md)** — the vocabulary glossary for names in code, flags,
-  JSON and docs.
+  JSON and docs. Past its glossary's introduction,
+  [`docs/explanation/data-model.md`](../docs/explanation/data-model.md) ends with this
+  file from its Language section on, word for word, and a spec in `internal/timeline`
+  fails when they differ, so a glossary change edits both.
 - **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the
   deprecation mechanics.
 - **The docs site** (human-facing) — every file under [`docs/`](../docs/), built by
@@ -102,32 +107,49 @@ digraph coroner_docs_router {
   `how-to/`, `reference/`, `explanation/` and `contributing/` are its Diátaxis sections.
   [The tutorial](../docs/tutorial/first-timeline.md) and
   [the how-to guides](../docs/how-to/index.md) are in those sections and the nav
-  (`docs/how-to/install.md` keeps its own entry). The reference and explanation pages (not
-  in the repo yet — EXC-1302) join those sections and the nav. The examples test fails
+  (`docs/how-to/install.md` keeps its own entry).
+  [The reference index](../docs/reference/index.md) lists the reference pages: the export
+  format, the help topic pages docgen writes under `reference/cli/`, which the nav lists
+  as the exit codes, environment variables, time input and output formats pages, and
+  [the configuration page](../docs/reference/configuration.md).
+  [The explanation pages](../docs/explanation/index.md) cover the data model and its
+  glossary, timestamps and time zones, and the design principles. The examples test fails
   when a `coroner` line in the shell code blocks of any page under `docs/` stops parsing,
   so a changed command or flag updates those pages in the same change. The output shown
   under a `console` prompt is pasted from real runs and is not checked, so a change to a
   command's text output updates it on those pages in the same change. A page links a file
   outside `docs/` by its GitHub URL, since a relative one breaks on the site and
-  `mise run docs:build` does not catch it.
+  `mise run docs:build` does not catch it. The export schema is the exception:
+  `mise run docs:build` copies it into the site, pages link that copy as
+  `/coroner/schema/export-v1.schema.json`, under the path of `zensical.toml`'s `site_url`,
+  and the build fails when a page links a file under `/coroner/schema/` it did not copy.
 - **[`docs/reference/cli/`](../docs/reference/cli/)** (human-facing) — the CLI reference,
   one page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never
-  hand-edited.
+  hand-edited. The help topic pages are also the site's reference pages for those topics,
+  so the terminal and the site never disagree.
 - **[`docs/reference/export-format.md`](../docs/reference/export-format.md)** (anyone
   reading or writing coroner's JSON: people with jq, scripts, agents, importers) — the
   export envelope, every key of the canonical objects, the JSONL stream and its record
   order, the encoding rules and the evolution rules. Its machine-readable twin,
   `schema/export-v1.schema.json`, is generated from the `internal/export` types by
   `go run ./internal/tools/schemagen` and never hand-edited.
+- **[`docs/reference/configuration.md`](../docs/reference/configuration.md)** (anyone
+  setting coroner's defaults for their machine, by hand or from a script) — where the
+  config file lives, its keys with their types and defaults, the precedence of flags,
+  environment variables, the config file and the database, what the file rejects, and the
+  blob directory rule. A spec in `internal/config` fails when the page misses a key the
+  config file accepts, so a new config key updates it in the same change.
 - **`CHANGELOG.md`** (committed by the first release; human-facing) — every release's
   changes grouped by commit type, **Breaking** first, written at release by
   `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../cliff.toml), per
   [the release checklist](../docs/contributing/releasing.md). Never hand-edited.
 - **[`internal/cli/topics/*.md`](../internal/cli/topics/)** (humans and agents at the
   terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
-  CLI reference pages. Specs pin the `exit-codes` table and the `environment` variables to
-  the code.
+  CLI reference pages, which are also the site's Exit codes, Environment variables, Time
+  input and Output formats pages, so a topic's title or structure changes a published
+  reference page. Specs pin the `exit-codes` table and the `environment` variables to the
+  code.
 - **`skills/coroner/SKILL.md`** (not in the repo yet — EXC-1277) — the agent skill that
   ships with coroner, with its references.
 

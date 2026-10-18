@@ -6,6 +6,16 @@ set -euo pipefail
 uv run --locked zensical build --clean --strict
 
 # Zensical publishes only files under docs/, and a symlink there empties the build,
-# so copy the generated schema in.
+# so copy the generated schema in. Pages link it as /coroner/schema/: a relative
+# link fails rumdl's MD057, since the copy exists only after this build.
 mkdir -p site/schema
 cp schema/*.json site/schema/
+
+# Neither rumdl nor Zensical checks a root-absolute link.
+{ grep -roE 'href="/coroner/schema/[^"]+' site || true; } | while IFS= read -r link; do
+	file=${link#*:href=\"/coroner/}
+	test -f "site/${file}" || {
+		echo "docs:build: ${link%%:*} links /coroner/${file}, which is not in site/" >&2
+		exit 1
+	}
+done

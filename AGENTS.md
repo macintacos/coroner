@@ -23,7 +23,8 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
   narrows Ginkgo specs only, so plain `Test*` functions such as `TestScripts` still run.
 - `mise run docs:serve` serves the docs site locally and rebuilds it on change.
   `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing on any
-  warning, such as a broken link between pages, and copies the export schema in.
+  warning, such as a broken link between pages, copies the export schema in, and fails
+  when a page links a file under `/coroner/schema/` that is not in `site/`.
 - `mise run preflight` runs lint, test, build and docs:build. It is the gate before
   declaring work done (Rule 7).
 - `mise run release:check` validates [`.goreleaser.yaml`](.goreleaser.yaml), and
@@ -97,23 +98,24 @@ digraph coroner_rules_router {
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence, and the
-  attachment blob directory beside the database: `internal/config`. JSON export types,
-  envelope, encoder and JSONL decoder, and the Markdown, Mermaid, HTML and SVG exports'
-  renderers: `internal/export`, the JSON described by
-  [the export format reference](docs/reference/export-format.md); the HTML page's viewer
-  and vendored vis-timeline live in `internal/export/html/`, its colour tokens in
-  `internal/export/theme.go`, and the SVG picture's template in `internal/export/svg/`.
-  The terminal viewer `timeline view` opens and the picker `timeline list` opens:
-  `internal/viewer`. Which terminals show images inline, the Kitty graphics sequences and
-  the placeholder text shown where none can: `internal/graphics`, pure. `main.go` builds
-  `cli.App` from the process; code below it takes everything from `cli.App`, never from
-  `os`. Dev tools run with `go run`: `internal/tools/` (`docgen` writes the CLI reference,
-  and with `--man <dir>` the man pages a release packs; `schemagen` the export schema;
-  `compatfixture` a release's fixture database).
+  attachment blob directory beside the database: `internal/config`, whose spec fails when
+  [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a key the
+  config file accepts. JSON export types, envelope, encoder and JSONL decoder, and the
+  Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`, the JSON
+  described by [the export format reference](docs/reference/export-format.md); the HTML
+  page's viewer and vendored vis-timeline live in `internal/export/html/`, its colour
+  tokens in `internal/export/theme.go`, and the SVG picture's template in
+  `internal/export/svg/`. The terminal viewer `timeline view` opens and the picker
+  `timeline list` opens: `internal/viewer`. Which terminals show images inline, the Kitty
+  graphics sequences and the placeholder text shown where none can: `internal/graphics`,
+  pure. `main.go` builds `cli.App` from the process; code below it takes everything from
+  `cli.App`, never from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen`
+  writes the CLI reference, and with `--man <dir>` the man pages a release packs;
+  `schemagen` the export schema; `compatfixture` a release's fixture database).
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
-  `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
-  `exit-codes` disagrees with the exit-code map or `environment` misses an environment
-  variable the code reads.
+  `coroner help <topic>`, and copied into the CLI reference by `docgen`; those pages are
+  also the site's reference pages for the topics. Specs fail when `exit-codes` disagrees
+  with the exit-code map or `environment` misses an environment variable the code reads.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the
@@ -175,9 +177,13 @@ digraph coroner_rules_router {
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
   [`pyproject.toml`](pyproject.toml), locked by `uv.lock`. Every file under `docs/` is
   published, so agent-facing rules live in [`agents/`](agents/), never under `docs/`, and
-  a published page links a file outside `docs/` by its GitHub URL.
+  a published page links a file outside `docs/` by its GitHub URL, except the export
+  schema, which `docs:build` copies into the site at `/coroner/schema/`, under
+  `site_url`'s path, and fails when a page links a file there it did not copy.
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
+  [`docs/explanation/data-model.md`](docs/explanation/data-model.md) carries the glossary
+  word for word, and a spec fails when the two differ.
 - Layering and function-shape rules live in lint ([`.golangci.yml`](.golangci.yml)), not
   here.
 
