@@ -23,10 +23,18 @@ func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.
 	return withStorePath(ctx, app, resolved.DBPath, fn)
 }
 
-// withStorePath opens the database at path, runs fn against it and closes it. Errors from
-// opening the store or from fn pass through storeError.
+// withStorePath opens the database at path, creating and migrating it as needed, through
+// withStoreOpenedBy.
 func withStorePath(ctx context.Context, app App, path string, fn func(*store.Store) error) error {
-	s, err := app.OpenStore(ctx, path)
+	return withStoreOpenedBy(ctx, app.OpenStore, path, fn)
+}
+
+// withStoreOpenedBy opens the database at path with open, runs fn against it and closes it.
+// Errors from opening the store or from fn pass through storeError.
+func withStoreOpenedBy(
+	ctx context.Context, open func(context.Context, string) (*store.Store, error), path string, fn func(*store.Store) error,
+) error {
+	s, err := open(ctx, path)
 	if err != nil {
 		return storeError(err, path)
 	}

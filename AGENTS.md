@@ -58,6 +58,7 @@ digraph coroner_rules_router {
     "Load docs/agents/store-rules.md" [shape=box];
     "Load docs/agents/timeparse-rules.md" [shape=box];
     "Load docs/agents/export-rules.md" [shape=box];
+    "Load docs/agents/viewer-rules.md" [shape=box];
 
     "Working on coroner" -> "What does the change touch?";
     "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
@@ -71,6 +72,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
     "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, or code that encodes the export types"];
+    "What does the change touch?" -> "Load docs/agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
 }
 ```
 
@@ -79,10 +81,11 @@ digraph coroner_rules_router {
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
   `internal/config`. JSON export types, envelope and encoder: `internal/export`, described
-  by [the export format reference](docs/reference/export-format.md). `main.go` builds
-  `cli.App` from the process; code below it takes everything from `cli.App`, never from
-  `os`. Dev tools run with `go run`: `internal/tools/` (`docgen` writes the CLI reference,
-  `schemagen` the export schema, `compatfixture` a release's fixture database).
+  by [the export format reference](docs/reference/export-format.md). The terminal viewer
+  `timeline view` opens: `internal/viewer`. `main.go` builds `cli.App` from the process;
+  code below it takes everything from `cli.App`, never from `os`. Dev tools run with
+  `go run`: `internal/tools/` (`docgen` writes the CLI reference, `schemagen` the export
+  schema, `compatfixture` a release's fixture database).
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
   `exit-codes` disagrees with the exit-code map or `environment` misses an environment
@@ -127,12 +130,13 @@ digraph coroner_rules_router {
    the export schema is stale. Expected output in `internal/cli/testdata/script/*.txtar`
    is rewritten by `go test ./internal/cli -run 'TestScripts/script$' -update`; contract
    scripts change only as a deliberate contract change (Rule 3), through the `contract`
-   subtest. `internal/store/testdata/compat/v*.db` is written once, from its release's
-   tag, by `go run ./internal/tools/compatfixture -o <path>`, and never regenerated
-   ([the migration policy](docs/contributing/migrations.md)). `CHANGELOG.md` (not in the
-   repo yet — EXC-1304) is written at release by `git cliff --tag vX.Y.Z -o CHANGELOG.md`
-   from [`cliff.toml`](cliff.toml). Each issue that adds a generated artifact adds its
-   path and how to regenerate it here.
+   subtest. The viewer's screens in `internal/viewer/testdata/*.golden` are rewritten by
+   `go test ./internal/viewer -update`. `internal/store/testdata/compat/v*.db` is written
+   once, from its release's tag, by `go run ./internal/tools/compatfixture -o <path>`, and
+   never regenerated ([the migration policy](docs/contributing/migrations.md)).
+   `CHANGELOG.md` (not in the repo yet — EXC-1304) is written at release by
+   `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](cliff.toml). Each issue
+   that adds a generated artifact adds its path and how to regenerate it here.
 3. **JSON output is a contract:** change it by editing the Go types, regenerating the
    schema and adding a fixture; an additive change bumps `format_version` minor, and any
    other change needs the maintainer's explicit approval and a major bump. Frozen export

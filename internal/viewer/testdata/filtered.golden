@@ -1,0 +1,20 @@
+mongo-outage  Primary election storm                   times in America/New_York
+3 events from mongod or slack, tagged election
+  ── Thu 2026-09-10 ────────────────────────────────────────────────────────────
+› #2   23:14:07 EDT     mongod  election,phase:detect  Primary stepped down  (2…
+  ── 46m ───────────────────────────────────────────────────────────────────────
+  ── Fri 2026-09-11 ────────────────────────────────────────────────────────────
+  #1  ~00:01 EDT        slack   -                      Pager fires for db-2     
+  ── 9m ────────────────────────────────────────────────────────────────────────
+  #4   00:10–00:40 EDT  mongod  -                      Replica lag above 30s    
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+
+enter annotations • s source • t tag • / text • @ jump • ? keys • q quit

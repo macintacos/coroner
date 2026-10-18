@@ -23,6 +23,12 @@ exec coroner timeline view
 stdout '^mongo-outage-2026-09-11$'
 stdout '^Refs: +INC-4821$'
 
+# Piped, or under --format text, view prints plain text, never the viewer's escape sequences.
+! stdout '\x1b'
+exec coroner timeline view --format text
+stdout '^mongo-outage-2026-09-11$'
+! stdout '\x1b'
+
 # --dry-run deletes nothing; deleting the current timeline leaves none current.
 exec coroner timeline delete mongo-outage-2026-09-11 --dry-run
 stdout '^Would delete timeline `mongo-outage-2026-09-11`: events: 0, annotations: 0$'

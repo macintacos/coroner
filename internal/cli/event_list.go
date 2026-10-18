@@ -44,11 +44,16 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 func addEventFilterFlags(flags *pflag.FlagSet) {
 	flags.String("since", "", "Keep events at or after this `time`")
 	flags.String("until", "", "Keep events before this `time`")
+	addEventMatchFlags(flags)
+	flags.String("order", "asc", "Order by occurred at, then seq, as an `order`: {asc|desc}")
+	flags.Int("limit", 0, "Show at most this `number` of events (default: every one)")
+}
+
+// addEventMatchFlags declares the flags that pick events by source, tag and text.
+func addEventMatchFlags(flags *pflag.FlagSet) {
 	flags.StringArray("source", nil, "Keep events from this `source`; repeat to match any of several")
 	flags.StringArray("tag", nil, "Keep events with this `tag`; repeat to require all of them")
 	flags.String("contains", "", "Keep events whose text contains this `text`, ignoring case")
-	flags.String("order", "asc", "Order by occurred at, then seq, as an `order`: {asc|desc}")
-	flags.Int("limit", 0, "Show at most this `number` of events (default: every one)")
 }
 
 func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
@@ -102,16 +107,7 @@ func noEventsMessage(f store.EventFilter) string {
 // resolved to as the command echoes them, or "" when neither was given. It rejects a filter
 // before the store opens.
 func readEventFilter(flags *pflag.FlagSet, now time.Time, z zone) (store.EventFilter, string, error) {
-	f := store.EventFilter{
-		Sources: appendUnique(nil, stringArray(flags, "source")...),
-		Tags:    appendUnique(nil, stringArray(flags, "tag")...),
-	}
-
-	err := checkFilterSlugs(f)
-	if err != nil {
-		return f, "", err
-	}
-	f.Contains, err = readContains(flags)
+	f, err := readEventMatch(flags)
 	if err != nil {
 		return f, "", err
 	}
@@ -132,6 +128,23 @@ func readEventFilter(flags *pflag.FlagSet, now time.Time, z zone) (store.EventFi
 	f.Until, until, err = readBound(flags, "until", now, z)
 
 	return f, strings.TrimSpace(since + " " + until), err
+}
+
+// readEventMatch returns the sources, tags and text the match flags keep events by, rejecting
+// them before the store opens.
+func readEventMatch(flags *pflag.FlagSet) (store.EventFilter, error) {
+	f := store.EventFilter{
+		Sources: appendUnique(nil, stringArray(flags, "source")...),
+		Tags:    appendUnique(nil, stringArray(flags, "tag")...),
+	}
+
+	err := checkFilterSlugs(f)
+	if err != nil {
+		return f, err
+	}
+	f.Contains, err = readContains(flags)
+
+	return f, err
 }
 
 func checkFilterSlugs(f store.EventFilter) error {

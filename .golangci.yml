@@ -94,6 +94,13 @@ linters:
           deny:
             - pkg: github.com/macintacos/coroner/internal/store/sqlcgen
               desc: use internal/store; never serialize sqlc models
+        viewer-no-store:
+          files:
+            - "${base-path}/internal/viewer/**"
+            - "!$test"
+          deny:
+            - pkg: github.com/macintacos/coroner/internal/store
+              desc: read through Options.Load; the viewer never holds the database (viewer-rules 1)
     exhaustive:
       check:
         - switch
