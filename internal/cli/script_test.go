@@ -43,7 +43,10 @@ const updateFlag = "update"
 func TestMain(m *testing.M) {
 	// Registered here and read back with flag.Lookup: gochecknoglobals rejects a package-level flag var.
 	flag.Bool(updateFlag, false, "rewrite testscript expectations in place")
-	testscript.Main(m, map[string]func(){"coroner": runCoroner})
+	testscript.Main(m, map[string]func(){
+		"coroner":            func() { runCoroner(cli.Run) },
+		"coroner-deprecated": func() { runCoroner(cli.RunWithThrowawayDeprecation) },
+	})
 }
 
 func TestScripts(t *testing.T) {
@@ -224,8 +227,9 @@ func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
 	ts.Check(errors.Join(err, db.Close()))
 }
 
-// runCoroner is coroner as scripts run it: main.go's App with the clock and IDs pinned.
-func runCoroner() {
+// runCoroner runs coroner as scripts do, through run (cli.Run or a test variant): main.go's
+// App with the clock and IDs pinned.
+func runCoroner(run func(context.Context, cli.App) int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
 
@@ -263,7 +267,7 @@ func runCoroner() {
 		// Distinct from coroner's exit codes, so an exact exit-code assertion tells a broken harness from a coroner failure.
 		os.Exit(125)
 	}
-	os.Exit(cli.Run(ctx, app))
+	os.Exit(run(ctx, app))
 }
 
 func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {

@@ -28,7 +28,7 @@ digraph coroner_docs_router {
     "Edit internal/cli/testdata/script/contract/README.md" [shape=box];
     "Edit internal/export/html/vendor/README.md" [shape=box];
     "Edit CONTEXT.md" [shape=box];
-    "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
+    "Edit STABILITY.md" [shape=box];
     "Edit the docs site: docs/ and zensical.toml" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
     "Edit docs/reference/export-format.md" [shape=box];
@@ -49,7 +49,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, what a diff under contract/ means, and the export round trip in internal/cli/roundtrip_test.go"];
     "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun, repeated word for word in docs/explanation/data-model.md"];
-    "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
+    "Which doc does the change affect?" -> "Edit STABILITY.md" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site: docs/ and zensical.toml" [label="user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav"];
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
@@ -98,8 +98,11 @@ digraph coroner_docs_router {
   [`docs/explanation/data-model.md`](../docs/explanation/data-model.md) ends with this
   file from its Language section on, word for word, and a spec in `internal/timeline`
   fails when they differ, so a glossary change edits both.
-- **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the
-  deprecation mechanics.
+- **[`STABILITY.md`](../STABILITY.md)** (anyone who runs coroner from a script, an agent
+  or an importer, and anyone who changes a command, flag, environment variable or JSON
+  output) — what counts as a contract, the tiers, what is breaking, how a contract change
+  is classified, and the deprecation mechanics. Help topics, the pull request template and
+  the contract README link to it for anything beyond a one-line summary.
 - **The docs site** (human-facing) — every file under [`docs/`](../docs/), built by
   Zensical with `mise run docs:build` from [`zensical.toml`](../zensical.toml), whose
   `nav` lists the pages, and deployed to GitHub Pages when a `v*` tag is pushed. The

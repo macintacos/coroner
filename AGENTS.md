@@ -69,7 +69,7 @@ digraph coroner_rules_router {
     "Load docs/contributing/command-checklist.md" [shape=box];
     "Load .golangci.yml" [shape=box];
     "Load CONTEXT.md" [shape=box];
-    "Load STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
+    "Load STABILITY.md" [shape=box];
     "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
     "Load agents/documentation-rules.md" [shape=box];
     "Load agents/timeline-rules.md" [shape=box];
@@ -83,7 +83,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load docs/contributing/command-checklist.md" [label="a command, flag, output or error message (Rule 1)"];
     "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
-    "What does the change touch?" -> "Load STABILITY.md (not in the repo yet — EXC-1303)" [label="JSON output, exports or another contract (Rule 3)"];
+    "What does the change touch?" -> "Load STABILITY.md" [label="JSON output, exports or another contract (Rule 3)"];
     "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
     "What does the change touch?" -> "Load agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, an agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
@@ -129,6 +129,11 @@ digraph coroner_rules_router {
   `selectChosenTimelines` and read their events through `store.EventFilter.TimelineIDs`.
   `cli.Run` prints every error once, adding the JSON error envelope under
   `--format json|jsonl`.
+- Deprecating a command or flag: `deprecateCommand` and `deprecateFlag` in
+  [`internal/cli/deprecation.go`](internal/cli/deprecation.go), under the process in
+  [`STABILITY.md`](STABILITY.md#deprecation).
+  [`deprecation.txtar`](internal/cli/testdata/script/deprecation.txtar) runs a throwaway
+  deprecated flag to prove its notice stays off stdout.
 - Write commands (`timeline create|edit|delete|use`, `event add|edit|delete|link|unlink`,
   `annotation add|edit|delete`, `attachment delete`, `overlay create`): each declares its
   flags, positional argument and their checks once, in a `definition`

@@ -7,7 +7,9 @@ timeline for an incident, add timestamped events as you find them in logs, chat 
 people's accounts, and export the timeline to share what happened and when. Your timelines
 live in one SQLite file on your machine; an export is what you share.
 
-coroner is pre-0.1: commands, flags and the database schema can change without notice.
+coroner is pre-0.1: any release before 1.0 may change it, but never silently.
+[The stability policy](https://github.com/macintacos/coroner/blob/main/STABILITY.md) says
+what coroner promises to keep working and how it retires a command or flag.
 
 ## Install
 
@@ -68,3 +70,5 @@ picture.
 - [Export format](reference/export-format.md): the JSON an export writes, for scripts and
   importers.
 - [Explanation](explanation/index.md): why coroner works the way it does.
+- [Stability policy](https://github.com/macintacos/coroner/blob/main/STABILITY.md): what
+  scripts can rely on, what counts as a breaking change, and how deprecation works.
