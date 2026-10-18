@@ -17,7 +17,8 @@ Run 'coroner help time' for the times you can type.
 Pass - to read the text from stdin, which is never read otherwise.
 
 On a terminal, with no text or with --interactive, a form asks for each flag, previews the
-time as you type it, and prints the command each entry equals.
+time as you type it, and prints the command each entry equals. Under --json only --interactive
+opens it, and --no-input never does.
 
 ```
 coroner event add {<text> | -} [flags]
@@ -58,6 +59,7 @@ coroner event add {<text> | -} [flags]
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+      --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
       --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)

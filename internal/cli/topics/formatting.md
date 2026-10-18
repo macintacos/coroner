@@ -11,8 +11,9 @@ terminal, `coroner timeline view` opens an interactive viewer; `--format text` o
 prints plain text instead. On a terminal, `coroner event add` and `coroner annotation add`
 open a form when their text, body or `--kind` is missing, `coroner timeline create` when
 its name is missing, `coroner timeline edit` when no change is given, and each with
-`--interactive`. `--format` does not keep them from opening, so scripts pass every
-required value, or run without a terminal.
+`--interactive`. Under `--json` a form opens only with `--interactive`. `--no-input` or
+`CORONER_NO_INPUT` keeps every form, the `coroner timeline list` picker and the viewer
+closed: a command line missing a required value exits 2 instead of asking.
 
 - `text` is for people.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.

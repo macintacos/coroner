@@ -74,15 +74,15 @@ type formCommand struct {
 func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool) askFunc) *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		interactive, _ := cmd.Flags().GetBool("interactive")
-		terminal := interactiveTerminal(app)
+		inputOff := noInput(cmd, app)
+		terminal := interactiveTerminal(app, inputOff)
 		if interactive && !terminal {
-			return &Error{
-				Kind: KindUsage, Message: "--interactive needs a terminal",
-				Hint: "Run '" + cmd.CommandPath() + " --help' for the flags it takes.",
-			}
+			return interactiveRefusal(cmd, inputOff)
 		}
 		in := c.def.read(cmd.Flags(), args)
-		if !formMode(interactive, c.ready(in), terminal) {
+		// wrapRunErrors has already rejected a bad format.
+		chosen, _ := outputFormat(cmd)
+		if !formMode(formGate{interactive: interactive, ready: c.ready(in), machine: chosen.machine(), terminal: terminal}) {
 			return c.flagsOnly(cmd, args)
 		}
 
@@ -113,6 +113,28 @@ func (f addForm[R]) attach(ctx context.Context, cmd *cobra.Command, app App, for
 	}.attach(cmd, app, forms)
 }
 
+// interactiveRefusal returns the error --interactive on cmd gets with no terminal to open a form on:
+// a conflict with --no-input or CORONER_NO_INPUT when inputOff, otherwise a missing terminal.
+func interactiveRefusal(cmd *cobra.Command, inputOff bool) error {
+	switch {
+	case inputOff && cmd.Flags().Changed("no-input"):
+		return &Error{
+			Kind: KindUsage, Message: "--interactive conflicts with --no-input",
+			Hint: "Pass --interactive or --no-input, not both.",
+		}
+	case inputOff:
+		return &Error{
+			Kind: KindUsage, Message: "--interactive conflicts with CORONER_NO_INPUT",
+			Hint: "Unset CORONER_NO_INPUT, or pass every value as a flag.",
+		}
+	}
+
+	return &Error{
+		Kind: KindUsage, Message: "--interactive needs a terminal",
+		Hint: "Run '" + cmd.CommandPath() + " --help' for the flags it takes.",
+	}
+}
+
 // newFormSession returns the session cmd's form runs in, asking through forms.
 func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc) (formSession, error) {
 	o, err := newOutput(cmd, app)
@@ -139,17 +161,36 @@ func newFormSession(cmd *cobra.Command, app App, forms func(color bool) askFunc)
 	}, nil
 }
 
-// interactiveTerminal reports whether a command may take over the terminal: keys can arrive, and
-// the screen is a terminal that can draw (I-1).
-func interactiveTerminal(app App) bool {
+// interactiveTerminal reports whether a command may take over app's terminal: input is not turned
+// off, keys can arrive, and the screen is a terminal that can draw (I-1, I-2).
+func interactiveTerminal(app App, inputOff bool) bool {
 	term, _ := app.LookupEnv("TERM")
-	return app.InIsTTY && app.OutIsTTY && term != "dumb"
+	return !inputOff && app.InIsTTY && app.OutIsTTY && term != "dumb"
+}
+
+// noInput reports whether --no-input, or CORONER_NO_INPUT when the flag is not given, turns every
+// form, picker and viewer off.
+func noInput(cmd *cobra.Command, app App) bool {
+	if cmd.Flags().Changed("no-input") {
+		flag, _ := cmd.Flags().GetBool("no-input")
+		return flag
+	}
+
+	return envTrue(app.LookupEnv, "CORONER_NO_INPUT")
+}
+
+// formGate is what formMode decides from: whether --interactive asks for the form, the command
+// line's values run without it, a machine format was asked for, and a form may take over the
+// terminal.
+type formGate struct {
+	interactive, ready, machine, terminal bool
 }
 
 // formMode reports whether a write command opens its form: on a terminal, when --interactive asks
-// for it or the command line is not ready to run without it.
-func formMode(interactive, ready, terminal bool) bool {
-	return terminal && (interactive || !ready)
+// for it, or when the command line is not ready to run without it and no machine format was asked
+// for, since a machine format's caller is a script.
+func formMode(g formGate) bool {
+	return g.terminal && (g.interactive || !g.ready && !g.machine)
 }
 
 // requiredGiven reports whether in gives every field d requires.

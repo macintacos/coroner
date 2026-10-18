@@ -1,0 +1,63 @@
+# Scripts run with no terminal, as agents, CI and pipes do: every interactive command runs the
+# command line as given. A spec requires a run of each command that can open a form, picker or
+# viewer here.
+
+# A form command missing its required input exits 2, naming what to pass, and never reads the
+# stdin it was given.
+stdin pager.txt
+exits 2 coroner event add
+stderr 'or - to read it from stdin'
+stdin pager.txt
+exits 2 coroner annotation add
+stderr '--kind evidence'
+exits 2 coroner timeline create
+stderr 'Usage: coroner timeline create <name>'
+stderr 'coroner timeline create --help'
+exec coroner timeline create mongo-outage
+exec coroner timeline use mongo-outage
+exits 2 coroner timeline edit mongo-outage
+stderr 'Pass --name, --title, --add-ref or --remove-ref'
+
+# With every required input given, the same commands run without asking.
+exec coroner timeline edit mongo-outage --title 'Primary election storm'
+exec coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z --source mongod
+exec coroner annotation add 'replSetStepDown in the log' --kind evidence -e 1
+
+# --interactive needs a terminal, and input: --no-input or CORONER_NO_INPUT refuses it as usage.
+exits 2 coroner event add 'Pager fires' --interactive
+stderr '--interactive needs a terminal'
+exits 2 coroner event add 'Pager fires' --interactive --no-input --json
+stderr '\{"error":\{"kind":"usage",.*\}\n\z'
+stderr 'conflicts with --no-input'
+env CORONER_NO_INPUT=1
+exits 2 coroner timeline create other --interactive --json
+stderr '\{"error":\{"kind":"usage",.*\}\n\z'
+stderr 'conflicts with CORONER_NO_INPUT'
+env CORONER_NO_INPUT=
+
+# The viewer and picker print plain text instead, the same with input turned off.
+exec coroner timeline view
+cmp stdout view.txt
+exec coroner timeline view --no-input
+cmp stdout view.txt
+exec coroner timeline list
+cmp stdout list.txt
+exec coroner timeline list --no-input
+cmp stdout list.txt
+
+-- pager.txt --
+Pager fires for db-2
+-- view.txt --
+mongo-outage
+ID:          01a09862-b1c0-7000-8000-000000000001
+Title:       Primary election storm
+Refs:        -
+Created:     2026-09-12T21:30:00-04:00
+Events:      1, from 2026-09-10T23:14:07-04:00 to 2026-09-10T23:14:07-04:00
+Sources:     mongod 1
+Tags:        -
+Annotations: 1
+
+#1	2026-09-10T23:14:07-04:00		mongod	Primary stepped down
+-- list.txt --
+*	mongo-outage	Primary election storm

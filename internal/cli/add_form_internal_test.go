@@ -27,16 +27,18 @@ import (
 )
 
 var _ = Describe("add forms", func() {
-	DescribeTable("open on a terminal when --interactive asks or the command line is not ready",
-		func(interactive, ready, terminal, wantOpen bool) {
-			Expect(formMode(interactive, ready, terminal)).To(Equal(wantOpen))
+	DescribeTable("open on a terminal when --interactive asks, or when the command line is not ready and no machine format is asked for",
+		func(gate formGate, wantOpen bool) {
+			Expect(formMode(gate)).To(Equal(wantOpen))
 		},
-		Entry("a required field missing on a terminal", false, false, true, true),
-		Entry("--interactive with every required field on a terminal", true, true, true, true),
-		Entry("--interactive with a required field missing on a terminal", true, false, true, true),
-		Entry("every required field on a terminal", false, true, true, false),
-		Entry("a required field missing off a terminal", false, false, false, false),
-		Entry("every required field off a terminal", false, true, false, false),
+		Entry("a required field missing on a terminal", formGate{terminal: true}, true),
+		Entry("--interactive with every required field on a terminal", formGate{interactive: true, ready: true, terminal: true}, true),
+		Entry("--interactive with a required field missing on a terminal", formGate{interactive: true, terminal: true}, true),
+		Entry("every required field on a terminal", formGate{ready: true, terminal: true}, false),
+		Entry("a required field missing under a machine format on a terminal", formGate{machine: true, terminal: true}, false),
+		Entry("--interactive under a machine format on a terminal", formGate{interactive: true, machine: true, terminal: true}, true),
+		Entry("a required field missing off a terminal", formGate{}, false),
+		Entry("every required field off a terminal", formGate{ready: true}, false),
 	)
 
 	DescribeTable("ask a form again when its submission is rejected as usage, not found or a taken name, but not for the timeline it writes to",
@@ -58,18 +60,38 @@ var _ = Describe("add forms", func() {
 		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
 
-	DescribeTable("find a terminal only when stdin and stdout are one and TERM can draw",
-		func(inTTY, outTTY bool, term string, want bool) {
+	DescribeTable("find a terminal only when stdin and stdout are one, TERM can draw and input is not turned off",
+		func(inTTY, outTTY bool, term string, inputOff, want bool) {
 			app := App{InIsTTY: inTTY, OutIsTTY: outTTY, LookupEnv: func(key string) (string, bool) {
 				return term, key == "TERM"
 			}}
 
-			Expect(interactiveTerminal(app)).To(Equal(want))
+			Expect(interactiveTerminal(app, inputOff)).To(Equal(want))
 		},
-		Entry("both terminals", true, true, "xterm-256color", true),
-		Entry("stdin piped", false, true, "xterm-256color", false),
-		Entry("stdout piped", true, false, "xterm-256color", false),
-		Entry("a dumb terminal", true, true, "dumb", false),
+		Entry("both terminals", true, true, "xterm-256color", false, true),
+		Entry("stdin piped", false, true, "xterm-256color", false, false),
+		Entry("stdout piped", true, false, "xterm-256color", false, false),
+		Entry("a dumb terminal", true, true, "dumb", false, false),
+		Entry("input turned off", true, true, "xterm-256color", true, false),
+	)
+
+	DescribeTable("turn input off with --no-input, or CORONER_NO_INPUT when the flag is not given",
+		func(env map[string]string, args []string, want bool) {
+			app := App{LookupEnv: func(key string) (string, bool) {
+				value, ok := env[key]
+				return value, ok
+			}}
+			cmd := &cobra.Command{}
+			cmd.Flags().AddFlagSet(globalFlags())
+			Expect(cmd.ParseFlags(args)).To(Succeed())
+
+			Expect(noInput(cmd, app)).To(Equal(want))
+		},
+		Entry("neither", nil, nil, false),
+		Entry("--no-input", nil, []string{"--no-input"}, true),
+		Entry("CORONER_NO_INPUT set", map[string]string{"CORONER_NO_INPUT": "1"}, nil, true),
+		Entry("CORONER_NO_INPUT false", map[string]string{"CORONER_NO_INPUT": "false"}, nil, false),
+		Entry("--no-input=false over CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}, []string{"--no-input=false"}, false),
 	)
 
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
@@ -228,7 +250,7 @@ var _ = Describe("add forms", func() {
 					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
 				}), decline))
 
-				Expect(runForm(ctx, command, "event", "add", "--json")).To(Succeed())
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
 
 				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
@@ -279,7 +301,7 @@ var _ = Describe("add forms", func() {
 					return submit(map[string]string{"body": "replSetStepDown", "event": "1", "kind": "evidence"})(fields)
 				}, decline))
 
-				Expect(runForm(ctx, command, "annotation", "add", "--json")).To(Succeed())
+				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
 
 				Expect(offered).To(Equal([]string{"", "1"}))
@@ -344,7 +366,7 @@ var _ = Describe("add forms", func() {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
 				command := eventAdd(ctx, answers(submit(entry), cancel, decline))
 
-				Expect(runForm(ctx, command, "event", "add", "--json")).To(Succeed())
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
 				Expect(errOut.String()).To(ContainSubstring("--ended"))
 				Expect(errOut.String()).NotTo(ContainSubstring(`"kind"`))
@@ -404,6 +426,42 @@ var _ = Describe("add forms", func() {
 			Expect(run(ctx, "event", "add", "Pager fires", "--interactive")).To(Equal(2))
 			Expect(errOut.String()).To(ContainSubstring("--interactive needs a terminal"))
 		})
+
+		DescribeTable("run the command line as given on a terminal, asking nothing, when input is turned off or a machine format is asked for",
+			func(ctx SpecContext, env map[string]string, args ...string) {
+				lookupEnv := app.LookupEnv
+				app.LookupEnv = func(key string) (string, bool) {
+					if value, ok := env[key]; ok {
+						return value, true
+					}
+					return lookupEnv(key)
+				}
+
+				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add"}, args...)...)
+
+				Expect(err).To(HaveField("Kind", KindUsage))
+				Expect(err).To(HaveField("Message", "event add needs the event's text"))
+			},
+			Entry("--no-input", nil, "--no-input"),
+			Entry("CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}),
+			Entry("--json", nil, "--json"),
+		)
+
+		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
+			func(ctx SpecContext, env map[string]string, flags []string, message string) {
+				app.LookupEnv = func(key string) (string, bool) {
+					value, ok := env[key]
+					return value, ok
+				}
+
+				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add", "Pager fires", "--interactive"}, flags...)...)
+
+				Expect(err).To(HaveField("Kind", KindUsage))
+				Expect(err).To(HaveField("Message", message))
+			},
+			Entry("--no-input", nil, []string{"--no-input"}, "--interactive conflicts with --no-input"),
+			Entry("CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}, nil, "--interactive conflicts with CORONER_NO_INPUT"),
+		)
 	})
 
 	DescribeTable("preview a time as event add --dry-run --json resolves it",

@@ -33,7 +33,8 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"Run 'coroner help time' for the times you can type.\n\n" +
 			"Pass - to read the text from stdin, which is never read otherwise.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
-			"time as you type it, and prints the command each entry equals.",
+			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
+			"opens it, and --no-input never does.",
 		Args:        eventTextArg,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +

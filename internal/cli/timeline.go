@@ -306,7 +306,7 @@ func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, [
 	return func(cmd *cobra.Command, args []string) error {
 		err := cobra.ExactArgs(1)(cmd, args)
 		if err != nil {
-			return usageError(cmd, err)
+			return oneArgError(cmd, err)
 		}
 
 		return run(cmd, args)
@@ -317,10 +317,18 @@ func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, [
 // cobra.ExactArgs(1) does.
 func oneArgOrNone(cmd *cobra.Command, args []string) error {
 	if len(args) > 1 {
-		return cobra.ExactArgs(1)(cmd, args)
+		return oneArgError(cmd, cobra.ExactArgs(1)(cmd, args))
 	}
 
 	return nil
+}
+
+// oneArgError is usageError with the usage line in its hint, as cobra's message never names the
+// argument to pass.
+func oneArgError(cmd *cobra.Command, err error) *Error {
+	failure := usageError(cmd, err)
+	failure.Hint = fmt.Sprintf("Usage: %s\nRun '%s --help' for more.", cmd.UseLine(), cmd.CommandPath())
+	return failure
 }
 
 func timelineExistsError(name, hint string, err error) *Error {

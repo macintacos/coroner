@@ -21,7 +21,8 @@ func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
 			"digits, '.', '_' or '-', starting with a letter or digit. Put free text in --title.\n" +
 			"Creating a timeline does not make it current; run 'coroner timeline use' for that.\n\n" +
 			"On a terminal, with no name or with --interactive, a form asks for the name, title and\n" +
-			"refs, offers the existing timeline when the name is taken, and prints the command it equals.",
+			"refs, offers the existing timeline when the name is taken, and prints the command it equals.\n" +
+			"Under --json only --interactive opens it, and --no-input never does.",
 		Args:        oneArgOrNone,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline create mongo-outage-2026-09-11 --title \"Primary election storm\" \\\n" +
