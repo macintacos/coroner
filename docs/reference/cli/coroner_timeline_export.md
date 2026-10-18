@@ -4,7 +4,7 @@ title: coroner timeline export
 
 ## coroner timeline export
 
-Export a timeline as JSON, JSONL or Markdown
+Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML
 
 ### Synopsis
 
@@ -17,14 +17,17 @@ a zone.
 --format mermaid writes a Mermaid gantt diagram of the events, one section per source, in
 the same zone as md; --diagram appends that diagram to --format md.
 
+--format html writes one self-contained page that shows the events on a timeline in a
+browser, in the same zone as md, and needs -o.
+
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
-events are always in the order they happened. Redirect stdout to write a file.
+events are always in the order they happened. -o writes a file instead of stdout.
 
 --group-by is experimental and may change before 1.0.
 
 ```
-coroner timeline export --format {json | jsonl | md | mermaid} [flags]
+coroner timeline export --format {json | jsonl | md | mermaid | html} [-o <file>] [flags]
 ```
 
 ### Examples
@@ -35,6 +38,7 @@ coroner timeline export --format {json | jsonl | md | mermaid} [flags]
   $ coroner timeline export --format md --tz America/New_York > rca.md
   $ coroner timeline export --format mermaid --source mongod > timeline.mmd
   $ coroner timeline export --format md --diagram > rca.md
+  $ coroner timeline export --format html -o inc-4821.html
 ```
 
 ### Options
@@ -46,6 +50,7 @@ coroner timeline export --format {json | jsonl | md | mermaid} [flags]
       --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
+  -o, --output file        Write the export to this file, or to stdout when it is - (default "-")
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them
@@ -59,7 +64,7 @@ coroner timeline export --format {json | jsonl | md | mermaid} [flags]
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl} (default "text")
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)

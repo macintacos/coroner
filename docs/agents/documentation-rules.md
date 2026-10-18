@@ -24,6 +24,7 @@ digraph coroner_docs_router {
     "Edit docs/contributing/migrations.md" [shape=box];
     "Edit .github/pull_request_template.md" [shape=box];
     "Edit internal/cli/testdata/script/contract/README.md" [shape=box];
+    "Edit internal/export/html/vendor/README.md" [shape=box];
     "Edit CONTEXT.md" [shape=box];
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
     "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
@@ -41,6 +42,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
     "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, and what a diff under contract/ means"];
+    "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
@@ -75,6 +77,9 @@ digraph coroner_docs_router {
 - **[`internal/cli/testdata/script/contract/README.md`](../../internal/cli/testdata/script/contract/README.md)**
   (humans and agents) — what the contract scripts pin and how, and that a diff under
   `contract/` is a contract change.
+- **[`internal/export/html/vendor/README.md`](../../internal/export/html/vendor/README.md)**
+  (anyone updating the library) — the vis-timeline version the HTML export embeds, the
+  committed file's checksum and licence, and how to update it.
 - **[`CONTEXT.md`](../../CONTEXT.md)** — the vocabulary glossary for names in code, flags,
   JSON and docs.
 - **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the

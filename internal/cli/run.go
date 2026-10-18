@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"time"
 
@@ -30,6 +31,8 @@ type App struct {
 	LookupEnv func(key string) (string, bool)
 	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
 	ReadFile func(name string) ([]byte, error)
+	// WriteFile creates or truncates the file at name, as os.WriteFile does.
+	WriteFile func(name string, data []byte, perm fs.FileMode) error
 	// Now returns the time in the local zone, which is where time input with no zone is read
 	// when neither --tz nor the config file names one.
 	Now func() time.Time

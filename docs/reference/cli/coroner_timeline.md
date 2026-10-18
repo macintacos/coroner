@@ -29,7 +29,7 @@ coroner timeline [flags]
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl} (default "text")
+      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -44,7 +44,7 @@ coroner timeline [flags]
 * [coroner timeline create](coroner_timeline_create.md)	 - Create a timeline
 * [coroner timeline delete](coroner_timeline_delete.md)	 - Delete a timeline and everything in it
 * [coroner timeline edit](coroner_timeline_edit.md)	 - Rename a timeline or change its title and refs
-* [coroner timeline export](coroner_timeline_export.md)	 - Export a timeline as JSON, JSONL or Markdown
+* [coroner timeline export](coroner_timeline_export.md)	 - Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML
 * [coroner timeline list](coroner_timeline_list.md)	 - List timelines, marking the current one
 * [coroner timeline use](coroner_timeline_use.md)	 - Set the current timeline
 * [coroner timeline view](coroner_timeline_view.md)	 - Show a timeline and its events

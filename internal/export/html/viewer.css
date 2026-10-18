@@ -1,0 +1,148 @@
+:root {
+  color-scheme: light dark;
+  --paper: #f7f8f9;
+  --ink: #1e2328;
+  --muted: #5c6670;
+  --rule: #d6dbdf;
+  --well: #eceff2;
+  --accent: #2d6a8a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #15181b;
+    --ink: #e2e6e9;
+    --muted: #9aa4ad;
+    --rule: #343b42;
+    --well: #1f2429;
+    --accent: #7db8d6;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 1.5rem 1rem 3rem;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header,
+#detail {
+  max-width: 80ch;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+h2 {
+  font-size: 1.125rem;
+  margin: 0 0 0.5rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.refs,
+.meta,
+.hint,
+.label,
+dt {
+  color: var(--muted);
+}
+
+header p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+#timeline {
+  margin: 1.25rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* #timeline outranks vis-timeline's own rules, which it injects after this sheet. */
+#timeline .vis-timeline {
+  border-color: var(--rule);
+  font: inherit;
+}
+
+#timeline .vis-labelset .vis-label,
+#timeline .vis-time-axis .vis-text {
+  color: var(--ink);
+}
+
+#timeline .vis-item {
+  border-color: var(--accent);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+#timeline .vis-item .vis-item-content {
+  max-width: 24em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#timeline .vis-item.vis-selected {
+  background: var(--well);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.text,
+.body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 1rem 0 0;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.annotations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.annotations li {
+  margin: 0 0 1rem;
+}
+
+.annotations .label,
+.annotations .body {
+  margin: 0;
+}
+
+pre.body {
+  padding: 0.5rem 0.75rem;
+  background: var(--well);
+  border-left: 3px solid var(--rule);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-x: auto;
+  white-space: pre;
+}

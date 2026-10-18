@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -54,6 +55,7 @@ var _ = Describe("timeline export", func() {
 				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
 			},
 			OpenStore: store.Open,
+			WriteFile: os.WriteFile,
 		})
 	}
 	exportAs := func(ctx SpecContext, format string) string {
@@ -236,5 +238,85 @@ var _ = Describe("timeline export", func() {
 		Entry("an empty --group-by", "--group-by", "--format", "md", "--group-by", ""),
 		Entry("--diagram with json", "--diagram", "--format", "json", "--diagram"),
 		Entry("--diagram with mermaid", "--diagram", "--format", "mermaid", "--diagram"),
+		Entry("--group-by with html", "--group-by", "--format", "html", "-o", "-", "--group-by", "source"),
 	)
+
+	Describe("-o", func() {
+		It("writes the export to the file it names, as piped output, and says so on stderr", func(ctx SpecContext) {
+			piped := exportAs(ctx, "json")
+			path := filepath.Join(home, "rca.json")
+			outTTY = true
+
+			Expect(run(ctx, "timeline", "export", "--format", "json", "-o", path)).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring(path))
+			Expect(readFile(path)).To(Equal(piped))
+		})
+
+		It("says nothing on stderr under --quiet", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl", "-o", filepath.Join(home, "rca.jsonl"), "--quiet")).To(Equal(0), errOut.String())
+
+			Expect(errOut.String()).To(BeEmpty())
+		})
+
+		It("writes to stdout when it is -", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", "-")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(HavePrefix("# mongo-outage\n"))
+		})
+
+		It("exits 2 when it is empty", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "json", "-o", "")).To(Equal(2))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring("-o"))
+		})
+
+		It("exits 2, naming the file, when its directory does not exist", func(ctx SpecContext) {
+			path := filepath.Join(home, "missing", "rca.json")
+
+			Expect(run(ctx, "timeline", "export", "--format", "json", "-o", path)).To(Equal(2))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring(path))
+		})
+	})
+
+	Describe("--format html", func() {
+		It("writes one page embedding the export to the file -o names", func(ctx SpecContext) {
+			path := filepath.Join(home, "inc-4821.html")
+
+			Expect(run(ctx, "timeline", "export", "--format", "html", "-o", path)).To(Equal(0), errOut.String())
+
+			page := readFile(path)
+			Expect(page).To(HavePrefix("<!doctype html>"))
+			Expect(page).To(ContainSubstring(`"text":"Primary stepped down"`))
+		})
+
+		It("exits 2, naming -o, without it", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "html")).To(Equal(2))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring("-o"))
+		})
+
+		It("shows times in UTC unless --tz names a zone", func(ctx SpecContext) {
+			configFile = `default_timezone = "America/New_York"`
+
+			Expect(run(ctx, "timeline", "export", "--format", "html", "-o", "-")).To(Equal(0), errOut.String())
+			Expect(out.String()).To(ContainSubstring(`id="coroner-zone">{"name":"UTC",`))
+
+			Expect(run(ctx, "timeline", "export", "--format", "html", "-o", "-", "--tz", "Asia/Tokyo")).To(Equal(0), errOut.String())
+			Expect(out.String()).To(ContainSubstring(`id="coroner-zone">{"name":"Asia/Tokyo",`))
+		})
+	})
 })
+
+func readFile(path string) string {
+	GinkgoHelper()
+	b, err := os.ReadFile(filepath.Clean(path))
+	Expect(err).NotTo(HaveOccurred())
+
+	return string(b)
+}

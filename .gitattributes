@@ -1,3 +1,4 @@
 *.db binary
 testdata/export/** -text
 internal/cli/testdata/script/contract/export-fixtures.txtar -text
+internal/export/html/vendor/*.js -text -diff linguist-vendored

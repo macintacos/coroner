@@ -71,7 +71,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
-    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown or Mermaid export"];
+    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid or HTML export"];
     "What does the change touch?" -> "Load docs/agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
 }
 ```
@@ -81,9 +81,10 @@ digraph coroner_rules_router {
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence, and the
   attachment blob directory beside the database: `internal/config`. JSON export types,
-  envelope, encoder and JSONL decoder, and the Markdown and Mermaid exports' renderers:
-  `internal/export`, the JSON described by
-  [the export format reference](docs/reference/export-format.md). The terminal viewer
+  envelope, encoder and JSONL decoder, and the Markdown, Mermaid and HTML exports'
+  renderers: `internal/export`, the JSON described by
+  [the export format reference](docs/reference/export-format.md); the HTML page's viewer
+  and vendored vis-timeline live in `internal/export/html/`. The terminal viewer
   `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. `main.go`
   builds `cli.App` from the process; code below it takes everything from `cli.App`, never
   from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen` writes the CLI
@@ -151,12 +152,12 @@ digraph coroner_rules_router {
    is rewritten by `go test ./internal/cli -run 'TestScripts/script$' -update`; contract
    scripts change only as a deliberate contract change (Rule 3), through the `contract`
    subtest. The viewer's screens in `internal/viewer/testdata/*.golden` are rewritten by
-   `go test ./internal/viewer -update`. The Markdown and Mermaid exports' goldens in
-   `internal/export/testdata/markdown/*.md` and `internal/export/testdata/mermaid/*.mmd`
-   are rewritten by `go test ./internal/export -update`.
-   `internal/store/testdata/compat/v*.db` is written once, from its release's tag, by
-   `go run ./internal/tools/compatfixture -o <path>`, and never regenerated
-   ([the migration policy](docs/contributing/migrations.md)).
+   `go test ./internal/viewer -update`. The Markdown, Mermaid and HTML exports' goldens in
+   `internal/export/testdata/markdown/*.md`, `internal/export/testdata/mermaid/*.mmd` and
+   `internal/export/testdata/html/*.html` are rewritten by
+   `go test ./internal/export -update`. `internal/store/testdata/compat/v*.db` is written
+   once, from its release's tag, by `go run ./internal/tools/compatfixture -o <path>`, and
+   never regenerated ([the migration policy](docs/contributing/migrations.md)).
    `testdata/export/v<MAJOR.MINOR>/` is written for the current `format_version` by
    `go test ./internal/cli -run 'TestScripts/contract$' -update`, which writes only a
    fixture that does not exist yet; before the first release that ships export, a fixture
@@ -168,8 +169,8 @@ digraph coroner_rules_router {
    schema and adding a fixture; an additive change bumps `format_version` minor, and any
    other change needs the maintainer's explicit approval and a major bump. Export fixtures
    (`testdata/export/v*/`) are never edited or removed once a release ships them, and a
-   format change adds its version's directory beside them; human text and Markdown layout
-   are not contracts.
+   format change adds its version's directory beside them; human text and the Markdown,
+   Mermaid and HTML layouts are not contracts.
 4. **User-visible behaviour changes docs in the same PR:** update the relevant how-to or
    reference page, and the stability document when a contract is affected.
 5. **Commit messages are
