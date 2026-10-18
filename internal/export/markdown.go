@@ -2,6 +2,7 @@ package export
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -38,7 +39,7 @@ func ParseGroupBy(name string) (GroupBy, bool) {
 	return GroupByDay, false
 }
 
-// MarkdownOptions are how a Markdown export presents its timeline.
+// MarkdownOptions are how a Markdown export presents its timelines.
 type MarkdownOptions struct {
 	// Zone is where times and days are shown, each labelled with the zone's abbreviation at
 	// that instant; nil is UTC.
@@ -46,26 +47,33 @@ type MarkdownOptions struct {
 	GroupBy GroupBy
 	// IncludeRaw adds each event's time as it was written.
 	IncludeRaw bool
-	// Diagram appends the timeline's Mermaid diagram, in Zone, as a mermaid code block.
+	// Diagram appends the export's Mermaid diagram, in Zone, as a mermaid code block.
 	Diagram bool
 	// AttachmentLink returns where an attachment's image or link points; nil is AttachmentPath,
 	// for an export written beside its attachments.
 	AttachmentLink func(Attachment) string
 }
 
-// WriteMarkdown writes env's timeline to w as a CommonMark outline for people: a title,
+// WriteMarkdown writes env's timelines to w as a CommonMark outline for people: a title,
 // metadata bullets, the annotations on the whole timeline, a section per day of its events
 // by occurred at and seq, with each event's annotations nested under it, then opts.Diagram's
 // Mermaid diagram as a mermaid code block. An event's attachments are list items under it,
-// before its annotations, and an annotation's follow its text on its line. It fails, writing
-// nothing, unless env holds one timeline, the event of every annotation and the event or
-// annotation of every attachment, and opts a grouping ParseGroupBy knows.
+// before its annotations, and an annotation's follow its text on its line. An overlay of
+// several timelines lists each in the metadata, and labels each event and each annotation on
+// a whole timeline with its timeline's name. It fails, writing nothing, unless env holds a
+// timeline, the event of every annotation and the event or annotation of every attachment, an
+// overlay also the timeline of every event and annotation, and opts a grouping ParseGroupBy
+// knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
-	if len(env.Timelines) != 1 {
-		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
+	if len(env.Timelines) == 0 {
+		return errors.New("want a timeline, got none")
 	}
 	if _, ok := ParseGroupBy(string(opts.GroupBy)); !ok {
 		return fmt.Errorf("unknown grouping %q", opts.GroupBy)
+	}
+	names, err := overlayNames(env)
+	if err != nil {
+		return err
 	}
 	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
 	onTimeline, byEvent, err := groupAnnotations(env.Annotations, events)
@@ -82,19 +90,20 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	}
 
 	md := markdownRenderer{
-		zone:        cmp.Or(opts.Zone, time.UTC),
-		groupBy:     opts.GroupBy,
-		includeRaw:  opts.IncludeRaw,
-		byEvent:     byEvent,
-		attachments: attachments,
-		link:        link,
+		zone:          cmp.Or(opts.Zone, time.UTC),
+		groupBy:       opts.GroupBy,
+		includeRaw:    opts.IncludeRaw,
+		timelineNames: names,
+		byEvent:       byEvent,
+		attachments:   attachments,
+		link:          link,
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
 		escaper: strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "|", `\|`, "&", `\&`, "~", `\~`),
 		urls:    regexp.MustCompile("https?://[^\\s<>`]+"),
 	}
 	blocks := slices.Concat(
-		md.header(env.Timelines[0], events, md.exported(env.ExportedAt, env.CoronerVersion)),
+		md.header(env.Timelines, events, md.exported(env.ExportedAt, env.CoronerVersion)),
 		md.timelineAnnotations(onTimeline),
 		md.sections(events),
 	)
@@ -135,13 +144,50 @@ func groupAnnotations(annotations []Annotation, events []Event) ([]Annotation, m
 	return onTimeline, byEvent, nil
 }
 
+// overlayNames returns each exported timeline's name by id when env overlays several
+// timelines, and an empty map for one, whose records carry no label. It fails naming an event
+// or annotation of an overlay whose timeline env does not hold.
+func overlayNames(env Envelope) (map[string]string, error) {
+	if len(env.Timelines) == 1 {
+		return map[string]string{}, nil
+	}
+
+	names := map[string]string{}
+	for _, t := range env.Timelines {
+		names[t.ID] = t.Name
+	}
+	for _, e := range env.Events {
+		if _, ok := names[e.TimelineID]; !ok {
+			return nil, fmt.Errorf("event %s: its timeline %s is not in the export", e.ID, e.TimelineID)
+		}
+	}
+	for _, a := range env.Annotations {
+		if _, ok := names[a.TimelineID]; !ok {
+			return nil, fmt.Errorf("annotation %s: its timeline %s is not in the export", a.ID, a.TimelineID)
+		}
+	}
+
+	return names, nil
+}
+
+// overlayName returns the names of timelines joined by +, naming an overlay of them.
+func overlayName(timelines []Timeline) string {
+	names := make([]string, 0, len(timelines))
+	for _, t := range timelines {
+		names = append(names, t.Name)
+	}
+
+	return strings.Join(names, " + ")
+}
+
 // markdownRenderer renders the blocks of a Markdown export. Each block is a heading, paragraph
 // or list without a trailing newline, for the caller to separate by a blank line.
 type markdownRenderer struct {
-	zone       *time.Location
-	groupBy    GroupBy
-	includeRaw bool
-	byEvent    map[string][]Annotation
+	zone          *time.Location
+	groupBy       GroupBy
+	includeRaw    bool
+	timelineNames map[string]string
+	byEvent       map[string][]Annotation
 	// attachments are keyed by the id of the event or annotation that keeps them.
 	attachments map[string][]Attachment
 	link        func(Attachment) string
@@ -149,28 +195,66 @@ type markdownRenderer struct {
 	urls        *regexp.Regexp
 }
 
-// header returns t's title and the metadata list: refs, the window events span, the event
-// summary, then exported.
-func (md markdownRenderer) header(t Timeline, events []Event, exported string) []string {
-	title := "# " + md.oneLine(t.Name)
-	if strings.TrimSpace(t.Title) != "" {
-		title = "# " + md.oneLine(t.Title) + " (" + md.oneLine(t.Name) + ")"
-	}
-
-	var metadata []string
-	if len(t.Refs) > 0 {
-		refs := make([]string, 0, len(t.Refs))
-		for _, ref := range t.Refs {
-			refs = append(refs, md.oneLine(ref))
-		}
-		metadata = append(metadata, "- **Refs:** "+strings.Join(refs, ", "))
-	}
+// header returns the title and the metadata list: the timelines, the window events span, the
+// event summary, then exported.
+func (md markdownRenderer) header(timelines []Timeline, events []Event, exported string) []string {
+	metadata := md.timelinesMetadata(timelines)
 	if len(events) > 0 {
 		metadata = append(metadata, "- **Window:** "+md.window(events))
 	}
 	metadata = append(metadata, eventSummary(events), exported)
 
-	return []string{title, strings.Join(metadata, "\n")}
+	return []string{md.title(timelines), strings.Join(metadata, "\n")}
+}
+
+// title returns the heading naming one timeline, by its title and name, or an overlay, by
+// its timelines' names.
+func (md markdownRenderer) title(timelines []Timeline) string {
+	if len(timelines) > 1 {
+		return "# " + md.oneLine(overlayName(timelines))
+	}
+	t := timelines[0]
+	if strings.TrimSpace(t.Title) != "" {
+		return "# " + md.oneLine(t.Title) + " (" + md.oneLine(t.Name) + ")"
+	}
+
+	return "# " + md.oneLine(t.Name)
+}
+
+// timelinesMetadata returns the metadata bullets on the timelines: one timeline's refs, or an
+// item for each timeline of an overlay with its name, title and refs.
+func (md markdownRenderer) timelinesMetadata(timelines []Timeline) []string {
+	if len(timelines) == 1 {
+		if len(timelines[0].Refs) == 0 {
+			return nil
+		}
+
+		return []string{"- **Refs:** " + md.refs(timelines[0].Refs)}
+	}
+
+	metadata := []string{"- **Timelines:**"}
+	for _, t := range timelines {
+		parts := []string{codeSpan(t.Name)}
+		if strings.TrimSpace(t.Title) != "" {
+			parts = append(parts, md.oneLine(t.Title))
+		}
+		if len(t.Refs) > 0 {
+			parts = append(parts, "**Refs:** "+md.refs(t.Refs))
+		}
+		metadata = append(metadata, "  - "+strings.Join(parts, " · "))
+	}
+
+	return metadata
+}
+
+// refs returns refs escaped on one line each, joined by commas.
+func (md markdownRenderer) refs(refs []string) string {
+	escaped := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		escaped = append(escaped, md.oneLine(ref))
+	}
+
+	return strings.Join(escaped, ", ")
 }
 
 // exported returns the metadata bullet saying when and by which coroner the export was written.
@@ -226,14 +310,28 @@ func eventSummary(events []Event) string {
 	return text
 }
 
-// timelineAnnotations returns a lead-in paragraph and the list of annotations on no event, or
-// nothing when there are none. The paragraph keeps the list from merging into the metadata.
+// timelineAnnotations returns a lead-in paragraph and the list of annotations on no event,
+// each after its timeline's label in an overlay, or nothing when there are none. The paragraph
+// keeps the list from merging into the metadata.
 func (md markdownRenderer) timelineAnnotations(annotations []Annotation) []string {
 	if len(annotations) == 0 {
 		return nil
 	}
 
-	return []string{"Annotations on the whole timeline:", md.annotationList(annotations, "")}
+	lead := "Annotations on the whole timeline:"
+	if len(md.timelineNames) > 0 {
+		lead = "Annotations on a whole timeline:"
+	}
+	items := make([]string, 0, len(annotations))
+	for _, a := range annotations {
+		label := ""
+		if name := md.timelineNames[a.TimelineID]; name != "" {
+			label = codeSpan(name) + " · "
+		}
+		items = append(items, "- "+label+md.annotation(a, ""))
+	}
+
+	return []string{lead, list(items)}
 }
 
 // sections returns the event sections md.groupBy asks for.
@@ -385,13 +483,16 @@ func (md markdownRenderer) dayZone(day []Event) (string, bool) {
 	return strings.Join(names, "/"), len(offsets) > 1
 }
 
-// eventItem returns e's list item: its time, source, text and tags, and under it e's
-// attachments, then its annotations. offset adds the zone offset to every time. In the
+// eventItem returns e's list item: its time, timeline label, source, text and tags, and under
+// it e's attachments, then its annotations. offset adds the zone offset to every time. In the
 // section of groupTag, the item names only e's other tags, as (also: …).
 func (md markdownRenderer) eventItem(e Event, offset bool, groupTag string) string {
 	var parts []string
 	if when := md.when(e, offset); when != "" {
 		parts = append(parts, "**"+when+"**")
+	}
+	if name := md.timelineNames[e.TimelineID]; name != "" {
+		parts = append(parts, codeSpan(name))
 	}
 	if e.Source != nil {
 		parts = append(parts, codeSpan(*e.Source))
@@ -491,16 +592,6 @@ func (md markdownRenderer) dayWhen(e Event) string {
 	return strings.Join(parts, ", ")
 }
 
-// annotationList returns the list items of annotations, each indented by indent.
-func (md markdownRenderer) annotationList(annotations []Annotation, indent string) string {
-	items := make([]string, 0, len(annotations))
-	for _, a := range annotations {
-		items = append(items, md.annotationItem(a, indent))
-	}
-
-	return list(items)
-}
-
 // list joins items into one list, with a blank line between items when any item holds
 // one: the list is loose then anyway, and a fence needs blank lines around it.
 func list(items []string) string {
@@ -512,10 +603,15 @@ func list(items []string) string {
 	return strings.Join(items, sep)
 }
 
-// annotationItem returns a's list item: evidence as code, anything else as emphasized
-// commentary, with a's attachments at the end of its line, or of its first line before a code
-// block, so they nest no deeper.
+// annotationItem returns a's list item, indented by indent, holding md.annotation.
 func (md markdownRenderer) annotationItem(a Annotation, indent string) string {
+	return indent + "- " + md.annotation(a, indent)
+}
+
+// annotation returns a's list item content after its marker: evidence as code, anything else as
+// emphasized commentary, with a's attachments at the end of its line, or of its first line
+// before a code block, so they nest no deeper. indent is the item's own indent.
+func (md markdownRenderer) annotation(a Annotation, indent string) string {
 	by := ""
 	if a.Author != nil {
 		by = " (" + md.oneLine(*a.Author) + ")"
@@ -525,15 +621,15 @@ func (md markdownRenderer) annotationItem(a Annotation, indent string) string {
 		links = " " + links
 	}
 	if a.Kind != timeline.AnnotationEvidence {
-		return indent + "- _" + md.oneLine(string(a.Kind)) + by + ":_ " + md.text(a.Body, indent+"  ") + links
+		return "_" + md.oneLine(string(a.Kind)) + by + ":_ " + md.text(a.Body, indent+"  ") + links
 	}
 
 	body := lines(a.Body)
 	if len(body) == 1 {
-		return indent + "- evidence" + by + ": " + codeSpan(body[0]) + links
+		return "evidence" + by + ": " + codeSpan(body[0]) + links
 	}
 
-	return indent + "- evidence" + by + ":" + links + "\n\n" + codeBlock(body, indent+"  ")
+	return "evidence" + by + ":" + links + "\n\n" + codeBlock(body, indent+"  ")
 }
 
 // text escapes s as CommonMark text that may start a line, its line breaks as hard breaks

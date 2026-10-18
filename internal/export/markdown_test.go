@@ -117,6 +117,58 @@ func checkoutSpike() export.Envelope {
 	return env
 }
 
+// overlay is two timelines read as one chronology: their events interleave, two of them at
+// one instant, the same source and a source holding a colon appear in both, each timeline
+// has an unsourced event and an annotation on the whole timeline, and one event is
+// annotated.
+func overlay() export.Envelope {
+	event := func(id, timelineID string, seq int64, at string, source *string, text string) export.Event {
+		return export.Event{
+			ID: id, TimelineID: timelineID, Seq: new(seq), OccurredAt: utc(at), Precision: timeline.PrecisionSecond,
+			Source: source, Tags: []string{}, Text: text,
+		}
+	}
+	stepDown := event("m1", "t1", 1, "2026-09-10T14:02:03Z", new("mongod"), "Primary stepped down")
+	stepDown.Tags = []string{"db"}
+	election := event("m3", "t1", 3, "2026-09-10T14:03:00Z", nil, "Replica set has no primary")
+	election.EndedAt = new(utc("2026-09-10T14:05:10Z"))
+	rollback := event("c3", "t2", 3, "2026-09-10T14:07:00Z", nil, "Rolled back deploy 812")
+	rollback.Precision = timeline.PrecisionMinute
+	rollback.Tags = []string{"deploy"}
+
+	env := envelope(
+		export.Timeline{ID: "t1", Name: "mongo-failover", Title: "MongoDB primary failover", Refs: []string{"INC-4820"}},
+		[]export.Event{
+			event("c1", "t2", 1, "2026-09-10T14:01:30Z", new("slack"), "maria: checkout p99 is 4s"),
+			stepDown,
+			event("c2", "t2", 2, "2026-09-10T14:02:40Z", new("k8s:events"), "checkout-api scaled to 12 pods"),
+			event("m2", "t1", 2, "2026-09-10T14:02:40Z", new("k8s:events"), "db-2 pod restarted"),
+			election,
+			rollback,
+		},
+		[]export.Annotation{
+			{
+				ID: "a1", TimelineID: "t1", Kind: timeline.AnnotationComment, Author: new("sam"),
+				Body: "Started from the replica set alert.", CreatedAt: utc("2026-09-12T09:00:00Z"),
+			},
+			{
+				ID: "a2", TimelineID: "t2", Kind: timeline.AnnotationEvidence, Author: new("julian"),
+				Body: "PagerDuty incident 4821 opened", CreatedAt: utc("2026-09-12T09:01:00Z"),
+			},
+			{
+				ID: "a3", TimelineID: "t1", EventID: new("m1"), Kind: timeline.AnnotationEvidence,
+				Body: "replSetStepDown in the mongod log", CreatedAt: utc("2026-09-12T09:30:00Z"),
+			},
+		},
+	)
+	env.Timelines = append(env.Timelines, export.Timeline{
+		ID: "t2", Name: "checkout-latency", Title: "Checkout latency",
+		Refs: []string{"INC-4821", "https://status.example.com/incidents/4821"},
+	})
+
+	return env
+}
+
 // attachmentOf returns an attachment of the event or annotation with the given id, whose
 // SHA-256 is hex repeated.
 func attachmentOf(eventID, annotationID *string, filename, mime, hex, created string) export.Attachment {
@@ -381,6 +433,27 @@ var _ = Describe("WriteMarkdown", func() {
 		matchGolden("include-raw", markdown(env, export.MarkdownOptions{Zone: time.UTC, IncludeRaw: true}))
 	})
 
+	It("overlays several timelines: each listed in the metadata, and every event and whole-timeline annotation labelled with its timeline", func() {
+		matchGolden("overlay", markdown(overlay(), export.MarkdownOptions{Zone: time.UTC}))
+	})
+
+	It("sections an overlay by source, keeping each event's timeline label", func() {
+		matchGolden("overlay-group-by-source", markdown(overlay(), export.MarkdownOptions{Zone: time.UTC, GroupBy: export.GroupBySource}))
+	})
+
+	DescribeTable("fails, writing nothing, when an overlay holds a record of a timeline it does not export",
+		func(orphan func(*export.Envelope)) {
+			env := overlay()
+			orphan(&env)
+			var b bytes.Buffer
+
+			Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).To(MatchError(ContainSubstring("gone")))
+			Expect(b.String()).To(BeEmpty())
+		},
+		Entry("an event", func(env *export.Envelope) { env.Events[0].TimelineID = "gone" }),
+		Entry("an annotation on a whole timeline", func(env *export.Envelope) { env.Annotations[0].TimelineID = "gone" }),
+	)
+
 	It("appends the timeline's Mermaid diagram under Diagram", func() {
 		matchGolden("diagram", markdown(checkoutSpike(), export.MarkdownOptions{Zone: time.UTC, Diagram: true}))
 	})
@@ -399,6 +472,7 @@ var _ = Describe("WriteMarkdown", func() {
 		},
 		Entry("a timeline with sources, intervals and annotations", checkoutSpike()),
 		Entry("hostile labels, backtick runs included", hostileLabels()),
+		Entry("an overlay of two timelines", overlay()),
 	)
 
 	It("outlines a timeline with no title, refs, events or annotations as its name and counts", func() {
@@ -599,18 +673,14 @@ var _ = Describe("WriteMarkdown", func() {
 		Expect(b.String()).To(BeEmpty())
 	})
 
-	DescribeTable("fails, writing nothing, unless the export holds one timeline",
-		func(timelines []export.Timeline) {
-			env := checkoutSpike()
-			env.Timelines = timelines
-			var b bytes.Buffer
+	It("fails, writing nothing, when the export holds no timeline", func() {
+		env := checkoutSpike()
+		env.Timelines = []export.Timeline{}
+		var b bytes.Buffer
 
-			Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).NotTo(Succeed())
-			Expect(b.String()).To(BeEmpty())
-		},
-		Entry("none", []export.Timeline{}),
-		Entry("two", []export.Timeline{{Name: "a"}, {Name: "b"}}),
-	)
+		Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).NotTo(Succeed())
+		Expect(b.String()).To(BeEmpty())
+	})
 })
 
 var _ = Describe("Markdown goldens", func() {

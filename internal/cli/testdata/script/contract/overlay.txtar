@@ -86,15 +86,24 @@ exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format j
 exists rca/mongo-failover+checkout-latency.jsonl
 exists rca/attachments/dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df.gif
 
-# Markdown, Mermaid, HTML and SVG show one timeline: several exit 2, kind usage, before
-# anything is written. A timeline's name and its id are one timeline.
+# Markdown and Mermaid overlay too: each event is labelled with its timeline, and each gantt
+# section is a timeline and a source. A timeline's name and its id are one timeline.
 exits 0 coroner timeline export -t checkout-latency -t 01a09862-b1c0-7000-8000-000000000002 --format md
-stdout '^# checkout-latency'
-exits 2 coroner timeline export -t mongo-failover -t checkout-latency --format md
-! stdout .
-stderr 'exports one timeline'
+stdout '^# checkout-latency$'
+exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format md
+stdout '^# mongo-failover \+ checkout-latency$'
+stdout '^- \*\*14:03:00\*\* · `checkout-latency` · `grafana` · Checkout p99 at 4 s$'
+stdout '^- \*\*Timelines:\*\*$'
+stdout '^  - `mongo-failover`$'
+exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format mermaid
+stdout '^  section checkout-latency/grafana$'
+
+# HTML and SVG show one timeline: several exit 2, kind usage, before anything is written.
 exits 2 coroner timeline export -t mongo-failover -t checkout-latency --format svg -o overlay.svg
 ! exists overlay.svg
+stderr 'exports one timeline'
+exits 2 coroner timeline export -t mongo-failover -t checkout-latency --format html -o overlay.html
+! exists overlay.html
 stderr 'exports one timeline'
 
 # An unknown timeline among several exits 3, kind timeline_not_found.

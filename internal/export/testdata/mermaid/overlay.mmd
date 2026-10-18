@@ -1,0 +1,16 @@
+gantt
+  title mongo-failover + checkout-latency (UTC)
+  dateFormat YYYY-MM-DDTHH:mm:ss
+  axisFormat %H:%M:%S
+  section checkout-latency/slack
+    maria#58; checkout p99 is 4s :milestone, 2026-09-10T14:01:30, 0s
+  section mongo-failover/mongod
+    Primary stepped down :milestone, 2026-09-10T14:02:03, 0s
+  section mongo-failover/k8s#58;events
+    db-2 pod restarted :milestone, 2026-09-10T14:02:40, 0s
+  section checkout-latency/k8s#58;events
+    checkout-api scaled to 12 pods :milestone, 2026-09-10T14:02:40, 0s
+  section mongo-failover/(no source)
+    Replica set has no primary :2026-09-10T14:03:00, 130s
+  section checkout-latency/(no source)
+    Rolled back deploy 812 :milestone, 2026-09-10T14:07:00, 0s

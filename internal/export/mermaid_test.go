@@ -96,18 +96,27 @@ var _ = Describe("WriteMermaid", func() {
 		Expect(diagram).To(ContainSubstring("    Failover window :2026-11-01T01:50:00, 1200s\n"))
 	})
 
-	DescribeTable("fails, writing nothing, unless the export holds one timeline",
-		func(timelines []export.Timeline) {
-			env := checkoutSpike()
-			env.Timelines = timelines
-			var b bytes.Buffer
+	It("overlays several timelines: a section per timeline and source in order of first appearance, the title naming each timeline", func() {
+		matchGoldenFile(mermaidGoldenDir, "overlay", ".mmd", mermaid(overlay(), time.UTC))
+	})
 
-			Expect(export.WriteMermaid(&b, env, time.UTC)).NotTo(Succeed())
-			Expect(b.String()).To(BeEmpty())
-		},
-		Entry("none", []export.Timeline{}),
-		Entry("two", []export.Timeline{{Name: "a"}, {Name: "b"}}),
-	)
+	It("fails, writing nothing, when an overlay holds an event of a timeline it does not export", func() {
+		env := overlay()
+		env.Events[0].TimelineID = "gone"
+		var b bytes.Buffer
+
+		Expect(export.WriteMermaid(&b, env, time.UTC)).To(MatchError(ContainSubstring("gone")))
+		Expect(b.String()).To(BeEmpty())
+	})
+
+	It("fails, writing nothing, when the export holds no timeline", func() {
+		env := checkoutSpike()
+		env.Timelines = []export.Timeline{}
+		var b bytes.Buffer
+
+		Expect(export.WriteMermaid(&b, env, time.UTC)).NotTo(Succeed())
+		Expect(b.String()).To(BeEmpty())
+	})
 })
 
 var _ = Describe("MermaidSize", func() {

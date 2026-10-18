@@ -27,6 +27,33 @@ On Linux, use `wl-copy < rca.md` or `xclip -selection clipboard < rca.md`.
 Times are in UTC. To show them in the zone your readers work in, add `--tz`, as in
 `--tz America/New_York`.
 
+## Overlay several timelines
+
+When two investigations interleave, such as a database failover and the checkout latency
+it caused, name each timeline with its own `-t`. The events merge into one chronology:
+
+```sh
+coroner timeline export -t mongo-failover -t checkout-latency --format md > rca.md
+```
+
+The metadata lists each timeline with its title and refs, and every event names its
+timeline in inline code before its source, so readers can tell the two apart:
+
+```markdown
+- **14:02:03** · `mongo-failover` · `mongod` · Primary stepped down
+- **14:02:40** · `checkout-latency` · `k8s:events` · checkout-api scaled to 12 pods
+```
+
+The Mermaid diagram of an overlay draws a section per timeline and source, such as
+`mongo-failover/mongod`. Add `--diagram` to append it to the Markdown, or export it on its
+own:
+
+```sh
+coroner timeline export -t mongo-failover -t checkout-latency --format mermaid > overlay.mmd
+```
+
+The HTML and SVG exports show one timeline, and exit with an error when given more.
+
 ## GitHub and GitLab
 
 Paste into an issue, a pull request or a comment. Headings, bullets, bold, code and links

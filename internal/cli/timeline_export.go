@@ -45,10 +45,11 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"stderr, and a jsonl export's attachment records carry metadata and sha256 only, so their\n" +
 			"files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of\n" +
 			"its images.\n\n" +
-			"Repeat -t to overlay several timelines in one json or jsonl export: it holds every\n" +
-			"timeline, and their events merge by occurred at, then timeline id, then seq. md, mermaid,\n" +
-			"html and svg export one timeline. An overlay written into a directory is named after its\n" +
-			"timelines joined by +, as in mongo-failover+checkout-latency.jsonl.\n\n" +
+			"Repeat -t to overlay several timelines in one json, jsonl, md or mermaid export: it holds\n" +
+			"every timeline, and their events merge by occurred at, then timeline id, then seq. md labels\n" +
+			"each event with its timeline, and mermaid draws a section per timeline and source, as in\n" +
+			"mongo-failover/mongod. html and svg export one timeline. An overlay written into a directory\n" +
+			"is named after its timelines joined by +, as in mongo-failover+checkout-latency.jsonl.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html,svg", overlayAnnotation: "true"},
@@ -68,7 +69,7 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	}
 
 	addTimelineFlag(cmd.Flags())
-	cmd.Flags().Lookup("timeline").Usage = "Timeline `name|id` to export; repeat to overlay several (json and jsonl only)"
+	cmd.Flags().Lookup("timeline").Usage = "Timeline `name|id` to export; repeat to overlay several (json, jsonl, md and mermaid only)"
 	addEventFilterFlags(cmd.Flags())
 	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc|desc}"
 	cmd.Flags().Lookup("limit").Usage = "Export at most this `number` of events (default: every one)"
@@ -182,16 +183,21 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 }
 
 // checkOverlayFormat returns usage when -t selects count timelines, more than one, for a format
-// that exports one: only json and jsonl hold several.
+// that exports one.
 func checkOverlayFormat(count int, chosen format) error {
-	if count <= 1 || chosen == formatJSON || chosen == formatJSONL {
+	switch chosen {
+	case formatJSON, formatJSONL, formatMarkdown, formatMermaid:
+		return nil
+	case formatHTML, formatSVG, formatText:
+	}
+	if count <= 1 {
 		return nil
 	}
 
 	return &Error{
 		Kind:    KindUsage,
 		Message: fmt.Sprintf("--format %s exports one timeline, and -t selects %d", chosen, count),
-		Hint:    "Pass -t once, or overlay the timelines with --format json or --format jsonl.",
+		Hint:    "Pass -t once, or overlay the timelines with --format json, jsonl, md or mermaid.",
 	}
 }
 
