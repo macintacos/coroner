@@ -1,0 +1,45 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Every push to main keeps its run, so a red main still says which merge broke it.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install tools
+        id: tools
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          # mise.lock pins every tool but mise itself.
+          version: 2026.9.6
+      # Each check runs even when an earlier one failed, but not after a failed tool install.
+      # `!= 'failure'` fails closed: a mistyped step id runs the check instead of skipping it.
+      - name: Lint
+        if: ${{ !cancelled() && steps.tools.outcome != 'failure' }}
+        run: mise run lint
+      - name: CLI reference drift
+        if: ${{ !cancelled() && steps.tools.outcome != 'failure' }}
+        run: go run ./internal/tools/docgen --check
+      - name: Test
+        if: ${{ !cancelled() && steps.tools.outcome != 'failure' }}
+        run: mise run test
+      # Last: it rewrites the tree, hiding drift from the steps above. --intent-to-add makes files a
+      # generator creates show in the diff, and --ignore-removal keeps files it deletes there too.
+      - name: Formatter and generator drift
+        if: ${{ !cancelled() && steps.tools.outcome != 'failure' }}
+        run: |
+          mise run format
+          git add --intent-to-add --ignore-removal .
+          git diff --exit-code || { echo "::error::mise run format changed files; run it locally and commit the result"; exit 1; }

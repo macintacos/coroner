@@ -33,7 +33,7 @@ digraph coroner_docs_router {
 
     "Changing documentation" -> "Which doc does the change affect?";
     "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license"];
-    "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks and hk hooks, the routing digraph, where things live, the repository rules"];
+    "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks, hk hooks and what CI runs, the routing digraph, where things live, the repository rules"];
     "Which doc does the change affect?" -> "Edit docs/agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
@@ -51,12 +51,12 @@ digraph coroner_docs_router {
 ## The doc landscape
 
 - **[`README.md`](../../README.md)** (human-facing) — the front door: what coroner is,
-  install, the development tasks, project status, and the license, which points at
+  install, the development tasks and CI, project status, and the license, which points at
   `LICENSE`.
 - **[`AGENTS.md`](../../AGENTS.md)** (agent-facing) — the router: what coroner is, the
-  `mise` tasks and `hk` hooks, the routing digraph, where things live, and the repository
-  rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through the import;
-  it never gains content of its own.
+  `mise` tasks, `hk` hooks and what CI runs, the routing digraph, where things live, and
+  the repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it
+  through the import; it never gains content of its own.
 - **`docs/agents/*.md`** (agent-facing) — on-demand rule files, one per area, each reached
   from an edge in `AGENTS.md`'s digraph.
 - **[`docs/contributing/command-checklist.md`](../contributing/command-checklist.md)** —
@@ -116,9 +116,9 @@ So, **in the same change**:
 1. **When one of these is added, removed, or renamed:**
    - a doc updates its box and landscape entry here, and a rule file under `docs/agents/`
      also adds or updates its edge in `AGENTS.md`'s digraph;
-   - a `mise` task or `hk` hook updates `AGENTS.md` § How to work here and every doc that
-     names it, such as `README.md`'s Development section, and so does a change to what one
-     runs;
+   - a `mise` task, `hk` hook or CI workflow step updates `AGENTS.md` § How to work here
+     and every doc that names it, such as `README.md`'s Development section, and so does a
+     change to what one runs;
    - a generated artifact adds its path and how to regenerate it to `AGENTS.md` Rule 2,
      and a box and landscape entry here when it is a doc, like the CLI reference.
 2. **Landing something marked "not in the repo yet"** removes every marker for it (grep
