@@ -37,6 +37,10 @@ type App struct {
 	OpenFile func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
 	// RemoveFile removes name as os.Remove does.
 	RemoveFile func(name string) error
+	// Stat describes the file at name as os.Stat does.
+	Stat func(name string) (fs.FileInfo, error)
+	// MkdirAll creates the directory at path and any missing parents, as os.MkdirAll does.
+	MkdirAll func(path string, perm fs.FileMode) error
 	// Now returns the time in the local zone, which is where time input with no zone is read
 	// when neither --tz nor the config file names one.
 	Now func() time.Time

@@ -8,7 +8,7 @@
 Annotations on the whole timeline:
 
 - _comment (sam):_ Started from the checkout alert.
-- evidence (julian): `PagerDuty incident 4821 opened`
+- evidence (julian): `PagerDuty incident 4821 opened` ![incident.png](attachments/d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4.png)
 
 ## `#db`
 
@@ -20,7 +20,11 @@ Annotations on the whole timeline:
 ### 2026-09-11 (UTC)
 
 - **00:02:30–00:05:40** · `mongod` · Replica set has no primary (also: `#election`)
-  - evidence (julian):
+  - ![p99 latency.png](attachments/a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1.png)
+
+  - [trace.pdf](attachments/b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2.pdf)
+
+  - evidence (julian): ![rs-status.png](attachments/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3.png)
 
     ```text
     rs.status()
@@ -37,7 +41,11 @@ Annotations on the whole timeline:
 ### 2026-09-11 (UTC)
 
 - **00:02:30–00:05:40** · `mongod` · Replica set has no primary (also: `#db`)
-  - evidence (julian):
+  - ![p99 latency.png](attachments/a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1.png)
+
+  - [trace.pdf](attachments/b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2.pdf)
+
+  - evidence (julian): ![rs-status.png](attachments/c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3.png)
 
     ```text
     rs.status()
@@ -54,7 +62,7 @@ Annotations on the whole timeline:
 ### 2026-09-10 (UTC)
 
 - **23:58:12** · `slack` · maria: checkout p99 is 4s
-  - _comment (sam):_ Lines up with the deploy.
+  - _comment (sam):_ Lines up with the deploy. [deploys.csv](attachments/e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5.csv)
 
 ### 2026-09-11 (UTC)
 

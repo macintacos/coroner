@@ -18,18 +18,18 @@ coroner timeline export -t mongo-outage --format json > rca.json
 coroner timeline export -t mongo-outage --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
 ```
 
-Command `--json` and JSONL output uses the same keys for a timeline, source, event, or
-annotation today. A command may wrap them, as `event list`, `source list`, and `tag list`
-do with `total` and `truncated`, or extend them with output-only keys, which this page
-names beside the object they extend and which an export never holds. That output is
-encoded as `coroner help formatting` describes; the [§ Encoding rules](#encoding-rules)
-are what an export guarantees.
+Command `--json` and JSONL output uses the same keys for a timeline, source, event,
+annotation, or attachment today. A command may wrap them, as `event list`, `source list`,
+and `tag list` do with `total` and `truncated`, or extend them with output-only keys,
+which this page names beside the object they extend and which an export never holds. That
+output is encoded as `coroner help formatting` describes; the
+[§ Encoding rules](#encoding-rules) are what an export guarantees.
 
 An *instant*, in the tables below, is a string in coroner's canonical time format: RFC
 3339 in UTC with nine fractional digits, such as `2026-09-10T14:54:03.180000000Z`
 ([§ Encoding rules](#encoding-rules)). An *importer* is any program that reads exports.
 
-This page is version **1.0** of the format. The
+This page is version **1.1** of the format. The
 [JSON Schema](../../schema/export-v1.schema.json) describes the same objects and is
 generated from the Go types in `internal/export`.
 
@@ -40,7 +40,7 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
 ```json
 {
   "format": "coroner.export",
-  "format_version": "1.0",
+  "format_version": "1.1",
   "coroner_version": "0.1.0",
   "exported_at": "2026-09-13T01:30:00.000000000Z",
   "query": {
@@ -56,14 +56,15 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
   "timelines": [],
   "sources": [],
   "events": [],
-  "annotations": []
+  "annotations": [],
+  "attachments": []
 }
 ```
 
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `format` | string | Always `coroner.export`. An identifier, not a URL. |
-| `format_version` | string | `MAJOR.MINOR` version of this format, such as `1.0`. |
+| `format_version` | string | `MAJOR.MINOR` version of this format, such as `1.1`. |
 | `coroner_version` | string | Version of coroner that wrote the export. |
 | `exported_at` | instant | When the export was written. |
 | `query` | object | The selection the export was made with. |
@@ -71,24 +72,26 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
 | `sources` | array of source | The sources the exported events and annotations name. |
 | `events` | array of event | The exported events, from every exported timeline. |
 | `annotations` | array of annotation | The exported annotations. |
+| `attachments` | array of attachment | The attachments of the exported events and annotations. Since 1.1. |
 
 The record lists are flat. An event carries its `timeline_id` rather than sitting inside
-its timeline, and an annotation carries its `event_id` rather than sitting inside its
-event. Reading several timelines together is then a merge of their events on time, and an
-export can hold any mix of timelines without changing shape.
+its timeline, an annotation carries its `event_id` rather than sitting inside its event,
+and an attachment carries its `event_id` or `annotation_id`. Reading several timelines
+together is then a merge of their events on time, and an export can hold any mix of
+timelines without changing shape.
 
 `events` is ordered by `occurred_at`, then `seq`. The envelope's other lists have no
 defined order; sort them yourself if you need one. The JSONL stream orders every record,
 under its own [record order](#record-order).
 
 An export made with filters holds only what those filters kept: the events that match, the
-annotations on those events or on the whole timeline, and the sources those events and
-annotations name. An annotation is kept or left out with its event, whatever its own
-`source`, so `sources` can name a source no exported event came from. Unlike
-`coroner event list --json`, an export has no `truncated` or `total` key: `query.limit`
-records the limit, and `coroner timeline export` says on stderr, in text for people, when
-the limit left events out. From the file alone, an export with exactly `query.limit`
-events may or may not have been cut short.
+annotations on those events or on the whole timeline, the attachments of those events and
+annotations, and the sources those events and annotations name. An annotation is kept or
+left out with its event, whatever its own `source`, so `sources` can name a source no
+exported event came from. Unlike `coroner event list --json`, an export has no `truncated`
+or `total` key: `query.limit` records the limit, and `coroner timeline export` says on
+stderr, in text for people, when the limit left events out. From the file alone, an export
+with exactly `query.limit` events may or may not have been cut short.
 
 ### query
 
@@ -174,7 +177,7 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 
 `coroner event add`, `view`, `list`, `edit`, and `delete` also print `attachments`, an
 array of the event's [attachments](#attachment), oldest first. It is output only: an
-export does not carry attachments yet, so an exported event never holds it.
+export lists attachments on their own, so an exported event never holds it.
 
 ### Annotation
 
@@ -193,35 +196,40 @@ export does not carry attachments yet, so an exported event never holds it.
 
 `coroner annotation add`, `list`, `edit`, and `delete` also print `attachments`, an array
 of the annotation's [attachments](#attachment), oldest first. It is output only: an export
-does not carry attachments yet, so an exported annotation never holds it.
+lists attachments on their own, so an exported annotation never holds it.
 
 ### Attachment
 
-An attachment object appears only in command output, in an event's or annotation's
-`attachments` and in what `coroner attachment list` and `attachment delete` print. No
-export holds one.
+An attachment is a file kept with one event or annotation. An export carries its metadata
+and the SHA-256 of its content, never the content itself; see
+[§ Attachment files](#attachment-files). Since 1.1.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
-| `id` | string or null | The attachment's ID; null only in a preview, see below. |
+| `id` | string | The attachment's ID. |
 | `event_id` | string or null | ID of the event the file is kept with; null when an annotation keeps it. |
 | `annotation_id` | string or null | ID of the annotation the file is kept with; null when an event keeps it. |
 | `filename` | string | The attached file's name, as display text; never a path. |
 | `mime` | string | Media type detected when the file was attached, such as `image/png`; may carry parameters, such as `text/plain; charset=utf-8`. |
 | `sha256` | string | SHA-256 of the file's content, as 64 lowercase hex digits. |
 | `size` | integer | Size of the file's content, in bytes. |
-| `path` | string or null | Path of the blob holding the content, beside the database; relative when the database path is, as with a relative `--db`. Null only in a preview. |
 | `created_at` | instant | When the file was attached in coroner. |
 
-Exactly one of `event_id` and `annotation_id` is set. `id` and `path` are `null` only in a
+Exactly one of `event_id` and `annotation_id` is set.
+
+Commands print the same object in an event's or annotation's `attachments` and in what
+`coroner attachment list` and `attachment delete` print, with one output-only key, `path`,
+after `size`: the path of the blob holding the content, beside the database, relative when
+the database path is, as with a relative `--db`. `id` and `path` are `null` only in a
 preview of an attachment not yet added, such as
-`coroner event add --attach <file> --dry-run`.
+`coroner event add --attach <file> --dry-run`. No export holds `path`.
 
 ## The JSONL stream
 
 A JSONL export is [JSON Lines](https://jsonlines.org/): UTF-8, one record per line, each
 line ended by `\n`. A record is the header or one of the objects above, with one extra key
-first, `type`, naming it: `header`, `timeline`, `source`, `event`, or `annotation`.
+first, `type`, naming it: `header`, `timeline`, `source`, `event`, `annotation`, or, since
+1.1, `attachment`.
 
 ```json
 {"type":"event","id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":"mongod","tags":["election"],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
@@ -238,10 +246,14 @@ it is a major version.
 
 1. The `header`.
 2. The timelines, by `name`.
-3. The annotations on the whole timeline, by `created_at`, then `id`.
+3. The annotations on the whole timeline, by `created_at`, then `id`, each followed
+   immediately by its attachments.
 4. The sources, by `name`.
 5. The events, by `occurred_at`, then `seq`, then `id`. Each event is followed immediately
-   by its annotations, by `created_at`, then `id`.
+   by its attachments, then by its annotations, each followed by its own attachments.
+   Annotations and attachments are ordered by `created_at`, then `id`.
+
+`attachment` records are new in 1.1; a reader that skips them sees the 1.0 order.
 
 Records stay in this order under every filter, and under `--order desc`: `--order` only
 decides which end `--limit` keeps events from.
@@ -259,6 +271,21 @@ To pick one kind of record, select on `type`:
 ```sh
 cat a.jsonl b.jsonl | jq 'select(.type=="event")'
 ```
+
+## Attachment files
+
+An attachment's content travels beside an export, never inside it. Given a directory,
+`coroner timeline export --format jsonl -o rca/` writes `rca/<timeline>.jsonl`, and
+`--format md -o rca/` writes `rca/<timeline>.md`; both copy each exported attachment's
+content into `rca/attachments/`. A file's name up to its first `.` is the attachment's
+`sha256`: an importer finds the file by that name and checks the content against the hash.
+The rest of the name is an extension following `mime`, such as `.png` for `image/png`, or
+`.bin`, so the same content attached with two media types can be two files with one hash.
+`text/html` and `text/xml` get `.txt`, so a host serving the directory never runs an
+attached page. The extension is only a hint for viewers: it is not part of the contract
+and may change. Exporting again into the same directory writes the same files. The
+`attachments/` directory and the `sha256` name follow the
+[evolution rules](#evolution-rules) like the rest of the format.
 
 ## Encoding rules
 

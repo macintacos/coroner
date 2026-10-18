@@ -1,9 +1,9 @@
 // Package export is coroner's public machine representation: the canonical JSON object for
-// each timeline, source, event and annotation, the versioned export envelope and JSONL record
-// stream that carry them, and the one encoder and decoder for both. It also renders the same
-// envelope as Markdown for people, through WriteMarkdown. Every key is always present, so no
-// field here uses omitempty or omitzero; a value that may be absent is a pointer, which
-// encodes as null.
+// each timeline, source, event, annotation and attachment, the versioned export envelope and
+// JSONL record stream that carry them, and the one encoder and decoder for both. It also
+// renders the same envelope as Markdown for people, through WriteMarkdown. Every key is always
+// present, so no field here uses omitempty or omitzero; a value that may be absent is a
+// pointer, which encodes as null.
 package export
 
 import (
@@ -19,7 +19,7 @@ import (
 // Format identifies a coroner export; FormatVersion is the version of the format it follows.
 const (
 	Format        = "coroner.export"
-	FormatVersion = "1.0"
+	FormatVersion = "1.1"
 )
 
 // Envelope is a whole export: what was exported, by which coroner, when and with which
@@ -43,6 +43,8 @@ type Envelope struct {
 	Events []Event `json:"events"`
 	// Annotations are the exported annotations.
 	Annotations []Annotation `json:"annotations"`
+	// Attachments are the attachments of the exported events and annotations.
+	Attachments []Attachment `json:"attachments" since:"1.1"`
 }
 
 // Query is the selection an export was made with. Every field but Timelines and Order filters
@@ -167,6 +169,28 @@ type Annotation struct {
 	CreatedAt Instant `json:"created_at"`
 	// UpdatedAt is when the annotation was last changed in coroner.
 	UpdatedAt Instant `json:"updated_at"`
+}
+
+// Attachment is a file kept with one event or annotation. An export carries its metadata and
+// hash, never its bytes.
+type Attachment struct {
+	// ID is the attachment's ID.
+	ID string `json:"id"`
+	// EventID is the event the file is kept with; null when an annotation keeps it.
+	EventID *string `json:"event_id" jsonschema:"nullable"`
+	// AnnotationID is the annotation the file is kept with; null when an event keeps it.
+	AnnotationID *string `json:"annotation_id" jsonschema:"nullable"`
+	// Filename is the attached file's name, as display text; never a path.
+	Filename string `json:"filename"`
+	// MIME is the media type detected when the file was attached, possibly with parameters such
+	// as charset.
+	MIME string `json:"mime"`
+	// SHA256 is the SHA-256 of the file's content, as 64 lowercase hex digits.
+	SHA256 string `json:"sha256"`
+	// Size is the size of the file's content, in bytes.
+	Size int64 `json:"size"`
+	// CreatedAt is when the file was attached in coroner.
+	CreatedAt Instant `json:"created_at"`
 }
 
 // NewEnvelope returns an envelope with the format identifiers set, written by coronerVersion

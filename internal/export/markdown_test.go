@@ -19,6 +19,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -51,9 +52,10 @@ func envelope(t export.Timeline, events []export.Event, annotations []export.Ann
 }
 
 // checkoutSpike is a timeline over two days: sourced and unsourced events, tags, an
-// interval, and annotations on the timeline and on events, one of them multi-line.
+// interval, annotations on the timeline and on events, one of them multi-line, and
+// attachments, images and not, on an event and on annotations of each shape.
 func checkoutSpike() export.Envelope {
-	return envelope(
+	env := envelope(
 		export.Timeline{
 			ID: "t1", Name: "checkout-spike", Title: "Checkout latency spike",
 			Refs: []string{"INC-4821", "https://status.example.com/incidents/4821"},
@@ -104,6 +106,24 @@ func checkoutSpike() export.Envelope {
 			},
 		},
 	)
+	env.Attachments = []export.Attachment{
+		attachmentOf(new("e3"), nil, "trace.pdf", "application/pdf", "b2", "2026-09-12T10:03:00Z"),
+		attachmentOf(new("e3"), nil, "p99 latency.png", "image/png", "a1", "2026-09-12T10:02:00Z"),
+		attachmentOf(nil, new("a5"), "rs-status.png", "image/png", "c3", "2026-09-12T10:00:30Z"),
+		attachmentOf(nil, new("a2"), "incident.png", "image/png", "d4", "2026-09-12T09:01:30Z"),
+		attachmentOf(nil, new("a4"), "deploys.csv", "text/csv", "e5", "2026-09-12T09:31:30Z"),
+	}
+
+	return env
+}
+
+// attachmentOf returns an attachment of the event or annotation with the given id, whose
+// SHA-256 is hex repeated.
+func attachmentOf(eventID, annotationID *string, filename, mime, hex, created string) export.Attachment {
+	return export.Attachment{
+		ID: "f-" + filename, EventID: eventID, AnnotationID: annotationID, Filename: filename, MIME: mime,
+		SHA256: strings.Repeat(hex, 32), Size: 2048, CreatedAt: utc(created),
+	}
 }
 
 // precisions has one event at every precision, approximate times, intervals within a day
@@ -247,6 +267,33 @@ func autoLinks(n ast.Node, source []byte) []string {
 	})
 
 	return links
+}
+
+// shownLink is an image or link as a reader's renderer resolves it.
+type shownLink struct {
+	Image             bool
+	Text, Destination string
+}
+
+// shownLinks returns every image and link in n, in order, with escapes in their destinations
+// resolved.
+func shownLinks(n ast.Node, source []byte) []shownLink {
+	var found []shownLink
+	_ = ast.Walk(n, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		switch n := n.(type) {
+		case *ast.Image:
+			found = append(found, shownLink{true, visibleText(n, source), string(util.UnescapePunctuations(n.Destination))})
+		case *ast.Link:
+			found = append(found, shownLink{false, visibleText(n, source), string(util.UnescapePunctuations(n.Destination))})
+		}
+
+		return ast.WalkContinue, nil
+	})
+
+	return found
 }
 
 // listDepth returns how many lists hold n, counting n when it is one.
@@ -460,6 +507,80 @@ var _ = Describe("WriteMarkdown", func() {
 
 		Expect(autoLinks(parseGFM(source), source)).To(Equal(slices.Repeat([]string{url}, 6)), string(source))
 	})
+
+	It("shows an image attachment as an image and any other as a link, each to the file its hash names", func() {
+		env := checkoutSpike()
+		source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
+
+		file := func(filename string) string {
+			i := slices.IndexFunc(env.Attachments, func(a export.Attachment) bool { return a.Filename == filename })
+			return "attachments/" + env.Attachments[i].SHA256 + filepath.Ext(filename)
+		}
+		Expect(shownLinks(parseGFM(source), source)).To(ConsistOf(
+			shownLink{true, "incident.png", file("incident.png")},
+			shownLink{false, "deploys.csv", file("deploys.csv")},
+			shownLink{true, "p99 latency.png", file("p99 latency.png")},
+			shownLink{false, "trace.pdf", file("trace.pdf")},
+			shownLink{true, "rs-status.png", file("rs-status.png")},
+		), string(source))
+	})
+
+	DescribeTable("keeps a hostile filename to the text of its image or link, whose destination it never reaches",
+		func(filename, shown string) {
+			const hash = "3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a3f9a"
+			env := envelope(
+				export.Timeline{ID: "t1", Name: "hostile", Refs: []string{}},
+				[]export.Event{{
+					ID: "e1", Seq: new(int64(1)), OccurredAt: utc("2026-09-11T03:14:07Z"), Precision: timeline.PrecisionSecond,
+					Tags: []string{}, Text: "Primary stepped down",
+				}},
+				[]export.Annotation{{
+					ID: "a1", EventID: new("e1"), Kind: timeline.AnnotationComment, Body: "see attached", CreatedAt: utc("2026-09-12T09:00:00Z"),
+				}},
+			)
+			env.Attachments = []export.Attachment{
+				{ID: "f1", EventID: new("e1"), Filename: filename, MIME: "image/png", SHA256: hash, CreatedAt: utc("2026-09-12T09:00:00Z")},
+				{ID: "f2", AnnotationID: new("a1"), Filename: filename, MIME: "application/pdf", SHA256: hash, CreatedAt: utc("2026-09-12T09:00:00Z")},
+			}
+			source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
+
+			Expect(shownLinks(parseGFM(source), source)).To(HaveExactElements(
+				shownLink{true, shown, "attachments/" + hash + ".png"},
+				shownLink{false, shown, "attachments/" + hash + ".pdf"},
+			), string(source))
+		},
+		Entry("a link that tries to close the text early", ") [x](evil", ") [x](evil"),
+		Entry("brackets", "a]b[c].png", "a]b[c].png"),
+		Entry("a URL holding a bracket", "https://x.test/a](evil", "https://x.test/a](evil"),
+		Entry("backticks", "`rs.status()`.png", "`rs.status()`.png"),
+		Entry("emphasis markers and a pipe", "*bold*_under_|pipe.png", "*bold*_under_|pipe.png"),
+		Entry("an HTML tag", "<img src=x onerror=alert(1)>.png", "<img src=x onerror=alert(1)>.png"),
+		Entry("a backslash before a bracket", `back\]slash.png`, `back\]slash.png`),
+		Entry("a line break, shown as a space", "first\nsecond.png", "first second.png"),
+	)
+
+	It("links each attachment where AttachmentLink says, even a path with spaces, parentheses and angle brackets", func() {
+		const path = `/Users/sam/Library/Application Support/coroner (old)/<blobs>/3f9a`
+		env := checkoutSpike()
+		env.Attachments = env.Attachments[:1]
+		opts := export.MarkdownOptions{Zone: time.UTC, AttachmentLink: func(export.Attachment) string { return path }}
+		source := []byte(markdown(env, opts))
+
+		Expect(shownLinks(parseGFM(source), source)).To(HaveExactElements(shownLink{false, "trace.pdf", path}), string(source))
+	})
+
+	DescribeTable("fails, writing nothing, when an attachment's owner is not in the export",
+		func(eventID, annotationID *string) {
+			env := checkoutSpike()
+			env.Attachments = append(env.Attachments, attachmentOf(eventID, annotationID, "orphan.png", "image/png", "ff", "2026-09-12T09:00:00Z"))
+			var b bytes.Buffer
+
+			Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).To(MatchError(ContainSubstring("orphan.png")))
+			Expect(b.String()).To(BeEmpty())
+		},
+		Entry("an event", new("gone"), nil),
+		Entry("an annotation", nil, new("gone")),
+	)
 
 	It("fails, writing nothing, when an annotation's event is not in the export", func() {
 		env := checkoutSpike()

@@ -17,15 +17,16 @@ import (
 )
 
 const (
-	timelineID = "01a09862-b1c0-7000-8000-000000000001"
-	sourceID   = "01a09862-b1c0-7000-8000-000000000002"
-	eventID    = "01a09862-b1c0-7000-8000-000000000003"
-	eventID2   = "01a09862-b1c0-7000-8000-000000000004"
-	noteID     = "01a09862-b1c0-7000-8000-000000000005"
+	timelineID   = "01a09862-b1c0-7000-8000-000000000001"
+	sourceID     = "01a09862-b1c0-7000-8000-000000000002"
+	eventID      = "01a09862-b1c0-7000-8000-000000000003"
+	eventID2     = "01a09862-b1c0-7000-8000-000000000004"
+	annotationID = "01a09862-b1c0-7000-8000-000000000005"
+	attachmentID = "01a09862-b1c0-7000-8000-000000000006"
 )
 
 // sampleExport returns the JSONL export of a small timeline: a header, a timeline, a source,
-// two events and an annotation on the first.
+// two events, an annotation on the first and an attachment on that annotation.
 func sampleExport() string {
 	env := export.NewEnvelope("0.1.0", at(9, 0))
 	env.Query.Timelines = []string{"mongo-outage"}
@@ -33,9 +34,10 @@ func sampleExport() string {
 	env.Sources = []export.Source{{ID: sourceID, Name: "db-2/mongod", CreatedAt: instant(1, 0)}}
 	env.Events = []export.Event{sampleEvent(eventID, 1), sampleEvent(eventID2, 2)}
 	env.Annotations = []export.Annotation{{
-		ID: noteID, TimelineID: timelineID, EventID: new(eventID), Kind: timeline.AnnotationEvidence,
+		ID: annotationID, TimelineID: timelineID, EventID: new(eventID), Kind: timeline.AnnotationEvidence,
 		Body: "rs.status() showed no primary", Source: new("db-2/mongod"), CreatedAt: instant(4, 0), UpdatedAt: instant(4, 0),
 	}}
+	env.Attachments = []export.Attachment{sampleAttachment()}
 
 	records, err := export.Records(env)
 	Expect(err).NotTo(HaveOccurred())
@@ -53,10 +55,26 @@ func sampleEvent(id string, seq int64) export.Event {
 	}
 }
 
+func sampleAttachment() export.Attachment {
+	return export.Attachment{
+		ID: attachmentID, AnnotationID: new(annotationID), Filename: "rs-status.txt", MIME: "text/plain; charset=utf-8",
+		SHA256: strings.Repeat("0f", 32), Size: 2048, CreatedAt: instant(4, 0),
+	}
+}
+
 // eventLine returns an event's JSONL line after edit changes its decoded keys.
 func eventLine(edit func(map[string]any)) string {
+	return recordLine(sampleEvent(eventID, 1), edit)
+}
+
+// attachmentLine returns an attachment's JSONL line after edit changes its decoded keys.
+func attachmentLine(edit func(map[string]any)) string {
+	return recordLine(sampleAttachment(), edit)
+}
+
+func recordLine(record export.Record, edit func(map[string]any)) string {
 	var b bytes.Buffer
-	Expect(export.WriteRecords(&b, []export.Record{sampleEvent(eventID, 1)})).To(Succeed())
+	Expect(export.WriteRecords(&b, []export.Record{record})).To(Succeed())
 	var members map[string]any
 	Expect(json.Unmarshal(b.Bytes(), &members)).To(Succeed())
 	edit(members)
@@ -99,7 +117,8 @@ var _ = Describe("Decode", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		one := []string{
-			"header", "timeline " + timelineID, "source " + sourceID, "event " + eventID, "annotation " + noteID, "event " + eventID2,
+			"header", "timeline " + timelineID, "source " + sourceID, "event " + eventID, "annotation " + annotationID, "attachment " + attachmentID,
+			"event " + eventID2,
 		}
 		Expect(labels(records)).To(Equal(append(one, one...)))
 	})
@@ -116,7 +135,7 @@ var _ = Describe("Decode", func() {
 	It("ignores a key and a record type it does not know", func() {
 		withColour := eventLine(func(m map[string]any) { m["colour"] = "red" })
 
-		records, err := export.Decode(strings.NewReader(withColour + `{"type":"attachment","id":"x"}` + "\n"))
+		records, err := export.Decode(strings.NewReader(withColour + `{"type":"reaction","id":"x"}` + "\n"))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(records).To(Equal([]export.Record{sampleEvent(eventID, 1)}))
@@ -228,6 +247,21 @@ var _ = Describe("Decode", func() {
 				return `{"type":"timeline","id":"` + timelineID + `","name":"Mongo Outage","title":"","refs":[],"created_at":"2026-09-11T01:00:00.000000000Z"}` + "\n"
 			},
 			"Mongo Outage"),
+		Entry("an attachment missing a key",
+			func() string { return attachmentLine(func(m map[string]any) { delete(m, "sha256") }) }, `"sha256"`),
+		Entry("an attachment whose sha256 is not 64 lowercase hex digits",
+			func() string {
+				return attachmentLine(func(m map[string]any) { m["sha256"] = strings.Repeat("0F", 32) })
+			},
+			strings.Repeat("0F", 32)),
+		Entry("an attachment on both an event and an annotation",
+			func() string { return attachmentLine(func(m map[string]any) { m["event_id"] = eventID }) }, "exactly one"),
+		Entry("an attachment on nothing",
+			func() string { return attachmentLine(func(m map[string]any) { m["annotation_id"] = nil }) }, "exactly one"),
+		Entry("an attachment whose owner id is not a UUID",
+			func() string { return attachmentLine(func(m map[string]any) { m["annotation_id"] = "a1" }) }, `"a1"`),
+		Entry("an attachment with a negative size",
+			func() string { return attachmentLine(func(m map[string]any) { m["size"] = -1 }) }, "size -1"),
 		Entry("a missing type", func() string { return eventLine(func(m map[string]any) { delete(m, "type") }) }, `"type"`),
 		Entry("a type that is not a string", func() string { return eventLine(func(m map[string]any) { m["type"] = 1 }) }, `key "type"`),
 		Entry("a line that is not an object", func() string { return "[1,2]\n" }, "not a JSON object"),

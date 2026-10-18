@@ -27,6 +27,15 @@ var _ = Describe("Frozen export fixtures", func() {
 		"v1.0/hostile-text.jsonl",
 		"v1.0/minimal.jsonl",
 		"v1.0/ordering.jsonl",
+		"v1.1/annotations.jsonl",
+		"v1.1/attachments.json",
+		"v1.1/attachments.jsonl",
+		"v1.1/concatenated.jsonl",
+		"v1.1/full-model.json",
+		"v1.1/full-model.jsonl",
+		"v1.1/hostile-text.jsonl",
+		"v1.1/minimal.jsonl",
+		"v1.1/ordering.jsonl",
 	}
 	entries := make([]TableEntry, 0, len(frozen))
 	var currentEntries []TableEntry
@@ -61,7 +70,7 @@ var _ = Describe("Frozen export fixtures", func() {
 				if typ == "header" {
 					// A header is the envelope without its record lists.
 					typ = "envelope"
-					for _, key := range []string{"timelines", "sources", "events", "annotations"} {
+					for _, key := range []string{"timelines", "sources", "events", "annotations", "attachments"} {
 						record[key] = []any{}
 					}
 				}
@@ -104,7 +113,7 @@ var _ = Describe("Frozen export fixtures", func() {
 
 var _ = Describe("Compatibility fixtures", func() {
 	It("decodes a later minor version, ignoring the keys, record types and enum values it adds", func() {
-		records, err := export.Decode(bytes.NewReader(readFixture("compat/v1.1-unknown-keys-and-types.jsonl")))
+		records, err := export.Decode(bytes.NewReader(readFixture("compat/v1.2-unknown-keys-and-types.jsonl")))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(labels(records)).To(Equal([]string{
@@ -147,7 +156,7 @@ func exportSchemas() map[string]*jsonschema.Schema {
 	schemas := map[string]*jsonschema.Schema{}
 	for typ, pointer := range map[string]string{
 		"envelope": "", "timeline": "#/$defs/Timeline", "source": "#/$defs/Source", "event": "#/$defs/Event",
-		"annotation": "#/$defs/Annotation",
+		"annotation": "#/$defs/Annotation", "attachment": "#/$defs/Attachment",
 	} {
 		schemas[typ], err = compiler.Compile(path + pointer)
 		Expect(err).NotTo(HaveOccurred())
@@ -209,6 +218,8 @@ func envelopes(records []export.Record) []export.Envelope {
 			env.Events = append(env.Events, record)
 		case export.Annotation:
 			env.Annotations = append(env.Annotations, record)
+		case export.Attachment:
+			env.Attachments = append(env.Attachments, record)
 		}
 	}
 

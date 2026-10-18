@@ -30,12 +30,12 @@ func definitions(schema []byte) map[reflect.Type]object {
 
 	// Listing $defs exactly makes a new definition fail here until it joins byType, so every
 	// spec that ranges over definitions covers it.
-	Expect(slices.Sorted(maps.Keys(defs))).To(Equal([]string{"Annotation", "Event", "Query", "Source", "Timeline"}))
+	Expect(slices.Sorted(maps.Keys(defs))).To(Equal([]string{"Annotation", "Attachment", "Event", "Query", "Source", "Timeline"}))
 
 	byType := map[reflect.Type]object{reflect.TypeFor[export.Envelope](): root}
 	for _, t := range []reflect.Type{
 		reflect.TypeFor[export.Query](), reflect.TypeFor[export.Timeline](), reflect.TypeFor[export.Source](),
-		reflect.TypeFor[export.Event](), reflect.TypeFor[export.Annotation](),
+		reflect.TypeFor[export.Event](), reflect.TypeFor[export.Annotation](), reflect.TypeFor[export.Attachment](),
 	} {
 		def, ok := defs[t.Name()].(object)
 		Expect(ok).To(BeTrue(), t.Name())
@@ -77,7 +77,7 @@ func docKeys(doc, heading string) []string {
 	}
 
 	var keys []string
-	for _, match := range regexp.MustCompile("(?m)^\\| `([a-z_]+)` \\|").FindAllStringSubmatch(section, -1) {
+	for _, match := range regexp.MustCompile("(?m)^\\| `([a-z0-9_]+)` \\|").FindAllStringSubmatch(section, -1) {
 		keys = append(keys, match[1])
 	}
 
@@ -135,12 +135,15 @@ var _ = Describe("schemagen", func() {
 		}
 	})
 
-	It("requires every property of every object", func() {
+	It("requires every property of every object but those a later minor version added, so an older export validates", func() {
 		for t, def := range definitions(schema) {
-			properties, _ := def["properties"].(object)
 			var names []any
-			for name := range properties {
-				names = append(names, name)
+			for field := range t.Fields() {
+				if _, added := field.Tag.Lookup("since"); added {
+					Expect(property(def, jsonName(field))).NotTo(BeEmpty(), t.Name())
+				} else {
+					names = append(names, jsonName(field))
+				}
 			}
 
 			Expect(def["required"]).To(ConsistOf(names), t.Name())
@@ -195,6 +198,7 @@ var _ = Describe("schemagen", func() {
 			reflect.TypeFor[export.Envelope](): "## The envelope", reflect.TypeFor[export.Query](): "### query",
 			reflect.TypeFor[export.Timeline](): "### Timeline", reflect.TypeFor[export.Source](): "### Source",
 			reflect.TypeFor[export.Event](): "### Event", reflect.TypeFor[export.Annotation](): "### Annotation",
+			reflect.TypeFor[export.Attachment](): "### Attachment",
 		}
 
 		for t := range definitions(schema) {

@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -17,20 +21,28 @@ import (
 
 func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "export --format {json | jsonl | md | mermaid | html} [-o <file>]",
+		Use:   "export --format {json | jsonl | md | mermaid | html} [-o {<file> | <directory>/}]",
 		Short: "Export a timeline as JSON, JSONL, Markdown, Mermaid or HTML",
 		Long: "Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its\n" +
-			"events, their annotations and the sources they name. --format json writes one document,\n" +
-			"indented on a terminal; --format jsonl writes a header record, then one record per line;\n" +
-			"--format md writes a CommonMark outline for people, with times in UTC unless --tz names\n" +
-			"a zone.\n\n" +
+			"events, their annotations, the sources they name and their attachments. --format json\n" +
+			"writes one document, indented on a terminal; --format jsonl writes a header record, then\n" +
+			"one record per line; --format md writes a CommonMark outline for people, with times in\n" +
+			"UTC unless --tz names a zone.\n\n" +
 			"--format mermaid writes a Mermaid gantt diagram of the events, one section per source, in\n" +
 			"the same zone as md; --diagram appends that diagram to --format md.\n\n" +
 			"--format html writes one self-contained page that shows the events on a timeline in a\n" +
 			"browser, in the same zone as md, and needs -o.\n\n" +
 			"The filter flags mean what they do on event list, and annotations on the events they\n" +
 			"leave out are left out too. --order picks which end --limit keeps events from; exported\n" +
-			"events are always in the order they happened. -o writes a file instead of stdout.\n\n" +
+			"events are always in the order they happened.\n\n" +
+			"-o writes a file instead of stdout. For md and jsonl, -o may instead name a directory, one\n" +
+			"that exists or a path ending in /: coroner writes <timeline>.md or <timeline>.jsonl into\n" +
+			"it and each attachment's file under attachments/ beside it, named by its sha256, so the\n" +
+			"Markdown's images show wherever the directory is committed or unzipped. Otherwise md links\n" +
+			"attachments to the files beside the database, which only this machine has, and says so on\n" +
+			"stderr, and a jsonl export's attachment records carry metadata and sha256 only, so their\n" +
+			"files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of\n" +
+			"its images.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html"},
@@ -39,6 +51,7 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline export --format md --tz America/New_York > rca.md\n" +
 			"  $ coroner timeline export --format mermaid --source mongod > timeline.mmd\n" +
 			"  $ coroner timeline export --format md --diagram > rca.md\n" +
+			"  $ coroner timeline export -t inc-4821 --format md -o rca/\n" +
 			"  $ coroner timeline export --format html -o inc-4821.html",
 		PreRunE: requireFormat,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -53,7 +66,7 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd.Flags().String("group-by", "", "Section Markdown events by a `field`: {source|tag} (experimental)")
 	cmd.Flags().Bool("include-raw", false, "Add each event's time as it was given (--format md only)")
 	cmd.Flags().Bool("diagram", false, "Append a Mermaid gantt diagram of the events (--format md only)")
-	cmd.Flags().StringP("output", "o", "-", "Write the export to this `file`, or to stdout when it is -")
+	cmd.Flags().StringP("output", "o", "-", "Write the export to this `path`, to stdout when it is -, or, for md and jsonl, into a directory with its attachments")
 
 	return cmd
 }
@@ -114,6 +127,10 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
+		input.attachments, err = s.TimelineAttachments(ctx, input.timeline.ID)
+		if err != nil {
+			return err
+		}
 		input.sources, err = s.Sources(ctx)
 		return err
 	})
@@ -128,9 +145,32 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	env := newExport(input)
+	dir := exportDirectory(path, o.format, app.Stat)
+	var copies []fileCopy
+	if dir != "" {
+		copies = attachmentCopies(dir, cfg.DBPath, env.Attachments)
+		err = copyFiles(fileSystem{readFile: app.ReadFile, writeFile: app.WriteFile, mkdirAll: app.MkdirAll}, dir, copies)
+		if err != nil {
+			return err
+		}
+		path = filepath.Join(dir, input.timeline.Name+"."+string(o.format))
+	}
+	linksLocal := dir == "" && o.format == formatMarkdown && len(env.Attachments) > 0
+	if linksLocal {
+		markdown.AttachmentLink = func(a export.Attachment) string { return blobLink(path, store.BlobPath(cfg.DBPath, a.SHA256)) }
+	}
 	err = o.writeTo(path, app.WriteFile, func(into output) error {
 		return writeExport(into, env, markdown, zone)
 	})
+	if err != nil {
+		return err
+	}
+	switch {
+	case linksLocal:
+		err = o.notify("The Markdown links its attachments to files only this machine has; pass -o <directory>/ to write them beside it.")
+	case len(copies) > 0:
+		err = notifyCopied(o, copies)
+	}
 	if err != nil {
 		return err
 	}
@@ -210,6 +250,105 @@ func outputPath(flags *pflag.FlagSet, chosen format) (string, error) {
 	return path, nil
 }
 
+// exportDirectory returns the directory -o names for --format md or jsonl, which the export is
+// written into beside its attachments: path when it ends in a separator or names a directory
+// that exists. It returns "" for any other path, which is a file, or stdout.
+func exportDirectory(path string, chosen format, stat func(string) (fs.FileInfo, error)) string {
+	if (chosen != formatMarkdown && chosen != formatJSONL) || path == "-" {
+		return ""
+	}
+	if strings.HasSuffix(path, "/") || strings.HasSuffix(path, string(filepath.Separator)) {
+		return path
+	}
+	info, err := stat(path)
+	if err == nil && info.IsDir() {
+		return path
+	}
+
+	return ""
+}
+
+// fileCopy is one attachment's file in an export directory and the blob its content comes from.
+type fileCopy struct {
+	attachmentID, from, to string
+}
+
+// attachmentCopies returns, once per destination file, the blob beside the database at
+// dbPath that each attachment's file in dir is copied from.
+func attachmentCopies(dir, dbPath string, attachments []export.Attachment) []fileCopy {
+	var copies []fileCopy
+	planned := map[string]bool{}
+	for _, a := range attachments {
+		to := filepath.Join(dir, filepath.FromSlash(export.AttachmentPath(a)))
+		if !planned[to] {
+			planned[to] = true
+			copies = append(copies, fileCopy{attachmentID: a.ID, from: store.BlobPath(dbPath, a.SHA256), to: to})
+		}
+	}
+
+	return copies
+}
+
+// fileSystem is the file access copyFiles needs, as App provides it.
+type fileSystem struct {
+	readFile  func(name string) ([]byte, error)
+	writeFile func(name string, data []byte, perm fs.FileMode) error
+	mkdirAll  func(path string, perm fs.FileMode) error
+}
+
+// copyFiles creates dir, then each copy's directory, and writes the source's bytes to it.
+// Call it only once the store is closed: withStorePath would report a permission error
+// reading a blob as the database's.
+func copyFiles(files fileSystem, dir string, copies []fileCopy) error {
+	cannotWrite := func(err error) error {
+		return &Error{Kind: KindUsage, Message: "cannot write into " + dir, Err: err, Hint: "Pass -o a directory you can write to, or -o - for stdout."}
+	}
+	err := files.mkdirAll(dir, 0o755)
+	if err != nil {
+		return cannotWrite(err)
+	}
+	for _, c := range copies {
+		content, err := files.readFile(c.from)
+		if err != nil {
+			return fmt.Errorf("read the blob of attachment %s: %w", c.attachmentID, err)
+		}
+		err = files.mkdirAll(filepath.Dir(c.to), 0o755)
+		if err == nil {
+			err = files.writeFile(c.to, content, 0o644)
+		}
+		if err != nil {
+			return cannotWrite(err)
+		}
+	}
+
+	return nil
+}
+
+// notifyCopied says how many attachment files copies wrote, and where.
+func notifyCopied(o output, copies []fileCopy) error {
+	noun := "files"
+	if len(copies) == 1 {
+		noun = "file"
+	}
+
+	return o.notify("Wrote %d attachment %s to %s", len(copies), noun, filepath.Dir(copies[0].to))
+}
+
+// blobLink returns where Markdown written to path links the blob at blob: relative to path's
+// directory when both are relative, so the link resolves from the file. On stdout, when
+// either path is absolute, or when only the working directory could relate them, it is blob.
+func blobLink(path, blob string) string {
+	if path == "-" || filepath.IsAbs(path) || filepath.IsAbs(blob) {
+		return blob
+	}
+	rel, err := filepath.Rel(filepath.Dir(path), blob)
+	if err != nil {
+		return blob
+	}
+
+	return rel
+}
+
 // exportInput is what an export is made from, as the store returned it.
 type exportInput struct {
 	version    string
@@ -220,12 +359,15 @@ type exportInput struct {
 	events []timeline.Event
 	// annotations are every annotation in the timeline.
 	annotations []timeline.Annotation
+	// attachments are every attachment in the timeline.
+	attachments []timeline.Attachment
 	// sources are every source.
 	sources []timeline.Source
 }
 
 // newExport returns input's timeline as an export: its events in ascending order, the
-// annotations on the timeline or on those events, and the sources they name.
+// annotations on the timeline or on those events, the attachments of those events and
+// annotations, and the sources they name.
 func newExport(input exportInput) export.Envelope {
 	env := export.NewEnvelope(input.version, input.exportedAt)
 	env.Query = newExportQuery(input.timeline.Name, input.filter)
@@ -246,9 +388,15 @@ func newExport(input exportInput) export.Envelope {
 	for _, a := range input.annotations {
 		if a.EventID == nil || exported[*a.EventID] {
 			env.Annotations = append(env.Annotations, export.NewAnnotation(a))
+			exported[a.ID] = true
 			if a.Source != nil {
 				named[*a.Source] = true
 			}
+		}
+	}
+	for _, a := range input.attachments {
+		if exported[*cmp.Or(a.Owner.EventID, a.Owner.AnnotationID)] {
+			env.Attachments = append(env.Attachments, export.NewAttachment(a))
 		}
 	}
 	for _, s := range input.sources {

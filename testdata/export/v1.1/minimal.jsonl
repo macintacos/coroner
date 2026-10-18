@@ -1,0 +1,2 @@
+{"type":"header","format":"coroner.export","format_version":"1.1","coroner_version":"(devel)","exported_at":"2026-09-13T01:30:00.000000000Z","query":{"timelines":["minimal"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000001","name":"minimal","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}

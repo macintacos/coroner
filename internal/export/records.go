@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Record is one JSONL record: a Header, Timeline, Source, Event or Annotation.
+// Record is one JSONL record: a Header, Timeline, Source, Event, Annotation or Attachment.
 type Record interface {
 	// line returns the record as its JSONL object, with "type" as the first key.
 	line() any
@@ -53,20 +53,40 @@ func (a Annotation) line() any {
 	}{"annotation", a}
 }
 
+func (a Attachment) line() any {
+	return struct {
+		Type string `json:"type"`
+		Attachment
+	}{"attachment", a}
+}
+
 // Records returns env's records in export order: the header; the timelines, by name; the
 // annotations on no event, by created at then id; the sources, by name; then the events, by
-// occurred at, seq, then id, each followed by its annotations, by created at then id. env's
-// own list order does not matter. It fails when an annotation's event is not in env.Events.
+// occurred at, seq, then id, each followed by its annotations, by created at then id. Every
+// event and annotation is followed by its attachments, by created at then id, before anything
+// else. env's own list order does not matter. It fails when an annotation's event, or an
+// attachment's event or annotation, is not in env.
 func Records(env Envelope) ([]Record, error) {
+	byOwner, err := groupAttachments(env)
+	if err != nil {
+		return nil, err
+	}
+
 	annotations := slices.SortedFunc(slices.Values(env.Annotations), compareAnnotations)
 	byEvent := map[string][]Annotation{}
 	records := []Record{env.header()}
+	appendWithAttachments := func(r Record, ownerID string) {
+		records = append(records, r)
+		for _, f := range byOwner[ownerID] {
+			records = append(records, f)
+		}
+	}
 	for _, t := range slices.SortedFunc(slices.Values(env.Timelines), compareTimelines) {
 		records = append(records, t)
 	}
 	for _, a := range annotations {
 		if a.EventID == nil {
-			records = append(records, a)
+			appendWithAttachments(a, a.ID)
 		} else {
 			byEvent[*a.EventID] = append(byEvent[*a.EventID], a)
 		}
@@ -75,9 +95,9 @@ func Records(env Envelope) ([]Record, error) {
 		records = append(records, s)
 	}
 	for _, e := range slices.SortedFunc(slices.Values(env.Events), compareEvents) {
-		records = append(records, e)
+		appendWithAttachments(e, e.ID)
 		for _, a := range byEvent[e.ID] {
-			records = append(records, a)
+			appendWithAttachments(a, a.ID)
 		}
 		delete(byEvent, e.ID)
 	}
@@ -116,6 +136,36 @@ func compareSources(a, b Source) int {
 }
 
 func compareAnnotations(a, b Annotation) int {
+	return cmp.Or(time.Time(a.CreatedAt).Compare(time.Time(b.CreatedAt)), cmp.Compare(a.ID, b.ID))
+}
+
+// groupAttachments returns env's attachments by created at then id, keyed by the id of the
+// event or annotation that keeps each, and fails naming the first whose owner is not in env.
+func groupAttachments(env Envelope) (map[string][]Attachment, error) {
+	events, annotations := map[string]bool{}, map[string]bool{}
+	for _, e := range env.Events {
+		events[e.ID] = true
+	}
+	for _, a := range env.Annotations {
+		annotations[a.ID] = true
+	}
+
+	byOwner := map[string][]Attachment{}
+	for _, f := range slices.SortedFunc(slices.Values(env.Attachments), compareAttachments) {
+		switch {
+		case f.EventID != nil && !events[*f.EventID]:
+			return nil, fmt.Errorf("attachment %s: its event %s is not in the export", f.ID, *f.EventID)
+		case f.AnnotationID != nil && !annotations[*f.AnnotationID]:
+			return nil, fmt.Errorf("attachment %s: its annotation %s is not in the export", f.ID, *f.AnnotationID)
+		}
+		ownerID := deref(cmp.Or(f.EventID, f.AnnotationID))
+		byOwner[ownerID] = append(byOwner[ownerID], f)
+	}
+
+	return byOwner, nil
+}
+
+func compareAttachments(a, b Attachment) int {
 	return cmp.Or(time.Time(a.CreatedAt).Compare(time.Time(b.CreatedAt)), cmp.Compare(a.ID, b.ID))
 }
 

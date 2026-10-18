@@ -38,15 +38,18 @@ var _ = Describe("Write", func() {
 		Entry("annotation", export.Annotation{},
 			`{"id":"","timeline_id":"","event_id":null,"kind":"","body":"","author":null,"source":null,"url":null,`+
 				`"created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"}`),
+		Entry("attachment", export.Attachment{},
+			`{"id":"","event_id":null,"annotation_id":null,"filename":"","mime":"","sha256":"","size":0,`+
+				`"created_at":"0001-01-01T00:00:00.000000000Z"}`),
 	)
 
 	It("emits a new envelope's format identifiers, its version and time, a query that filters nothing and empty record lists", func() {
 		envelope := export.NewEnvelope("0.1.0", time.Date(2026, 9, 13, 1, 30, 0, 0, time.FixedZone("", 3600)))
 
 		Expect(encode(envelope)).To(Equal(
-			`{"format":"coroner.export","format_version":"1.0","coroner_version":"0.1.0","exported_at":"2026-09-13T00:30:00.000000000Z",` +
+			`{"format":"coroner.export","format_version":"1.1","coroner_version":"0.1.0","exported_at":"2026-09-13T00:30:00.000000000Z",` +
 				`"query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"},` +
-				`"timelines":[],"sources":[],"events":[],"annotations":[]}` + "\n"))
+				`"timelines":[],"sources":[],"events":[],"annotations":[],"attachments":[]}` + "\n"))
 	})
 
 	It("sorts map keys", func() {

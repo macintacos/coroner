@@ -48,13 +48,18 @@ type MarkdownOptions struct {
 	IncludeRaw bool
 	// Diagram appends the timeline's Mermaid diagram, in Zone, as a mermaid code block.
 	Diagram bool
+	// AttachmentLink returns where an attachment's image or link points; nil is AttachmentPath,
+	// for an export written beside its attachments.
+	AttachmentLink func(Attachment) string
 }
 
 // WriteMarkdown writes env's timeline to w as a CommonMark outline for people: a title,
 // metadata bullets, the annotations on the whole timeline, a section per day of its events
 // by occurred at and seq, with each event's annotations nested under it, then opts.Diagram's
-// Mermaid diagram as a mermaid code block. It fails, writing nothing, unless env holds one
-// timeline and the event of every annotation, and opts a grouping ParseGroupBy knows.
+// Mermaid diagram as a mermaid code block. An event's attachments are list items under it,
+// before its annotations, and an annotation's follow its text on its line. It fails, writing
+// nothing, unless env holds one timeline, the event of every annotation and the event or
+// annotation of every attachment, and opts a grouping ParseGroupBy knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
@@ -67,12 +72,22 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if err != nil {
 		return err
 	}
+	attachments, err := groupAttachments(env)
+	if err != nil {
+		return err
+	}
+	link := opts.AttachmentLink
+	if link == nil {
+		link = AttachmentPath
+	}
 
 	md := markdownRenderer{
-		zone:       cmp.Or(opts.Zone, time.UTC),
-		groupBy:    opts.GroupBy,
-		includeRaw: opts.IncludeRaw,
-		byEvent:    byEvent,
+		zone:        cmp.Or(opts.Zone, time.UTC),
+		groupBy:     opts.GroupBy,
+		includeRaw:  opts.IncludeRaw,
+		byEvent:     byEvent,
+		attachments: attachments,
+		link:        link,
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
 		escaper: strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "|", `\|`, "&", `\&`, "~", `\~`),
@@ -127,8 +142,11 @@ type markdownRenderer struct {
 	groupBy    GroupBy
 	includeRaw bool
 	byEvent    map[string][]Annotation
-	escaper    *strings.Replacer
-	urls       *regexp.Regexp
+	// attachments are keyed by the id of the event or annotation that keeps them.
+	attachments map[string][]Attachment
+	link        func(Attachment) string
+	escaper     *strings.Replacer
+	urls        *regexp.Regexp
 }
 
 // header returns t's title and the metadata list: refs, the window events span, the event
@@ -368,8 +386,8 @@ func (md markdownRenderer) dayZone(day []Event) (string, bool) {
 }
 
 // eventItem returns e's list item: its time, source, text and tags, and under it e's
-// annotations. offset adds the zone offset to every time. In the section of groupTag, the
-// item names only e's other tags, as (also: …).
+// attachments, then its annotations. offset adds the zone offset to every time. In the
+// section of groupTag, the item names only e's other tags, as (also: …).
 func (md markdownRenderer) eventItem(e Event, offset bool, groupTag string) string {
 	var parts []string
 	if when := md.when(e, offset); when != "" {
@@ -393,11 +411,45 @@ func (md markdownRenderer) eventItem(e Event, offset bool, groupTag string) stri
 	}
 
 	item := "- " + strings.Join(parts, " · ")
-	if annotations := md.byEvent[e.ID]; len(annotations) > 0 {
-		item += "\n" + md.annotationList(annotations, "  ")
+	var nested []string
+	for _, link := range md.attachmentLinks(e.ID) {
+		nested = append(nested, "  - "+link)
+	}
+	for _, a := range md.byEvent[e.ID] {
+		nested = append(nested, md.annotationItem(a, "  "))
+	}
+	if len(nested) > 0 {
+		item += "\n" + list(nested)
 	}
 
 	return item
+}
+
+// attachmentLinks returns an image of each image attachment of the event or annotation with
+// ownerID, and a link to each other one, its filename as the text.
+func (md markdownRenderer) attachmentLinks(ownerID string) []string {
+	var links []string
+	for _, a := range md.attachments[ownerID] {
+		// Not md.escape: a URL it keeps whole could hold a ] that ends the text early.
+		rendered := "[" + md.escaper.Replace(strings.Join(lines(a.Filename), " ")) + "](" + linkDestination(md.link(a)) + ")"
+		if strings.HasPrefix(a.MIME, "image/") {
+			rendered = "!" + rendered
+		}
+		links = append(links, rendered)
+	}
+
+	return links
+}
+
+// linkDestination returns path as a CommonMark link destination: as written, or between < and >
+// with \, < and > escaped when it holds a space, a control character, a parenthesis or one of
+// those. A line ending cannot be written even between < and >.
+func linkDestination(path string) string {
+	if !strings.ContainsFunc(path, func(r rune) bool { return r <= ' ' || r == 0x7f || strings.ContainsRune(`()<>\`, r) }) {
+		return path
+	}
+
+	return "<" + strings.NewReplacer(`\`, `\\`, "<", `\<`, ">", `\>`).Replace(path) + ">"
 }
 
 // when returns e's time at its precision in the zone, its interval's end, and ~ when it is
@@ -461,22 +513,27 @@ func list(items []string) string {
 }
 
 // annotationItem returns a's list item: evidence as code, anything else as emphasized
-// commentary.
+// commentary, with a's attachments at the end of its line, or of its first line before a code
+// block, so they nest no deeper.
 func (md markdownRenderer) annotationItem(a Annotation, indent string) string {
 	by := ""
 	if a.Author != nil {
 		by = " (" + md.oneLine(*a.Author) + ")"
 	}
+	links := strings.Join(md.attachmentLinks(a.ID), " ")
+	if links != "" {
+		links = " " + links
+	}
 	if a.Kind != timeline.AnnotationEvidence {
-		return indent + "- _" + md.oneLine(string(a.Kind)) + by + ":_ " + md.text(a.Body, indent+"  ")
+		return indent + "- _" + md.oneLine(string(a.Kind)) + by + ":_ " + md.text(a.Body, indent+"  ") + links
 	}
 
 	body := lines(a.Body)
 	if len(body) == 1 {
-		return indent + "- evidence" + by + ": " + codeSpan(body[0])
+		return indent + "- evidence" + by + ": " + codeSpan(body[0]) + links
 	}
 
-	return indent + "- evidence" + by + ":\n\n" + codeBlock(body, indent+"  ")
+	return indent + "- evidence" + by + ":" + links + "\n\n" + codeBlock(body, indent+"  ")
 }
 
 // text escapes s as CommonMark text that may start a line, its line breaks as hard breaks

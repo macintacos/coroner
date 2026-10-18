@@ -2,6 +2,7 @@ package export_test
 
 import (
 	"bytes"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -32,6 +33,8 @@ func label(r export.Record) string {
 		return "event " + r.ID
 	case export.Annotation:
 		return "annotation " + r.ID
+	case export.Attachment:
+		return "attachment " + r.ID
 	}
 
 	return "unknown"
@@ -69,12 +72,29 @@ var _ = Describe("NewEvent", func() {
 	})
 })
 
+var _ = Describe("NewAttachment", func() {
+	It("carries every field of a stored attachment, with its owner's id and its time as an instant", func() {
+		a := timeline.Attachment{
+			ID: "f1", Owner: timeline.AttachmentOwner{AnnotationID: new("a1")}, Filename: "p99.png", MIME: "image/png",
+			SHA256: strings.Repeat("ab", 32), Size: 2048, CreatedAt: at(4, 0),
+		}
+
+		Expect(export.NewAttachment(a)).To(Equal(export.Attachment{
+			ID: "f1", AnnotationID: new("a1"), Filename: "p99.png", MIME: "image/png", SHA256: strings.Repeat("ab", 32), Size: 2048,
+			CreatedAt: instant(4, 0),
+		}))
+	})
+})
+
 var _ = Describe("Records", func() {
 	event := func(id string, seq int64, occurred time.Time) export.Event {
 		return export.Event{ID: id, Seq: &seq, OccurredAt: export.Instant(occurred)}
 	}
 	annotation := func(id string, eventID *string, created time.Time) export.Annotation {
 		return export.Annotation{ID: id, EventID: eventID, CreatedAt: export.Instant(created)}
+	}
+	attachment := func(id string, owner timeline.AttachmentOwner, created time.Time) export.Attachment {
+		return export.Attachment{ID: id, EventID: owner.EventID, AnnotationID: owner.AnnotationID, CreatedAt: export.Instant(created)}
 	}
 
 	It("orders records header, timeline, timeline annotations, sources, then each event followed by its annotations", func() {
@@ -100,7 +120,29 @@ var _ = Describe("Records", func() {
 			"event e1", "annotation z-e1-early", "annotation a-e1-late", "event e2", "annotation a-e2", "event e3",
 		}))
 		Expect(records[0]).To(Equal(export.Header{
-			Format: "coroner.export", FormatVersion: "1.0", CoronerVersion: "0.1.0", ExportedAt: instant(9, 0), Query: env.Query,
+			Format: "coroner.export", FormatVersion: "1.1", CoronerVersion: "0.1.0", ExportedAt: instant(9, 0), Query: env.Query,
+		}))
+	})
+
+	It("follows each event and annotation with its attachments, by created at then id", func() {
+		env := export.NewEnvelope("0.1.0", at(9, 0))
+		env.Events = []export.Event{event("e2", 2, at(3, 15)), event("e1", 1, at(3, 14))}
+		env.Annotations = []export.Annotation{annotation("a-t", nil, at(10, 0)), annotation("a-e1", new("e1"), at(10, 0))}
+		env.Attachments = []export.Attachment{
+			attachment("f-e1-late", timeline.AttachmentOwner{EventID: new("e1")}, at(12, 0)),
+			attachment("f-a-e1", timeline.AttachmentOwner{AnnotationID: new("a-e1")}, at(11, 0)),
+			attachment("f-e2", timeline.AttachmentOwner{EventID: new("e2")}, at(11, 0)),
+			// Created earlier than f-e1-late but with a larger id: created at decides first.
+			attachment("z-e1-early", timeline.AttachmentOwner{EventID: new("e1")}, at(11, 0)),
+			attachment("f-a-t", timeline.AttachmentOwner{AnnotationID: new("a-t")}, at(11, 0)),
+		}
+
+		records, err := export.Records(env)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(labels(records)).To(Equal([]string{
+			"header", "annotation a-t", "attachment f-a-t", "event e1", "attachment z-e1-early", "attachment f-e1-late",
+			"annotation a-e1", "attachment f-a-e1", "event e2", "attachment f-e2",
 		}))
 	})
 
@@ -138,6 +180,21 @@ var _ = Describe("Records", func() {
 
 		Expect(err).To(MatchError(And(ContainSubstring("a1"), ContainSubstring("gone"))))
 	})
+
+	DescribeTable("fails naming an attachment whose owner is not in the export",
+		func(owner timeline.AttachmentOwner) {
+			env := export.NewEnvelope("0.1.0", at(9, 0))
+			env.Events = []export.Event{event("e1", 1, at(3, 14))}
+			env.Annotations = []export.Annotation{annotation("a1", new("e1"), at(10, 0))}
+			env.Attachments = []export.Attachment{attachment("f1", owner, at(11, 0))}
+
+			_, err := export.Records(env)
+
+			Expect(err).To(MatchError(And(ContainSubstring("f1"), ContainSubstring("gone"))))
+		},
+		Entry("an event", timeline.AttachmentOwner{EventID: new("gone")}),
+		Entry("an annotation", timeline.AttachmentOwner{AnnotationID: new("gone")}),
+	)
 })
 
 var _ = Describe("WriteRecords", func() {
@@ -151,7 +208,7 @@ var _ = Describe("WriteRecords", func() {
 
 		Expect(export.WriteRecords(&b, records)).To(Succeed())
 		Expect(b.String()).To(Equal(
-			`{"type":"header","format":"coroner.export","format_version":"1.0","coroner_version":"0.1.0","exported_at":"2026-09-11T09:00:00.000000000Z",` +
+			`{"type":"header","format":"coroner.export","format_version":"1.1","coroner_version":"0.1.0","exported_at":"2026-09-11T09:00:00.000000000Z",` +
 				`"query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}` + "\n" +
 				`{"type":"source","id":"s1","name":"mongod","created_at":"2026-09-11T04:00:00.000000000Z"}` + "\n"))
 	})
