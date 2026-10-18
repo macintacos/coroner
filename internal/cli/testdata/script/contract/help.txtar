@@ -1025,7 +1025,7 @@ COMMANDS
   create       Create a timeline
   delete       Delete a timeline and everything in it
   edit         Rename a timeline or change its title and refs
-  export       Export a timeline as JSON or JSONL
+  export       Export a timeline as JSON, JSONL or Markdown
   list         List timelines, marking the current one
   use          Set the current timeline
   view         Show a timeline and its events
@@ -1164,21 +1164,28 @@ LEARN MORE
 -- coroner_timeline_export.txt --
 Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its
 events, their annotations and the sources they name. --format json writes one document,
-indented on a terminal; --format jsonl writes a header record, then one record per line.
+indented on a terminal; --format jsonl writes a header record, then one record per line;
+--format md writes a CommonMark outline for people, with times in UTC unless --tz names
+a zone.
 
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
 events are always in the order they happened. Redirect stdout to write a file.
 
+--group-by is experimental and may change before 1.0.
+
 USAGE
-  coroner timeline export --format {json | jsonl} [flags]
+  coroner timeline export --format {json | jsonl | md} [flags]
 
 EXAMPLES
   $ coroner timeline export -t mongo-outage --format json > rca.json
   $ coroner timeline export --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
+  $ coroner timeline export --format md --tz America/New_York > rca.md
 
 FLAGS
       --contains text      Keep events whose text contains this text, ignoring case
+      --group-by field     Section Markdown events by a field: {source|tag} (experimental)
+      --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
       --since time         Keep events at or after this time

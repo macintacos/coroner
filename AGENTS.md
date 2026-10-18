@@ -71,7 +71,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
-    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types or reads export JSONL"];
+    "What does the change touch?" -> "Load docs/agents/export-rules.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown export"];
     "What does the change touch?" -> "Load docs/agents/viewer-rules.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
 }
 ```
@@ -80,8 +80,8 @@ digraph coroner_rules_router {
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
-  `internal/config`. JSON export types, envelope, encoder and JSONL decoder:
-  `internal/export`, described by
+  `internal/config`. JSON export types, envelope, encoder and JSONL decoder, and the
+  Markdown export's renderer: `internal/export`, the JSON described by
   [the export format reference](docs/reference/export-format.md). The terminal viewer
   `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. `main.go`
   builds `cli.App` from the process; code below it takes everything from `cli.App`, never
@@ -150,7 +150,9 @@ digraph coroner_rules_router {
    is rewritten by `go test ./internal/cli -run 'TestScripts/script$' -update`; contract
    scripts change only as a deliberate contract change (Rule 3), through the `contract`
    subtest. The viewer's screens in `internal/viewer/testdata/*.golden` are rewritten by
-   `go test ./internal/viewer -update`. `internal/store/testdata/compat/v*.db` is written
+   `go test ./internal/viewer -update`. The Markdown export's goldens in
+   `internal/export/testdata/markdown/*.md` are rewritten by
+   `go test ./internal/export -update`. `internal/store/testdata/compat/v*.db` is written
    once, from its release's tag, by `go run ./internal/tools/compatfixture -o <path>`, and
    never regenerated ([the migration policy](docs/contributing/migrations.md)).
    `testdata/export/v<MAJOR.MINOR>/` is written for the current `format_version` by

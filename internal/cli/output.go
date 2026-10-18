@@ -18,6 +18,8 @@ const (
 	formatText  format = "text"
 	formatJSON  format = "json"
 	formatJSONL format = "jsonl"
+	// formatMarkdown is not machine(), so errors under it print as text.
+	formatMarkdown format = "md"
 )
 
 // formatsAnnotation is the cmd.Annotations key listing the formats a command prints,

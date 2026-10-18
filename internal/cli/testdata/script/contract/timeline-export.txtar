@@ -53,12 +53,17 @@ stdout '"seq":1,'
 ! stdout '"seq":2,'
 stderr '1 of 3'
 
-# --format is required, and only json and jsonl are exports: exit 2.
+# --format is required, only json, jsonl and md are exports, --group-by and --include-raw
+# apply only to md, and --group-by takes source or tag: exit 2.
 exits 2 coroner timeline export
 ! stdout .
 exits 2 coroner timeline export --format text
 ! stdout .
-exits 2 coroner timeline export --format md
+exits 2 coroner timeline export --format json --group-by source
+! stdout .
+exits 2 coroner timeline export --format jsonl --include-raw
+! stdout .
+exits 2 coroner timeline export --format md --group-by kind
 ! stdout .
 
 # A timeline that does not exist exits 3, kind timeline_not_found.

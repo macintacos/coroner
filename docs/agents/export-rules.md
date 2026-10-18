@@ -46,3 +46,14 @@
    diff lands in a commit whose type and subject describe the format change, which is what
    puts it in the changelog. `testdata/export/compat/` holds hand-written exports of other
    versions that pin the evolution rules; they are not frozen.
+8. **The Markdown export has one writer:** render it only through `export.WriteMarkdown`,
+   from the `Envelope` that `json` and `jsonl` encode, so every format exports the same
+   events. Its layout is not a contract (`AGENTS.md` Rule 3), so it changes without a
+   version bump, but always within the limits that keep it pasting cleanly into chat and
+   wikis: plain CommonMark with no tables, front matter or raw HTML, lists at most two
+   levels deep, and URL tokens left unescaped so autolinks keep them whole. Specs parse
+   every golden in `internal/export/testdata/markdown/` with goldmark to check there is no
+   raw HTML, lists are at most two levels deep and no heading repeats under one parent,
+   and run `rumdl check` on them with MD013 off. `rumdl fmt` skips that directory, so a
+   golden changes only through `go test ./internal/export -update`, with its diff read
+   before committing.

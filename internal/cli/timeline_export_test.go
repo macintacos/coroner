@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -25,6 +26,7 @@ var _ = Describe("timeline export", func() {
 		now         time.Time
 		tick        time.Duration
 		outTTY      bool
+		configFile  string
 	)
 
 	run := func(ctx SpecContext, args ...string) int {
@@ -37,7 +39,12 @@ var _ = Describe("timeline export", func() {
 			Err:       &errOut,
 			OutIsTTY:  outTTY,
 			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-			ReadFile:  readNoFile,
+			ReadFile: func(string) ([]byte, error) {
+				if configFile == "" {
+					return nil, fs.ErrNotExist
+				}
+				return []byte(configFile), nil
+			},
 			Now: func() time.Time {
 				now = now.Add(tick)
 				return now
@@ -61,6 +68,7 @@ var _ = Describe("timeline export", func() {
 		now = time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)
 		tick = 0
 		outTTY = false
+		configFile = ""
 		for _, args := range [][]string{
 			{"timeline", "create", "mongo-outage"},
 			{"timeline", "use", "mongo-outage"},
@@ -73,8 +81,8 @@ var _ = Describe("timeline export", func() {
 	})
 
 	DescribeTable("writes an unchanged timeline to the same bytes but for when it was exported",
-		func(ctx SpecContext, format string) {
-			exportedAt := regexp.MustCompile(`"exported_at":"[^"]*"`)
+		func(ctx SpecContext, format, exportedAtPattern string) {
+			exportedAt := regexp.MustCompile(exportedAtPattern)
 			first := exportAs(ctx, format)
 			now = now.Add(time.Hour)
 
@@ -83,8 +91,9 @@ var _ = Describe("timeline export", func() {
 			Expect(second).NotTo(Equal(first))
 			Expect(exportedAt.ReplaceAllString(second, "")).To(Equal(exportedAt.ReplaceAllString(first, "")))
 		},
-		Entry("json", "json"),
-		Entry("jsonl", "jsonl"),
+		Entry("json", "json", `"exported_at":"[^"]*"`),
+		Entry("jsonl", "jsonl", `"exported_at":"[^"]*"`),
+		Entry("md", "md", `(?m)^- \*\*Exported:\*\*.*$`),
 	)
 
 	It("writes JSONL that decodes and re-encodes to the same bytes", func(ctx SpecContext) {
@@ -123,4 +132,57 @@ var _ = Describe("timeline export", func() {
 	It("writes JSON on one line when piped", func(ctx SpecContext) {
 		Expect(strings.Count(exportAs(ctx, "json"), "\n")).To(Equal(1))
 	})
+
+	Describe("--format md", func() {
+		BeforeEach(func() {
+			configFile = `default_timezone = "America/New_York"`
+		})
+
+		It("shows times in UTC, whatever zone the config file sets", func(ctx SpecContext) {
+			md := exportAs(ctx, "md")
+
+			Expect(md).To(HavePrefix("# mongo-outage\n"))
+			Expect(md).To(ContainSubstring("## 2026-09-11 (UTC)\n"))
+			Expect(md).To(ContainSubstring("- **03:14:07** · `mongod` · Primary stepped down"))
+		})
+
+		It("shows times in the zone --tz names", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "md", "--tz", "America/New_York")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring("## 2026-09-10 (EDT)\n"))
+			Expect(out.String()).To(ContainSubstring("- **23:14:07** · `mongod` · Primary stepped down"))
+		})
+
+		It("reads --since in the config file's zone, as json and jsonl do", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "md", "--since", "2026-09-10 23:15")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring("Pager fires for db-2"))
+			Expect(out.String()).NotTo(ContainSubstring("Primary stepped down"))
+		})
+
+		It("sections events by source under --group-by source", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "md", "--group-by", "source")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring("## `mongod`\n\n### 2026-09-11 (UTC)\n"))
+		})
+
+		It("adds each event's time as it was written under --include-raw", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "md", "--include-raw")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring("Primary stepped down · as written: `2026-09-11T03:14:07Z`"))
+		})
+	})
+
+	DescribeTable("exits 2, naming the flag, on a Markdown option it cannot apply",
+		func(ctx SpecContext, flagName string, args ...string) {
+			Expect(run(ctx, append([]string{"timeline", "export"}, args...)...)).To(Equal(2))
+
+			Expect(out.String()).To(BeEmpty())
+			Expect(errOut.String()).To(ContainSubstring(flagName))
+		},
+		Entry("--group-by with json", "--group-by", "--format", "json", "--group-by", "source"),
+		Entry("--include-raw with jsonl", "--include-raw", "--format", "jsonl", "--include-raw"),
+		Entry("an unknown --group-by", "--group-by", "--format", "md", "--group-by", "kind"),
+		Entry("an empty --group-by", "--group-by", "--format", "md", "--group-by", ""),
+	)
 })

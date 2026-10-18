@@ -4,20 +4,24 @@ title: coroner timeline export
 
 ## coroner timeline export
 
-Export a timeline as JSON or JSONL
+Export a timeline as JSON, JSONL or Markdown
 
 ### Synopsis
 
 Export the timeline -t, CORONER_TIMELINE or 'coroner timeline use' selects, with its
 events, their annotations and the sources they name. --format json writes one document,
-indented on a terminal; --format jsonl writes a header record, then one record per line.
+indented on a terminal; --format jsonl writes a header record, then one record per line;
+--format md writes a CommonMark outline for people, with times in UTC unless --tz names
+a zone.
 
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
 events are always in the order they happened. Redirect stdout to write a file.
 
+--group-by is experimental and may change before 1.0.
+
 ```
-coroner timeline export --format {json | jsonl} [flags]
+coroner timeline export --format {json | jsonl | md} [flags]
 ```
 
 ### Examples
@@ -25,12 +29,15 @@ coroner timeline export --format {json | jsonl} [flags]
 ```
   $ coroner timeline export -t mongo-outage --format json > rca.json
   $ coroner timeline export --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
+  $ coroner timeline export --format md --tz America/New_York > rca.md
 ```
 
 ### Options
 
 ```
       --contains text      Keep events whose text contains this text, ignoring case
+      --group-by field     Section Markdown events by a field: {source|tag} (experimental)
+      --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
       --since time         Keep events at or after this time
