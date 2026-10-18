@@ -34,8 +34,10 @@ const (
 
 	KindTimelineNotFound Kind = "timeline_not_found"
 	KindEventNotFound    Kind = "event_not_found"
+	KindSourceNotFound   Kind = "source_not_found"
 
 	KindTimelineExists Kind = "timeline_exists"
+	KindSourceExists   Kind = "source_exists"
 	// KindIDConflict means a record with that ID already exists with different content.
 	KindIDConflict Kind = "id_conflict"
 
@@ -70,8 +72,10 @@ func exitCodes() map[Kind]int {
 
 		KindTimelineNotFound: 3,
 		KindEventNotFound:    3,
+		KindSourceNotFound:   3,
 
 		KindTimelineExists: 4,
+		KindSourceExists:   4,
 		KindIDConflict:     4,
 
 		KindDBBusy:       5,

@@ -55,6 +55,30 @@ func loadAll[R, T any](rows []R, load func(R) (T, error)) ([]T, error) {
 	return loaded, nil
 }
 
+// queryAll runs hand-written SQL on tx and maps each row with scan, stopping at the first
+// error. It never returns a nil slice with a nil error.
+func queryAll[T any](
+	ctx context.Context, tx sqlcgen.DBTX, query string, args []any, scan func(*sql.Rows) (T, error),
+) ([]T, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	// rows.Err reports what went wrong; Close only matters on an early return.
+	defer func() { _ = rows.Close() }()
+
+	scanned := []T{}
+	for rows.Next() {
+		t, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		scanned = append(scanned, t)
+	}
+
+	return scanned, rows.Err()
+}
+
 // write runs fn in one immediate transaction, retried whole while another writer holds the
 // database, so fn may run more than once and must only use q: calling another Store method
 // from fn waits on this transaction's own lock until ErrBusy.

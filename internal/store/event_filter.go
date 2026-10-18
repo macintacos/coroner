@@ -65,7 +65,7 @@ func (s *Store) ListEvents(ctx context.Context, timelineID string, f EventFilter
 	query, args := buildEventQuery(timelineID, f)
 
 	return readTx(ctx, s, func(tx sqlcgen.DBTX) (EventPage, error) {
-		events, err := queryEvents(ctx, tx, query, args)
+		events, err := queryAll(ctx, tx, query, args, scanEvent)
 		if err != nil {
 			return EventPage{}, err
 		}
@@ -95,26 +95,6 @@ func checkBound(what string, bound *time.Time) error {
 	}
 
 	return nil
-}
-
-func queryEvents(ctx context.Context, tx sqlcgen.DBTX, query string, args []any) ([]timeline.Event, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	// rows.Err reports what went wrong; Close only matters on an early return.
-	defer func() { _ = rows.Close() }()
-
-	events := []timeline.Event{}
-	for rows.Next() {
-		e, err := scanEvent(rows)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, e)
-	}
-
-	return events, rows.Err()
 }
 
 // scanEvent reads a row of eventSelect. Scans e.* in sqlcgen.Event's field order; keep in
