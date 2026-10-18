@@ -15,7 +15,8 @@ func newTimelineUseCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Make a timeline current, so commands that act on a timeline use it when neither -t nor\n" +
 			"CORONER_TIMELINE names one. Each database keeps its own current timeline. --clear leaves\n" +
 			"none current.",
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Example: "  $ coroner timeline use mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline use --clear",
 		RunE: func(cmd *cobra.Command, args []string) error {

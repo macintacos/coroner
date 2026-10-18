@@ -1,0 +1,73 @@
+# -t completes the names of the timelines in the database, described by their titles.
+env CORONER_DB=$WORK/t.db
+exec coroner timeline create mongo-outage-2026-09-11 --title 'Mongo outage'
+exec coroner timeline create mongo-failover
+exec coroner timeline create redis-latency
+exec coroner __complete timeline view -t mo
+cmp stdout mo.txt
+exec coroner __complete status -t mo
+cmp stdout mo.txt
+
+# A timeline positional completes every name, and nothing once it or -t is given.
+exec coroner __complete timeline use ''
+cmp stdout all.txt
+exec coroner __complete timeline view ''
+cmp stdout all.txt
+exec coroner __complete timeline delete ''
+cmp stdout all.txt
+exec coroner __complete timeline edit ''
+cmp stdout all.txt
+exec coroner __complete timeline edit mongo-failover ''
+cmp stdout none.txt
+exec coroner __complete timeline view -t mongo-failover ''
+cmp stdout none.txt
+
+# --db on the command line picks the database completion reads.
+exec coroner timeline create other-incident --db $WORK/other.db
+exec coroner __complete timeline use --db $WORK/other.db ''
+cmp stdout other.txt
+
+# With no database, completion offers nothing and creates nothing.
+exec coroner __complete timeline use --db $WORK/missing/none.db ''
+cmp stdout none.txt
+! exists $WORK/missing
+
+# An empty file (schema 0), below the latest schema, offers nothing and is not migrated.
+exec coroner __complete timeline use --db $WORK/empty.db ''
+cmp stdout none.txt
+cmp $WORK/empty.db $WORK/empty-before.db
+
+# A database a newer coroner migrated offers nothing and is left unchanged.
+exec coroner timeline create future --db $WORK/new.db
+bumpschema $WORK/new.db
+cp $WORK/new.db $WORK/new-before.db
+exec coroner __complete timeline use --db $WORK/new.db ''
+cmp stdout error.txt
+stderr '^Error: completing timeline names: .*written by a newer coroner'
+cmp $WORK/new.db $WORK/new-before.db
+
+# A broken config file offers nothing and names the file.
+exec coroner __complete timeline use --config $WORK/broken.toml ''
+cmp stdout error.txt
+stderr '^Error: completing timeline names: config file .*broken\.toml'
+
+-- mo.txt --
+mongo-failover
+mongo-outage-2026-09-11	Mongo outage
+:4
+-- all.txt --
+mongo-failover
+mongo-outage-2026-09-11	Mongo outage
+redis-latency
+:4
+-- other.txt --
+other-incident
+:4
+-- none.txt --
+:4
+-- error.txt --
+:5
+-- empty.db --
+-- empty-before.db --
+-- broken.toml --
+db = [
