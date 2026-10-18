@@ -1,0 +1,43 @@
+---
+title: coroner completion
+---
+
+## coroner completion
+
+Generate the autocompletion script for the specified shell
+
+### Synopsis
+
+Generate the autocompletion script for coroner for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+
+### Examples
+
+```
+  $ coroner completion zsh > "${fpath[1]}/_coroner"
+  $ coroner completion fish > ~/.config/fish/completions/coroner.fish
+```
+
+### Options inherited from parent commands
+
+```
+      --config path     Config file path (env: CORONER_CONFIG)
+      --db path         Database file path (env: CORONER_DB)
+      --debug           Print debug detail on stderr (env: CORONER_DEBUG)
+      --format format   Output format: {text|json|jsonl} (default "text")
+  -h, --help            Show help for a command
+      --json            Short for --format json
+      --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
+  -q, --quiet           Print only essential output
+      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+```
+
+### SEE ALSO
+
+* [coroner](coroner.md)	 - Build root-cause investigation timelines
+* [coroner completion bash](coroner_completion_bash.md)	 - Generate the autocompletion script for bash
+* [coroner completion fish](coroner_completion_fish.md)	 - Generate the autocompletion script for fish
+* [coroner completion powershell](coroner_completion_powershell.md)	 - Generate the autocompletion script for powershell
+* [coroner completion zsh](coroner_completion_zsh.md)	 - Generate the autocompletion script for zsh
+
