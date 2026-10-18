@@ -16,14 +16,19 @@ const (
 	firstBackoff  = 20 * time.Millisecond
 )
 
-// read runs fn in a transaction modernc begins deferred, so it waits on no writer, and
-// returns what fn produced. Nothing stops fn from writing; use write for that. fn must only
-// use q: another Store method would run outside this transaction.
+// read is readTx for sqlc's queries: fn must only use q.
 func read[T any](ctx context.Context, s *Store, fn func(*sqlcgen.Queries) (T, error)) (T, error) {
+	return readTx(ctx, s, func(tx sqlcgen.DBTX) (T, error) { return fn(sqlcgen.New(tx)) })
+}
+
+// readTx runs fn in a transaction modernc begins deferred, so it waits on no writer, and
+// returns what fn produced. Nothing stops fn from writing; use write for that. fn must only
+// use tx: another Store method would run outside this transaction.
+func readTx[T any](ctx context.Context, s *Store, fn func(sqlcgen.DBTX) (T, error)) (T, error) {
 	var result T
-	err := s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, func(q *sqlcgen.Queries) error {
+	err := s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, func(tx sqlcgen.DBTX) error {
 		var err error
-		result, err = fn(q)
+		result, err = fn(tx)
 		return err
 	})
 	if err != nil {
@@ -55,17 +60,17 @@ func loadAll[R, T any](rows []R, load func(R) (T, error)) ([]T, error) {
 // from fn waits on this transaction's own lock until ErrBusy.
 func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
 	return translate(retryBusy(ctx, writeAttempts, func() error {
-		return s.inTx(ctx, nil, fn)
+		return s.inTx(ctx, nil, func(tx sqlcgen.DBTX) error { return fn(sqlcgen.New(tx)) })
 	}))
 }
 
-func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(*sqlcgen.Queries) error) error {
+func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.DBTX) error) error {
 	tx, err := s.db.BeginTx(ctx, opts)
 	if err != nil {
 		return err
 	}
 
-	err = fn(sqlcgen.New(tx))
+	err = fn(tx)
 	if err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
