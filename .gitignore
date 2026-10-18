@@ -2,3 +2,8 @@
 /site/
 /.cache/
 /.venv/
+# goreleaser's output and every path its before hooks write: an untracked file makes Go
+# stamp +dirty.
+/dist/
+/completions/
+/manpages/

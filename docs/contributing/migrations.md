@@ -75,8 +75,7 @@ because older ones do not.
 
 ### Adding a release's fixture
 
-The release checklist that EXC-1304 adds will carry these steps, run once the release is
-tagged:
+[The release checklist](releasing.md) runs these steps once the release is tagged:
 
 1. From a checkout of the new tag, such as one made by
    `git worktree add /tmp/coroner-v<X.Y.Z> v<X.Y.Z>`, run

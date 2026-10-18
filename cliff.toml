@@ -39,6 +39,8 @@ commit_parsers = [
   # `Initial commit` and git's merge subjects. filter_unconventional would drop them
   # too, but warns about it on every run.
   { field = "conventional", pattern = "false", skip = true },
+  # The release checklist's own commit, tagged after CHANGELOG.md is written.
+  { message = '^chore\(release\)', skip = true },
   { message = "^feat", group = "<!-- 1 -->Features" },
   { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
   { message = "^perf", group = "<!-- 3 -->Performance" },

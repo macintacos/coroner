@@ -195,6 +195,52 @@ url = "https://github.com/golangci/golangci-lint/releases/download/v2.13.2/golan
 url_api = "https://api.github.com/repos/golangci/golangci-lint/releases/assets/532995335"
 provenance = "github-attestations"
 
+[[tools.goreleaser]]
+version = "2.18.1"
+backend = "aqua:goreleaser/goreleaser"
+
+[tools.goreleaser."platforms.linux-arm64"]
+checksum = "sha256:93dba7614308e167158bd26978e8275971fd4b9147e7f3c687a64f5939d42d27"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377096"
+provenance = "github-attestations"
+
+[tools.goreleaser."platforms.linux-arm64-musl"]
+checksum = "sha256:93dba7614308e167158bd26978e8275971fd4b9147e7f3c687a64f5939d42d27"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377096"
+provenance = "github-attestations"
+
+[tools.goreleaser."platforms.linux-x64"]
+checksum = "sha256:0c6122af0ad8fd65638889bf7d3757148b2f80eeff9f079682f0655df66ec8e8"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377081"
+provenance = "github-attestations"
+
+[tools.goreleaser."platforms.linux-x64-musl"]
+checksum = "sha256:0c6122af0ad8fd65638889bf7d3757148b2f80eeff9f079682f0655df66ec8e8"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Linux_x86_64.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377081"
+provenance = "github-attestations"
+
+[tools.goreleaser."platforms.macos-arm64"]
+checksum = "sha256:d0af1f86c439a59ab06c54c505f66fea1a166093dc91a7c0c8aebe3da1cc13b7"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Darwin_all.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377101"
+provenance = "github-attestations"
+
+[tools.goreleaser."platforms.macos-x64"]
+checksum = "sha256:d0af1f86c439a59ab06c54c505f66fea1a166093dc91a7c0c8aebe3da1cc13b7"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Darwin_all.tar.gz"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377101"
+provenance = "github-attestations"
+
+[tools.goreleaser."platforms.windows-x64"]
+checksum = "sha256:dbb3112f619c4827311b726b3c98047bce69af1ecee99984d55d450c04c471fc"
+url = "https://github.com/goreleaser/goreleaser/releases/download/v2.18.1/goreleaser_Windows_x86_64.zip"
+url_api = "https://api.github.com/repos/goreleaser/goreleaser/releases/assets/546377158"
+provenance = "github-attestations"
+
 [[tools.hk]]
 version = "1.58.1"
 backend = "packslip:github.com/jdx/hk"
@@ -463,6 +509,45 @@ url = "https://downloads.sqlc.dev/sqlc_1.31.1_darwin_amd64.tar.gz"
 
 [tools.sqlc."platforms.windows-x64"]
 url = "https://downloads.sqlc.dev/sqlc_1.31.1_windows_amd64.tar.gz"
+
+[[tools.syft]]
+version = "1.51.1"
+backend = "aqua:anchore/syft"
+
+[tools.syft."platforms.linux-arm64"]
+checksum = "sha256:a7fd2b784e6664acd44719270574f6cd8c6864fc2b1700bf9099bd1cccda7d7f"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610134"
+
+[tools.syft."platforms.linux-arm64-musl"]
+checksum = "sha256:a7fd2b784e6664acd44719270574f6cd8c6864fc2b1700bf9099bd1cccda7d7f"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_arm64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610134"
+
+[tools.syft."platforms.linux-x64"]
+checksum = "sha256:8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610151"
+
+[tools.syft."platforms.linux-x64-musl"]
+checksum = "sha256:8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_linux_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610151"
+
+[tools.syft."platforms.macos-arm64"]
+checksum = "sha256:ac063af3b9874769deb7ea1e6d76841e68f9e3bb50cd654226fc977de65532c1"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_darwin_arm64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610139"
+
+[tools.syft."platforms.macos-x64"]
+checksum = "sha256:0e186ce1d4351ec276126851ca3ff258ed070e93e73574ed64858d4fc2339867"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_darwin_amd64.tar.gz"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610142"
+
+[tools.syft."platforms.windows-x64"]
+checksum = "sha256:5e4bc3e6b6344b4625de0f7aa5351aaa72856d11d78462972de0a101ee2c1c8f"
+url = "https://github.com/anchore/syft/releases/download/v1.51.1/syft_1.51.1_windows_amd64.zip"
+url_api = "https://api.github.com/repos/anchore/syft/releases/assets/532610136"
 
 [[tools.taplo]]
 version = "0.10.0"

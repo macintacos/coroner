@@ -15,6 +15,9 @@ coroner is pre-0.1: commands, flags and the database schema can change without n
 go install github.com/macintacos/coroner@latest
 ```
 
+[Install coroner](how-to/install.md) covers Homebrew, release archives, shell completions
+and uninstalling.
+
 ## A 30-second demo
 
 Start a timeline for the incident, make it the current one so later commands act on it,
