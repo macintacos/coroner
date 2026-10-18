@@ -10,6 +10,12 @@ RETURNING *;
 SELECT * FROM annotation
 WHERE id = ?;
 
+-- name: ListAnnotationsByIDPrefix :many
+SELECT * FROM annotation
+WHERE id GLOB ?
+ORDER BY id
+LIMIT ?;
+
 -- name: ListAnnotations :many
 SELECT * FROM annotation
 WHERE timeline_id = ?

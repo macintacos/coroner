@@ -11,6 +11,7 @@ USAGE
   coroner <command> [flags]
 
 CORE COMMANDS
+  annotation   Attach evidence and comments to events and timelines
   event        Add, list, view, edit and delete events
   source       List sources and fix their names
   tag          List the tags events carry

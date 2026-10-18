@@ -19,6 +19,7 @@ var _ = DescribeTable("Kind.ExitCode is the documented exit code for each error 
 	Entry(nil, cli.KindAmbiguousID, 2),
 	Entry(nil, cli.KindTimelineNotFound, 3),
 	Entry(nil, cli.KindEventNotFound, 3),
+	Entry(nil, cli.KindAnnotationNotFound, 3),
 	Entry(nil, cli.KindTimelineExists, 4),
 	Entry(nil, cli.KindIDConflict, 4),
 	Entry(nil, cli.KindDBBusy, 5),

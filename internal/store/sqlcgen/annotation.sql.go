@@ -133,6 +133,52 @@ func (q *Queries) ListAnnotations(ctx context.Context, timelineID string) ([]Ann
 	return items, nil
 }
 
+const listAnnotationsByIDPrefix = `-- name: ListAnnotationsByIDPrefix :many
+SELECT id, timeline_id, event_id, kind, body, author, source_id, url, created_at, updated_at FROM annotation
+WHERE id GLOB ?
+ORDER BY id
+LIMIT ?
+`
+
+type ListAnnotationsByIDPrefixParams struct {
+	ID    string
+	Limit int64
+}
+
+func (q *Queries) ListAnnotationsByIDPrefix(ctx context.Context, arg ListAnnotationsByIDPrefixParams) ([]Annotation, error) {
+	rows, err := q.db.QueryContext(ctx, listAnnotationsByIDPrefix, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Annotation{}
+	for rows.Next() {
+		var i Annotation
+		if err := rows.Scan(
+			&i.ID,
+			&i.TimelineID,
+			&i.EventID,
+			&i.Kind,
+			&i.Body,
+			&i.Author,
+			&i.SourceID,
+			&i.Url,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEventAnnotations = `-- name: ListEventAnnotations :many
 SELECT id, timeline_id, event_id, kind, body, author, source_id, url, created_at, updated_at FROM annotation
 WHERE event_id = ?

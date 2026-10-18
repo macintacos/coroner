@@ -32,9 +32,10 @@ const (
 	// KindAmbiguousID means an ID prefix matches more than one record.
 	KindAmbiguousID Kind = "ambiguous_id"
 
-	KindTimelineNotFound Kind = "timeline_not_found"
-	KindEventNotFound    Kind = "event_not_found"
-	KindSourceNotFound   Kind = "source_not_found"
+	KindTimelineNotFound   Kind = "timeline_not_found"
+	KindEventNotFound      Kind = "event_not_found"
+	KindAnnotationNotFound Kind = "annotation_not_found"
+	KindSourceNotFound     Kind = "source_not_found"
 
 	KindTimelineExists Kind = "timeline_exists"
 	KindSourceExists   Kind = "source_exists"
@@ -70,9 +71,10 @@ func exitCodes() map[Kind]int {
 		KindTimelineRequired: 2,
 		KindAmbiguousID:      2,
 
-		KindTimelineNotFound: 3,
-		KindEventNotFound:    3,
-		KindSourceNotFound:   3,
+		KindTimelineNotFound:   3,
+		KindEventNotFound:      3,
+		KindAnnotationNotFound: 3,
+		KindSourceNotFound:     3,
 
 		KindTimelineExists: 4,
 		KindSourceExists:   4,

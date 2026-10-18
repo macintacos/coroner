@@ -1,0 +1,35 @@
+# A command line rejected before it reaches the database never creates one.
+exits 2 coroner annotation add 'Election timeout'
+stderr 'annotation add needs --kind'
+exits 2 coroner annotation add 'Election timeout' --kind note
+stderr '--kind evidence'
+exits 2 coroner annotation add --kind comment
+stderr 'coroner annotation add --help'
+exits 2 coroner annotation edit 0199a1b2
+stderr 'nothing to edit'
+! exists $WORK/.local/share/coroner
+
+exec coroner timeline create mongo-outage
+exec coroner timeline use mongo-outage
+exec coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z
+
+# Paste a log line in as evidence on event #1, and a comment on the whole timeline.
+stdin stepdown.log
+exec coroner annotation add - -e 1 --kind evidence --source mongod --author julian
+! stdout .
+stderr '^Added evidence annotation [0-9a-f-]{36} to event #1 in timeline `mongo-outage`$'
+exec coroner annotation add 'Root cause: undersized oplog' --kind comment --author sam
+stderr '^Added comment annotation [0-9a-f-]{36} to timeline `mongo-outage`$'
+
+# --dry-run describes the annotation and adds nothing.
+exec coroner annotation add 'Election timeout' -e 1 --kind comment --author sam --dry-run
+stdout '^Would add comment annotation to event #1 in timeline `mongo-outage`$'
+stdout '^Body: +Election timeout$'
+
+# list prints the timeline's own annotation first, one tab-separated row each.
+exec coroner annotation list
+stdout '\A[0-9a-f-]{36}\tcomment\tsam\t-\tRoot cause: undersized oplog\n[0-9a-f-]{36}\tevidence\tjulian\t#1\t\[conn42\] stepping down\n\z'
+
+-- stepdown.log --
+[conn42] stepping down
+	retrying
