@@ -36,6 +36,11 @@ stderr, and a jsonl export's attachment records carry metadata and sha256 only, 
 files stay on this machine. Pasting Markdown into GitHub, Linear or Slack uploads none of
 its images.
 
+Repeat -t to overlay several timelines in one json or jsonl export: it holds every
+timeline, and their events merge by occurred at, then timeline id, then seq. md, mermaid,
+html and svg export one timeline. An overlay written into a directory is named after its
+timelines joined by +, as in mongo-failover+checkout-latency.jsonl.
+
 --group-by is experimental and may change before 1.0.
 
 ```
@@ -53,6 +58,7 @@ coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o 
   $ coroner timeline export -t inc-4821 --format md -o rca/
   $ coroner timeline export --format html -o inc-4821.html
   $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg
+  $ coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl
 ```
 
 ### Options
@@ -68,7 +74,7 @@ coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o 
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them
-  -t, --timeline name|id   Timeline name|id to act on
+  -t, --timeline name|id   Timeline name|id to export; repeat to overlay several (json and jsonl only)
       --until time         Keep events before this time
 ```
 

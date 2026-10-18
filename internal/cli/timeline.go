@@ -136,29 +136,66 @@ func (by selectedBy) setting() string {
 
 // addTimelineFlag declares -t/--timeline, so every command registers the same name,
 // shorthand and usage.
+// It is a StringArray, not a StringSlice, so a value is never split on commas.
 func addTimelineFlag(flags *pflag.FlagSet) {
-	flags.StringP("timeline", "t", "", timelineUsage)
+	flags.StringArrayP("timeline", "t", nil, timelineUsage)
 }
 
 const timelineUsage = "Timeline `name|id` to act on"
 
-// timelineField is -t as a write command's field.
+// timelineField is -t as a write command's field: a stringsField because -t is a StringArray
+// on every command; checkOneTimeline refuses a second timeline.
 func timelineField() field {
-	return field{name: "timeline", shorthand: "t", usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
+	return field{name: "timeline", shorthand: "t", typ: stringsField, usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
+}
+
+// overlayAnnotation is the cmd.Annotations key marking a command that reads every timeline a
+// repeated -t names. Any other command's -t names one timeline.
+const overlayAnnotation = "overlay"
+
+// checkOneTimeline returns usage when -t is empty (A-9), or is given more than one value for a
+// command without overlayAnnotation. It runs before the store opens, so a timeline's name and
+// its id are two values.
+func checkOneTimeline(cmd *cobra.Command) error {
+	if cmd.Flags().Lookup("timeline") == nil || cmd.Annotations[overlayAnnotation] == "true" {
+		return nil
+	}
+	names, err := timelineFlags(cmd.Flags())
+	if err != nil || len(names) <= 1 {
+		return err
+	}
+
+	return &Error{
+		Kind:    KindUsage,
+		Message: fmt.Sprintf("-t is given %d different values, and %s acts on one timeline", len(names), cmd.CommandPath()),
+		Hint:    "Pass -t once. 'coroner event list' and 'coroner timeline export' read several timelines.",
+	}
 }
 
 // timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
-// Commands call it at the top of RunE, before any I/O.
+// Commands call it at the top of RunE, before any I/O. wrapRunErrors has already refused a
+// second timeline, so the first value is the only one.
 func timelineFlag(flags *pflag.FlagSet) (*string, error) {
-	flag := changedString(flags, "timeline")
-	if flag != nil {
-		err := checkTimelineFlag(*flag)
+	names, err := timelineFlags(flags)
+	if err != nil || len(names) == 0 {
+		return nil, err
+	}
+
+	return &names[0], nil
+}
+
+// timelineFlags returns -t's values in the order given, each once, or usage when one is empty
+// (A-9).
+func timelineFlags(flags *pflag.FlagSet) ([]string, error) {
+	names := appendUnique(nil, stringArray(flags, "timeline")...)
+	for _, name := range names {
+		err := checkTimelineFlag(name)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return flag, nil
+	return names, nil
 }
 
 func checkTimelineFlag(value string) error {
@@ -233,6 +270,54 @@ func selectTimeline(
 	}
 
 	return t, err
+}
+
+// selectTimelines returns the timeline each of names, -t's values, selects, each once in the
+// order named, or, when names is empty, the one timeline selectTimeline selects. A name no
+// timeline has is timeline_not_found, naming it.
+func selectTimelines(
+	ctx context.Context, s *store.Store, names []string, lookupEnv func(string) (string, bool),
+) ([]timeline.Timeline, error) {
+	if len(names) == 0 {
+		t, err := selectTimeline(ctx, s, nil, lookupEnv)
+		return []timeline.Timeline{t}, err
+	}
+
+	var timelines []timeline.Timeline
+	for _, name := range names {
+		t, _, err := lookupTimeline(ctx, s, &name, lookupEnv)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(timelines, func(selected timeline.Timeline) bool { return selected.ID == t.ID }) {
+			timelines = append(timelines, t)
+		}
+	}
+
+	return timelines, nil
+}
+
+func timelineIDs(timelines []timeline.Timeline) []string {
+	ids := make([]string, 0, len(timelines))
+	for _, t := range timelines {
+		ids = append(ids, t.ID)
+	}
+
+	return ids
+}
+
+// readEach returns what read returns for the id of each of timelines, in order.
+func readEach[T any](timelines []timeline.Timeline, read func(timelineID string) ([]T, error)) ([]T, error) {
+	var all []T
+	for _, t := range timelines {
+		records, err := read(t.ID)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, records...)
+	}
+
+	return all, nil
 }
 
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines

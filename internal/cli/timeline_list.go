@@ -104,7 +104,7 @@ func readTimelineRows(ctx context.Context, s *store.Store) ([]viewer.TimelineRow
 
 	rows := make([]viewer.TimelineRow, 0, len(timelines))
 	for _, t := range timelines {
-		page, err := s.ListEvents(ctx, t.ID, store.EventFilter{Order: store.OrderDesc, Limit: 1})
+		page, err := s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{t.ID}, Order: store.OrderDesc, Limit: 1})
 		if err != nil {
 			return nil, err
 		}

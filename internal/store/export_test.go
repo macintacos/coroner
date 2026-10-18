@@ -12,6 +12,6 @@ func OpenWithMigrations(ctx context.Context, path string, migrations fs.FS) (*St
 	return open(ctx, path, migrations)
 }
 
-func BuildEventQuery(timelineID string, f EventFilter) (string, []any) {
-	return buildEventQuery(timelineID, f)
+func BuildEventQuery(f EventFilter) (string, []any) {
+	return buildEventQuery(f)
 }

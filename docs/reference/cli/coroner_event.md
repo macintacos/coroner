@@ -11,7 +11,7 @@ Add, list, view, edit and delete events
 An event is something that happened at a moment or over an interval, as a source reported
 it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else
 the one 'coroner timeline use' picked. view, edit and delete also take an event's id, from
-any timeline.
+any timeline. list takes -t more than once to overlay several timelines.
 
 ```
 coroner event [flags]

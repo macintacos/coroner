@@ -10,6 +10,11 @@ List a timeline's events, filtered
 
 List the current timeline's events in the order they happened: by occurred at, then seq.
 
+Repeat -t to overlay several timelines: their events merge into one list by occurred at,
+then timeline id, then seq, and each text row starts with its timeline's name. --json lists
+the selected timelines under timelines, and --format jsonl starts with a timeline line for
+each, so an event's timeline_id names one of them.
+
 --since is inclusive and --until exclusive. Repeated --source flags match any of them,
 and repeated --tag flags must all match. Times with no offset are read, and times print,
 in --tz, then the config file's default_timezone, then the local zone. Piped, the
@@ -25,6 +30,7 @@ coroner event list [flags]
   $ coroner event list --tag election --source mongod
   $ coroner event list --since "2026-09-11T03:00Z" --until "2026-09-11T04:00Z" --tag election --format jsonl
   $ coroner event list --contains stepdown --order desc --limit 20
+  $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json
 ```
 
 ### Options
@@ -32,7 +38,7 @@ coroner event list [flags]
 ```
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
-      --order order     Order by occurred at, then seq, as an order: {asc|desc} (default "asc")
+      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
       --tag tag         Keep events with this tag; repeat to require all of them

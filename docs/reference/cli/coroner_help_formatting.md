@@ -61,6 +61,11 @@ closed: a command line missing a required value exits 2 instead of asking.
 - Instants are fixed-width RFC 3339 in UTC, such as `2026-09-12T14:05:03.000000000Z`. See
   `coroner help time`.
 - Each JSONL line is an object whose `type` key says what it holds.
+- `coroner event list` names the timelines it lists events from: under `json` in
+  `timelines`, and under `jsonl` in a `timeline` line for each before the `event` lines,
+  so every event's `timeline_id` resolves to a name. `coroner event delete --json` does
+  the same for the events it deletes. Given `-t` more than once, `coroner event list`
+  overlays those timelines: one list, by occurred at, then timeline id, then seq.
 - `coroner timeline export` writes the export format instead: under `json` one envelope
   with no `truncated` or `total`, and under `jsonl` a `header` line before the records.
   Its `query.limit` records a limit, and the command says on stderr when a limit cut the

@@ -39,25 +39,31 @@ func TestListEventsMatchesReferenceFilter(t *testing.T) {
 
 	rapid.Check(t, func(t *rapid.T) {
 		created := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
-		tl := timeline.Timeline{ID: nextID(), Refs: []string{}, CreatedAt: created, UpdatedAt: created}
-		tl.Name = "p" + tl.ID[len(tl.ID)-12:]
-		err := s.CreateTimeline(ctx, tl)
-		if err != nil {
-			t.Fatal(err)
+		var timelineIDs []string
+		for range rapid.IntRange(1, 3).Draw(t, "timelines") {
+			tl := timeline.Timeline{ID: nextID(), Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+			tl.Name = "p" + tl.ID[len(tl.ID)-12:]
+			err := s.CreateTimeline(ctx, tl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			timelineIDs = append(timelineIDs, tl.ID)
 		}
 
 		var added []timeline.Event
-		for _, e := range rapid.SliceOfN(event(created), 0, 12).Draw(t, "events") {
-			e.ID, e.TimelineID = nextID(), tl.ID
-			e, err = s.AddEvent(ctx, e, nextID())
+		for _, e := range rapid.SliceOfN(event(created, timelineIDs), 0, 12).Draw(t, "events") {
+			e.ID = nextID()
+			e, err := s.AddEvent(ctx, e, nextID())
 			if err != nil {
 				t.Fatal(err)
 			}
 			added = append(added, e)
 		}
 		f := filter(len(added)).Draw(t, "filter")
+		// Some of the timelines, sometimes with an id no timeline has.
+		f.TimelineIDs = rapid.SliceOfNDistinct(rapid.SampledFrom(append(timelineIDs, nextID())), 1, -1, rapid.ID).Draw(t, "selected")
 
-		page, err := s.ListEvents(ctx, tl.ID, f)
+		page, err := s.ListEvents(ctx, f)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,8 +76,8 @@ func TestListEventsMatchesReferenceFilter(t *testing.T) {
 	})
 }
 
-// referenceFilter is ListEvents over events in memory: what f keeps, in order and up to its
-// limit, and how many it keeps before the limit.
+// referenceFilter is ListEvents over events in memory: what f keeps of the union of its
+// timelines, stably sorted and up to its limit, and how many it keeps before the limit.
 func referenceFilter(events []timeline.Event, f store.EventFilter) ([]timeline.Event, int) {
 	kept := []timeline.Event{}
 	for _, e := range events {
@@ -79,7 +85,7 @@ func referenceFilter(events []timeline.Event, f store.EventFilter) ([]timeline.E
 			kept = append(kept, e)
 		}
 	}
-	slices.SortFunc(kept, timeline.CompareEvents)
+	slices.SortStableFunc(kept, timeline.CompareEvents)
 	if f.Order == store.OrderDesc {
 		slices.Reverse(kept)
 	}
@@ -93,6 +99,9 @@ func referenceFilter(events []timeline.Event, f store.EventFilter) ([]timeline.E
 }
 
 func keeps(f store.EventFilter, e timeline.Event) bool {
+	if !slices.Contains(f.TimelineIDs, e.TimelineID) {
+		return false
+	}
 	inWindow := (f.Since == nil || !e.OccurredAt.Before(*f.Since)) && (f.Until == nil || e.OccurredAt.Before(*f.Until))
 	fromSource := len(f.Sources) == 0 || (e.Source != nil && slices.Contains(f.Sources, *e.Source))
 
@@ -126,10 +135,12 @@ func ids(events []timeline.Event) []string {
 	return out
 }
 
-// event draws an event without ids, on a few minutes' grid so instants often tie.
-func event(created time.Time) *rapid.Generator[timeline.Event] {
+// event draws an event without an id in one of timelineIDs, on a few minutes' grid so
+// instants often tie, within a timeline and across timelines.
+func event(created time.Time, timelineIDs []string) *rapid.Generator[timeline.Event] {
 	return rapid.Custom(func(t *rapid.T) timeline.Event {
 		e := timeline.Event{
+			TimelineID: rapid.SampledFrom(timelineIDs).Draw(t, "timeline"),
 			OccurredAt: minute(0, 5).Draw(t, "occurred"),
 			Precision:  timeline.PrecisionMinute,
 			Source:     rapid.Ptr(rapid.SampledFrom(sourceNames()), true).Draw(t, "source"),

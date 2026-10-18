@@ -167,6 +167,19 @@ func (f foundEvents) ids() []string {
 	return ids
 }
 
+// timelineList returns f's timelines, each once, in the order their events were first named.
+func (f foundEvents) timelineList() []timeline.Timeline {
+	var timelines []timeline.Timeline
+	for _, e := range f.events {
+		t := f.timelines[e.TimelineID]
+		if !slices.ContainsFunc(timelines, func(listed timeline.Timeline) bool { return listed.ID == t.ID }) {
+			timelines = append(timelines, t)
+		}
+	}
+
+	return timelines
+}
+
 func (f foundEvents) owners() []timeline.AttachmentOwner {
 	owners := make([]timeline.AttachmentOwner, 0, len(f.events))
 	for _, e := range f.events {
@@ -180,7 +193,9 @@ func (f foundEvents) owners() []timeline.AttachmentOwner {
 // from attached keyed by event id, or a summary of each.
 func writeDeletion(o output, z zone, f foundEvents, attached map[string][]attachmentJSON) error {
 	if o.format == formatJSON {
-		return o.json(newEventListJSON(eventListing{page: store.EventPage{Events: f.events, Total: len(f.events)}, attached: attached}))
+		return o.json(newEventListJSON(eventListing{
+			timelines: f.timelineList(), page: store.EventPage{Events: f.events, Total: len(f.events)}, attached: attached,
+		}))
 	}
 
 	summaries := make([]string, 0, len(f.events))
@@ -195,20 +210,16 @@ func writeDeletion(o output, z zone, f foundEvents, attached map[string][]attach
 // notifyDeletion says, per timeline, how many of f's events verb applies to.
 func notifyDeletion(o output, verb string, f foundEvents) error {
 	counts := map[string]int{}
-	var order []string
 	for _, e := range f.events {
-		if counts[e.TimelineID] == 0 {
-			order = append(order, e.TimelineID)
-		}
 		counts[e.TimelineID]++
 	}
 
-	for _, id := range order {
+	for _, t := range f.timelineList() {
 		noun := "events"
-		if counts[id] == 1 {
+		if counts[t.ID] == 1 {
 			noun = "event"
 		}
-		err := o.notify("%s %d %s from timeline `%s`.", verb, counts[id], noun, f.timelines[id].Name)
+		err := o.notify("%s %d %s from timeline `%s`.", verb, counts[t.ID], noun, t.Name)
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,128 @@
+# Overlays: -t given more than once reads several timelines as one chronology on event list
+# and timeline export. Every other command acts on one timeline.
+
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-10T14:02:00Z -t mongo-failover
+
+# A write, or a read of one timeline, given two timelines exits 2, kind usage, and writes
+# nothing.
+exits 2 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:02:00Z -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner annotation add 'Checkout slows as the primary steps down' --kind comment -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event edit 1 --text 'Primary stepped down: replSetStepDown' -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event delete 1 -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event view 1 -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner status -t mongo-failover -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:02:00Z -t mongo-failover -t '' --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"-t must not be empty",[^\n]+\}\}\n\z'
+exits 0 coroner event list -t checkout-latency --json
+jsonvalid stdout
+stdout '"events":\[\]'
+exits 0 coroner event list -t mongo-failover --json
+jsonvalid stdout
+stdout '"text":"Primary stepped down",'
+
+# The same timeline named twice is one timeline.
+exits 0 coroner event add 'Election won by db-3' --at 2026-09-10T14:03:00Z -t mongo-failover -t mongo-failover
+stderr '^Added event #2 to timeline `mongo-failover` '
+exits 0 coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:03:00Z -t checkout-latency --source grafana
+exits 0 coroner event add 'Checkout errors clear' --at 2026-09-10T14:05:00Z -t checkout-latency
+
+# event list merges the timelines by occurred at, then timeline id, then seq: at 14:03,
+# mongo-failover, the older timeline, sorts its #2 before checkout-latency's #1. json lists the
+# selected timelines under timelines; jsonl leads with a timeline line for each.
+exits 0 coroner event list -t mongo-failover -t checkout-latency --json
+cmp stdout list.json
+exits 0 coroner event list -t mongo-failover -t checkout-latency --format jsonl
+cmp stdout list.jsonl
+
+# --order desc reverses the merge, and --limit counts every timeline's matches.
+exits 0 coroner event list -t mongo-failover -t checkout-latency --order desc --limit 1 --json
+jsonvalid stdout
+stdout '"text":"Checkout errors clear"'
+stdout '"truncated":true,"total":4\}$'
+stderr '1 of 4'
+
+# A timeline's name and its id are one timeline.
+exits 0 coroner event list -t checkout-latency -t 01a09862-b1c0-7000-8000-000000000002 --json
+jsonvalid stdout
+stdout '^\{"timelines":\[\{"id":"01a09862-b1c0-7000-8000-000000000002",[^{]*\],"events"'
+stdout '"total":2\}$'
+
+# An unknown timeline among several exits 3, kind timeline_not_found, naming it.
+exits 3 coroner event list -t mongo-failover -t missing --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_not_found","message":"[^\n]*missing[^\n]*\}\}\n\z'
+
+# timeline export overlays the same way: query.timelines names every timeline, timelines holds
+# each, and events merge in one order. Each timeline's annotations on the whole timeline and
+# on its exported events come along.
+exits 0 coroner annotation add 'Checkout alerts page the payments team' --kind comment -t checkout-latency
+exits 0 coroner annotation add 'replSetStepDown in the mongod log' --kind evidence -e 'mongo-failover#1' -t mongo-failover
+exits 0 coroner event edit 'checkout-latency#1' --attach p99.gif
+exits 0 coroner event list -t mongo-failover -t checkout-latency --json
+jsonvalid stdout
+stdout '"text":"Checkout p99 at 4 s",[^\]]*"attachments":\[\{[^\]]*"filename":"p99\.gif"'
+exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format json
+cmp stdout export.json
+exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format jsonl
+cmp stdout export.jsonl
+
+# -o <directory>/ names an overlay's file after its timelines.
+exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format jsonl -o rca/
+exists rca/mongo-failover+checkout-latency.jsonl
+exists rca/attachments/dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df.gif
+
+# Markdown, Mermaid, HTML and SVG show one timeline: several exit 2, kind usage, before
+# anything is written. A timeline's name and its id are one timeline.
+exits 0 coroner timeline export -t checkout-latency -t 01a09862-b1c0-7000-8000-000000000002 --format md
+stdout '^# checkout-latency'
+exits 2 coroner timeline export -t mongo-failover -t checkout-latency --format md
+! stdout .
+stderr 'exports one timeline'
+exits 2 coroner timeline export -t mongo-failover -t checkout-latency --format svg -o overlay.svg
+! exists overlay.svg
+stderr 'exports one timeline'
+
+# An unknown timeline among several exits 3, kind timeline_not_found.
+exits 3 coroner timeline export -t missing -t mongo-failover --format json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_not_found","message":"[^\n]*missing[^\n]*\}\}\n\z'
+-- export.json --
+{"format":"coroner.export","format_version":"1.1","coroner_version":"(devel)","exported_at":"2026-09-13T01:30:00.000000000Z","query":{"timelines":["mongo-failover","checkout-latency"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"},"timelines":[{"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000002","name":"checkout-latency","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}],"sources":[{"id":"01a09862-b1c0-7000-8000-000000000006","name":"grafana","created_at":"2026-09-13T01:30:00.000000000Z"}],"events":[{"id":"01a09862-b1c0-7000-8000-000000000003","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-10T14:02:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:02:00Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":null,"tags":[],"text":"Election won by db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000005","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":"grafana","tags":[],"text":"Checkout p99 at 4 s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000007","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":2,"occurred_at":"2026-09-10T14:05:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:05:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout errors clear","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}],"annotations":[{"id":"01a09862-b1c0-7000-8000-000000000009","timeline_id":"01a09862-b1c0-7000-8000-000000000001","event_id":"01a09862-b1c0-7000-8000-000000000003","kind":"evidence","body":"replSetStepDown in the mongod log","author":null,"source":null,"url":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000008","timeline_id":"01a09862-b1c0-7000-8000-000000000002","event_id":null,"kind":"comment","body":"Checkout alerts page the payments team","author":null,"source":null,"url":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}],"attachments":[{"id":"01a09862-b1c0-7000-8000-00000000000b","event_id":"01a09862-b1c0-7000-8000-000000000005","annotation_id":null,"filename":"p99.gif","mime":"image/gif","sha256":"dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df","size":25,"created_at":"2026-09-13T01:30:00.000000000Z"}]}
+-- export.jsonl --
+{"type":"header","format":"coroner.export","format_version":"1.1","coroner_version":"(devel)","exported_at":"2026-09-13T01:30:00.000000000Z","query":{"timelines":["mongo-failover","checkout-latency"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000002","name":"checkout-latency","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"annotation","id":"01a09862-b1c0-7000-8000-000000000008","timeline_id":"01a09862-b1c0-7000-8000-000000000002","event_id":null,"kind":"comment","body":"Checkout alerts page the payments team","author":null,"source":null,"url":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"source","id":"01a09862-b1c0-7000-8000-000000000006","name":"grafana","created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000003","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-10T14:02:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:02:00Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"annotation","id":"01a09862-b1c0-7000-8000-000000000009","timeline_id":"01a09862-b1c0-7000-8000-000000000001","event_id":"01a09862-b1c0-7000-8000-000000000003","kind":"evidence","body":"replSetStepDown in the mongod log","author":null,"source":null,"url":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":null,"tags":[],"text":"Election won by db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":"grafana","tags":[],"text":"Checkout p99 at 4 s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"attachment","id":"01a09862-b1c0-7000-8000-00000000000b","event_id":"01a09862-b1c0-7000-8000-000000000005","annotation_id":null,"filename":"p99.gif","mime":"image/gif","sha256":"dae30e4c7e71f01d984dc91c4d8304562a55f9bf1c1b449fa34152c1c72a88df","size":25,"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000007","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":2,"occurred_at":"2026-09-10T14:05:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:05:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout errors clear","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+-- list.json --
+{"timelines":[{"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000002","name":"checkout-latency","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}],"events":[{"id":"01a09862-b1c0-7000-8000-000000000003","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-10T14:02:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:02:00Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]},{"id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":null,"tags":[],"text":"Election won by db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]},{"id":"01a09862-b1c0-7000-8000-000000000005","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":"grafana","tags":[],"text":"Checkout p99 at 4 s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]},{"id":"01a09862-b1c0-7000-8000-000000000007","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":2,"occurred_at":"2026-09-10T14:05:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:05:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout errors clear","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}],"truncated":false,"total":4}
+-- list.jsonl --
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"timeline","id":"01a09862-b1c0-7000-8000-000000000002","name":"checkout-latency","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000003","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-10T14:02:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:02:00Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":null,"tags":[],"text":"Election won by db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-10T14:03:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:03:00Z","ended_at":null,"source":"grafana","tags":[],"text":"Checkout p99 at 4 s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+{"type":"event","id":"01a09862-b1c0-7000-8000-000000000007","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":2,"occurred_at":"2026-09-10T14:05:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-10T14:05:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout errors clear","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
+-- p99.gif --
+GIF89a p99 latency panel

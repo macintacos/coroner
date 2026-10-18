@@ -187,6 +187,20 @@ var _ = Describe("CompareEvents", func() {
 		Expect(seqs(events)).To(Equal([]int64{3, 2, 4, 1}))
 	})
 
+	It("orders events of different timelines at one instant by timeline id, then seq", func() {
+		events := []timeline.Event{
+			{TimelineID: "b", Seq: 1, OccurredAt: quarterPast()},
+			{TimelineID: "a", Seq: 2, OccurredAt: quarterPast()},
+			{TimelineID: "a", Seq: 1, OccurredAt: quarterPast()},
+		}
+		slices.SortFunc(events, timeline.CompareEvents)
+		Expect(events).To(Equal([]timeline.Event{
+			{TimelineID: "a", Seq: 1, OccurredAt: quarterPast()},
+			{TimelineID: "a", Seq: 2, OccurredAt: quarterPast()},
+			{TimelineID: "b", Seq: 1, OccurredAt: quarterPast()},
+		}))
+	})
+
 	It("puts a coarse 10:15 before every 10:15:xx event, even one added earlier", func() {
 		logLine := event(1, quarterPast().Add(3*time.Second+180*time.Millisecond))
 		recalled := event(2, quarterPast())
