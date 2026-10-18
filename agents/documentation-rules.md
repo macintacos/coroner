@@ -45,7 +45,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/contributing/releasing.md" [label="how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, or the steps before and after a tag"];
     "Which doc does the change affect?" -> "Edit docs/how-to/install.md" [label="how coroner is installed, upgraded or removed, what a release archive holds, or the macOS signing decision"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
-    "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, and what a diff under contract/ means"];
+    "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, what a diff under contract/ means, and the export round trip in internal/cli/roundtrip_test.go"];
     "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
@@ -85,8 +85,9 @@ digraph coroner_docs_router {
   checkbox that makes a pull request cite the checklist IDs it was checked against, and
   the contract section that makes it state a contract change's stability.
 - **[`internal/cli/testdata/script/contract/README.md`](../internal/cli/testdata/script/contract/README.md)**
-  (humans and agents) — what the contract scripts pin and how, and that a diff under
-  `contract/` is a contract change.
+  (humans and agents) — what the contract scripts pin and how, that a diff under
+  `contract/` is a contract change, and the export round trip in
+  `internal/cli/roundtrip_test.go`.
 - **[`internal/export/html/vendor/README.md`](../internal/export/html/vendor/README.md)**
   (anyone updating the library) — the vis-timeline version the HTML export embeds, the
   committed file's checksum and licence, and how to update it.

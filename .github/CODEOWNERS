@@ -1,2 +1,3 @@
-# A diff under contract/ is a contract change; see its README.
+# A diff under contract/, or to the export round trip, is a contract change; see contract/'s README.
 /internal/cli/testdata/script/contract/ @macintacos
+/internal/cli/roundtrip_test.go @macintacos
