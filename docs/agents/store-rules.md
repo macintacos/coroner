@@ -43,3 +43,20 @@
 5. **Generated models never become JSON:** `emit_json_tags` stays off in `sqlc.yaml`, and
    nothing marshals an `internal/store/sqlcgen` type to JSON, because JSON output is a
    contract (`AGENTS.md` Rule 3) and a generated model changes whenever the schema does.
+   No exported store method takes or returns one either: they speak `internal/timeline`
+   types.
+6. **A store method's function passed to `Store.write` or `read` uses only the
+   `sqlcgen.Queries` it is given:** calling another `Store` method from inside `write`
+   waits on the transaction's own write lock until `ErrBusy`. A store method's writes
+   share one immediate transaction, which `write` retries whole while another writer holds
+   the database; `read` begins deferred and never takes the write lock. Only `Open` uses
+   the pool directly, for its identity check, WAL pragma and backup. Never use
+   `SetMaxOpenConns(1)` or `:memory:`: a query on the pool then waits forever while a
+   transaction holds the only connection, and every pooled `:memory:` connection is a
+   separate empty database.
+7. **The store takes every ID and instant it stores from its caller:** callers pass every
+   ID and instant, including the id a source gets when an event or annotation names it
+   first. Only seq comes from the database.
+8. **`Open` checks the file before it changes it:** `journal_mode = WAL` is set after the
+   application-id check, never as a DSN pragma, which would rewrite a foreign file's
+   header on connect.

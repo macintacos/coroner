@@ -60,7 +60,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [label="a command the agent skill uses (Rule 6)"];
     "What does the change touch?" -> "Load docs/agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task or hk hook, a docs/agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
-    "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml or the SQL it runs"];
+    "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
 }
 ```
