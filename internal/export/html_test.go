@@ -97,6 +97,19 @@ func hostileExport() export.Envelope {
 	)
 }
 
+// hostileOverlay is overlay with hostile text in its second timeline's title, the source both
+// timelines share, an event's text and an annotation's body.
+func hostileOverlay() export.Envelope {
+	env := overlay()
+	env.Timelines[1].Title = hostile
+	env.Events[2].Source = new(hostile)
+	env.Events[3].Source = new(hostile)
+	env.Events[0].Text = hostile
+	env.Annotations[0].Body = hostile
+
+	return env
+}
+
 var _ = Describe("WriteHTML", func() {
 	It("lays out one page: the viewer's containers, then the export and zone as data, the library and the viewer", func() {
 		matchGoldenFile(htmlGoldenDir, "checkout-spike", ".html", elideAssets(page(checkoutSpike(), time.UTC)))
@@ -106,21 +119,25 @@ var _ = Describe("WriteHTML", func() {
 		matchGoldenFile(htmlGoldenDir, "hostile", ".html", elideAssets(page(hostileExport(), time.UTC)))
 	})
 
-	It("keeps every script and style element closing where it should, with the export intact in the data block", func() {
-		p := page(hostileExport(), time.UTC)
+	DescribeTable("keeps every script and style element closing where it should, with the export intact in the data block",
+		func(env export.Envelope) {
+			p := page(env, time.UTC)
 
-		Expect(strings.Count(p, "<script")).To(Equal(4))
-		Expect(regexp.MustCompile(`(?i)</script`).FindAllStringIndex(p, -1)).To(HaveLen(4))
-		Expect(regexp.MustCompile(`(?i)</style`).FindAllStringIndex(p, -1)).To(HaveLen(1))
-		Expect(p).NotTo(ContainSubstring("<img"))
-		Expect(p).NotTo(ContainSubstring("<!--"))
-		var got export.Envelope
-		Expect(json.Unmarshal(jsonBlock(p, "coroner-data"), &got)).To(Succeed())
-		Expect(got.Timelines[0].Title).To(Equal(hostile))
-		Expect(*got.Events[0].Source).To(Equal(hostile))
-		Expect(got.Events[0].Text).To(Equal(hostile))
-		Expect(got.Annotations[0].Body).To(Equal(hostile))
-	})
+			Expect(strings.Count(p, "<script")).To(Equal(4))
+			Expect(regexp.MustCompile(`(?i)</script`).FindAllStringIndex(p, -1)).To(HaveLen(4))
+			Expect(regexp.MustCompile(`(?i)</style`).FindAllStringIndex(p, -1)).To(HaveLen(1))
+			Expect(p).NotTo(ContainSubstring("<img"))
+			Expect(p).NotTo(ContainSubstring("<!--"))
+			var got export.Envelope
+			Expect(json.Unmarshal(jsonBlock(p, "coroner-data"), &got)).To(Succeed())
+			Expect(got.Timelines).To(ContainElement(HaveField("Title", hostile)))
+			Expect(got.Events).To(ContainElement(HaveField("Source", HaveValue(Equal(hostile)))))
+			Expect(got.Events).To(ContainElement(HaveField("Text", hostile)))
+			Expect(got.Annotations).To(ContainElement(HaveField("Body", hostile)))
+		},
+		Entry("one timeline", hostileExport()),
+		Entry("an overlay", hostileOverlay()),
+	)
 
 	It("has a viewer that puts no export text on the page as HTML", func() {
 		viewer, err := os.ReadFile("html/viewer.js")
@@ -184,6 +201,7 @@ var _ = Describe("WriteHTML", func() {
 		},
 		Entry("with URLs in refs and events", checkoutSpike()),
 		Entry("with hostile text", hostileExport()),
+		Entry("with hostile text in an overlay", hostileOverlay()),
 	)
 
 	It("gives the viewer the zone's offset from a year before the export's first instant to a year after its last", func() {
@@ -208,16 +226,27 @@ var _ = Describe("WriteHTML", func() {
 		}))
 	})
 
-	DescribeTable("fails, writing nothing, unless the export holds one timeline",
-		func(timelines []export.Timeline) {
-			env := checkoutSpike()
-			env.Timelines = timelines
+	It("fails, writing nothing, when the export holds no timeline", func() {
+		env := checkoutSpike()
+		env.Timelines = []export.Timeline{}
+		var b bytes.Buffer
+
+		Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("want a timeline")))
+		Expect(b.Len()).To(BeZero())
+	})
+
+	Describe("an overlay of several timelines", func() {
+		It("embeds every timeline, and their events by occurred at, then timeline id, then seq", func() {
+			matchGoldenFile(htmlGoldenDir, "overlay", ".html", elideAssets(page(overlay(), time.UTC)))
+		})
+
+		It("fails, writing nothing, when an event's timeline is not in the export", func() {
+			env := overlay()
+			env.Timelines[1].ID = "t3"
 			var b bytes.Buffer
 
-			Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("want one timeline")))
+			Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("its timeline t2 is not in the export")))
 			Expect(b.Len()).To(BeZero())
-		},
-		Entry("none", []export.Timeline{}),
-		Entry("two", []export.Timeline{{ID: "t1", Name: "a"}, {ID: "t2", Name: "b"}}),
-	)
+		})
+	})
 })

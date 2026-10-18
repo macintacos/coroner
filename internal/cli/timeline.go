@@ -168,7 +168,7 @@ func checkOneTimeline(cmd *cobra.Command) error {
 	return &Error{
 		Kind:    KindUsage,
 		Message: fmt.Sprintf("-t is given %d different values, and %s acts on one timeline", len(names), cmd.CommandPath()),
-		Hint:    "Pass -t once. 'coroner event list' and 'coroner timeline export' read several timelines.",
+		Hint:    "Pass -t once. 'coroner event list', 'coroner timeline export' and 'coroner timeline view' read several timelines.",
 	}
 }
 

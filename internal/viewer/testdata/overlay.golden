@@ -1,0 +1,20 @@
+mongo-failover + checkout-latency-regression           times in America/New_York
+4 events
+  ── Thu 2026-09-10 ────────────────────────────────────────────────────────────
+› checkout-latenc…  #1   23:13:30 EDT  grafana  -  Checkout p99 at 4 s          
+  mongo-failover    #1   23:14:07 EDT  mongod   -  Primary stepped down         
+  checkout-latenc…  #2   23:14:07 EDT  mongod   -  Slow query on checkout.orders
+  mongo-failover    #2   23:15:00 EDT  mongod   -  New primary elected          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+
+enter expand • s source • t tag • / text • @ jump • ? keys • q quit

@@ -36,3 +36,42 @@ exec coroner timeline delete mongo-outage-2026-09-11 --yes
 exec coroner timeline list
 ! stdout .
 exits 2 coroner timeline view
+
+# Given several timelines, view prints each one's summary, then their events merged in one
+# order, each row led by its timeline's name, as event list prints an overlay.
+exec coroner timeline create mongo-failover --title 'MongoDB primary failover'
+exec coroner timeline create checkout-latency
+exec coroner event add 'Checkout p99 at 4 s' --at 2026-09-10T14:01:30Z -t checkout-latency --source grafana
+exec coroner event add 'Primary stepped down' --at 2026-09-10T14:02:03Z -t mongo-failover --source mongod
+exec coroner event add 'Slow query on checkout.orders' --at 2026-09-10T14:02:03Z -t checkout-latency --source mongod
+exec coroner annotation add 'Paged the payments team' --kind comment -t checkout-latency
+exec coroner timeline view -t mongo-failover -t checkout-latency --tz UTC
+cmp stdout overlay-view.txt
+! stdout '\x1b'
+exec coroner timeline view -t mongo-failover -t checkout-latency --source mongod --no-input --tz UTC
+stdout '^Events: +2, '
+stdout '^mongo-failover\t#1\t'
+stdout '^checkout-latency\t#2\t'
+! stdout 'grafana'
+
+-- overlay-view.txt --
+mongo-failover
+ID:          01a09862-b1c0-7000-8000-000000000003
+Title:       MongoDB primary failover
+Refs:        -
+Created:     2026-09-13T01:30:00Z
+
+checkout-latency
+ID:          01a09862-b1c0-7000-8000-000000000004
+Title:       -
+Refs:        -
+Created:     2026-09-13T01:30:00Z
+
+Events:      3, from 2026-09-10T14:01:30Z to 2026-09-10T14:02:03Z
+Sources:     grafana 1, mongod 2
+Tags:        -
+Annotations: 1
+
+checkout-latency	#1	2026-09-10T14:01:30Z		grafana	Checkout p99 at 4 s
+mongo-failover	#1	2026-09-10T14:02:03Z	+33s	mongod	Primary stepped down
+checkout-latency	#2	2026-09-10T14:02:03Z	+0s	mongod	Slow query on checkout.orders

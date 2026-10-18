@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	_ "embed"
-	"fmt"
+	"errors"
 	"io"
 	"slices"
 	"text/template"
@@ -48,17 +48,23 @@ type zoneSpan struct {
 	Abbreviation string `json:"abbreviation"`
 }
 
-// WriteHTML writes env's timeline to w as one self-contained HTML page: an interactive
-// timeline of its events with one row per source, showing times in zone (nil is UTC). The
-// page embeds env as the JSON Write encodes, its events by occurred at and seq, with the
-// viewer and its library inline, so it loads nothing over the network. It fails, writing
-// nothing, unless env holds one timeline and the event of every annotation.
+// WriteHTML writes env's timelines to w as one self-contained HTML page: an interactive
+// timeline of their events with one row per source, nested under a row per timeline in an
+// overlay of several, showing times in zone (nil is UTC). The page embeds env as the JSON
+// Write encodes, its events by occurred at, timeline id and seq, with the viewer and its
+// library inline, so it loads nothing over the network. It fails, writing nothing, unless env
+// holds a timeline and the event of every annotation, and an overlay also the timeline of
+// every event and annotation.
 func WriteHTML(w io.Writer, env Envelope, zone *time.Location) error {
-	if len(env.Timelines) != 1 {
-		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
+	if len(env.Timelines) == 0 {
+		return errors.New("want a timeline, got none")
+	}
+	_, err := overlayNames(env)
+	if err != nil {
+		return err
 	}
 	env.Events = slices.SortedFunc(slices.Values(env.Events), compareEvents)
-	_, _, err := groupAnnotations(env.Annotations, env.Events)
+	_, _, err = groupAnnotations(env.Annotations, env.Events)
 	if err != nil {
 		return err
 	}

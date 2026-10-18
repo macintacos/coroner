@@ -219,6 +219,30 @@ a:focus-visible {
   vertical-align: -0.0625rem;
 }
 
+/* An overlay's timeline row heads its source rows; it has no colour of its own. */
+#timeline .vis-labelset .vis-label.timeline-row {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+/* vis-timeline tints nested rows with a fixed grey that ignores the theme. */
+#timeline .vis-labelset .vis-label.vis-nested-group {
+  background: transparent;
+}
+
+#timeline .vis-label.timeline-row .vis-inner::before {
+  display: none;
+}
+
+#timeline .timeline-label .name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+#timeline .timeline-label .title {
+  margin-left: var(--space-2);
+}
+
 #timeline .vis-item {
   border-color: var(--source);
   background: var(--paper);

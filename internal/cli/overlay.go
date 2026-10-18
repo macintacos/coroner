@@ -130,7 +130,7 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 				return err
 			}
 			created.existed = true
-			created.timelines, err = overlayTimelines(ctx, s, created.overlay)
+			created.timelines, err = timelinesByID(ctx, s, created.overlay.TimelineIDs)
 			return err
 		case errors.Is(err, store.ErrConflict):
 			return overlayExistsError(*name, err)
@@ -162,10 +162,10 @@ func overlayExistsError(name string, err error) *Error {
 	}
 }
 
-// overlayTimelines returns overlay's timelines, in its order.
-func overlayTimelines(ctx context.Context, s *store.Store, overlay timeline.Overlay) ([]timeline.Timeline, error) {
-	timelines := make([]timeline.Timeline, 0, len(overlay.TimelineIDs))
-	for _, id := range overlay.TimelineIDs {
+// timelinesByID returns the timeline with each of ids, in their order.
+func timelinesByID(ctx context.Context, s *store.Store, ids []string) ([]timeline.Timeline, error) {
+	timelines := make([]timeline.Timeline, 0, len(ids))
+	for _, id := range ids {
 		t, err := s.Timeline(ctx, id)
 		if err != nil {
 			return nil, err
@@ -262,5 +262,5 @@ func selectChosenTimelines(
 		}
 	}
 
-	return overlayTimelines(ctx, s, o)
+	return timelinesByID(ctx, s, o.TimelineIDs)
 }
