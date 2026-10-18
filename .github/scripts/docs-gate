@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Reads a pull request's changed paths on stdin. Fails when a file under internal/cli/ other
+# than a test, testdata or help topic changed but nothing under docs/ did, other than the
+# generated CLI reference. An empty stdin fails.
+
+set -euo pipefail
+
+paths=$(cat)
+if [[ -z $paths ]]; then
+	echo "::error::No changed paths were read; a pull request always changes at least one." >&2
+	exit 1
+fi
+
+cli=$(grep -E '^internal/cli/' <<<"$paths" | grep -vE '_test\.go$|/testdata/|^internal/cli/topics/' || true)
+docs=$(grep -E '^docs/' <<<"$paths" | grep -v '^docs/reference/cli/' || true)
+
+if [[ -n $cli && -z $docs ]]; then
+	printf '::error::internal/cli changed but no hand-written page under docs/ did (the generated docs/reference/cli/ does not count): %s. Update the docs page the change affects, or add the docs-not-needed label if nothing user-visible changed.\n' "${cli//$'\n'/, }" >&2
+	exit 1
+fi

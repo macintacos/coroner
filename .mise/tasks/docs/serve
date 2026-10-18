@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Serve the docs site locally, rebuilding on change"
+
+set -euo pipefail
+
+uv run zensical serve

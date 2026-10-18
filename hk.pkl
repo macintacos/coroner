@@ -44,6 +44,8 @@ local formatters = new Mapping<String, Step> {
 
   ["Go(Tidy)          [[builtins.gomod_tidy]]"] = Builtins.gomod_tidy
 
+  ["Python(Format)    [[builtins.ruff_format]]"] = Builtins.ruff_format
+
   // `sqlc generate` writes Go files outside the glob, so stage them explicitly.
   ["SQL(Generate)     [[sqlc]]"] = new Step {
     glob = List("sqlc.yaml", "internal/store/migrations/*.sql", "internal/store/queries/*.sql")
@@ -109,6 +111,10 @@ local linters = new Mapping<String, Step> {
     glob = List(".golangci.yml")
     check = "golangci-lint config verify"
   }
+
+  ["Python(Lint)      [[builtins.ruff]]"] = Builtins.ruff
+
+  ["Python(Type)      [[builtins.ty]]"] = Builtins.ty
 }
 
 // hk's stage globs match only files on disk, so a removed command's deleted page needs git add --all.

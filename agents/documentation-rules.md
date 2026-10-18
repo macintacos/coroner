@@ -2,9 +2,9 @@
 
 *Audience: coding agents whose change `AGENTS.md` routes here.*
 
-[`AGENTS.md`](../../AGENTS.md) routes a change to the rules it needs. This file is its
-mirror for docs: it maps every doc coroner ships or will ship, and decides which ones a
-change updates. Read the digraph as a checklist, not a single path:
+[`AGENTS.md`](../AGENTS.md) routes a change to the rules it needs. This file is its mirror
+for docs: it maps every doc coroner ships or will ship, and decides which ones a change
+updates. Read the digraph as a checklist, not a single path:
 **update every doc whose edge matches**. A box marked "not in the repo yet" names the
 issue that will land that doc. Until it lands there is nothing to edit: skip the box, and
 never create its file early. That issue completes the entry here
@@ -19,7 +19,7 @@ digraph coroner_docs_router {
 
     "Edit README.md" [shape=box];
     "Edit AGENTS.md" [shape=box];
-    "Edit docs/agents/*.md" [shape=box];
+    "Edit agents/*.md" [shape=box];
     "Edit docs/contributing/command-checklist.md" [shape=box];
     "Edit docs/contributing/migrations.md" [shape=box];
     "Edit .github/pull_request_template.md" [shape=box];
@@ -27,7 +27,7 @@ digraph coroner_docs_router {
     "Edit internal/export/html/vendor/README.md" [shape=box];
     "Edit CONTEXT.md" [shape=box];
     "Edit STABILITY.md (not in the repo yet — EXC-1303)" [shape=box];
-    "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [shape=box];
+    "Edit the docs site: docs/ and zensical.toml" [shape=box];
     "Regenerate docs/reference/cli/" [shape=box];
     "Edit docs/reference/export-format.md" [shape=box];
     "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [shape=box];
@@ -35,9 +35,9 @@ digraph coroner_docs_router {
     "Edit skills/coroner/SKILL.md (not in the repo yet — EXC-1277)" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
-    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license"];
+    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks, hk hooks and what CI runs, the routing digraph, where things live, the repository rules"];
-    "Which doc does the change affect?" -> "Edit docs/agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
+    "Which doc does the change affect?" -> "Edit agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
@@ -45,7 +45,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
-    "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
+    "Which doc does the change affect?" -> "Edit the docs site: docs/ and zensical.toml" [label="user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav"];
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
     "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (not in the repo yet — EXC-1304)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
@@ -56,51 +56,58 @@ digraph coroner_docs_router {
 
 ## The doc landscape
 
-- **[`README.md`](../../README.md)** (human-facing) — the front door: what coroner is,
+- **[`README.md`](../README.md)** (human-facing) — the front door: what coroner is,
   install, the development tasks and CI, project status, and the license, which points at
   `LICENSE`.
-- **[`AGENTS.md`](../../AGENTS.md)** (agent-facing) — the router: what coroner is, the
-  `mise` tasks, `hk` hooks and what CI runs, the routing digraph, where things live, and
-  the repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it
-  through the import; it never gains content of its own.
-- **`docs/agents/*.md`** (agent-facing) — on-demand rule files, one per area, each reached
-  from an edge in `AGENTS.md`'s digraph.
-- **[`docs/contributing/command-checklist.md`](../contributing/command-checklist.md)** —
-  the [clig.dev](https://clig.dev/) rules with stable IDs (cite them as "violates OUT-3")
-  and the verb glossary.
-- **[`docs/contributing/migrations.md`](../contributing/migrations.md)** (humans and
+- **[`AGENTS.md`](../AGENTS.md)** (agent-facing) — the router: what coroner is, the `mise`
+  tasks, `hk` hooks and what CI runs, the routing digraph, where things live, and the
+  repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through
+  the import; it never gains content of its own.
+- **`agents/*.md`** (agent-facing) — on-demand rule files, one per area, each reached from
+  an edge in `AGENTS.md`'s digraph.
+- **[`docs/contributing/command-checklist.md`](../docs/contributing/command-checklist.md)**
+  — the [clig.dev](https://clig.dev/) rules with stable IDs (cite them as "violates
+  OUT-3") and the verb glossary.
+- **[`docs/contributing/migrations.md`](../docs/contributing/migrations.md)** (humans and
   agents) — the migration policy, the fixture database each release commits and how to add
   it, and the migration gaps deferred so far.
-- **[`.github/pull_request_template.md`](../../.github/pull_request_template.md)** — the
+- **[`.github/pull_request_template.md`](../.github/pull_request_template.md)** — the
   checkbox that makes a pull request cite the checklist IDs it was checked against, and
   the contract section that makes it state a contract change's stability.
-- **[`internal/cli/testdata/script/contract/README.md`](../../internal/cli/testdata/script/contract/README.md)**
+- **[`internal/cli/testdata/script/contract/README.md`](../internal/cli/testdata/script/contract/README.md)**
   (humans and agents) — what the contract scripts pin and how, and that a diff under
   `contract/` is a contract change.
-- **[`internal/export/html/vendor/README.md`](../../internal/export/html/vendor/README.md)**
+- **[`internal/export/html/vendor/README.md`](../internal/export/html/vendor/README.md)**
   (anyone updating the library) — the vis-timeline version the HTML export embeds, the
   committed file's checksum and licence, and how to update it.
-- **[`CONTEXT.md`](../../CONTEXT.md)** — the vocabulary glossary for names in code, flags,
+- **[`CONTEXT.md`](../CONTEXT.md)** — the vocabulary glossary for names in code, flags,
   JSON and docs.
 - **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the
   deprecation mechanics.
-- **The docs site pages** (not in the repo yet) — the site itself (EXC-1300), the tutorial
-  and how-to guides (EXC-1301), and the reference and explanation pages (EXC-1302).
-- **[`docs/reference/cli/`](../reference/cli/)** (human-facing) — the CLI reference, one
-  page per command and per help topic, generated from the commands and topics by
+- **The docs site** (human-facing) — every file under [`docs/`](../docs/), built by
+  Zensical with `mise run docs:build` from [`zensical.toml`](../zensical.toml), whose
+  `nav` lists the pages, and deployed to GitHub Pages when a `v*` tag is pushed. The
+  [landing page](../docs/index.md) says what coroner is and demos it; `tutorial/`,
+  `how-to/`, `reference/`, `explanation/` and `contributing/` are its Diátaxis sections.
+  The tutorial and how-to guides (not in the repo yet — EXC-1301) and the reference and
+  explanation pages (not in the repo yet — EXC-1302) join those sections and the nav. A
+  page links a file outside `docs/` by its GitHub URL, since a relative one breaks on the
+  site and `mise run docs:build` does not catch it.
+- **[`docs/reference/cli/`](../docs/reference/cli/)** (human-facing) — the CLI reference,
+  one page per command and per help topic, generated from the commands and topics by
   `go run ./internal/tools/docgen` and checked for drift by `mise run lint`. Never
   hand-edited.
-- **[`docs/reference/export-format.md`](../reference/export-format.md)** (anyone reading
-  or writing coroner's JSON: people with jq, scripts, agents, importers) — the export
-  envelope, every key of the canonical objects, the JSONL stream and its record order, the
-  encoding rules and the evolution rules. Its machine-readable twin,
+- **[`docs/reference/export-format.md`](../docs/reference/export-format.md)** (anyone
+  reading or writing coroner's JSON: people with jq, scripts, agents, importers) — the
+  export envelope, every key of the canonical objects, the JSONL stream and its record
+  order, the encoding rules and the evolution rules. Its machine-readable twin,
   `schema/export-v1.schema.json`, is generated from the `internal/export` types by
   `go run ./internal/tools/schemagen` and never hand-edited.
 - **`CHANGELOG.md`** (not in the repo yet — EXC-1304; human-facing) — every release's
   changes grouped by commit type, **Breaking** first, written at release by
-  `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../../cliff.toml). Never
+  `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../cliff.toml). Never
   hand-edited.
-- **[`internal/cli/topics/*.md`](../../internal/cli/topics/)** (humans and agents at the
+- **[`internal/cli/topics/*.md`](../internal/cli/topics/)** (humans and agents at the
   terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
   CLI reference pages. Specs pin the `exit-codes` table and the `environment` variables to
   the code.
@@ -114,8 +121,8 @@ the title first), so a reader knows in one line whether it is written for them. 
 docs such as `docs/reference/cli/` are exempt; their landscape entry names the audience.
 
 `README.md` and the docs site are **human-facing**. `AGENTS.md` and everything under
-`docs/agents/` are **agent-facing**. A new doc outside both groups names its audience when
-it lands.
+`agents/` are **agent-facing**. A new doc outside both groups names its audience when it
+lands.
 
 Diagrams follow the same split, **deliberately**: human-facing docs use **mermaid**, which
 GitHub and the docs site render, and agent-facing docs use **graphviz**, which agents read
@@ -134,8 +141,8 @@ Documentation drifts when a map and the thing it maps change in separate pull re
 So, **in the same change**:
 
 1. **When one of these is added, removed, or renamed:**
-   - a doc updates its box and landscape entry here, and a rule file under `docs/agents/`
-     also adds or updates its edge in `AGENTS.md`'s digraph;
+   - a doc updates its box and landscape entry here, and a rule file under `agents/` also
+     adds or updates its edge in `AGENTS.md`'s digraph;
    - a `mise` task, `hk` hook or CI workflow step updates `AGENTS.md` § How to work here
      and every doc that names it, such as `README.md`'s Development section, and so does a
      change to what one runs;
@@ -146,8 +153,8 @@ So, **in the same change**:
    its edge) and turns the path mention into a link, outside code blocks.
 3. **An area gets rules only once it has code.** An area is a top-level package under
    `internal/` or a top-level directory such as `skills/`. The first issue with rules for
-   an area that an agent would otherwise get wrong adds `docs/agents/<area>-rules.md` and
-   the `AGENTS.md` edge that loads it.
+   an area that an agent would otherwise get wrong adds `agents/<area>-rules.md` and the
+   `AGENTS.md` edge that loads it.
 4. **A new doc** states its audience and uses that audience's diagram tool
    ([§ Audience](#audience-stated-at-the-top-of-every-new-doc)).
 5. **A substantive prose pass** goes through `/doc-coauthoring`

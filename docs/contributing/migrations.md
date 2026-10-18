@@ -34,8 +34,9 @@ failing test.
    and every later build must open, migrate and read it
    ([§ Fixture databases](#fixture-databases)).
 6. **The schema is internal, never a contract.** JSON and JSONL exports are the sharing
-   contract ([`AGENTS.md`](../../AGENTS.md) Rule 3). The schema can change freely through
-   new migrations, as long as every committed fixture still opens.
+   contract ([`AGENTS.md`](https://github.com/macintacos/coroner/blob/main/AGENTS.md) Rule
+   3). The schema can change freely through new migrations, as long as every committed
+   fixture still opens.
 7. **One process migrates a database at a time.** goose ships lockers for Postgres and
    MySQL, but not for SQLite. When migrations are pending, `store.Open` holds an exclusive
    `flock` on `<db>.lock` while it takes the backup and applies them, and reads the schema
@@ -57,13 +58,14 @@ already exists, so it can never touch a committed fixture or a real database. It
 - evidence and comment annotations on events, and one annotation on the timeline itself.
 
 The compatibility spec in
-[`internal/store/compat_test.go`](../../internal/store/compat_test.go), which
-`mise run test` runs, checks a database the current build writes, because that is what the
-next release commits, and every committed `testdata/compat/v*.db`. It copies each one into
-a temporary directory and opens the copy with `store.Open`, which migrates an older
-fixture after backing it up. It then compares every timeline, source, event and annotation
-it reads back with the records compatfixture writes, field for field, and adds an event to
-check that the sequence counter survived. The committed file is never opened in place.
+[`internal/store/compat_test.go`](https://github.com/macintacos/coroner/blob/main/internal/store/compat_test.go),
+which `mise run test` runs, checks a database the current build writes, because that is
+what the next release commits, and every committed `testdata/compat/v*.db`. It copies each
+one into a temporary directory and opens the copy with `store.Open`, which migrates an
+older fixture after backing it up. It then compares every timeline, source, event and
+annotation it reads back with the records compatfixture writes, field for field, and adds
+an event to check that the sequence counter survived. The committed file is never opened
+in place.
 
 A fixture records what a release wrote, so it is never edited, regenerated or deleted.
 When a new migration breaks a committed fixture, fix the migration. compatfixture's
@@ -89,7 +91,9 @@ tagged:
 ## Deferred gaps
 
 - **Migrations run with foreign keys on.** A migration that rebuilds a table other tables
-  reference relies on [store rule 3](../agents/store-rules.md) to turn foreign keys off;
-  one that forgets it deletes every child row through the cascade. Running goose on a
-  connection opened without `foreign_keys(1)`, then `PRAGMA foreign_key_check`, would rule
-  that out. No migration rebuilds a table yet, so this waits for the first one that does.
+  reference relies on
+  [store rule 3](https://github.com/macintacos/coroner/blob/main/agents/store-rules.md) to
+  turn foreign keys off; one that forgets it deletes every child row through the cascade.
+  Running goose on a connection opened without `foreign_keys(1)`, then
+  `PRAGMA foreign_key_check`, would rule that out. No migration rebuilds a table yet, so
+  this waits for the first one that does.

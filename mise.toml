@@ -32,6 +32,12 @@ golangci-lint        = "latest"
 sqlc                 = "latest"
 "aqua:pressly/goose" = "latest"
 
+# Python. uv installs and runs Zensical from pyproject.toml and uv.lock; ruff and
+# ty check any Python that lands.
+uv   = "latest"
+ruff = "latest"
+ty   = "latest"
+
 git-cliff = "latest" # Changelog generator (config in cliff.toml)
 
 # (Re)register git hooks whenever tools are installed or updated.

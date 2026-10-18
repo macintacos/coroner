@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Runs docs-gate over changed-path lists and fails when any exits other than expected.
+
+set -euo pipefail
+
+gate="$(dirname "${BASH_SOURCE[0]}")/docs-gate"
+failed=0
+
+check() {
+	local want=$1 name=$2 paths=$3 got=0
+	printf '%s' "$paths" | "$gate" 2>/dev/null || got=$?
+	if [[ $got -ne $want ]]; then
+		echo "FAIL: $name: exited $got, want $want" >&2
+		failed=1
+	fi
+}
+
+check 1 'CLI code only' 'internal/cli/root.go'
+check 0 'CLI code with a docs page' $'internal/cli/root.go\ndocs/how-to/index.md'
+check 0 'CLI tests and testdata only' $'internal/cli/root_test.go\ninternal/cli/testdata/script/help.txtar'
+check 1 'CLI code with only the generated reference' $'internal/cli/root.go\ndocs/reference/cli/coroner.md'
+check 0 'no CLI change' $'go.mod\nREADME.md'
+check 0 'help topic only' 'internal/cli/topics/time.md'
+check 1 'empty stdin' ''
+
+exit "$failed"
