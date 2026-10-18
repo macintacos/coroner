@@ -1028,6 +1028,9 @@ Create a timeline. Its name is how commands select it: at most 64 lowercase lett
 digits, '.', '_' or '-', starting with a letter or digit. Put free text in --title.
 Creating a timeline does not make it current; run 'coroner timeline use' for that.
 
+On a terminal, with no name or with --interactive, a form asks for the name, title and
+refs, offers the existing timeline when the name is taken, and prints the command it equals.
+
 USAGE
   coroner timeline create <name> [flags]
 
@@ -1035,9 +1038,11 @@ EXAMPLES
   $ coroner timeline create mongo-outage-2026-09-11 --title "Primary election storm" \
       --ref INC-4821 --ref https://jira.example.com/browse/INC-4821
   $ coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json
+  $ coroner timeline create --interactive
 
 FLAGS
       --if-not-exists     Print the existing timeline instead of failing when the name is taken
+      --interactive       Open a form to fill in, prefilled from the other flags (needs a terminal)
       --ref stringArray   Ticket key or URL the timeline belongs to; repeat for more
       --title title       Free-text title
 
@@ -1090,16 +1095,22 @@ Change a timeline's name, title or refs. Its id never changes, so its events, an
 anything naming it by id, still resolve after a rename. Refs are removed before they are
 added; adding a ref it has, or removing one it lacks, changes nothing.
 
+On a terminal, without --name, --title, --add-ref or --remove-ref, or with --interactive, a
+form opens on the timeline, or on the current one when none is named, applies only what you
+change, and prints the command it equals.
+
 USAGE
   coroner timeline edit <name|id> [flags]
 
 EXAMPLES
   $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822
   $ coroner timeline edit mongo-failover --title "" --dry-run --json
+  $ coroner timeline edit mongo-failover --interactive
 
 FLAGS
       --add-ref stringArray      Add a ticket key or URL; repeat for more
       --dry-run                  Show the edited timeline, and change nothing
+      --interactive              Open a form to fill in, prefilled from the other flags (needs a terminal)
       --name name                New name
       --remove-ref stringArray   Remove a ref; repeat for more
       --title title              New title; an empty one clears it

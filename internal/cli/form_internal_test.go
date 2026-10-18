@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
 	. "github.com/onsi/ginkgo/v2"
@@ -127,7 +130,203 @@ var _ = Describe("form fields", func() {
 			Expect(renderedDescription(source)).To(ContainSubstring("Did you mean `db-2`?"))
 		})
 	})
+
+	Describe("a list field", func() {
+		rejectBad := withoutEnv(func(ref string) error {
+			if ref == "Bad Ref" {
+				return errors.New("bad ref")
+			}
+			return nil
+		})
+		refs := definition{fields: []field{{name: "ref", typ: stringsField, list: true, usage: "Ticket key or URL", check: rejectBad}}}
+
+		It("adds each value typed and entered, once, after the values it opens with", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			ref := namedField(fields, "ref")
+
+			enter(ref, "INC-2")
+			enter(ref, "INC-1")
+
+			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1", "INC-2"}}))
+			Expect(fieldView(ref)).To(SatisfyAll(ContainSubstring("Ticket key or URL"), ContainSubstring("INC-2")))
+		})
+
+		It("moves on when enter finds nothing typed, and stays while it adds", func() {
+			ref := namedField(refs.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "ref")
+			ref.WithKeyMap(huh.NewDefaultKeyMap())
+
+			typeInto(ref, "INC-1")
+			_, stay := ref.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			_, next := ref.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+			Expect(stay).NotTo(BeNil())
+			Expect(stay()).To(Equal(tea.RequestWindowSize()))
+			Expect(next).NotTo(BeNil())
+			Expect(next()).To(Equal(huh.NextField()))
+		})
+
+		It("removes the value up picks, counting back from the last", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1", "INC-2", "INC-3"}}, formChoices{})
+			ref := namedField(fields, "ref")
+
+			press(ref, tea.KeyUp, tea.KeyUp)
+			Expect(fieldView(ref)).To(ContainSubstring("× INC-2"))
+			press(ref, tea.KeyBackspace)
+
+			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1", "INC-3"}}))
+		})
+
+		It("goes back to typing when down passes the last value", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			ref := namedField(fields, "ref")
+
+			press(ref, tea.KeyUp, tea.KeyDown, tea.KeyBackspace)
+
+			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1"}}))
+			Expect(fieldView(ref)).NotTo(ContainSubstring("×"))
+		})
+
+		It("adds a value left typed when it loses focus", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+			ref := namedField(fields, "ref")
+			typeInto(ref, "INC-1")
+
+			ref.Blur()
+
+			Expect(ref.Error()).NotTo(HaveOccurred())
+			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1"}}))
+		})
+
+		It("gives back a value it opens with unchanged, even one holding a newline", func() {
+			in := fieldValues{"ref": {"INC-1\nfollow-up"}}
+
+			Expect(refs.formValues(refs.formFields(formCheckEnv(), in, formChoices{}))).To(Equal(in))
+		})
+
+		It("shows the last five values while typing, and five around the picked one, counting the rest", func() {
+			in := fieldValues{"ref": {"INC-1", "INC-2", "INC-3", "INC-4", "INC-5", "INC-6", "INC-7", "INC-8"}}
+			ref := namedField(refs.formFields(formCheckEnv(), in, formChoices{}), "ref")
+
+			Expect(fieldView(ref)).To(SatisfyAll(
+				ContainSubstring("… 3 more"), ContainSubstring("INC-4"), ContainSubstring("INC-8"), Not(ContainSubstring("INC-3"))))
+
+			press(ref, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp)
+			Expect(fieldView(ref)).To(SatisfyAll(
+				ContainSubstring("… 3 more"), ContainSubstring("× INC-3"), ContainSubstring("INC-7"), Not(ContainSubstring("INC-8"))))
+		})
+
+		It("shows in its help only the keys that act on what it holds", func() {
+			ref := namedField(refs.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "ref")
+			ref.WithKeyMap(huh.NewDefaultKeyMap())
+			Expect(helpKeys(ref)).To(Equal([]string{"shift+tab back", "enter submit", "enter next"}))
+
+			typeInto(ref, "INC-1")
+			Expect(helpKeys(ref)).To(Equal([]string{"enter add", "shift+tab back"}))
+
+			press(ref, tea.KeyEnter)
+			Expect(helpKeys(ref)).To(Equal([]string{"↑/↓ pick", "shift+tab back", "enter submit", "enter next"}))
+
+			press(ref, tea.KeyUp)
+			Expect(helpKeys(ref)).To(Equal([]string{"↑/↓ pick", "backspace remove", "shift+tab back", "enter submit", "enter next"}))
+		})
+
+		It("keeps its typing line on screen inside a form after a dozen values", func() {
+			def := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}, refs.fields[0]}}
+			form := huh.NewForm(huh.NewGroup(def.formFields(formCheckEnv(), fieldValues{}, formChoices{})...))
+			size := tea.WindowSizeMsg{Width: 100, Height: 12}
+			form.Init()
+			form.Update(size)
+
+			typeKeys(form, "Mongo Outage")
+			form.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+			form.Update(huh.NextField())
+			for i := range 12 {
+				typeKeys(form, fmt.Sprintf("INC-%d", i))
+				pressResizing(form, tea.KeyEnter, size)
+			}
+			typeKeys(form, "TYPING-NOW")
+
+			Expect(form.GetString("name")).To(Equal("mongo-outage"))
+			Expect(ansi.Strip(form.View())).To(SatisfyAll(ContainSubstring("… 7 more"), ContainSubstring("TYPING-NOW")))
+		})
+
+		It("refuses a value its check rejects, and adds nothing", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+			ref := namedField(fields, "ref")
+
+			enter(ref, "Bad Ref")
+
+			Expect(ref.Error()).To(MatchError("bad ref"))
+			Expect(refs.formValues(fields)).To(BeEmpty())
+		})
+	})
+
+	It("replace a rejected value with the one its field suggests on ctrl+e, clearing its error", func() {
+		names := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}}}
+		name := namedField(names.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
+		name.WithKeyMap(huh.NewDefaultKeyMap())
+		typeInto(name, "Mongo Outage")
+		press(name, tea.KeyEnter)
+		Expect(name.Error()).To(HaveOccurred())
+
+		name.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+
+		Expect(fieldText([]huh.Field{name}, "name")).To(Equal("mongo-outage"))
+		Expect(name.Error()).NotTo(HaveOccurred())
+	})
 })
+
+var _ = DescribeTable("suggestName offers a valid timeline name only for a rejected one",
+	func(name, want string) {
+		Expect(suggestName(name)).To(Equal(want))
+	},
+	Entry("spaces and capitals", "Mongo Outage", "mongo-outage"),
+	Entry("a valid name", "mongo-outage", ""),
+	Entry("nothing a name can hold", "!!!", ""),
+)
+
+// press sends formField each key code.
+func press(formField huh.Field, codes ...rune) {
+	for _, code := range codes {
+		formField.Update(tea.KeyPressMsg{Code: code})
+	}
+}
+
+// typeKeys presses a key in form for each character of text.
+func typeKeys(form *huh.Form, text string) {
+	for _, r := range text {
+		form.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+}
+
+// pressResizing presses code in form and, when the key asks for the window size, gives form size
+// again, as the terminal would.
+func pressResizing(form *huh.Form, code rune, size tea.WindowSizeMsg) {
+	GinkgoHelper()
+	_, cmd := form.Update(tea.KeyPressMsg{Code: code})
+	if cmd != nil && reflect.DeepEqual(cmd(), tea.RequestWindowSize()) {
+		form.Update(size)
+	}
+}
+
+// helpKeys returns the enabled key bindings formField shows in its help, as "key description".
+func helpKeys(formField huh.Field) []string {
+	var keys []string
+	for _, binding := range formField.KeyBinds() {
+		if binding.Enabled() {
+			keys = append(keys, binding.Help().Key+" "+binding.Help().Desc)
+		}
+	}
+
+	return keys
+}
+
+// enter types value into formField and presses enter.
+func enter(formField huh.Field, value string) {
+	GinkgoHelper()
+	typeInto(formField, value)
+	press(formField, tea.KeyEnter)
+}
 
 // namedField returns the form field keyed name.
 func namedField(fields []huh.Field, name string) huh.Field {
@@ -146,7 +345,9 @@ func namedField(fields []huh.Field, name string) huh.Field {
 func typeInto(formField huh.Field, value string) {
 	GinkgoHelper()
 	switch f := formField.(type) {
-	case *huh.Input:
+	case interface {
+		Value(value *string) *huh.Input
+	}:
 		f.Value(&value)
 	case *huh.Text:
 		f.Value(&value)

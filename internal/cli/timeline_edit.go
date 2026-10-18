@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -16,20 +17,35 @@ import (
 )
 
 func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
-	def := timelineEditDefinition()
 	cmd := &cobra.Command{
 		Use:   "edit <name|id>",
 		Short: "Rename a timeline or change its title and refs",
 		Long: "Change a timeline's name, title or refs. Its id never changes, so its events, and\n" +
 			"anything naming it by id, still resolve after a rename. Refs are removed before they are\n" +
-			"added; adding a ref it has, or removing one it lacks, changes nothing.",
-		Args:              cobra.ExactArgs(1),
+			"added; adding a ref it has, or removing one it lacks, changes nothing.\n\n" +
+			"On a terminal, without --name, --title, --add-ref or --remove-ref, or with --interactive, a\n" +
+			"form opens on the timeline, or on the current one when none is named, applies only what you\n" +
+			"change, and prints the command it equals.",
+		Args:              oneArgOrNone,
 		ValidArgsFunction: completeTimelineArg(ctx, app),
 		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822\n" +
-			"  $ coroner timeline edit mongo-failover --title \"\" --dry-run --json",
+			"  $ coroner timeline edit mongo-failover --title \"\" --dry-run --json\n" +
+			"  $ coroner timeline edit mongo-failover --interactive",
+	}
+
+	return timelineEditForm(ctx, app).attach(cmd, app, terminalForms(app))
+}
+
+// timelineEditForm is timeline edit with its form, which opens on a terminal when no change is
+// given.
+func timelineEditForm(ctx context.Context, app App) formCommand {
+	def := timelineEditDefinition()
+	return formCommand{
+		def:   def,
+		ready: func(in fieldValues) bool { return slices.ContainsFunc(timelineChanges(), in.given) },
 		// Not writeRunE: render needs the --tz zone, which def omits as --tz changes nothing edit stores.
-		RunE: func(cmd *cobra.Command, args []string) error {
+		flagsOnly: withOneArg(func(cmd *cobra.Command, args []string) error {
 			o, err := newOutput(cmd, app)
 			if err != nil {
 				return err
@@ -44,18 +60,164 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 			}
 
 			return edited.render(o, z)
+		}),
+		session: func(cmd *cobra.Command, s formSession, in fieldValues) error {
+			z, err := timeZone(changedString(cmd.Flags(), "tz"), s.cfg.DefaultTimezone, s.app.Now().Location())
+			if err != nil {
+				return err
+			}
+
+			return askTimelineEdit(ctx, s, z, in)
 		},
 	}
+}
 
-	def.addFlags(cmd.Flags())
+// timelineChanges are the fields of timeline edit that change a timeline.
+func timelineChanges() []string {
+	return []string{"name", "title", "add-ref", "remove-ref"}
+}
 
-	return cmd
+// timelineToEdit is the timeline an edit form opens on, as its echoed command names it, and the
+// names the other timelines hold.
+type timelineToEdit struct {
+	timeline timeline.Timeline
+	nameOrID string
+	taken    []string
+}
+
+// askTimelineEdit asks for the changes to the timeline in selects, prefilled with it as the command
+// line changes it, and applies what differs from the stored timeline, until it is applied, nothing
+// differs, or Esc ends the form; z is the zone a dry run prints in.
+func askTimelineEdit(ctx context.Context, s formSession, z zone, in fieldValues) error {
+	target, chosen, err := chooseTimelineToEdit(ctx, s, in)
+	if err != nil || !chosen {
+		return err
+	}
+	t := target.timeline
+	// The command line's changes prefill the form; they are not read otherwise.
+	opening := timelineEdit{
+		name: in.value("name"), title: in.value("title"), addRefs: in.values("add-ref"), removeRefs: in.values("remove-ref"),
+	}.apply(t, t.UpdatedAt)
+	prefilled := fieldValues{"name": {opening.Name}, "title": {opening.Title}, "ref": opening.Refs, "dry-run": in.values("dry-run")}
+
+	_, err = s.askUntil(ctx, timelineEditFormDefinition(target.taken), formChoices{}, prefilled, func(typed fieldValues) error {
+		return editTyped(ctx, s, z, t.Name, timelineEditValues(t, target.nameOrID, typed))
+	})
+
+	return err
+}
+
+// chooseTimelineToEdit returns the timeline in names, or else the one -t-less commands act on,
+// asking for one when none is, and whether there is one: Esc on that ask leaves none.
+func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (timelineToEdit, bool, error) {
+	if !in.given("timeline") {
+		var chosen bool
+		var err error
+		in, chosen, err = chooseTimeline(ctx, s, timelineEditDefinition(), in)
+		rejected, _ := errors.AsType[*Error](err)
+		switch {
+		// Reached only with no timeline at all; the usual hint names -t, which edit lacks.
+		case rejected != nil && rejected.Kind == KindTimelineRequired:
+			return timelineToEdit{}, false, &Error{
+				Kind: KindTimelineRequired, Message: "no timeline to edit", Hint: "Run 'coroner timeline create <name>' to create one.",
+			}
+		case err != nil || !chosen:
+			return timelineToEdit{}, false, err
+		}
+	}
+
+	nameOrID := in.value("timeline")
+	var target timelineToEdit
+	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+		var err error
+		if nameOrID != nil {
+			target.timeline, err = findTimeline(ctx, st, *nameOrID)
+		} else {
+			target.timeline, err = selectTimeline(ctx, st, nil, s.app.LookupEnv)
+		}
+		if err != nil {
+			return err
+		}
+		target.nameOrID = *cmp.Or(nameOrID, &target.timeline.Name)
+
+		timelines, err := st.Timelines(ctx)
+		for _, other := range timelines {
+			if other.ID != target.timeline.ID {
+				target.taken = append(target.taken, other.Name)
+			}
+		}
+		return err
+	})
+
+	return target, err == nil, err
+}
+
+// timelineEditFormDefinition is timeline edit's fields as its form asks for them: the name,
+// required and noting the taken names, the title, one ref list checked as --add-ref is, in place of
+// --add-ref and --remove-ref, and --dry-run.
+func timelineEditFormDefinition(taken []string) definition {
+	edit := timelineEditDefinition()
+	name := onlyField(edit, "name").fields[0]
+	name.required = true
+	name.preview = namePreview(taken, func(typed string) string { return "Timeline `" + typed + "` exists; pick another name." })
+	ref := onlyField(edit, "add-ref").fields[0]
+	ref.name, ref.list, ref.usage = "ref", true, "Ticket keys or URLs the timeline belongs to"
+
+	return definition{fields: []field{name, onlyField(edit, "title").fields[0], ref, onlyField(edit, "dry-run").fields[0]}}
+}
+
+// timelineEditValues returns the timeline edit values that turn t into what a form submitted: t as
+// nameOrID names it, the name and title that differ, the refs added and removed, and --dry-run.
+func timelineEditValues(t timeline.Timeline, nameOrID string, submitted fieldValues) fieldValues {
+	values := fieldValues{"timeline": {nameOrID}}
+	if name := submitted.value("name"); name != nil && *name != t.Name {
+		values["name"] = []string{*name}
+	}
+	// A form gives a cleared title no value.
+	if title := cmp.Or(submitted.value("title"), new("")); *title != t.Title {
+		values["title"] = []string{*title}
+	}
+	refs := submitted.values("ref")
+	if added := slices.DeleteFunc(slices.Clone(refs), func(ref string) bool { return slices.Contains(t.Refs, ref) }); len(added) > 0 {
+		values["add-ref"] = added
+	}
+	if removed := slices.DeleteFunc(slices.Clone(t.Refs), func(ref string) bool { return slices.Contains(refs, ref) }); len(removed) > 0 {
+		values["remove-ref"] = removed
+	}
+	if submitted.given("dry-run") {
+		values["dry-run"] = submitted.values("dry-run")
+	}
+
+	return values
+}
+
+// editTyped applies the edit values given, and prints the timeline, the old name it no longer answers
+// to after a rename, and the equivalent command; when values change nothing, it says so and writes
+// nothing.
+func editTyped(ctx context.Context, s formSession, z zone, oldName string, values fieldValues) error {
+	if !slices.ContainsFunc(timelineChanges(), values.given) {
+		return s.o.notify("Nothing to change.")
+	}
+
+	edited, err := editTimeline(ctx, s.app, s.cfg, values)
+	if err != nil {
+		return err
+	}
+	err = edited.render(s.o, z)
+	if err == nil && !edited.dryRun && edited.timeline.Name != oldName {
+		err = s.o.notify("`%s` no longer selects this timeline; commands take `%s`.", oldName, edited.timeline.Name)
+	}
+	if err != nil {
+		return err
+	}
+
+	return s.echo("timeline edit", timelineEditDefinition(), values)
 }
 
 func timelineEditDefinition() definition {
 	return definition{fields: []field{
 		{name: "timeline", arg: true, usage: "Timeline to edit, as a `name|id`"},
-		{name: "name", usage: "New `name`", check: withoutEnv(checkName)},
+		{name: "name", usage: "New `name`", check: withoutEnv(checkName), suggest: suggestName},
 		{name: "title", usage: "New `title`; an empty one clears it"},
 		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef)},
 		{name: "remove-ref", typ: stringsField, usage: "Remove a ref; repeat for more"},
@@ -140,7 +302,7 @@ type timelineEdit struct {
 
 // readTimelineEdit returns the edit in asks for.
 func readTimelineEdit(in fieldValues) (timelineEdit, error) {
-	if !slices.ContainsFunc([]string{"name", "title", "add-ref", "remove-ref"}, in.given) {
+	if !slices.ContainsFunc(timelineChanges(), in.given) {
 		return timelineEdit{}, &Error{
 			Kind:    KindUsage,
 			Message: "nothing to edit",

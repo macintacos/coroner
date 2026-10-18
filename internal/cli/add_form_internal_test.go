@@ -27,9 +27,9 @@ import (
 )
 
 var _ = Describe("add forms", func() {
-	DescribeTable("open on a terminal when --interactive asks or a required field is missing",
-		func(interactive, requiredGiven, terminal, wantOpen bool) {
-			Expect(formMode(interactive, requiredGiven, terminal)).To(Equal(wantOpen))
+	DescribeTable("open on a terminal when --interactive asks or the command line is not ready",
+		func(interactive, ready, terminal, wantOpen bool) {
+			Expect(formMode(interactive, ready, terminal)).To(Equal(wantOpen))
 		},
 		Entry("a required field missing on a terminal", false, false, true, true),
 		Entry("--interactive with every required field on a terminal", true, true, true, true),
@@ -39,7 +39,7 @@ var _ = Describe("add forms", func() {
 		Entry("every required field off a terminal", false, true, false, false),
 	)
 
-	DescribeTable("ask an entry again when the add rejects it as usage or not found, but not for its timeline",
+	DescribeTable("ask a form again when its submission is rejected as usage, not found or a taken name, but not for the timeline it writes to",
 		func(err error, want bool) {
 			Expect(correctable(err)).To(Equal(want))
 		},
@@ -48,7 +48,7 @@ var _ = Describe("add forms", func() {
 		Entry("an event not found", &Error{Kind: KindEventNotFound}, true),
 		Entry("no timeline selected", &Error{Kind: KindTimelineRequired}, false),
 		Entry("a timeline not found", &Error{Kind: KindTimelineNotFound}, false),
-		Entry("a timeline that exists", &Error{Kind: KindTimelineExists}, false),
+		Entry("a timeline that exists", &Error{Kind: KindTimelineExists}, true),
 		Entry("an error of no kind", errors.New("disk full"), false),
 	)
 

@@ -283,11 +283,44 @@ func checkName(name string) error {
 	}
 
 	hint := "Use lowercase letters, digits, '.', '_' and '-'; put free text in --title."
-	if suggestion := suggestSlug(name, namePunct, timeline.ValidateTimelineName); suggestion != "" {
+	if suggestion := suggestName(name); suggestion != "" {
 		hint = fmt.Sprintf("Did you mean `%s`? Put free text in --title.", suggestion)
 	}
 
 	return &Error{Kind: KindInvalidName, Message: err.Error(), Hint: hint, Err: err}
+}
+
+// suggestName returns the valid timeline name checkName suggests for name, or "" when name is valid
+// or nothing valid remains of it.
+func suggestName(name string) string {
+	if timeline.ValidateTimelineName(name) == nil {
+		return ""
+	}
+
+	return suggestSlug(name, namePunct, timeline.ValidateTimelineName)
+}
+
+// withOneArg returns run behind cobra.ExactArgs(1), failing as Run reports cobra's own rejection,
+// for a command whose form opens without its argument.
+func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		err := cobra.ExactArgs(1)(cmd, args)
+		if err != nil {
+			return usageError(cmd, err)
+		}
+
+		return run(cmd, args)
+	}
+}
+
+// oneArgOrNone accepts no argument, which a form asks for, and rejects more than one as
+// cobra.ExactArgs(1) does.
+func oneArgOrNone(cmd *cobra.Command, args []string) error {
+	if len(args) > 1 {
+		return cobra.ExactArgs(1)(cmd, args)
+	}
+
+	return nil
 }
 
 func timelineExistsError(name, hint string, err error) *Error {

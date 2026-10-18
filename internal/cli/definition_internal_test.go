@@ -294,9 +294,9 @@ func fieldProblems(path string, flag *pflag.Flag, formField huh.Field) []string 
 		problems = append(problems, fmt.Sprintf("coroner %s: form field %s does not show %q", path, flag.Name, usage))
 	}
 
-	// A repeatable flag's default [] is a Text field's empty string.
+	// A repeatable flag's default [] is a Text field's empty string, and a list field's no values.
 	flagDefault := strings.TrimSuffix(strings.TrimPrefix(flag.DefValue, "["), "]")
-	if formDefault := fmt.Sprint(formField.GetValue()); formDefault != flagDefault {
+	if formDefault := strings.TrimSuffix(strings.TrimPrefix(fmt.Sprint(formField.GetValue()), "["), "]"); formDefault != flagDefault {
 		problems = append(problems, fmt.Sprintf("coroner %s: form field %s defaults to %q, flag --%s to %q",
 			path, flag.Name, formDefault, flag.Name, flag.DefValue))
 	}
@@ -417,14 +417,7 @@ func formError(def definition, name, value string) error {
 		if formField.GetKey() != name {
 			continue
 		}
-		switch f := formField.(type) {
-		case *huh.Input:
-			f.Value(&value)
-		case *huh.Text:
-			f.Value(&value)
-		default:
-			Fail(fmt.Sprintf("form field %s takes no text", name))
-		}
+		typeInto(formField, value)
 		formField.Blur()
 
 		return formField.Error()
