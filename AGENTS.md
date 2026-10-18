@@ -213,9 +213,15 @@ digraph coroner_rules_router {
    goldens in `internal/export/testdata/markdown/*.md`,
    `internal/export/testdata/mermaid/*.mmd`, `internal/export/testdata/html/*.html` and
    `internal/export/testdata/svg/*.svg` are rewritten by
-   `go test ./internal/export -update`. `internal/store/testdata/compat/v*.db` is written
-   once, from its release's tag, by `go run ./internal/tools/compatfixture -o <path>`, and
-   never regenerated ([the migration policy](docs/contributing/migrations.md)).
+   `go test ./internal/export -update`. The page-exported annotations file in
+   `internal/cli/testdata/script/viewer-annotations.txtar` is rewritten only by importing
+   that script's `inc-4821.jsonl`, exporting it with `--format html`, and exporting two
+   comments from that page in a browser under the name `Priya Shah`, which the script
+   reads as `inc-4821-annotations-Priya-Shah.jsonl`; its `annotations.json` is then
+   rewritten by `go test ./internal/cli -run 'TestScripts/script$' -update`.
+   `internal/store/testdata/compat/v*.db` is written once, from its release's tag, by
+   `go run ./internal/tools/compatfixture -o <path>`, and never regenerated
+   ([the migration policy](docs/contributing/migrations.md)).
    `testdata/export/v<MAJOR.MINOR>/` is written for the current `format_version` by
    `go test ./internal/cli -run 'TestScripts/contract$' -update`, which writes only a
    fixture that does not exist yet; before the first release that ships export, a fixture

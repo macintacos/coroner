@@ -7,12 +7,16 @@ import (
 	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/rogpeppe/go-internal/txtar"
 
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -76,6 +80,51 @@ func zoneOf(page string) pageZone {
 
 func unixMilli(value string) int64 {
 	return time.Time(utc(value)).UnixMilli()
+}
+
+// archiveFile returns the content of the file named name in the txtar archive at path.
+func archiveFile(path, name string) []byte {
+	GinkgoHelper()
+	archive, err := txtar.ParseFile(path)
+	Expect(err).NotTo(HaveOccurred())
+	i := slices.IndexFunc(archive.Files, func(f txtar.File) bool { return f.Name == name })
+	Expect(i).NotTo(Equal(-1), "no "+name+" in "+path)
+
+	return archive.Files[i].Data
+}
+
+// literalBody returns the lines inside the object literal that viewer.js's arrow function name
+// returns.
+func literalBody(name string) string {
+	GinkgoHelper()
+	viewer, err := os.ReadFile("html/viewer.js")
+	Expect(err).NotTo(HaveOccurred())
+	match := regexp.MustCompile(`(?ms)^  const ` + name + ` = .*? => \(\{$(.*?)^  \}\);$`).FindStringSubmatch(string(viewer))
+	Expect(match).To(HaveLen(2), "no "+name+" literal in viewer.js")
+
+	return match[1]
+}
+
+// keysAt returns, in order, the keys on the lines of body indented by exactly indent.
+func keysAt(body, indent string) []string {
+	var keys []string
+	for _, match := range regexp.MustCompile(`(?m)^`+indent+`([a-z_]+)(?::|,$)`).FindAllStringSubmatch(body, -1) {
+		keys = append(keys, match[1])
+	}
+
+	return keys
+}
+
+// jsonKeys returns the JSON keys of struct type t's fields, in order, read as checkKeys reads
+// them.
+func jsonKeys(t reflect.Type) []string {
+	var keys []string
+	for field := range t.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		keys = append(keys, name)
+	}
+
+	return keys
 }
 
 // hostileExport carries hostile text in the typed strings the viewer shows.
@@ -144,6 +193,50 @@ var _ = Describe("WriteHTML", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(string(viewer)).NotTo(MatchRegexp(`\b(innerHTML|outerHTML|insertAdjacentHTML|createContextualFragment|DOMParser)\b|document\.write|\btitle\s*:`))
+	})
+
+	DescribeTable("has an annotations export whose record builder writes type, then the export type's keys in order",
+		func(builder string, t reflect.Type) {
+			Expect(keysAt(literalBody(builder), "    ")).To(Equal(append([]string{"type"}, jsonKeys(t)...)))
+		},
+		Entry("annotationRecord, an annotation", "annotationRecord", reflect.TypeFor[export.Annotation]()),
+		Entry("annotationsHeader, a header", "annotationsHeader", reflect.TypeFor[export.Header]()),
+	)
+
+	It("has an annotations header whose query writes the export query's keys in order", func() {
+		match := regexp.MustCompile(`(?ms)^    query: \{$(.*?)^    \},$`).FindStringSubmatch(literalBody("annotationsHeader"))
+		Expect(match).To(HaveLen(2), "no query literal in annotationsHeader")
+
+		Expect(keysAt(match[1], "      ")).To(Equal(jsonKeys(reflect.TypeFor[export.Query]())))
+	})
+
+	It("has a page-exported annotations sample that validates, as a header and comments with UUIDv7 IDs and nine-digit instants", func() {
+		// A reviewer downloaded this from the page; viewer-annotations.txtar holds it and imports it.
+		data := archiveFile("../cli/testdata/script/viewer-annotations.txtar", "inc-4821-annotations-Priya-Shah.jsonl")
+		expectValidJSONL(exportSchemas(), data)
+		nineDigits := MatchRegexp(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z$`)
+
+		lines := slices.Collect(bytes.Lines(data))
+		Expect(len(lines)).To(BeNumerically(">", 1))
+		var header map[string]any
+		Expect(json.Unmarshal(lines[0], &header)).To(Succeed())
+		Expect(header).To(And(HaveKeyWithValue("type", "header"), HaveKeyWithValue("exported_at", nineDigits)))
+		for _, line := range lines[1:] {
+			var record map[string]any
+			Expect(json.Unmarshal(line, &record)).To(Succeed())
+			Expect(record).To(And(
+				HaveKeyWithValue("type", "annotation"), HaveKeyWithValue("kind", "comment"), HaveKeyWithValue("author", BeAssignableToTypeOf("")),
+				HaveKeyWithValue("created_at", nineDigits), HaveKeyWithValue("updated_at", nineDigits),
+			))
+			text, _ := record["id"].(string)
+			id, err := uuid.Parse(text)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(id.Version()).To(Equal(uuid.Version(7)), text)
+			Expect(id.Variant()).To(Equal(uuid.RFC4122), text)
+			sec, nsec := id.Time().UnixTime()
+			createdAt, _ := record["created_at"].(string)
+			Expect(sec*1000+nsec/1_000_000).To(Equal(unixMilli(createdAt)), text)
+		}
 	})
 
 	It("has a stylesheet that paints only with the theme's tokens", func() {

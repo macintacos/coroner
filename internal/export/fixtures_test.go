@@ -74,20 +74,7 @@ var _ = Describe("Frozen export fixtures", func() {
 				return
 			}
 
-			for i, line := range slices.Collect(bytes.Lines(readFixture(name))) {
-				record, ok := schemaValue(line).(map[string]any)
-				Expect(ok).To(BeTrue(), "line %d is an object", i+1)
-				typ, _ := record["type"].(string)
-				if typ == "header" {
-					// A header is the envelope without its record lists.
-					typ = "envelope"
-					for _, key := range []string{"timelines", "sources", "events", "annotations", "attachments", "links"} {
-						record[key] = []any{}
-					}
-				}
-				Expect(schemas).To(HaveKey(typ), "line %d", i+1)
-				Expect(schemas[typ].Validate(record)).To(Succeed(), "line %d", i+1)
-			}
+			expectValidJSONL(schemas, readFixture(name))
 		},
 		entries,
 	)
@@ -171,6 +158,25 @@ func exportSchemas() map[string]*jsonschema.Schema {
 	}
 
 	return schemas
+}
+
+// expectValidJSONL fails unless every line of data validates against its record type's schema.
+func expectValidJSONL(schemas map[string]*jsonschema.Schema, data []byte) {
+	GinkgoHelper()
+	for i, line := range slices.Collect(bytes.Lines(data)) {
+		record, ok := schemaValue(line).(map[string]any)
+		Expect(ok).To(BeTrue(), "line %d is an object", i+1)
+		typ, _ := record["type"].(string)
+		if typ == "header" {
+			// A header is the envelope without its record lists.
+			typ = "envelope"
+			for _, key := range []string{"timelines", "sources", "events", "annotations", "attachments", "links"} {
+				record[key] = []any{}
+			}
+		}
+		Expect(schemas).To(HaveKey(typ), "line %d", i+1)
+		Expect(schemas[typ].Validate(record)).To(Succeed(), "line %d", i+1)
+	}
 }
 
 // schemaValue decodes JSON as the validator reads it.

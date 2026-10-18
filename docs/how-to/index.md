@@ -9,6 +9,8 @@ see the [CLI reference](../reference/cli/coroner.md).
 - [Install coroner](install.md): install, upgrade or remove coroner on macOS or Linux.
 - [Import a colleague's export](import.md): bring a colleague's events, annotations and
   attachments back into your database, and resolve conflicts.
+- [Comment in the HTML page](comment-in-the-html-page.md): add comments to a shared
+  timeline's page without coroner, and import them.
 - [Capture Slack messages](capture-slack-messages.md): add a Slack message as an event at
   the time it was posted, with its text as evidence.
 - [Add log lines](add-log-lines.md): turn MongoDB, syslog and application log lines into

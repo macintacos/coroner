@@ -28,11 +28,11 @@
    in [`.golangci.yml`](../.golangci.yml) fails an import of `internal/store`,
    `internal/cli` or cobra.
 6. **Export JSONL has one reader and one writer:** read it only through `export.Decode`,
-   and write it only through `export.Records` and `export.WriteRecords`. A command that
-   takes JSONL input, such as bulk add or import, never parses JSONL or checks a record's
-   keys, formats or order itself, so the commands cannot drift apart. Domain checks a
-   command needs beyond the export format, such as a known `precision`, stay the
-   command's.
+   and write it only through `export.Records` and `export.WriteRecords`, or, in the HTML
+   page, `annotationRecord` and `annotationsHeader` (rule 10). A command that takes JSONL
+   input, such as bulk add or import, never parses JSONL or checks a record's keys,
+   formats or order itself, so the commands cannot drift apart. Domain checks a command
+   needs beyond the export format, such as a known `precision`, stay the command's.
 7. **Every released fixture keeps passing:** `internal/export/fixtures_test.go` lists
    every file in `testdata/export/v*/`, so a new fixture joins that list. Every fixture,
    an older minor's included, must still validate against the schema and decode under the
@@ -115,7 +115,16 @@
    reaches the markup or ends a script or style element early; another fails when
    `viewer.js` names an HTML sink, such as `innerHTML`, or a vis-timeline `title`, which
    it would parse as HTML; and another when the bundle's SHA-256 is not the one its README
-   records. The page's layout is not a contract (`AGENTS.md` Rule 3); its goldens in
+   records. Its annotations export writes records only through `annotationRecord` and
+   `annotationsHeader`, pure functions that give a comment every key the export's
+   annotation has, a UUIDv7 ID, as every coroner ID is, and instants with nine fractional
+   digits, which import requires. It stores drafts as drafts, not records, only in
+   `localStorage`, keyed by the page's sorted timeline ids and the author's name, and
+   never writes the page's file. A spec validates the page-exported sample in
+   `internal/cli/testdata/script/viewer-annotations.txtar` against the schema and checks
+   its IDs and instants, and that script imports it; another fails when the builders' keys
+   drift from `export.Annotation`, `export.Header` and `export.Query`. The page's layout
+   is not a contract (`AGENTS.md` Rule 3); its goldens in
    `internal/export/testdata/html/`, with the inlined files elided, change only through
    `go test ./internal/export -update`. The bundle changes only by the steps in
    [its README](../internal/export/html/vendor/README.md).
