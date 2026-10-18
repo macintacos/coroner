@@ -19,3 +19,35 @@ var _ = DescribeTable("suggestName",
 	Entry("cuts to 64 characters", strings.Repeat("A", 80), strings.Repeat("a", 64)),
 	Entry("suggests nothing when no letter or digit survives", "!!", ""),
 )
+
+var _ = DescribeTable("resolveTimeline",
+	func(flag *string, env map[string]string, stored, wantNameOrID string, wantBy selectedBy) {
+		lookupEnv := func(key string) (string, bool) {
+			value, ok := env[key]
+			return value, ok
+		}
+
+		nameOrID, by := resolveTimeline(flag, lookupEnv, stored)
+
+		Expect(nameOrID).To(Equal(wantNameOrID))
+		Expect(by).To(Equal(wantBy))
+	},
+	Entry("selects nothing without a flag, variable or stored timeline", nil, nil, "", "", selectedBy("")),
+	Entry("selects nothing with only an empty variable", nil, map[string]string{"CORONER_TIMELINE": ""}, "", "", selectedBy("")),
+	Entry("selects the variable's timeline", nil, map[string]string{"CORONER_TIMELINE": "b"}, "", "b", selectedByEnv),
+	Entry("selects the stored timeline alone", nil, nil, "id-c", "id-c", selectedByUse),
+	Entry("selects the stored timeline over an empty variable",
+		nil, map[string]string{"CORONER_TIMELINE": ""}, "id-c", "id-c", selectedByUse),
+	Entry("selects the variable's timeline over the stored one",
+		nil, map[string]string{"CORONER_TIMELINE": "b"}, "id-c", "b", selectedByEnv),
+	Entry("selects the flag's timeline alone", new("a"), nil, "", "a", selectedByFlag),
+	Entry("selects the flag's timeline over an empty variable",
+		new("a"), map[string]string{"CORONER_TIMELINE": ""}, "", "a", selectedByFlag),
+	Entry("selects the flag's timeline over the variable's",
+		new("a"), map[string]string{"CORONER_TIMELINE": "b"}, "", "a", selectedByFlag),
+	Entry("selects the flag's timeline over the stored one", new("a"), nil, "id-c", "a", selectedByFlag),
+	Entry("selects the flag's timeline over an empty variable and the stored one",
+		new("a"), map[string]string{"CORONER_TIMELINE": ""}, "id-c", "a", selectedByFlag),
+	Entry("selects the flag's timeline over the variable's and the stored one",
+		new("a"), map[string]string{"CORONER_TIMELINE": "b"}, "id-c", "a", selectedByFlag),
+)

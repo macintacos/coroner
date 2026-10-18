@@ -1,0 +1,35 @@
+# How a timeline-scoped command selects its timeline: -t, then CORONER_TIMELINE, then
+# 'coroner timeline use'. A layer naming a missing timeline never falls through.
+
+exits 0 coroner timeline create first
+exits 0 coroner timeline create second
+exits 0 coroner timeline create third
+
+# With nothing selected, exit 2, kind timeline_required, with a hint naming every layer.
+exits 2 coroner timeline view --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_required","message":"[^\n]+","hint":"[^\n]*-t[^\n]*CORONER_TIMELINE[^\n]*coroner timeline use[^\n]*"\}\}\n\z'
+
+# CORONER_TIMELINE wins over the timeline in use.
+exits 0 coroner timeline use first
+env CORONER_TIMELINE=second
+exits 0 coroner timeline view --json
+stdout '"name":"second"'
+
+# -t wins over CORONER_TIMELINE.
+exits 0 coroner timeline view -t third --json
+stdout '"name":"third"'
+
+# A missing timeline named by CORONER_TIMELINE or -t exits 3, kind timeline_not_found.
+env CORONER_TIMELINE=missing
+exits 3 coroner timeline view --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+env CORONER_TIMELINE=
+exits 3 coroner timeline view -t missing --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+
+# An empty CORONER_TIMELINE counts as unset.
+exits 0 coroner timeline view --json
+stdout '"name":"first"'

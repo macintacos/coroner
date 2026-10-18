@@ -26,7 +26,8 @@ const (
 	KindUsage       Kind = "usage"
 	KindInvalidTime Kind = "invalid_time"
 	KindInvalidName Kind = "invalid_name"
-	// KindTimelineRequired means no timeline was named and none is current.
+	// KindTimelineRequired means neither -t, CORONER_TIMELINE nor the current timeline
+	// selects a timeline.
 	KindTimelineRequired Kind = "timeline_required"
 	// KindAmbiguousID means an ID prefix matches more than one record.
 	KindAmbiguousID Kind = "ambiguous_id"

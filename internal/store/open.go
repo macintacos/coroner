@@ -17,6 +17,8 @@ import (
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
+
+	"github.com/macintacos/coroner/internal/store/sqlcgen"
 )
 
 // applicationID is 'corn', stamped by the first migration.
@@ -31,7 +33,13 @@ var migrations embed.FS
 
 // Store is an open coroner database. It is safe for concurrent use.
 type Store struct {
-	db *sql.DB
+	db         *sql.DB
+	migrations fs.FS
+}
+
+// Schema is a database's schema version, and the latest one this build embeds.
+type Schema struct {
+	Version, Latest int64
 }
 
 // Open opens the coroner database at path, creating it and its directory (mode 0700) when
@@ -46,6 +54,53 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	}
 
 	return open(ctx, path, fsys)
+}
+
+// OpenReadOnly opens the existing coroner database at path without creating, migrating or
+// writing to it. SQLite may leave -shm and -wal files beside a WAL database; the database
+// file itself is untouched. It returns an error wrapping fs.ErrNotExist when nothing is at
+// path, and ErrForeignDatabase or ErrDatabaseTooNew as Open does. Below the latest schema,
+// only Schema may be called.
+func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
+	fsys, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		return nil, fmt.Errorf("load migrations: %w", err)
+	}
+
+	// mode=ro reports a missing file as SQLITE_CANTOPEN, not fs.ErrNotExist.
+	_, err = os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Not immutable=1: it would leave no -shm/-wal behind, but it ignores a live writer's WAL.
+	db, err := sql.Open("sqlite", dsn(path)+"&mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+
+	err = inspect(ctx, db, fsys)
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
+	}
+
+	return &Store{db: db, migrations: fsys}, nil
+}
+
+// Schema reads the database's schema version. It is safe to call below Latest; every other
+// read expects the database at Latest.
+func (s *Store) Schema(ctx context.Context) (Schema, error) {
+	latest, err := latestVersion(s.db, s.migrations)
+	if err != nil {
+		return Schema{}, err
+	}
+
+	version, err := readTx(ctx, s, func(tx sqlcgen.DBTX) (int64, error) { return schemaVersion(ctx, tx) })
+	if err != nil {
+		return Schema{}, err
+	}
+
+	return Schema{Version: version, Latest: latest}, nil
 }
 
 // Close closes the database.
@@ -69,7 +124,7 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
 	}
 
-	return &Store{db: db}, nil
+	return &Store{db: db, migrations: fsys}, nil
 }
 
 // dsn escapes path because SQLite reads a file: URI, where ?, # and % are syntax.
@@ -81,7 +136,7 @@ func dsn(path string) string {
 }
 
 func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
-	err := refuseForeign(ctx, db)
+	err := inspect(ctx, db, fsys)
 	if err != nil {
 		return err
 	}
@@ -117,6 +172,67 @@ func refuseForeign(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+func inspect(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+	err := refuseForeign(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	return refuseTooNew(ctx, db, fsys)
+}
+
+// refuseTooNew returns ErrDatabaseTooNew for a database migrated past the migrations in fsys.
+func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) error {
+	latest, err := latestVersion(db, fsys)
+	if err != nil {
+		return err
+	}
+
+	current, err := schemaVersion(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	if current > latest {
+		return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
+	}
+
+	return nil
+}
+
+// latestVersion returns the version of the last migration in fsys.
+func latestVersion(db *sql.DB, fsys fs.FS) (int64, error) {
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
+	if err != nil {
+		return 0, fmt.Errorf("create migration provider: %w", err)
+	}
+
+	sources := provider.ListSources()
+	return sources[len(sources)-1].Version, nil
+}
+
+// schemaVersion reads goose's table by hand: goose's GetVersions creates the table when it
+// is missing, which a read-only connection refuses.
+func schemaVersion(ctx context.Context, db sqlcgen.DBTX) (int64, error) {
+	var tables int64
+	err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = ?",
+		goose.DefaultTablename).Scan(&tables)
+	if err != nil {
+		return 0, fmt.Errorf("read schema version: %w", err)
+	}
+	if tables == 0 {
+		return 0, nil
+	}
+
+	var version int64
+	err = db.QueryRowContext(ctx, "SELECT coalesce(max(version_id), 0) FROM goose_db_version").Scan(&version)
+	if err != nil {
+		return 0, fmt.Errorf("read schema version: %w", err)
+	}
+
+	return version, nil
+}
+
 func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
 	if err != nil {
@@ -128,9 +244,6 @@ func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 
-	if current > target {
-		return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
-	}
 	if current > 0 && current < target {
 		err = backUp(ctx, db, fmt.Sprintf("%s.pre-v%d.bak", path, target))
 		if err != nil {

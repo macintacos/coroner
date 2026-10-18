@@ -17,25 +17,43 @@ import (
 )
 
 func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "view [<name|id>]",
 		Short: "Show a timeline and its events",
 		Long: "Show a timeline: a summary, then its events in the order they happened, each with the\n" +
-			"time since the event before it. Without a name or id, show the current timeline.",
+			"time since the event before it. Without a name, id or -t, show the timeline\n" +
+			"CORONER_TIMELINE or 'coroner timeline use' selects.",
 		Args:        cobra.MaximumNArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline view mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline view --json",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return viewTimeline(ctx, cmd, app, currentTimeline)
+			flag, err := timelineFlag(cmd.Flags())
+			switch {
+			case err != nil:
+				return err
+			case len(args) == 1 && flag != nil:
+				return &Error{
+					Kind:    KindUsage,
+					Message: "pass either a timeline name or id, or -t",
+					Hint:    "Run 'coroner timeline view --help' for usage.",
+				}
+			case len(args) == 1:
+				return viewTimeline(ctx, cmd, app, func(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
+					return findTimeline(ctx, s, args[0])
+				})
 			}
 
 			return viewTimeline(ctx, cmd, app, func(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
-				return findTimeline(ctx, s, args[0])
+				t, _, err := selectTimeline(ctx, s, flag, app.LookupEnv)
+				return t, err
 			})
 		},
 	}
+
+	addTimelineFlag(cmd.Flags())
+
+	return cmd
 }
 
 func viewTimeline(

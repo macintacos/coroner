@@ -27,18 +27,19 @@ func main() {
 		version = build.Main.Version
 	}
 	code := cli.Run(ctx, cli.App{
-		Args:      os.Args[1:],
-		In:        os.Stdin,
-		Out:       os.Stdout,
-		Err:       os.Stderr,
-		OutIsTTY:  isatty.IsTerminal(os.Stdout.Fd()),
-		ErrIsTTY:  isatty.IsTerminal(os.Stderr.Fd()),
-		Version:   version,
-		LookupEnv: os.LookupEnv,
-		ReadFile:  os.ReadFile,
-		Now:       time.Now,
-		NewID:     uuid.NewV7,
-		OpenStore: store.Open,
+		Args:              os.Args[1:],
+		In:                os.Stdin,
+		Out:               os.Stdout,
+		Err:               os.Stderr,
+		OutIsTTY:          isatty.IsTerminal(os.Stdout.Fd()),
+		ErrIsTTY:          isatty.IsTerminal(os.Stderr.Fd()),
+		Version:           version,
+		LookupEnv:         os.LookupEnv,
+		ReadFile:          os.ReadFile,
+		Now:               time.Now,
+		NewID:             uuid.NewV7,
+		OpenStore:         store.Open,
+		OpenStoreReadOnly: store.OpenReadOnly,
 	})
 	os.Exit(code)
 }

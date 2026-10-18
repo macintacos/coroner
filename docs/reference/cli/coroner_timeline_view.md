@@ -9,7 +9,8 @@ Show a timeline and its events
 ### Synopsis
 
 Show a timeline: a summary, then its events in the order they happened, each with the
-time since the event before it. Without a name or id, show the current timeline.
+time since the event before it. Without a name, id or -t, show the timeline
+CORONER_TIMELINE or 'coroner timeline use' selects.
 
 ```
 coroner timeline view [<name|id>] [flags]
@@ -20,6 +21,12 @@ coroner timeline view [<name|id>] [flags]
 ```
   $ coroner timeline view mongo-outage-2026-09-11
   $ coroner timeline view --json
+```
+
+### Options
+
+```
+  -t, --timeline name|id   Timeline name|id to act on
 ```
 
 ### Options inherited from parent commands

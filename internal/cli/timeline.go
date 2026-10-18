@@ -109,19 +109,134 @@ func checkUnambiguous(ctx context.Context, s *store.Store, named timeline.Timeli
 	}
 }
 
-// currentTimeline returns the current timeline, or timeline_required when none is.
-func currentTimeline(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
-	t, err := s.CurrentTimeline(ctx)
-	if errors.Is(err, store.ErrNotFound) {
-		return t, &Error{
-			Kind:    KindTimelineRequired,
-			Message: "no timeline was named and none is current",
-			Hint:    "Pass a timeline name, or run 'coroner timeline use <name>'.",
-			Err:     err,
+// selectedBy names the layer that selected the timeline a command acts on.
+type selectedBy string
+
+const (
+	selectedByFlag selectedBy = "flag"
+	selectedByEnv  selectedBy = "env"
+	selectedByUse  selectedBy = "use"
+)
+
+// setting returns how a user sets this layer: -t, CORONER_TIMELINE or 'coroner timeline use'.
+func (by selectedBy) setting() string {
+	switch by {
+	case selectedByFlag:
+		return "-t"
+	case selectedByEnv:
+		return "CORONER_TIMELINE"
+	case selectedByUse:
+		return "'coroner timeline use'"
+	}
+
+	return string(by)
+}
+
+// addTimelineFlag declares -t/--timeline, so every command registers the same name,
+// shorthand and usage.
+func addTimelineFlag(flags *pflag.FlagSet) {
+	flags.StringP("timeline", "t", "", "Timeline `name|id` to act on")
+}
+
+// timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
+// Commands call it at the top of RunE, before any I/O.
+func timelineFlag(flags *pflag.FlagSet) (*string, error) {
+	flag := changedString(flags, "timeline")
+	if flag != nil && *flag == "" {
+		return nil, &Error{Kind: KindUsage, Message: "-t must not be empty", Hint: "Pass -t with a timeline name or id."}
+	}
+
+	return flag, nil
+}
+
+// resolveTimeline returns the nameOrID that selects the timeline, and its layer: flag when
+// -t was given, then a non-empty CORONER_TIMELINE, then stored, the current timeline's id.
+// It returns ("", "") when no layer selects one.
+func resolveTimeline(flag *string, lookupEnv func(string) (string, bool), stored string) (string, selectedBy) {
+	env, _ := lookupEnv("CORONER_TIMELINE")
+	switch {
+	case flag != nil:
+		return *flag, selectedByFlag
+	case env != "":
+		return env, selectedByEnv
+	case stored != "":
+		return stored, selectedByUse
+	}
+
+	return "", ""
+}
+
+// lookupTimeline returns the timeline -t, CORONER_TIMELINE or the current timeline selects, and
+// its layer; by is "" and err nil when no layer selects one. A layer naming a missing timeline
+// is timeline_not_found rather than falling through to the next, so a typo never acts on
+// another timeline.
+func lookupTimeline(
+	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
+) (timeline.Timeline, selectedBy, error) {
+	stored, err := s.CurrentTimeline(ctx)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return stored, "", err
+	}
+
+	nameOrID, by := resolveTimeline(flag, lookupEnv, stored.ID)
+	var layer string
+	switch by {
+	case selectedByUse:
+		return stored, by, nil
+	case selectedByFlag:
+		layer = fmt.Sprintf("-t %q", nameOrID)
+	case selectedByEnv:
+		layer = fmt.Sprintf("CORONER_TIMELINE=%q", nameOrID)
+	default:
+		return timeline.Timeline{}, by, nil
+	}
+
+	t, err := findTimeline(ctx, s, nameOrID)
+	notFound, ok := errors.AsType[*Error](err)
+	if ok && notFound.Kind == KindTimelineNotFound {
+		return t, by, &Error{
+			Kind: KindTimelineNotFound, Message: layer + ": no such timeline", Hint: notFound.Hint, Err: notFound.Err,
 		}
 	}
 
-	return t, err
+	return t, by, err
+}
+
+// selectTimeline is lookupTimeline for commands that need a timeline: when no layer selects
+// one it is timeline_required, with a hint listing the timelines.
+func selectTimeline(
+	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
+) (timeline.Timeline, selectedBy, error) {
+	t, by, err := lookupTimeline(ctx, s, flag, lookupEnv)
+	if err == nil && by == "" {
+		return t, by, timelineRequiredError(ctx, s)
+	}
+
+	return t, by, err
+}
+
+// timelineRequiredError returns timeline_required, with a hint naming the first few timelines
+// there are.
+func timelineRequiredError(ctx context.Context, s *store.Store) error {
+	timelines, err := s.Timelines(ctx)
+	if err != nil {
+		return err
+	}
+
+	const shown = 10
+	hint := "Pass -t <name>, set CORONER_TIMELINE, or run 'coroner timeline use <name>'."
+	if len(timelines) > 0 {
+		names := make([]string, 0, shown)
+		for _, t := range timelines[:min(len(timelines), shown)] {
+			names = append(names, t.Name)
+		}
+		if more := len(timelines) - len(names); more > 0 {
+			names = append(names, fmt.Sprintf("and %d more", more))
+		}
+		hint = "Timelines: " + strings.Join(names, ", ") + "\n" + hint
+	}
+
+	return &Error{Kind: KindTimelineRequired, Message: "no timeline selected", Hint: hint}
 }
 
 // checkTimeline returns the first rule t breaks as an *Error: an invalid name as invalid_name
