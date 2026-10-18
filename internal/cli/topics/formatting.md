@@ -34,8 +34,11 @@ closed: a command line missing a required value exits 2 instead of asking.
   select it. Its source, tag, text and time filters select what `coroner event list`'s
   flags do, and panning or zooming the timeline sets the time filter to what it shows. Its
   link keeps the filters, that window included, and the selected event for sharing, and
-  Export PNG saves the timeline as shown. It loads nothing over the network, shows times
-  in the zone `md` does, and is written to the file `-o` names, or to stdout with `-o -`.
+  Export PNG saves the timeline as shown. Dense stretches of a row collapse into a count
+  and the minutes they span, and split as you zoom in. It follows the system's light or
+  dark theme until you pick one, which the browser remembers, and prints the filtered
+  events as a list, a day at a time. It loads nothing over the network, shows times in the
+  zone `md` does, and is written to the file `-o` names, or to stdout with `-o -`.
 
 ## What JSON output promises
 

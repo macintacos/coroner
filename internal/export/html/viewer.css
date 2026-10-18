@@ -1,80 +1,132 @@
+/*
+ * Colours come from the theme's custom properties, which export's theme.go writes ahead of
+ * this sheet with their light and dark values. These tokens are the rest of the scale.
+ */
 :root {
-  color-scheme: light dark;
-  --paper: #f7f8f9;
-  --ink: #1e2328;
-  --muted: #5c6670;
-  --rule: #d6dbdf;
-  --well: #eceff2;
-  --accent: #2d6a8a;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #15181b;
-    --ink: #e2e6e9;
-    --muted: #9aa4ad;
-    --rule: #343b42;
-    --well: #1f2429;
-    --accent: #7db8d6;
-  }
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Type scale, from a 15px body. */
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-print: 10pt;
+  --space-0: 0.125rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 3rem;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
 }
 
 body {
   margin: 0;
-  padding: 1.5rem 1rem 3rem;
+  padding: var(--space-5) var(--space-4) var(--space-6);
   background: var(--paper);
   color: var(--ink);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: var(--text-base) / 1.5 var(--font-sans);
 }
 
-header,
+header {
+  display: grid;
+  grid-template-columns: minmax(0, 80ch) auto;
+  justify-content: space-between;
+  align-items: start;
+  column-gap: var(--space-5);
+}
+
 #detail {
   max-width: 80ch;
 }
 
 h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-xl);
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
 h2 {
-  font-size: 1.125rem;
-  margin: 0 0 0.5rem;
+  font-size: var(--text-lg);
+  margin: 0 0 var(--space-2);
 }
 
 h3 {
-  font-size: 1rem;
-  margin: 1.5rem 0 0.5rem;
+  font-size: var(--text-base);
+  margin: var(--space-5) 0 var(--space-2);
 }
 
 .refs,
 .meta,
 .hint,
 .label,
+.tags,
 dt {
   color: var(--muted);
 }
 
 header p {
+  grid-column: 1;
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+h2,
+.time,
+.cluster,
+#timeline .vis-time-axis {
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input:not([type="checkbox"]) {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  padding: var(--space-0) var(--space-2);
+}
+
+button {
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#theme {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#theme[aria-pressed="true"] {
+  background: var(--selected);
+  border-color: var(--accent);
 }
 
 #filters {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 0.75rem 1.5rem;
-  margin: 1.25rem 0 0;
+  gap: var(--space-3) var(--space-5);
+  margin: var(--space-4) 0 0;
 }
 
 #filters fieldset {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.75rem;
+  gap: var(--space-1) var(--space-3);
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -92,7 +144,7 @@ header p {
 #filters label {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
   color: var(--ink);
 }
 
@@ -100,22 +152,8 @@ header p {
 #filters .range label {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   color: var(--muted);
-}
-
-#filters input:not([type="checkbox"]),
-#filters button {
-  font: inherit;
-  color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  padding: 0.125rem 0.375rem;
-}
-
-#filters button {
-  background: var(--well);
-  cursor: pointer;
 }
 
 #filters .range {
@@ -126,44 +164,147 @@ header p {
   margin-left: auto;
 }
 
-#filters input:focus-visible,
-#filters button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
 #timeline {
-  margin: 1.25rem 0;
-  border-top: 1px solid var(--rule);
+  margin: var(--space-4) 0 var(--space-5);
 }
 
 /* #timeline outranks vis-timeline's own rules, which it injects after this sheet. */
-#timeline .vis-timeline {
+#timeline .vis-timeline,
+#timeline .vis-panel,
+#timeline .vis-labelset .vis-label,
+#timeline .vis-foreground .vis-group,
+#timeline .vis-time-axis .vis-grid.vis-major {
   border-color: var(--rule);
+}
+
+#timeline .vis-timeline {
+  border-radius: var(--radius-md);
   font: inherit;
 }
 
-#timeline .vis-labelset .vis-label,
+#timeline .vis-time-axis .vis-grid.vis-minor {
+  border-color: var(--surface);
+}
+
 #timeline .vis-time-axis .vis-text {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+#timeline .vis-time-axis .vis-text.vis-major {
   color: var(--ink);
 }
 
+#timeline .vis-panel .vis-shadow {
+  box-shadow: 0 0 6px var(--rule);
+}
+
+#timeline .vis-current-time {
+  background: var(--accent);
+}
+
+#timeline .vis-labelset .vis-label {
+  color: var(--ink);
+}
+
+/* Each row's colour, beside its name so the name still tells sources apart. */
+#timeline .vis-label .vis-inner::before {
+  content: "";
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-right: var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--source);
+  vertical-align: -0.0625rem;
+}
+
 #timeline .vis-item {
-  border-color: var(--accent);
+  border-color: var(--source);
   background: var(--paper);
   color: var(--ink);
 }
 
+#timeline .vis-item.vis-point,
+#timeline .vis-item.vis-point.vis-selected {
+  background: transparent;
+}
+
 #timeline .vis-item .vis-item-content {
-  max-width: 24em;
+  max-width: 14em;
+  padding: var(--space-0) var(--space-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#timeline .vis-item.vis-selected {
-  background: var(--well);
+#timeline .vis-item.vis-dot {
+  background: var(--source);
+}
+
+#timeline .vis-item.vis-range {
+  border-width: 1px 1px 1px 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+/*
+ * A time kept to the minute or coarser is hollow; a guessed one has a broken outline, dotted
+ * on a dot and dashed on a range, and keeps its ~. A hollow dot's 4px plus 2px of border
+ * keeps vis-timeline's 8px dot, so its placement still centres it.
+ */
+#timeline .vis-item.vis-dot:is(.coarse, .approximate) {
+  width: 4px;
+  height: 4px;
+  border-width: 2px;
+  background: var(--paper);
+}
+
+#timeline .vis-item.vis-dot.approximate {
+  border-style: dotted;
+}
+
+#timeline .vis-item.coarse.vis-range {
+  border-width: 1px;
+  background: var(--paper);
+}
+
+#timeline .vis-item.approximate.vis-range {
+  border-style: dashed;
+}
+
+#timeline .vis-item.vis-selected .vis-item-content {
+  background: var(--selected);
+  border-radius: var(--radius-sm);
   box-shadow: 0 0 0 2px var(--accent);
+}
+
+#timeline .vis-item.vis-selected.vis-dot {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+#timeline .vis-item.vis-cluster {
+  border-width: 1px 1px 1px 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: zoom-in;
+}
+
+.cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.cluster .count {
+  font-weight: 600;
+}
+
+.cluster .time {
+  color: var(--muted);
+  font-size: var(--text-sm);
 }
 
 .text,
@@ -175,8 +316,8 @@ header p {
 dl {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0.25rem 1rem;
-  margin: 1rem 0 0;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-4) 0 0;
 }
 
 dd {
@@ -188,11 +329,6 @@ a {
   color: var(--accent);
 }
 
-a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .annotations {
   list-style: none;
   margin: 0;
@@ -200,7 +336,7 @@ a:focus-visible {
 }
 
 .annotations li {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--space-4);
 }
 
 .annotations .label,
@@ -209,10 +345,93 @@ a:focus-visible {
 }
 
 pre.body {
-  padding: 0.5rem 0.75rem;
-  background: var(--well);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
   border-left: 3px solid var(--rule);
-  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: var(--text-sm) / 1.45 var(--font-mono);
   overflow-x: auto;
   white-space: pre;
+}
+
+#print {
+  display: none;
+}
+
+@page {
+  margin: 15mm;
+}
+
+@media print {
+  body {
+    padding: 0;
+    font-size: var(--text-print);
+  }
+
+  header {
+    display: block;
+    margin-bottom: var(--space-5);
+  }
+
+  #theme,
+  #filters,
+  #timeline,
+  #detail,
+  noscript {
+    display: none;
+  }
+
+  #print {
+    display: block;
+  }
+
+  #print h2 {
+    margin: var(--space-5) 0 var(--space-2);
+    padding-bottom: var(--space-1);
+    border-bottom: 1px solid var(--rule);
+    break-after: avoid;
+  }
+
+  /* Each row is a subgrid, so a day's times share one column as wide as its longest. */
+  #print .events {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 8em) minmax(0, 1fr);
+    column-gap: var(--space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  #print .events > li {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    padding: var(--space-1) 0;
+    break-inside: avoid;
+  }
+
+  #print .events > li > :not(.time, .source) {
+    grid-column: 3;
+    margin: 0;
+  }
+
+  #print .time {
+    white-space: nowrap;
+  }
+
+  #print .source {
+    overflow-wrap: anywhere;
+  }
+
+  #print .annotations {
+    margin-top: var(--space-1);
+  }
+
+  #print .annotations li {
+    margin-bottom: var(--space-2);
+  }
+
+  pre.body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
 }

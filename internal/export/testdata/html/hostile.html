@@ -4,13 +4,99 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>coroner timeline</title>
-<style>/* html/viewer.css */</style>
+<style>:root {
+  color-scheme: light;
+  --paper: #f6f7f5;
+  --surface: #eaecea;
+  --selected: #dce7ef;
+  --ink: #1b1f22;
+  --muted: #545c63;
+  --rule: #d3d8d6;
+  --accent: #1f5f8b;
+  --source-0: #0b6aa8;
+  --source-1: #b35c00;
+  --source-2: #1f7a4d;
+  --source-3: #b0306e;
+  --source-4: #6a4fb0;
+  --source-5: #00797a;
+  --source-6: #876a00;
+  --source-7: #b3261e;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #121517;
+  --surface: #1b1f22;
+  --selected: #1d3140;
+  --ink: #e3e7e9;
+  --muted: #9ba4ab;
+  --rule: #30373c;
+  --accent: #7fb6dc;
+  --source-0: #5aaef0;
+  --source-1: #f0a050;
+  --source-2: #5cc28e;
+  --source-3: #e97fb4;
+  --source-4: #a996f0;
+  --source-5: #4fc4c4;
+  --source-6: #d8b64a;
+  --source-7: #f28b82;
+}
+@media (prefers-color-scheme: dark) {
+:root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --paper: #121517;
+  --surface: #1b1f22;
+  --selected: #1d3140;
+  --ink: #e3e7e9;
+  --muted: #9ba4ab;
+  --rule: #30373c;
+  --accent: #7fb6dc;
+  --source-0: #5aaef0;
+  --source-1: #f0a050;
+  --source-2: #5cc28e;
+  --source-3: #e97fb4;
+  --source-4: #a996f0;
+  --source-5: #4fc4c4;
+  --source-6: #d8b64a;
+  --source-7: #f28b82;
+}
+}
+@media print {
+:root:root:root {
+  color-scheme: light;
+  --paper: #f6f7f5;
+  --surface: #eaecea;
+  --selected: #dce7ef;
+  --ink: #1b1f22;
+  --muted: #545c63;
+  --rule: #d3d8d6;
+  --accent: #1f5f8b;
+  --source-0: #0b6aa8;
+  --source-1: #b35c00;
+  --source-2: #1f7a4d;
+  --source-3: #b0306e;
+  --source-4: #6a4fb0;
+  --source-5: #00797a;
+  --source-6: #876a00;
+  --source-7: #b3261e;
+}
+}
+.source-0 { --source: var(--source-0); }
+.source-1 { --source: var(--source-1); }
+.source-2 { --source: var(--source-2); }
+.source-3 { --source: var(--source-3); }
+.source-4 { --source: var(--source-4); }
+.source-5 { --source: var(--source-5); }
+.source-6 { --source: var(--source-6); }
+.source-7 { --source: var(--source-7); }
+.source-none { --source: var(--muted); }
+/* html/viewer.css */</style>
 </head>
-<body>
+<body data-source-colors="8">
 <header>
 <h1 id="heading"></h1>
 <p class="refs" id="refs"></p>
 <p class="meta" id="meta"></p>
+<button type="button" id="theme" aria-pressed="false">Dark theme</button>
 </header>
 <main>
 <form id="filters">
@@ -26,6 +112,7 @@
 </form>
 <div id="timeline"></div>
 <section id="detail" aria-live="polite"></section>
+<section id="print"></section>
 </main>
 <noscript>This timeline needs JavaScript to show its events.</noscript>
 <script type="application/json" id="coroner-data">{"format":"coroner.export","format_version":"1.1","coroner_version":"0.1.0","exported_at":"2026-09-12T21:40:05.000000000Z","query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"},"timelines":[{"id":"t1","name":"hostile","title":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","refs":["\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e"],"created_at":"0001-01-01T00:00:00.000000000Z"}],"sources":[],"events":[{"id":"e1","timeline_id":"","seq":1,"occurred_at":"2026-09-11T03:14:07.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","tags":["\u003c/script\u003e"],"text":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","url":"javascript:alert(1)","author":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","created_at":"0001-01-01T00:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"}],"annotations":[{"id":"a1","timeline_id":"","event_id":"e1","kind":"evidence","body":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","author":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","source":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","url":"\u003c/script\u003e\u003cimg src=x onerror=alert(1)\u003e \u0026amp; \u0026 \u003c!-- \u003cb\u003e","created_at":"2026-09-12T09:00:00.000000000Z","updated_at":"0001-01-01T00:00:00.000000000Z"}],"attachments":[]}

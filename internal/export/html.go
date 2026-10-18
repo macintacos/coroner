@@ -25,7 +25,9 @@ var visTimeline string
 
 // htmlPage is what the page shell interpolates.
 type htmlPage struct {
-	CSS, Export, Zone, Library, Viewer string
+	Theme, CSS, Export, Zone, Library, Viewer string
+	// SourceColors is how many colours the viewer's sources cycle through.
+	SourceColors int
 }
 
 // pageZone is what the viewer needs to show times in the export's zone: its name, and its
@@ -74,15 +76,16 @@ func WriteHTML(w io.Writer, env Envelope, zone *time.Location) error {
 
 	// text/template, not html/template: html/template would need template.JS and template.CSS
 	// conversions, which gosec flags, and lint is never suppressed. Nothing is escaped, so each
-	// value is JSON from Write, which escapes <, > and &, or an embedded file with no </script,
-	// </style or <!--; specs pin both.
+	// value is JSON from Write, which escapes <, > and &, an embedded file with no </script,
+	// </style or <!--, or the theme built from constants; specs pin all three.
 	shell, err := template.New("page").Parse(pageShell)
 	if err != nil {
 		return err
 	}
 	var page bytes.Buffer
 	err = shell.Execute(&page, htmlPage{
-		CSS: viewerCSS, Export: exported.String(), Zone: zoneData.String(), Library: visTimeline, Viewer: viewerJS,
+		Theme: themeCSS(), CSS: viewerCSS, Export: exported.String(), Zone: zoneData.String(), Library: visTimeline,
+		Viewer: viewerJS, SourceColors: len(sourcePalette()),
 	})
 	if err != nil {
 		return err
