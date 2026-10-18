@@ -11,10 +11,16 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/x/ansi"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
 )
+
+// reportCellSize is the XTWINOPS operation asking the terminal for its cell size in pixels.
+const reportCellSize = 16
 
 type prompt int
 
@@ -50,6 +56,13 @@ type loadedMsg struct {
 	seq      int
 }
 
+// imageMsg is the image attachmentID holds, or why it could not be read.
+type imageMsg struct {
+	attachmentID string
+	img          graphics.Image
+	err          error
+}
+
 // Model is the viewer's state; build it with New.
 type Model struct {
 	opts     Options
@@ -61,8 +74,11 @@ type Model struct {
 	seq int
 	// annotations holds the snapshot's annotations by event id.
 	annotations map[string][]timeline.Annotation
-	// expanded holds the ids of the events whose annotations show.
+	// attachments holds the snapshot's attachments by the id of their event or annotation.
+	attachments map[string][]timeline.Attachment
+	// expanded holds the ids of the events whose annotations and attachments show.
 	expanded map[string]bool
+	images   inlineImages
 	// lines are the event list's lines and blocks[i] where event i's sit in them, rebuilt only
 	// when the snapshot, width or expanded events change.
 	lines    []string
@@ -87,6 +103,7 @@ func New(opts Options) Model {
 	m := Model{
 		opts:     opts,
 		expanded: map[string]bool{},
+		images:   inlineImages{shown: map[string]shownImage{}},
 		input:    textinput.New(),
 		keys:     newKeyMap(),
 		help:     help.New(),
@@ -99,9 +116,14 @@ func New(opts Options) Model {
 	return m.show(opts.Snapshot, opts.Match)
 }
 
-// Init starts nothing: the first snapshot arrives through Options.
+// Init asks a terminal that shows images for its cell size and then its attributes, which every
+// terminal answers; the first snapshot arrives through Options.
 func (m Model) Init() tea.Cmd {
-	return nil
+	if m.images.protocol != graphics.Kitty {
+		return nil
+	}
+
+	return tea.Raw(ansi.WindowOp(reportCellSize) + ansi.RequestPrimaryDeviceAttributes)
 }
 
 // Update applies msg.
@@ -109,9 +131,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		return m.render(), nil
+		return m.placeImages()
+	case uv.CellSizeEvent:
+		m.images.cell = graphics.Pixels{Width: msg.Width, Height: msg.Height}
+		return m.placeImages()
+	case uv.PrimaryDeviceAttributesEvent:
+		m.images.answered = true
+		return m.sendImages()
 	case loadedMsg:
-		return m.loaded(msg), nil
+		return m.loaded(msg)
+	case imageMsg:
+		return m.imageRead(msg)
 	case tea.KeyPressMsg:
 		return m.keyPressed(msg)
 	}
@@ -164,12 +194,12 @@ func (m Model) listKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.help):
 		m.showHelp = true
 		return m, nil
-	case key.Matches(msg, m.keys.annotations):
+	case key.Matches(msg, m.keys.expand):
 		if len(m.snapshot.Events) > 0 {
 			id := m.snapshot.Events[m.cursor].ID
 			m.expanded[id] = !m.expanded[id]
 		}
-		return m.render(), nil
+		return m.render().readImages()
 	}
 
 	return m.moveTo(m.cursor + m.movement(msg)), nil
@@ -306,18 +336,19 @@ func (m Model) load(match Match) (Model, tea.Cmd) {
 	}
 }
 
-func (m Model) loaded(msg loadedMsg) Model {
+// loaded shows the snapshot msg read, and reads the images it gained on expanded events.
+func (m Model) loaded(msg loadedMsg) (Model, tea.Cmd) {
 	switch {
 	case msg.seq != m.seq:
-		return m
+		return m, nil
 	case msg.err != nil:
 		m.problem = failure(msg.err)
 		m.pending = m.match
-		return m.scroll()
+		return m.scroll(), nil
 	}
 
 	m.problem = ""
-	return m.show(msg.snapshot, msg.match)
+	return m.show(msg.snapshot, msg.match).readImages()
 }
 
 // show replaces what the viewer shows, keeping the cursor on its event when the snapshot still
@@ -334,6 +365,14 @@ func (m Model) show(snapshot Snapshot, match Match) Model {
 		if a.EventID != nil {
 			m.annotations[*a.EventID] = append(m.annotations[*a.EventID], a)
 		}
+	}
+	m.attachments = map[string][]timeline.Attachment{}
+	for _, a := range snapshot.Attachments {
+		owner := a.Owner.EventID
+		if owner == nil {
+			owner = a.Owner.AnnotationID
+		}
+		m.attachments[*owner] = append(m.attachments[*owner], a)
 	}
 
 	if i := slices.IndexFunc(snapshot.Events, func(e timeline.Event) bool { return e.ID == cursorID }); i >= 0 {
@@ -370,10 +409,10 @@ func (m Model) moveTo(i int) Model {
 }
 
 // scroll sizes the event list to the window and scrolls it so the cursor event, the rules above
-// it and its annotations show.
+// it and its annotations and attachments show.
 func (m Model) scroll() Model {
 	m.body.SetWidth(m.width)
-	m.body.SetHeight(max(m.height-lipgloss.Height(m.header())-lipgloss.Height(m.footer()), 1))
+	m.body.SetHeight(m.bodyHeight())
 	m.body.SetContentLines(m.lines)
 
 	var cursor block
@@ -387,6 +426,86 @@ func (m Model) scroll() Model {
 	m.body.SetYOffset(min(offset, cursor.top))
 
 	return m
+}
+
+// bodyHeight is how many lines the event list gets in the window.
+func (m Model) bodyHeight() int {
+	return max(m.height-lipgloss.Height(m.header())-lipgloss.Height(m.footer()), 1)
+}
+
+// readImages starts reading, one at a time, each image attachment on an expanded event or its
+// annotations that has not been read yet.
+func (m Model) readImages() (Model, tea.Cmd) {
+	var toRead []timeline.Attachment
+	m.images, toRead = m.images.toRead(m.expandedAttachments())
+	reads := make([]tea.Cmd, 0, len(toRead))
+	for _, a := range toRead {
+		reads = append(reads, readImage(m.opts.Image, a))
+	}
+
+	return m, tea.Sequence(reads...)
+}
+
+// expandedAttachments are the attachments on each expanded event and its annotations, in the order
+// they show.
+func (m Model) expandedAttachments() []timeline.Attachment {
+	var owned []timeline.Attachment
+	for _, e := range m.snapshot.Events {
+		if !m.expanded[e.ID] {
+			continue
+		}
+		owned = append(owned, m.attachments[e.ID]...)
+		for _, a := range m.annotations[e.ID] {
+			owned = append(owned, m.attachments[a.ID]...)
+		}
+	}
+
+	return owned
+}
+
+func readImage(image func(timeline.Attachment) (graphics.Image, error), a timeline.Attachment) tea.Cmd {
+	return func() tea.Msg {
+		img, err := image(a)
+		return imageMsg{attachmentID: a.ID, img: img, err: err}
+	}
+}
+
+// imageRead keeps the image msg read, or that it failed, and sends it.
+func (m Model) imageRead(msg imageMsg) (Model, tea.Cmd) {
+	m.images = m.images.read(msg.attachmentID, msg.img, msg.err)
+	return m.sendImages()
+}
+
+// sendImages rebuilds the event list and, once a terminal that shows images has answered, sends
+// it each image read and not sent yet, in snapshot order, so ids are assigned deterministically.
+func (m Model) sendImages() (Model, tea.Cmd) {
+	var sends string
+	m.images, sends = m.images.send(m.snapshot.Attachments, m.gridFor)
+	return m.render(), raw(sends)
+}
+
+// raw is the command writing sequence to the terminal, or nil for an empty sequence.
+func raw(sequence string) tea.Cmd {
+	if sequence == "" {
+		return nil
+	}
+
+	return tea.Raw(sequence)
+}
+
+// placeImages rebuilds the event list and places each image sent to the terminal again whose
+// grid the window or cell size changed.
+func (m Model) placeImages() (Model, tea.Cmd) {
+	var places string
+	m.images, places = m.images.place(m.snapshot.Attachments, m.gridFor)
+	return m.render(), raw(places)
+}
+
+// gridFor is the grid attachment a shows img in: as wide as the window leaves beside its lines'
+// indent, and no taller than half the event list, since no key scrolls within an event's lines.
+func (m Model) gridFor(a timeline.Attachment, img graphics.Image) graphics.Grid {
+	bounds := graphics.Grid{Cols: m.width - attachmentIndentWidth(a), Rows: max(m.bodyHeight()/2, 1)}
+	return graphics.Fit(img, bounds, m.images.cell)
 }
 
 // View draws the header, the event list or the key help, the message line and the short help.

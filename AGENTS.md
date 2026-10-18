@@ -85,10 +85,12 @@ digraph coroner_rules_router {
   renderers: `internal/export`, the JSON described by
   [the export format reference](docs/reference/export-format.md); the HTML page's viewer
   and vendored vis-timeline live in `internal/export/html/`. The terminal viewer
-  `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. `main.go`
-  builds `cli.App` from the process; code below it takes everything from `cli.App`, never
-  from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen` writes the CLI
-  reference, `schemagen` the export schema, `compatfixture` a release's fixture database).
+  `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. Which
+  terminals show images inline, the Kitty graphics sequences and the placeholder text
+  shown where none can: `internal/graphics`, pure. `main.go` builds `cli.App` from the
+  process; code below it takes everything from `cli.App`, never from `os`. Dev tools run
+  with `go run`: `internal/tools/` (`docgen` writes the CLI reference, `schemagen` the
+  export schema, `compatfixture` a release's fixture database).
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
   `exit-codes` disagrees with the exit-code map or `environment` misses an environment

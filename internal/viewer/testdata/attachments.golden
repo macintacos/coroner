@@ -1,0 +1,20 @@
+mongo-outage  Primary election storm                   times in America/New_York
+5 events
+  ── Thu 2026-09-10 ────────────────────────────────────────────────────────────
+› #2   23:14:07 EDT     mongod  election,phase:detect  Primary stepped down  (2…
+      [image: p99.png · 40×30 · 184 KB]                                         
+      [file: mongod.log · 2 MB]                                                 
+      ▌ evidence  replSetStepDown called  (from mongod, by julian)              
+      ▌           term 12 -> 13                                                 
+      ▌           [image: grafana.png · 16×16 · 9 KB]                           
+      │ comment   The heartbeat timeout looks too tight  (by julian)            
+  ── 46m ───────────────────────────────────────────────────────────────────────
+  ── Fri 2026-09-11 ────────────────────────────────────────────────────────────
+  #1  ~00:01 EDT        slack   -                      Pager fires for db-2     
+  ── 9m ────────────────────────────────────────────────────────────────────────
+  #4   00:10–00:40 EDT  mongod  -                      Replica lag above 30s    
+  #3   00:42:30 EDT     -       -                      Deploy rolled back       
+  ── 23h17m ────────────────────────────────────────────────────────────────────
+  ── Sat 2026-09-12 ────────────────────────────────────────────────────────────
+
+enter expand • s source • t tag • / text • @ jump • ? keys • q quit

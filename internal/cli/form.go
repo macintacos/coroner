@@ -12,11 +12,15 @@ import (
 	"charm.land/huh/v2"
 )
 
-// formChoices are what a form's text fields pick from or suggest, by field name.
+// formChoices are what a form's text fields pick from or suggest, and what a list field shows
+// under the value picked, by field name.
 type formChoices struct {
 	// options makes the field a Select instead of an Input.
 	options     map[string][]huh.Option[string]
 	suggestions map[string][]string
+	// thumbnails return the lines shown under a list field's value, and a command the terminal
+	// needs to show them.
+	thumbnails map[string]func(value string) (string, tea.Cmd)
 }
 
 // formValues is the submit adapter: the fieldValues a form's fields hold, where an empty value,
@@ -132,7 +136,8 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 		b, _ := strconv.ParseBool(*bound)
 		return huh.NewConfirm().Key(f.name).Title(title).Description(help).Value(&b)
 	case f.typ == stringsField && f.list:
-		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check)
+		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check).
+			withThumbnail(form.choices.thumbnails[f.name])
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)

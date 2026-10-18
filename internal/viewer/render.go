@@ -10,6 +10,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -21,6 +22,8 @@ const (
 	maxNameWidth   = 32
 	maxTitleWidth  = 32
 	indent         = "  "
+	// expandedIndent is where an expanded event's attachments and annotations start.
+	expandedIndent = indent + "    "
 )
 
 type styles struct {
@@ -142,6 +145,7 @@ func (m Model) bodyLines() ([]string, []block) {
 		row := len(lines)
 		lines = append(lines, m.row(e, i == m.cursor))
 		if m.expanded[e.ID] {
+			lines = append(lines, m.attachmentLines(m.attachments[e.ID], expandedIndent)...)
 			lines = append(lines, m.annotationLines(e.ID)...)
 		}
 		blocks[i] = block{top: top, row: row, bottom: len(lines) - 1}
@@ -181,7 +185,7 @@ func measure(events []timeline.Event, loc *time.Location) widths {
 	return w
 }
 
-// row is e's line: seq, time, source, tags, text and how many annotations it has.
+// row is e's line: seq, time, source, tags, text and how many annotations and attachments it has.
 func (m Model) row(e timeline.Event, selected bool) string {
 	w := m.widths
 	fields := []string{
@@ -191,9 +195,16 @@ func (m Model) row(e timeline.Event, selected bool) string {
 		pad(ansi.Truncate(tagsText(e), w.tags, "…"), w.tags),
 		oneLine(e.Text),
 	}
-	count := ""
+	var counts []string
 	if n := len(m.annotations[e.ID]); n > 0 {
-		count = fmt.Sprintf("  (%d %s)", n, plural(n, "annotation"))
+		counts = append(counts, fmt.Sprintf("%d %s", n, plural(n, "annotation")))
+	}
+	if n := len(m.attachments[e.ID]); n > 0 {
+		counts = append(counts, fmt.Sprintf("%d %s", n, plural(n, "attachment")))
+	}
+	count := ""
+	if len(counts) > 0 {
+		count = "  (" + strings.Join(counts, ", ") + ")"
 	}
 
 	if selected {
@@ -207,11 +218,12 @@ func (m Model) row(e timeline.Event, selected bool) string {
 	return m.fit(indent + strings.Join(styled, "  "))
 }
 
-// annotationLines are the annotations on the event with eventID, evidence marked ▌ and comments │.
+// annotationLines are the annotations on the event with eventID, evidence marked ▌ and comments │,
+// each followed by its attachments.
 func (m Model) annotationLines(eventID string) []string {
 	annotations := m.annotations[eventID]
 	if len(annotations) == 0 {
-		return []string{m.fit(indent + "    " + m.styles.faint.Render("No annotations."))}
+		return []string{m.fit(expandedIndent + m.styles.faint.Render("No annotations."))}
 	}
 
 	var lines []string
@@ -221,16 +233,65 @@ func (m Model) annotationLines(eventID string) []string {
 			mark, label, style = "│", "comment", m.styles.comment
 		}
 
-		head := fmt.Sprintf("%s %-8s  ", mark, label)
-		under := strings.Repeat(" ", lipgloss.Width(head)-lipgloss.Width(mark))
+		head, under := annotationHead(mark, label), expandedIndent+annotationIndent(style.Render(mark))
 		body := strings.Split(printable(a.Body), "\n")
-		lines = append(lines, m.fit(indent+"    "+style.Render(head)+body[0]+m.styles.faint.Render(attribution(a))))
+		lines = append(lines, m.fit(expandedIndent+style.Render(head)+body[0]+m.styles.faint.Render(attribution(a))))
 		for _, line := range body[1:] {
-			lines = append(lines, m.fit(indent+"    "+style.Render(mark)+under+line))
+			lines = append(lines, m.fit(under+line))
 		}
+		lines = append(lines, m.attachmentLines(m.attachments[a.ID], under)...)
 	}
 
 	return lines
+}
+
+// annotationHead is an annotation's mark and kind, padded to where its body starts.
+func annotationHead(mark, label string) string {
+	return fmt.Sprintf("%s %-8s  ", mark, label)
+}
+
+// annotationIndent is what starts an annotation's lines under its head: its mark, then blanks to
+// where its body starts, which is as far for every kind.
+func annotationIndent(mark string) string {
+	return mark + strings.Repeat(" ", lipgloss.Width(annotationHead("", "")))
+}
+
+// attachmentLines are attachments, each after prefix: an image sent to the terminal as its
+// placeholder cells over its caption, anything else as its placeholder text.
+func (m Model) attachmentLines(attachments []timeline.Attachment, prefix string) []string {
+	var lines []string
+	for _, a := range attachments {
+		shown := m.images.shown[a.ID]
+		caption := graphics.Caption{
+			Filename: a.Filename, Size: a.Size, Width: shown.img.Width, Height: shown.img.Height, Image: isImage(a),
+		}
+		if shown.state != imageSent {
+			lines = append(lines, m.fit(prefix+m.styles.faint.Render(caption.Placeholder())))
+			continue
+		}
+
+		for _, cells := range graphics.Cells(shown.id, shown.grid) {
+			lines = append(lines, m.fit(prefix+cells))
+		}
+		lines = append(lines, m.fit(prefix+m.styles.faint.Render(caption.String())))
+	}
+
+	return lines
+}
+
+// attachmentIndentWidth is how far in a's lines start: under its event, or under its
+// annotation's head, whose one-cell mark is any kind's.
+func attachmentIndentWidth(a timeline.Attachment) int {
+	width := lipgloss.Width(expandedIndent)
+	if a.Owner.AnnotationID != nil {
+		width += lipgloss.Width(annotationIndent("▌"))
+	}
+
+	return width
+}
+
+func isImage(a timeline.Attachment) bool {
+	return strings.HasPrefix(a.MIME, "image/")
 }
 
 func attribution(a timeline.Annotation) string {

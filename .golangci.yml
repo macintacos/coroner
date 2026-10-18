@@ -78,6 +78,17 @@ linters:
               desc: take I/O as parameters
             - pkg: database/sql
               desc: storage lives in internal/store
+        graphics-pure:
+          list-mode: strict
+          files:
+            - "${base-path}/internal/graphics/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/charmbracelet/x/ansi
+          deny:
+            - pkg: os
+              desc: take I/O as parameters
         export-contract:
           files:
             - "${base-path}/internal/export/**"

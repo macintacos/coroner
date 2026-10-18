@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -107,7 +108,7 @@ func printAttachments(o output, attachments []timeline.Attachment, order eventOr
 		} else {
 			attachedTo = *a.Owner.AnnotationID
 		}
-		rows = append(rows, []string{a.ID, attachedTo, a.Filename, formatSize(a.Size), a.MIME})
+		rows = append(rows, []string{a.ID, attachedTo, a.Filename, graphics.ByteSize(a.Size), a.MIME})
 	}
 
 	return o.rows(rows)

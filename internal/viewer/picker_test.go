@@ -3,6 +3,7 @@ package viewer_test
 import (
 	"context"
 	"io"
+	"reflect"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,16 +45,18 @@ func openPicker(notice string) tea.Model {
 	return m
 }
 
-// messages runs cmd and the commands of every batch it returns, and returns their messages.
+// messages runs cmd and the commands of every batch or sequence it returns, and returns their messages.
 func messages(cmd tea.Cmd) []tea.Msg {
 	if cmd == nil {
 		return nil
 	}
 	msg := cmd()
-	batch, ok := msg.(tea.BatchMsg)
-	if !ok {
+	// tea.Sequence's message type is unexported, so every slice of commands is read as a batch.
+	v, batchType := reflect.ValueOf(msg), reflect.TypeFor[tea.BatchMsg]()
+	if !v.IsValid() || !v.CanConvert(batchType) {
 		return []tea.Msg{msg}
 	}
+	batch, _ := reflect.TypeAssert[tea.BatchMsg](v.Convert(batchType))
 	var msgs []tea.Msg
 	for _, c := range batch {
 		msgs = append(msgs, messages(c)...)

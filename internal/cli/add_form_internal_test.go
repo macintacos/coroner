@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -176,8 +177,8 @@ var _ = Describe("add forms", func() {
 
 		// answers returns forms that answer each ask in turn with the next of answers, recording what
 		// each ask showed.
-		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool) askFunc {
-			return func(bool) askFunc {
+		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+			return func(bool, graphics.Protocol) askFunc {
 				return func(_ context.Context, fields ...huh.Field) (bool, error) {
 					GinkgoHelper()
 					asked = append(asked, fields)
@@ -205,13 +206,13 @@ var _ = Describe("add forms", func() {
 		addCommand := func() *cobra.Command {
 			return &cobra.Command{Use: "add", Annotations: map[string]string{formatsAnnotation: "text,json"}}
 		}
-		eventAdd := func(ctx SpecContext, forms func(bool) askFunc) *cobra.Command {
+		eventAdd := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
 			event := &cobra.Command{Use: "event"}
 			addTimelineFlag(event.PersistentFlags())
 			event.AddCommand(eventAddForm().attach(ctx, addCommand(), app, forms))
 			return event
 		}
-		annotationAdd := func(ctx SpecContext, forms func(bool) askFunc) *cobra.Command {
+		annotationAdd := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
 			annotation := &cobra.Command{Use: "annotation"}
 			annotation.AddCommand(annotationAddForm().attach(ctx, addCommand(), app, forms))
 			return annotation
