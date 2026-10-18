@@ -1,0 +1,22 @@
+# Global flags work before or after the subcommand.
+exec coroner --json --db $WORK/flags.db --config $WORK/none.toml -q --no-color --tz UTC --debug version
+cp stdout before.txt
+exec coroner version --json --db $WORK/flags.db --config $WORK/none.toml -q --no-color --tz UTC --debug
+cmp stdout before.txt
+
+# Help, version and completion never create a database, at --db or at the default path.
+exec coroner --db $WORK/c.db --help
+exec coroner --db $WORK/c.db version
+exec coroner --db $WORK/c.db completion bash
+exec coroner --db $WORK/c.db completion zsh
+exec coroner --db $WORK/c.db completion fish
+exec coroner --db $WORK/c.db completion powershell
+! exists $WORK/c.db
+! exists $WORK/flags.db
+! exists $WORK/.local/share/coroner
+
+# Piped output carries no color, even on an error.
+exec coroner --help
+! stdout '\x1b'
+exits 2 coroner versio
+! stderr '\x1b'

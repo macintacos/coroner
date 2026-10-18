@@ -4,17 +4,25 @@ package cli
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
+	"log/slog"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 // App is everything a command may use from outside itself. Commands go through these
 // fields, never cobra's InOrStdin, OutOrStdout or ErrOrStderr.
 type App struct {
 	// Args excludes the program name.
-	Args      []string
-	In        io.Reader
-	Out, Err  io.Writer
+	Args     []string
+	In       io.Reader
+	Out, Err io.Writer
+	// Color and layout are decided per stream.
+	OutIsTTY, ErrIsTTY bool
+	// Version is the build's module version, as debug.ReadBuildInfo reports it.
+	Version   string
 	LookupEnv func(key string) (string, bool)
 	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
 	ReadFile func(name string) ([]byte, error)
@@ -31,12 +39,56 @@ func Run(ctx context.Context, app App) int {
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
 	// No SetOut: cobra prints deprecation notices through OutOrStderr, which returns Out
-	// once set. TODO: cobra's own help and usage output still reach os.Stdout/os.Stderr.
+	// once set. TODO: those notices, `help <unknown>` and __complete's output still reach
+	// os.Stderr or os.Stdout rather than Err and Out.
 	root.SetErr(app.Err)
 
-	if root.ExecuteContext(ctx) != nil {
-		return 1
+	cmd, err := root.ExecuteContextC(ctx)
+	failure := classify(ctx, cmd, err)
+	if failure == nil {
+		return 0
 	}
 
-	return 0
+	style, debug := errorStyleFor(app)
+	if debug {
+		logFailure(ctx, app, cmd, failure)
+	}
+
+	// Nowhere is left to report a failed write to Err.
+	_ = writeError(app.Err, failure, style)
+
+	return failure.Kind.ExitCode()
+}
+
+// classify returns the failure behind a finished command line, or nil on success. A
+// command's hooks and body return *Error (wrapRunErrors sees to that), so any other error is
+// cobra rejecting the command line.
+func classify(ctx context.Context, cmd *cobra.Command, err error) *Error {
+	if ctx.Err() != nil {
+		return &Error{Kind: KindInterrupted, Message: "interrupted", Err: ctx.Err()}
+	}
+
+	if err == nil {
+		return nil
+	}
+
+	if failure, ok := errors.AsType[*Error](err); ok {
+		return failure
+	}
+
+	return usageError(cmd, err)
+}
+
+// logFailure writes failure as a debug log line on app.Err.
+func logFailure(ctx context.Context, app App, cmd *cobra.Command, failure *Error) {
+	attrs := []any{
+		"command", cmd.CommandPath(), "kind", failure.Kind, "exit_code", failure.Kind.ExitCode(),
+		"message", failure.Message, "args", app.Args,
+	}
+	if failure.Err != nil {
+		attrs = append(attrs, "error", failure.Err)
+	}
+
+	logger := slog.New(slog.NewTextHandler(app.Err, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger.DebugContext(ctx, "command failed", attrs...)
 }

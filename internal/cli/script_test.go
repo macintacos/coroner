@@ -2,11 +2,15 @@ package cli_test
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -14,6 +18,7 @@ import (
 	// Embeds the zone database so TZ resolves on machines without system tzdata instead of silently becoming UTC.
 	_ "time/tzdata"
 
+	"github.com/mattn/go-isatty"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -35,6 +40,7 @@ func TestScripts(t *testing.T) {
 		UpdateScripts:      flag.Lookup(updateFlag).Value.String() == "true",
 		RequireUniqueNames: true,
 		Setup:              hermeticEnv,
+		Cmds:               map[string]func(*testscript.TestScript, bool, []string){"exits": exits},
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -58,16 +64,46 @@ func hermeticEnv(env *testscript.Env) error {
 	return nil
 }
 
+// exits is `exits <code> <program> [args...]`: exec that also asserts the exact exit code,
+// which `! exec` cannot. stdout and stderr stay available to the next assertions.
+func exits(ts *testscript.TestScript, neg bool, args []string) {
+	if neg || len(args) < 2 {
+		ts.Fatalf("usage: exits <code> <program> [args...]")
+	}
+
+	want, err := strconv.Atoi(args[0])
+	ts.Check(err)
+
+	got := 0
+	err = ts.Exec(args[1], args[2:]...)
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		got = exitErr.ExitCode()
+	} else {
+		ts.Check(err)
+	}
+
+	if got != want {
+		ts.Fatalf("%s exited %d, want %d", args[1], got, want)
+	}
+}
+
 // runCoroner is coroner as scripts run it: main.go's App with the clock pinned.
 func runCoroner() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
 
+	version := "(devel)"
+	if build, ok := debug.ReadBuildInfo(); ok {
+		version = build.Main.Version
+	}
 	app, err := withTestClock(cli.App{
 		Args:      os.Args[1:],
 		In:        os.Stdin,
 		Out:       os.Stdout,
 		Err:       os.Stderr,
+		OutIsTTY:  isatty.IsTerminal(os.Stdout.Fd()),
+		ErrIsTTY:  isatty.IsTerminal(os.Stderr.Fd()),
+		Version:   version,
 		LookupEnv: os.LookupEnv,
 		ReadFile:  os.ReadFile,
 		Now:       time.Now,
