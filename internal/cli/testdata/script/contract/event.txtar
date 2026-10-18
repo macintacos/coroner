@@ -44,6 +44,48 @@ exits 2 coroner event add 'Pager fires' --json
 ! stdout .
 stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
 
+# --id adds the event under the caller's UUIDv7. The same command again adds nothing, exits 0
+# and prints the stored event, so a retry is safe.
+exits 0 coroner timeline use mongo-outage
+exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --json
+cmp stdout with-id.json
+exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --json
+cmp stdout with-id.json
+# Under -q the retry prints only the id, and a dry run prints nothing.
+exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod -q
+stdout '\A01a0a07c-0000-7000-8000-000000000001\n\z'
+! stderr .
+exits 0 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --dry-run -q
+! stdout .
+! stderr .
+exits 0 coroner event list --json
+jsonvalid stdout
+stdout '"total":3\}$'
+
+# Different content under a stored id exits 4, kind id_conflict, and changes nothing.
+exits 4 coroner event add 'Election timeout on db-4' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --json
+! stdout .
+stderr '^\{"error":\{"kind":"id_conflict","message":"[^\n]*text[^\n]*","hint":"[^\n]+"\}\}\n\z'
+exits 4 coroner event add 'Election timeout on db-3' --id 01a0a07c-0000-7000-8000-000000000001 --at 2026-09-11T03:14:30Z --source mongod --attach rs-status.txt --json
+! stdout .
+stderr '^\{"error":\{"kind":"id_conflict","message":"[^\n]*attachments[^\n]*","hint":"[^\n]+"\}\}\n\z'
+exits 0 coroner event list --json
+stdout '"total":3\}$'
+
+# --dry-run previews an event under a new id with a null seq.
+exits 0 coroner event add 'Pager fires' --id 01a0a07c-0000-7000-8000-000000000002 --at 2026-09-11T03:15:00Z --dry-run --json
+jsonvalid stdout
+stdout '^\{"id":"01a0a07c-0000-7000-8000-000000000002","timeline_id":"[^"]+","seq":null,'
+
+# An id that is not a lowercase UUIDv7 exits 2, kind usage.
+exits 2 coroner event add 'Pager fires' --id 3b241101-e2bb-4255-8caf-4136c566a962 --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+-- rs-status.txt --
+db-3 SECONDARY, db-2 PRIMARY
+-- with-id.json --
+{"id":"01a0a07c-0000-7000-8000-000000000001","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":3,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-11T03:14:30Z","ended_at":null,"source":"mongod","tags":[],"text":"Election timeout on db-3","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
 -- dry-run.json --
 {"id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[]}
 -- added.json --

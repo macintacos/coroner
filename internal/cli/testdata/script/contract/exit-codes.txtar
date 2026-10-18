@@ -1,12 +1,13 @@
 # Each exit code a command line can reach, with its kind in the stderr JSON error
 # envelope. Nothing reaches 1 (internal) or 130 (interrupted) from a script yet;
-# cli.Run's specs pin those. version's field is experimental until 1.0 and holds the
-# build's version, so a pattern matches it.
+# cli.Run's specs pin those. version's fields are experimental until 1.0, and
+# coroner_version holds the build's version, so a pattern matches it.
 
-# 0: success. stdout is valid JSON and stderr is empty.
+# 0: success. stdout is valid JSON and stderr is empty. format_versions lists every export
+# format version this coroner reads in full.
 exits 0 coroner version --format json
 jsonvalid stdout
-stdout '^\{"coroner_version":"[^"]*"\}$'
+stdout '^\{"coroner_version":"[^"]*","format_versions":\["1\.0","1\.1","1\.2"\]\}$'
 ! stderr .
 
 # 2, usage: an unknown command. The envelope is the last line of stderr.

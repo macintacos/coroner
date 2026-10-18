@@ -1,0 +1,39 @@
+# -q on a create prints only the new record's id, one line on stdout and nothing on stderr,
+# so a script can capture it with $(...). Under --json the object carries the id instead.
+
+# timeline create, and --if-not-exists, which prints the existing timeline's id.
+exits 0 coroner timeline create mongo-failover -q
+stdout '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}\n\z'
+! stderr .
+cp stdout timeline-id.txt
+exits 0 coroner timeline create mongo-failover --if-not-exists -q
+cmp stdout timeline-id.txt
+! stderr .
+exits 0 coroner timeline create checkout-latency -q
+
+# event add.
+exits 0 coroner event add 'Primary stepped down' -t mongo-failover --at 2026-09-11T03:14:07Z -q
+stdout '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}\n\z'
+! stderr .
+exits 0 coroner event add 'Checkout p99 above 2s' -t checkout-latency --at 2026-09-11T03:15:00Z -q
+
+# annotation add.
+exits 0 coroner annotation add 'Election timeout' -t mongo-failover -e 1 --kind comment -q
+stdout '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}\n\z'
+! stderr .
+
+# event link.
+exits 0 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to -q
+stdout '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}\n\z'
+! stderr .
+
+# overlay create.
+exits 0 coroner overlay create checkout-incident -t checkout-latency -t mongo-failover -q
+stdout '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}\n\z'
+! stderr .
+
+# -q with --json prints the object alone.
+exits 0 coroner timeline create second -q --json
+jsonvalid stdout
+stdout '^\{"id":"[^"]+","name":"second",'
+! stderr .

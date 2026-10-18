@@ -78,6 +78,41 @@ exits 2 coroner timeline view --json
 ! stdout .
 stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'
 
+# create --dry-run prints the object it would create and creates nothing; a taken name still
+# exits 4, or prints the existing object under --if-not-exists.
+exits 0 coroner timeline create third --title 'Checkout latency' --dry-run --json
+cmp stdout would-create.json
+exits 3 coroner timeline view third
+exits 4 coroner timeline create mongo-failover --dry-run --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_exists",[^\n]+\}\}\n\z'
+exits 0 coroner timeline create mongo-failover --if-not-exists --dry-run --json
+cmp stdout edited.json
+
+# use prints the timeline it makes current, or with --dry-run would, and --clear null.
+exits 0 coroner timeline use mongo-failover --dry-run --json
+cmp stdout edited.json
+exits 2 coroner timeline view --json
+exits 0 coroner timeline use mongo-failover --json
+cmp stdout edited.json
+exits 0 coroner timeline use --clear --dry-run --json
+stdout '^null\n\z'
+exits 0 coroner timeline view --json
+cmp stdout edited.json
+exits 0 coroner timeline use --clear --json
+stdout '^null\n\z'
+exits 2 coroner timeline view --json
+
+# delete prints the timeline it deletes, or with --dry-run would.
+exits 0 coroner timeline delete mongo-failover --dry-run --json
+cmp stdout edited.json
+exits 0 coroner timeline view mongo-failover
+exits 0 coroner timeline delete mongo-failover --yes --json
+cmp stdout edited.json
+exits 3 coroner timeline view mongo-failover
+
+-- would-create.json --
+{"id":"01a09862-b1c0-7000-8000-000000000006","name":"third","title":"Checkout latency","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}
 -- created.json --
 {"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-outage-2026-09-11","title":"Primary election storm","refs":["INC-4821","https://jira.example.com/browse/INC-4821"],"created_at":"2026-09-13T01:30:00.000000000Z"}
 -- list.json --

@@ -1,0 +1,124 @@
+# event add --from-file adds a JSONL file of canonical event records in one transaction: every
+# record is checked first, and one bad record adds nothing. Records carry their own ids, so
+# re-running a batch adds nothing. Ids come from CORONER_TEST_IDS and created at from the
+# records, so whole documents are compared with the files below.
+
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner timeline use mongo-failover
+
+# --dry-run prints the events it would add, with null seqs, and adds nothing. A header line,
+# as an export starts with, is ignored.
+exits 0 coroner event add --from-file batch.jsonl --dry-run --json
+cmp stdout dry-run.json
+exits 0 coroner event list --json
+jsonvalid stdout
+stdout '"total":0\}$'
+
+# The batch is added, each event under the next seq, in the order of the file.
+exits 0 coroner event add --from-file batch.jsonl --json
+cmp stdout added.json
+
+# Running the same batch again adds nothing and exits 0: every event is identical.
+exits 0 coroner event add --from-file batch.jsonl --json
+cmp stdout again.json
+exits 0 coroner event list --json
+stdout '"total":3\}$'
+
+# - reads the records from stdin, and -q prints the id of each event in the batch in file order,
+# stored or new.
+stdin more.jsonl
+exits 0 coroner event add --from-file - -q
+cmp stdout more-ids.txt
+! stderr .
+
+# One record changed under a stored id exits 4, kind id_conflict, and adds nothing.
+exits 4 coroner event add --from-file changed.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"id_conflict","message":"[^\n]*01a0a07c-0000-7000-8000-000000000102[^\n]*text[^\n]*","hint":"[^\n]+"\}\}\n\z'
+exits 0 coroner event list --json
+stdout '"total":4\}$'
+
+# Invalid records exit 2, kind invalid_input, listing every bad line, and add nothing.
+exits 2 coroner event add --from-file invalid.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"2 lines [^\n]*line 2: [^\n]*line 3: [^\n]*","hint":"[^\n]+"\}\}\n\z'
+exits 0 coroner event list --json
+stdout '"total":4\}$'
+
+# A record must carry its id: a generated one would add the event again on every retry.
+exits 2 coroner event add --from-file null-id.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"[^\n]*key \\"id\\" must not be null[^\n]*",[^\n]+\}\}\n\z'
+
+# Every record must belong to the timeline -t, CORONER_TIMELINE or timeline use selects.
+exits 2 coroner event add --from-file batch.jsonl -t checkout-latency --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"[^\n]*checkout-latency[^\n]*",[^\n]+\}\}\n\z'
+
+# A record of another type is refused; coroner import reads those.
+exits 2 coroner event add --from-file annotation.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"[^\n]*coroner import[^\n]*",[^\n]+\}\}\n\z'
+
+# A file with no event records is refused, and stdin with none is named as stdin.
+exits 2 coroner event add --from-file empty.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input",[^\n]+\}\}\n\z'
+stdin empty.jsonl
+exits 2 coroner event add --from-file - --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_input","message":"stdin [^\n]+\}\}\n\z'
+
+# A file that cannot be read exits 2, kind usage, with how to fix it, and so does an empty value,
+# naming --from-file and - for stdin.
+exits 2 coroner event add --from-file missing.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]*missing.jsonl[^\n]*","hint":"[^\n]*you can read[^\n]*"\}\}\n\z'
+exits 2 coroner event add --from-file '' --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]*--from-file[^\n]*","hint":"[^\n]* - to read[^\n]*"\}\}\n\z'
+
+# --from-file takes every field from its records, so event text, a field's flag or --interactive
+# exits 2.
+exits 2 coroner event add 'Primary stepped down' --from-file batch.jsonl --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event add --from-file batch.jsonl --source mongod --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event add --from-file batch.jsonl --interactive --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 0 coroner event list --json
+stdout '"total":4\}$'
+
+-- batch.jsonl --
+{"type":"header","format":"coroner.export","format_version":"1.2","coroner_version":"(devel)","exported_at":"2026-09-11T04:00:00.000000000Z","query":{"timelines":["mongo-failover"],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":["election"],"text":"Primary stepped down: replSetStepDown","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000102","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-3/mongod","tags":[],"text":"Election timeout on db-3","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000103","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:15:02.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":["phase:detect"],"text":"Pager fires for checkout","url":"https://pager.example.com/i/88","author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+-- more.jsonl --
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":["election"],"text":"Primary stepped down: replSetStepDown","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000104","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:16:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"db-2 rejoins as secondary","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+-- more-ids.txt --
+01a0a07c-0000-7000-8000-000000000101
+01a0a07c-0000-7000-8000-000000000104
+-- changed.jsonl --
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000105","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:17:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Checkout recovers","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000102","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-3/mongod","tags":[],"text":"Election timeout on db-3 and db-4","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+-- invalid.jsonl --
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000106","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:18:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Would be fine alone","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000107","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"yesterday 23:02","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Natural-language time","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000108","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:19:00.000000000Z","precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Missing its offset key","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+-- null-id.jsonl --
+{"type":"event","id":null,"timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:18:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"No id","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+-- annotation.jsonl --
+{"type":"annotation","id":"01a0a07c-0000-7000-8000-000000000201","timeline_id":"01a09862-b1c0-7000-8000-000000000001","event_id":null,"kind":"comment","body":"Root cause: election storm","author":"julian","source":null,"url":null,"created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z"}
+-- empty.jsonl --
+-- dry-run.json --
+{"dry_run":true,"timelines":[{"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}],"inserted":[{"id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":["election"],"text":"Primary stepped down: replSetStepDown","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]},{"id":"01a0a07c-0000-7000-8000-000000000102","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-3/mongod","tags":[],"text":"Election timeout on db-3","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]},{"id":"01a0a07c-0000-7000-8000-000000000103","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":null,"occurred_at":"2026-09-11T03:15:02.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":["phase:detect"],"text":"Pager fires for checkout","url":"https://pager.example.com/i/88","author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]}],"identical":[]}
+-- added.json --
+{"dry_run":false,"timelines":[{"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}],"inserted":[{"id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":["election"],"text":"Primary stepped down: replSetStepDown","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]},{"id":"01a0a07c-0000-7000-8000-000000000102","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-3/mongod","tags":[],"text":"Election timeout on db-3","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]},{"id":"01a0a07c-0000-7000-8000-000000000103","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":3,"occurred_at":"2026-09-11T03:15:02.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":["phase:detect"],"text":"Pager fires for checkout","url":"https://pager.example.com/i/88","author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]}],"identical":[]}
+-- again.json --
+{"dry_run":false,"timelines":[{"id":"01a09862-b1c0-7000-8000-000000000001","name":"mongo-failover","title":"","refs":[],"created_at":"2026-09-13T01:30:00.000000000Z"}],"inserted":[],"identical":[{"id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":["election"],"text":"Primary stepped down: replSetStepDown","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]},{"id":"01a0a07c-0000-7000-8000-000000000102","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":2,"occurred_at":"2026-09-11T03:14:30.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-3/mongod","tags":[],"text":"Election timeout on db-3","url":null,"author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]},{"id":"01a0a07c-0000-7000-8000-000000000103","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":3,"occurred_at":"2026-09-11T03:15:02.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":["phase:detect"],"text":"Pager fires for checkout","url":"https://pager.example.com/i/88","author":"julian","created_at":"2026-09-11T03:30:00.000000000Z","updated_at":"2026-09-11T03:30:00.000000000Z","attachments":[]}]}

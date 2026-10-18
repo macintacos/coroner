@@ -52,6 +52,13 @@ func formExemptFlags() []string {
 	return []string{"db", "config", "format", "json", "quiet", "no-color", "no-input", "debug", "help", "tz", "interactive"}
 }
 
+// commandFormExemptFlags are the flags one write command declares outside its definition, by the
+// command's path. event add's --from-file reads every field from a file's records, so no form asks
+// for it.
+func commandFormExemptFlags() map[string][]string {
+	return map[string][]string{"event add": {"from-file"}}
+}
+
 var _ = Describe("write command definitions", func() {
 	It("give every flag a form field with its help and default, and every form field a flag", func(ctx SpecContext) {
 		root := NewRoot(ctx, App{})
@@ -249,7 +256,7 @@ func parityProblems(root *cobra.Command, path string, def definition) []string {
 	flags.VisitAll(func(flag *pflag.Flag) {
 		formField, ok := form[flag.Name]
 		switch {
-		case !ok && !slices.Contains(formExemptFlags(), flag.Name):
+		case !ok && !slices.Contains(formExemptFlags(), flag.Name) && !slices.Contains(commandFormExemptFlags()[path], flag.Name):
 			problems = append(problems, fmt.Sprintf("coroner %s: flag --%s has no form field", path, flag.Name))
 		case ok:
 			problems = append(problems, fieldProblems(path, flag, formField)...)
@@ -340,6 +347,7 @@ func badValues() []badValue {
 		{"event add", "url", " ", []string{"Pager fires"}},
 		{"event add", "author", " ", []string{"Pager fires"}},
 		{"event add", "attach", "-", []string{"Pager fires"}},
+		{"event add", "id", "3b241101-e2bb-4255-8caf-4136c566a962", []string{"Pager fires"}},
 		{"event edit", "event", "Bad Ref!", []string{"--dry-run"}},
 		{"event edit", "text", " ", []string{"12"}},
 		{"event edit", "at", "2026-13-45", []string{"12"}},

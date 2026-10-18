@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/export"
 )
 
 func newVersionCommand(app App) *cobra.Command {
@@ -21,7 +23,8 @@ func newVersionCommand(app App) *cobra.Command {
 }
 
 type versionJSON struct {
-	CoronerVersion string `json:"coroner_version"`
+	CoronerVersion string   `json:"coroner_version"`
+	FormatVersions []string `json:"format_versions"`
 }
 
 func writeVersion(cmd *cobra.Command, app App) error {
@@ -31,7 +34,7 @@ func writeVersion(cmd *cobra.Command, app App) error {
 	}
 
 	if chosen == formatJSON {
-		return writeJSON(app.Out, app.OutIsTTY, versionJSON{CoronerVersion: app.Version})
+		return writeJSON(app.Out, app.OutIsTTY, versionJSON{CoronerVersion: app.Version, FormatVersions: export.FormatVersions()})
 	}
 
 	_, err = fmt.Fprintln(app.Out, "coroner version", app.Version)

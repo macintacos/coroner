@@ -134,6 +134,9 @@ func (a annotationAdded) render(o output) error {
 
 	err := printAnnotation(o, a.annotation, a.attach.objects)
 	if err == nil {
+		err = o.printID(a.annotation.ID)
+	}
+	if err == nil {
 		err = a.attach.notify(o)
 	}
 	if err != nil {

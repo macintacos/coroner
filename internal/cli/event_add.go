@@ -3,8 +3,12 @@ package cli
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -13,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -25,7 +30,7 @@ const missingTextHint = "Pass the text, or - to read it from stdin:\n" +
 
 func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add {<text> | -}",
+		Use:   "add {<text> | - | --from-file {<file> | -}}",
 		Short: "Add an event to the current timeline",
 		Long: "Add an event to the current timeline, and print the time it resolved to.\n\n" +
 			"A time with no offset is read in --tz, then the config file's default_timezone, then the\n" +
@@ -35,6 +40,14 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
 			"database, and prints its id, sha256, size and type. Every file is read before anything is\n" +
 			"added, so one that cannot be read adds nothing.\n\n" +
+			"--id with --at, and --author when USER may differ, gives the event an id and time of your\n" +
+			"own, so running the same command again adds nothing and exits 0, while the same id with\n" +
+			"different content exits 4.\n\n" +
+			"--from-file adds a JSONL file of event records, as 'coroner timeline export --format jsonl'\n" +
+			"writes them, in one transaction, to the timeline -t, CORONER_TIMELINE or 'coroner timeline\n" +
+			"use' selects, which every record's timeline_id must name. Every record is checked first, so\n" +
+			"one bad record adds nothing. A record carries its own id and RFC 3339 times, so running the\n" +
+			"same file again adds nothing.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
 			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
 			"opens it, and --no-input never does.",
@@ -46,10 +59,26 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
 			"      --ended \"2026-09-11 14:20\" --dry-run --json\n" +
+			"  $ coroner event add \"Election timeout on db-3\" --id 01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2 \\\n" +
+			"      --at 2026-09-11T03:14:30Z --json\n" +
+			"  $ coroner event add -t mongo-outage --from-file events.jsonl --dry-run --json\n" +
 			"  $ coroner event add --interactive --source mongod",
 	}
 
-	return eventAddForm().attach(ctx, cmd, app, terminalForms(app))
+	eventAddForm().attach(ctx, cmd, app, terminalForms(app))
+	cmd.Flags().String("from-file", "", fromFileUsage)
+	// A file of records needs no form, so --from-file branches before the form gate and stays
+	// outside the definition.
+	withForm := cmd.RunE
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if !cmd.Flags().Changed("from-file") {
+			return withForm(cmd, args)
+		}
+
+		return addEventsFromFile(ctx, cmd, app, args)
+	}
+
+	return cmd
 }
 
 func eventAddDefinition() definition {
@@ -89,20 +118,25 @@ func eventAddDefinition() definition {
 		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
 		attachField(),
+		{
+			name: "id", usage: "The event's id, as a lowercase UUIDv7 `uuid`",
+			check: withoutEnv(checkEventID),
+		},
 		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
 	}}
 }
 
 const addedEndedHint = "~ and around mark --at only; pass --approximate to mark the event."
 
-// eventAdded is the event add stored or, with --dry-run, would store, in its timeline.
+// eventAdded is the event add stored or, with --dry-run, would store, in its timeline, or the one
+// already stored under --id.
 type eventAdded struct {
 	event    timeline.Event
 	timeline timeline.Timeline
 	// when is the event's resolved time as the command prints it.
-	when   string
-	attach attachResult
-	dryRun bool
+	when            string
+	attach          attachResult
+	dryRun, existed bool
 }
 
 func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {
@@ -139,11 +173,30 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		}
 		added.timeline = t
 		added.event.TimelineID = t.ID
-		if !req.dryRun {
-			added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
+		if in.given("id") {
+			added.event, added.existed, err = storedSameEvent(ctx, s, added.event, req.files)
 			if err != nil {
 				return err
 			}
+		}
+		switch {
+		case added.existed:
+			// Nothing is attached, so result lists the stored attachments and reports none as added.
+			req = attachRequest{}
+		case !req.dryRun:
+			var stored timeline.Event
+			stored, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
+			if errors.Is(err, store.ErrConflict) && in.given("id") {
+				conflict := err
+				stored, added.existed, err = storedSameEvent(ctx, s, added.event, req.files)
+				if err == nil && !added.existed {
+					err = conflict
+				}
+			}
+			if err != nil {
+				return err
+			}
+			added.event = stored
 		}
 
 		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &added.event.ID}, cfg.DBPath)
@@ -153,7 +206,99 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	return added, err
 }
 
+// storedSameEvent returns the event stored under e's id and true when adding e, with files
+// attached, would change nothing; e and false when no event has that id; and id_conflict when
+// adding e would change the stored event.
+func storedSameEvent(ctx context.Context, s *store.Store, e timeline.Event, files []attachFile) (timeline.Event, bool, error) {
+	stored, err := s.Event(ctx, e.ID)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return e, false, nil
+	case err != nil:
+		return e, false, err
+	}
+	attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &stored.ID})
+	if err != nil {
+		return e, false, err
+	}
+
+	keys := changedEventKeys(stored, e)
+	if !slices.Equal(sortedSHA256s(attachments), fileSHA256s(files)) {
+		keys = append(keys, "attachments")
+	}
+	if len(keys) > 0 {
+		return e, false, idConflictError(e.ID, "it is stored with different "+strings.Join(keys, ", "), nil)
+	}
+
+	return stored, true, nil
+}
+
+// changedEventKeys returns the export keys in which draft differs from stored, the event under
+// the same id, leaving out the seq and times the store sets and the order of tags.
+func changedEventKeys(stored, draft timeline.Event) []string {
+	compared := func(e timeline.Event) export.Event {
+		e.Seq, e.CreatedAt, e.UpdatedAt = 0, time.Time{}, time.Time{}
+		e.Tags = sortedUnique(e.Tags)
+		return export.NewEvent(e)
+	}
+
+	return export.DifferingKeys(compared(stored), compared(draft))
+}
+
+func sortedSHA256s(attachments []timeline.Attachment) []string {
+	sums := make([]string, 0, len(attachments))
+	for _, a := range attachments {
+		sums = append(sums, a.SHA256)
+	}
+	slices.Sort(sums)
+
+	return sums
+}
+
+func fileSHA256s(files []attachFile) []string {
+	sums := make([]string, 0, len(files))
+	for _, f := range files {
+		sum := sha256.Sum256(f.content)
+		sums = append(sums, hex.EncodeToString(sum[:]))
+	}
+	slices.Sort(sums)
+
+	return sums
+}
+
+func idConflictError(id, why string, err error) *Error {
+	return &Error{
+		Kind: KindIDConflict, Message: fmt.Sprintf("event %s already exists: %s, so nothing was added", id, why),
+		Hint: fmt.Sprintf("Pass a new --id to add another event, or change this one with 'coroner event edit %s'.", id), Err: err,
+	}
+}
+
+// checkEventID rejects an id that is not a UUIDv7 written as lowercase hex with hyphens, the ids
+// coroner makes.
+func checkEventID(id string) error {
+	parsed, err := uuid.Parse(id)
+	if err == nil && parsed.Version() == 7 && parsed.String() == id {
+		return nil
+	}
+
+	return &Error{
+		Kind: KindUsage, Message: fmt.Sprintf("--id %q is not a lowercase UUIDv7", id),
+		Hint: "Pass a version 7 UUID in lowercase, such as 01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2.", Err: err,
+	}
+}
+
 func (a eventAdded) render(o output) error {
+	if a.existed {
+		err := printEvent(o, a.event, a.attach.objects)
+		if err == nil && !a.dryRun {
+			err = o.printID(a.event.ID)
+		}
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Event %s is already #%d in timeline `%s`, so nothing was added", a.event.ID, a.event.Seq, a.timeline.Name)
+	}
 	if a.dryRun {
 		err := previewEvent(o, a.timeline, a.event, a.attach.objects, a.when)
 		if err == nil {
@@ -164,6 +309,9 @@ func (a eventAdded) render(o output) error {
 	}
 
 	err := printEvent(o, a.event, a.attach.objects)
+	if err == nil {
+		err = o.printID(a.event.ID)
+	}
 	if err == nil {
 		err = a.attach.notify(o)
 	}
@@ -184,7 +332,8 @@ type eventDraft struct {
 }
 
 // draftEvent returns the event in describes, with times read as of env, and gives it new ids,
-// rejecting anything the store would. It reads stdin last, so a bad field never waits on it.
+// keeping --id's event id when given, rejecting anything the store would. It reads stdin last,
+// so a bad field never waits on it.
 func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (eventDraft, error) {
 	fields := readEventFields(in, cfg.Author, app.LookupEnv)
 	times, err := resolveEventTimes(in, env)
@@ -195,7 +344,7 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	if err != nil {
 		return eventDraft{}, err
 	}
-	eventID, err := app.NewID()
+	eventID, err := newEventID(in.value("id"), app.NewID)
 	if err != nil {
 		return eventDraft{}, err
 	}
@@ -205,7 +354,7 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	}
 
 	e := timeline.Event{
-		ID:             eventID.String(),
+		ID:             eventID,
 		OccurredAt:     times.at.Instant,
 		OccurredOffset: times.at.Offset,
 		Precision:      times.at.Precision,
@@ -228,6 +377,16 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	}
 
 	return eventDraft{event: e, newSourceID: sourceID, when: times.when}, nil
+}
+
+// newEventID returns id when it was given, and a new id otherwise.
+func newEventID(id *string, newID func() (uuid.UUID, error)) (string, error) {
+	if id != nil {
+		return *id, nil
+	}
+
+	generated, err := newID()
+	return generated.String(), err
 }
 
 // newSourceID returns a new id for source, or "" when no source was given.

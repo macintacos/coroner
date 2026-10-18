@@ -125,3 +125,64 @@ coroner does not remember a zone per source, so pass `--tz` for every line from 
 whose zone differs from your default, and check the zone in the time coroner echoes.
 [How coroner reads the times you type](../reference/cli/coroner_help_time.md) lists every
 time format coroner reads.
+
+## Add many lines at once
+
+When a script picks the lines out of a log, have it write each one as an event record, one
+per line of a JSONL file, and add the file with one command. coroner checks every record
+before it adds anything, so one bad record adds nothing, and it adds the whole file in one
+transaction.
+
+A record is an event as `coroner timeline export --format jsonl` writes it, with every key
+present. Its `timeline_id` is the id of the timeline you add to, which
+`coroner timeline create checkout-latency --if-not-exists -q` prints, and its times are
+RFC 3339 in UTC with nine fraction digits:
+
+```json
+{"type":"event","id":"01a0a07c-0000-7000-8000-000000000101","timeline_id":"01a09e58-f9b1-7c3e-8a41-2f6d0c9b7e15","seq":null,"occurred_at":"2026-09-11T00:02:30.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":null,"ended_at":null,"source":"db-2/mongod","tags":[],"text":"Primary steps down on db-2","url":null,"author":"julian","created_at":"2026-09-11T00:10:00.000000000Z","updated_at":"2026-09-11T00:10:00.000000000Z"}
+```
+
+Each record carries its own `id`, a lowercase UUIDv7 your script makes. coroner refuses a
+record without one, since an id it made up would add the event again every time the file
+is added. Leave `seq` null, and coroner numbers the events in the order of the file.
+[The export format](../reference/export-format.md#event) describes every key.
+
+1. Check the file with `--dry-run`, which adds nothing; add `--json` to see each event:
+
+   ```console
+   $ coroner event add -t checkout-latency --from-file events.jsonl --dry-run
+   Would add 3 events to timeline `checkout-latency`
+   ```
+
+   Under `--json` the result holds `dry_run`, `timelines`, which names the timeline,
+   `inserted`, the events it adds, and `identical`, those it already holds unchanged. A
+   dry run's inserted events have a null `seq`, since coroner numbers them only as it adds
+   them. Added again, a file lists every event under `identical`.
+
+2. Run the same command without `--dry-run`:
+
+   ```console
+   $ coroner event add -t checkout-latency --from-file events.jsonl
+   Added 3 events to timeline `checkout-latency`
+   ```
+
+   `--from-file -` reads the records from stdin instead. With `-q` it prints the id of
+   every event in the file, whether it added it or already held it.
+
+Adding the same file again adds nothing and exits 0, so a script that stopped halfway can
+simply run the command again. A record whose id coroner already holds with other content,
+such as edited text, stops the whole file: nothing is added, and the command exits 4.
+
+To make a single `coroner event add` safe to run again, give the event an id with `--id`,
+its time with `--at` and its author with `--author`:
+
+```console
+$ coroner event add "nginx upstream timeouts on web-2" --id 01a0a07c-0000-7000-8000-000000000201 --at 2026-09-10T23:58:12-05:00 --author julian --source web-2/nginx -q
+01a0a07c-0000-7000-8000-000000000201
+```
+
+Running it again adds nothing and prints the same id. A retry must repeat every value as
+it was, or it exits 4. A time left to default to now differs on every run, and an author
+left to default to the config file or `USER` differs when someone else retries. coroner
+keeps `--at` as you typed it, so repeat it exactly: the same instant written another way
+differs too.

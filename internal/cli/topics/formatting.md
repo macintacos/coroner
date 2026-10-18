@@ -16,7 +16,11 @@ is missing, `coroner timeline edit` when no change is given, and each with
 `CORONER_NO_INPUT` keeps every form, the `coroner timeline list` picker and the viewer
 closed: a command line missing a required value exits 2 instead of asking.
 
-- `text` is for people.
+- `text` is for people. With `-q`, a command that creates a timeline, event, annotation,
+  link or overlay prints only the id of the record it created, or found under
+  `--if-not-exists` or an `--id` it already holds, one per line for `$(...)`;
+  `coroner event add --from-file` prints one for each event in the file. A `--dry-run`
+  prints none.
 - `json` is one JSON document, indented when stdout is a terminal and compact otherwise.
 - `jsonl` is one JSON object per line. `-o rca/` writes it into a directory with its
   attachments' files, as for `md`.
@@ -53,6 +57,10 @@ closed: a command line missing a required value exits 2 instead of asking.
 
 - Keys are snake_case, and every key is always present: an empty value is `null`, never a
   missing key.
+- Every command that writes takes `--dry-run`. Under `json`, a command that creates, edits
+  or deletes records prints their objects, or those it would write, ids included, while
+  `coroner import` prints counts. `coroner version` names the export `format_versions` it
+  reads in full; a later minor of the same major still reads, its new keys ignored.
 - Under `json`, a collection is wrapped in an object that says whether it was cut short
   (`truncated`) and how many items matched (`total`).
 - Under `jsonl`, each item of a collection is its own line, with no wrapping object. A
@@ -64,8 +72,9 @@ closed: a command line missing a required value exits 2 instead of asking.
 - `coroner event list` names the timelines it lists events from: under `json` in
   `timelines`, and under `jsonl` in a `timeline` line for each before the `event` lines,
   so every event's `timeline_id` resolves to a name. `coroner event delete --json` does
-  the same for the events it deletes. Given `-t` more than once, `coroner event list`
-  overlays those timelines: one list, by occurred at, then timeline id, then seq.
+  the same for the events it deletes, and `coroner event add --from-file --json` for the
+  events it adds. Given `-t` more than once, `coroner event list` overlays those
+  timelines: one list, by occurred at, then timeline id, then seq.
 - `coroner timeline export` writes the export format instead: under `json` one envelope
   with no `truncated` or `total`, and under `jsonl` a `header` line before the records.
   Its `query.limit` records a limit, and the command says on stderr when a limit cut the

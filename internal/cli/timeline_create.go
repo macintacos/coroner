@@ -142,13 +142,15 @@ func timelineCreateDefinition() definition {
 		{name: "title", usage: "Free-text `title`"},
 		{name: "ref", typ: stringsField, list: true, usage: "Ticket key or URL the timeline belongs to; repeat for more"},
 		{name: "if-not-exists", typ: boolField, usage: "Print the existing timeline instead of failing when the name is taken"},
+		{name: "dry-run", typ: boolField, usage: "Show the timeline as it would be created, and create nothing"},
 	}}
 }
 
-// timelineCreated is the timeline create made, or the one --if-not-exists found.
+// timelineCreated is the timeline create made or, with --dry-run, would make, or the one
+// --if-not-exists found.
 type timelineCreated struct {
-	timeline timeline.Timeline
-	existed  bool
+	timeline        timeline.Timeline
+	existed, dryRun bool
 }
 
 func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineCreated, error) {
@@ -178,10 +180,15 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 		return timelineCreated{}, err
 	}
 	ifNotExists, _ := in.boolean("if-not-exists")
+	dryRun, _ := in.boolean("dry-run")
 
-	created := timelineCreated{timeline: t}
+	created := timelineCreated{timeline: t, dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		err := s.CreateTimeline(ctx, t)
+		if dryRun {
+			err = timelineNameFree(ctx, s, t.Name)
+		} else {
+			err = s.CreateTimeline(ctx, t)
+		}
 		switch {
 		case errors.Is(err, store.ErrConflict) && ifNotExists:
 			created.timeline, err = s.TimelineByName(ctx, t.Name)
@@ -197,13 +204,32 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	return created, err
 }
 
+// timelineNameFree returns store.ErrConflict when a timeline is called name.
+func timelineNameFree(ctx context.Context, s *store.Store, name string) error {
+	_, err := s.TimelineByName(ctx, name)
+	switch {
+	case err == nil:
+		return store.ErrConflict
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	}
+
+	return err
+}
+
 func (c timelineCreated) render(o output) error {
 	err := printTimeline(o, c.timeline)
+	if err == nil && !c.dryRun {
+		err = o.printID(c.timeline.ID)
+	}
 	if err != nil {
 		return err
 	}
-	if c.existed {
+	switch {
+	case c.existed:
 		return o.notify("Timeline `%s` already exists.", c.timeline.Name)
+	case c.dryRun:
+		return o.notify("Would create timeline `%s`.", c.timeline.Name)
 	}
 
 	return o.notify("Created timeline `%[1]s`.\nNext: coroner timeline use %[1]s\n      coroner event add -t %[1]s <text>", c.timeline.Name)

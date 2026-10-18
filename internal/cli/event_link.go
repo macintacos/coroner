@@ -99,9 +99,9 @@ func checkLinkKind(kind string) error {
 // linkChange is the link a link or unlink command added or removed or, with --dry-run, would,
 // with the events it joins.
 type linkChange struct {
-	link   timeline.Link
-	ends   linkEnds
-	dryRun bool
+	link            timeline.Link
+	ends            linkEnds
+	dryRun, created bool
 	// verb, done and preposition say what happens to the link: "link", "Linked" and "to", or
 	// "unlink", "Unlinked" and "from".
 	verb, done, preposition string
@@ -147,6 +147,7 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 		if errors.Is(err, store.ErrConflict) {
 			return linkExistsError(ends, kind, err)
 		}
+		change.created = err == nil
 		return err
 	})
 
@@ -261,8 +262,14 @@ func (c linkChange) render(o output) error {
 	}
 
 	did := c.done
-	if c.dryRun {
+	switch {
+	case c.dryRun:
 		did = "Would " + c.verb
+	case c.created:
+		err := o.printID(c.link.ID)
+		if err != nil {
+			return err
+		}
 	}
 
 	return o.notify("%s `%s` %s `%s` as %s.", did, c.ends.ref(0), c.preposition, c.ends.ref(1), c.link.Kind)

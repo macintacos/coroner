@@ -19,9 +19,11 @@ func newTimelineDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		Long: "Delete a timeline with its events, tags, annotations, attachments and links, and the blobs\n" +
 			"no other attachment uses. This cannot be undone, so it needs --yes; --dry-run shows what\n" +
 			"would be deleted instead. Deleting the current timeline leaves none current, and the\n" +
-			"overlays that read the timeline keep their other timelines.",
+			"overlays that read the timeline keep their other timelines. Under --json it prints the\n" +
+			"timeline it deletes, or would.",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeTimelineArg(ctx, app),
+		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner timeline delete mongo-outage-2026-09-11 --dry-run\n" +
 			"  $ coroner timeline delete mongo-outage-2026-09-11 --yes",
 		RunE: writeRunE(ctx, app, def, deleteTimeline),
@@ -104,6 +106,10 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 }
 
 func (d timelineDeleted) render(o output) error {
+	err := printTimeline(o, d.timeline)
+	if err != nil {
+		return err
+	}
 	if !d.dryRun {
 		err := o.notify("Deleted timeline `%s`.", d.timeline.Name)
 		if err == nil {
@@ -115,7 +121,12 @@ func (d timelineDeleted) render(o output) error {
 		return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
 	}
 
-	_, err := fmt.Fprintf(o.out, "Would delete timeline `%s`: events: %d, annotations: %d\n", d.timeline.Name, d.events, d.annotations)
+	summary := fmt.Sprintf("Would delete timeline `%s`: events: %d, annotations: %d", d.timeline.Name, d.events, d.annotations)
+	if o.format == formatJSON {
+		err = o.notify("%s", summary)
+	} else {
+		_, err = fmt.Fprintln(o.out, summary)
+	}
 	if err != nil {
 		return err
 	}
