@@ -8,11 +8,19 @@ repo_name        = "macintacos/coroner"
 # Unlisted pages, such as every CLI page but coroner.md, are still built and searchable.
 nav = [
   { "Home" = "index.md" },
-  { "Tutorial" = "tutorial/index.md" },
+  { "Tutorial" = [
+    "tutorial/index.md",
+    { "Your first timeline" = "tutorial/first-timeline.md" },
+  ] },
   { "How-to guides" = [
     "how-to/index.md",
     { "Install coroner" = "how-to/install.md" },
     { "Import a colleague's export" = "how-to/import.md" },
+    { "Capture Slack messages" = "how-to/capture-slack-messages.md" },
+    { "Add log lines" = "how-to/add-log-lines.md" },
+    { "Share a timeline in GitHub, Linear, Confluence and chat" = "how-to/export-to-github-linear-confluence.md" },
+    { "Query a timeline with jq" = "how-to/query-with-jq.md" },
+    { "Show a timeline's events on a Grafana dashboard" = "how-to/grafana-annotations.md" },
   ] },
   { "Reference" = [
     { "Export format" = "reference/export-format.md" },

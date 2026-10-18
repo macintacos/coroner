@@ -163,8 +163,10 @@ digraph coroner_rules_router {
   [`internal/export/fixtures_test.go`](internal/export/fixtures_test.go);
   `testdata/export/compat/` holds hand-written exports of other versions.
 - Examples: [`internal/cli/examples_test.go`](internal/cli/examples_test.go) parses every
-  `coroner` line in every command's `Example` against the command tree, without running
-  it.
+  `coroner` line in every command's `Example`, and in the `sh`, `bash`, `shell` and `zsh`
+  code blocks and the `$` lines of `console` blocks on every page under `docs/`, against
+  the command tree, without running it. A line where `coroner` is not a command word, as
+  in `brew uninstall --cask coroner`, is reported as skipped.
 - Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,
   `reference/`, `explanation/` and `contributing/`, with its nav in
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
