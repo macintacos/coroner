@@ -48,22 +48,37 @@ const (
 
 // ExitCode returns the process exit code for kind. An unknown kind exits 1, as internal.
 func (kind Kind) ExitCode() int {
-	switch kind {
-	case KindInternal:
+	code, ok := exitCodes()[kind]
+	if !ok {
 		return 1
-	case KindUsage, KindInvalidTime, KindInvalidName, KindTimelineRequired, KindAmbiguousID:
-		return 2
-	case KindTimelineNotFound, KindEventNotFound:
-		return 3
-	case KindTimelineExists, KindIDConflict:
-		return 4
-	case KindDBBusy, KindDBUnreadable, KindDBTooNew:
-		return 5
-	case KindInterrupted:
-		return 130
 	}
 
-	return 1
+	return code
+}
+
+// exitCodes maps every kind to its exit code. The exit-codes help topic must list the same.
+func exitCodes() map[Kind]int {
+	return map[Kind]int{
+		KindInternal: 1,
+
+		KindUsage:            2,
+		KindInvalidTime:      2,
+		KindInvalidName:      2,
+		KindTimelineRequired: 2,
+		KindAmbiguousID:      2,
+
+		KindTimelineNotFound: 3,
+		KindEventNotFound:    3,
+
+		KindTimelineExists: 4,
+		KindIDConflict:     4,
+
+		KindDBBusy:       5,
+		KindDBUnreadable: 5,
+		KindDBTooNew:     5,
+
+		KindInterrupted: 130,
+	}
 }
 
 // Error is how a command reports a failure: Message says what went wrong and Hint how to

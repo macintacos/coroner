@@ -48,7 +48,8 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		return usageError(cmd, err)
 	})
 
-	help := newHelpTemplate()
+	topics := HelpTopics()
+	help := newHelpTemplate(topics)
 	// Cobra's help function writes through OutOrStdout, bypassing app.Out.
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
 		// A help function cannot fail the command.
@@ -59,15 +60,15 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		&cobra.Group{ID: coreCommands, Title: "CORE COMMANDS"},
 		&cobra.Group{ID: additionalCommands, Title: "ADDITIONAL COMMANDS"},
 	)
-	root.SetHelpCommandGroupID(additionalCommands)
 	root.SetCompletionCommandGroupID(additionalCommands)
 	root.AddCommand(newVersionCommand(app), newTimelineCommand(ctx, app))
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
-	// and wrapRunErrors wraps only the commands already added.
-	addHelpCommand(root)
+	// and wrapRunErrors wraps only the commands already added, so help, like --help, ignores
+	// --format and --json.
 	addCompletionCommand(root, app)
 	wrapRunErrors(root)
+	addHelpCommand(root, app, topics)
 
 	return root
 }
@@ -103,16 +104,6 @@ func globalFlags() *pflag.FlagSet {
 	flags.BoolP("help", "h", false, "Show help for a command")
 
 	return flags
-}
-
-func addHelpCommand(root *cobra.Command) {
-	root.InitDefaultHelpCmd()
-
-	for _, cmd := range root.Commands() {
-		if cmd.Name() == "help" {
-			cmd.Example = "  $ coroner help\n  $ coroner help version"
-		}
-	}
 }
 
 // addCompletionCommand adds cobra's completion command now rather than at execution, so its
