@@ -46,13 +46,15 @@ type MarkdownOptions struct {
 	GroupBy GroupBy
 	// IncludeRaw adds each event's time as it was written.
 	IncludeRaw bool
+	// Diagram appends the timeline's Mermaid diagram, in Zone, as a mermaid code block.
+	Diagram bool
 }
 
 // WriteMarkdown writes env's timeline to w as a CommonMark outline for people: a title,
-// metadata bullets, the annotations on the whole timeline, then a section per day of its
-// events by occurred at and seq, with each event's annotations nested under it. It fails,
-// writing nothing, unless env holds one timeline and the event of every annotation, and
-// opts a grouping ParseGroupBy knows.
+// metadata bullets, the annotations on the whole timeline, a section per day of its events
+// by occurred at and seq, with each event's annotations nested under it, then opts.Diagram's
+// Mermaid diagram as a mermaid code block. It fails, writing nothing, unless env holds one
+// timeline and the event of every annotation, and opts a grouping ParseGroupBy knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
@@ -81,6 +83,14 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		md.timelineAnnotations(onTimeline),
 		md.sections(events),
 	)
+	if opts.Diagram {
+		diagram, err := mermaid(env, md.zone)
+		if err != nil {
+			return err
+		}
+		// No diagram line can close the fence: a closing fence holds only backticks, and every line holds more.
+		blocks = append(blocks, "```mermaid\n"+diagram+"```")
+	}
 
 	_, err = io.WriteString(w, strings.Join(blocks, "\n\n")+"\n")
 	return err

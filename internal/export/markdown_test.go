@@ -334,6 +334,26 @@ var _ = Describe("WriteMarkdown", func() {
 		matchGolden("include-raw", markdown(env, export.MarkdownOptions{Zone: time.UTC, IncludeRaw: true}))
 	})
 
+	It("appends the timeline's Mermaid diagram under Diagram", func() {
+		matchGolden("diagram", markdown(checkoutSpike(), export.MarkdownOptions{Zone: time.UTC, Diagram: true}))
+	})
+
+	DescribeTable("ends the outline with a mermaid code block holding exactly the Mermaid export, in the same zone",
+		func(env export.Envelope) {
+			zone := newYork()
+			withoutDiagram := markdown(env, export.MarkdownOptions{Zone: zone})
+			source := []byte(markdown(env, export.MarkdownOptions{Zone: zone, Diagram: true}))
+
+			Expect(string(source)).To(HavePrefix(withoutDiagram))
+			block, ok := parseGFM(source).LastChild().(*ast.FencedCodeBlock)
+			Expect(ok).To(BeTrue(), string(source))
+			Expect(string(block.Language(source))).To(Equal("mermaid"))
+			Expect(visibleText(block, source)).To(Equal(mermaid(env, zone)))
+		},
+		Entry("a timeline with sources, intervals and annotations", checkoutSpike()),
+		Entry("hostile labels, backtick runs included", hostileLabels()),
+	)
+
 	It("outlines a timeline with no title, refs, events or annotations as its name and counts", func() {
 		matchGolden("empty", markdown(envelope(export.Timeline{ID: "t1", Name: "quiet", Refs: []string{}}, nil, nil),
 			export.MarkdownOptions{Zone: time.UTC}))

@@ -264,7 +264,7 @@ func writeEventPage(o output, z zone, page store.EventPage, noEvents string) err
 		}
 
 		return nil
-	case formatMarkdown:
+	case formatMarkdown, formatMermaid:
 		return fmt.Errorf("event list cannot write --format %s", o.format)
 	case formatText:
 	}

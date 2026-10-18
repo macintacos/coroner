@@ -1168,6 +1168,9 @@ indented on a terminal; --format jsonl writes a header record, then one record p
 --format md writes a CommonMark outline for people, with times in UTC unless --tz names
 a zone.
 
+--format mermaid writes a Mermaid gantt diagram of the events, one section per source, in
+the same zone as md; --diagram appends that diagram to --format md.
+
 The filter flags mean what they do on event list, and annotations on the events they
 leave out are left out too. --order picks which end --limit keeps events from; exported
 events are always in the order they happened. Redirect stdout to write a file.
@@ -1175,15 +1178,18 @@ events are always in the order they happened. Redirect stdout to write a file.
 --group-by is experimental and may change before 1.0.
 
 USAGE
-  coroner timeline export --format {json | jsonl | md} [flags]
+  coroner timeline export --format {json | jsonl | md | mermaid} [flags]
 
 EXAMPLES
   $ coroner timeline export -t mongo-outage --format json > rca.json
   $ coroner timeline export --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
   $ coroner timeline export --format md --tz America/New_York > rca.md
+  $ coroner timeline export --format mermaid --source mongod > timeline.mmd
+  $ coroner timeline export --format md --diagram > rca.md
 
 FLAGS
       --contains text      Keep events whose text contains this text, ignoring case
+      --diagram            Append a Mermaid gantt diagram of the events (--format md only)
       --group-by field     Section Markdown events by a field: {source|tag} (experimental)
       --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)

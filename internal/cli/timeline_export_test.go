@@ -171,7 +171,57 @@ var _ = Describe("timeline export", func() {
 
 			Expect(out.String()).To(ContainSubstring("Primary stepped down · as written: `2026-09-11T03:14:07Z`"))
 		})
+
+		It("ends with the timeline's Mermaid diagram under --diagram", func(ctx SpecContext) {
+			diagram := exportAs(ctx, "mermaid")
+
+			Expect(run(ctx, "timeline", "export", "--format", "md", "--diagram")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(HaveSuffix("\n```mermaid\n" + diagram + "```\n"))
+		})
 	})
+
+	Describe("--format mermaid", func() {
+		BeforeEach(func() {
+			configFile = `default_timezone = "America/New_York"`
+		})
+
+		It("draws a gantt in UTC, whatever zone the config file sets", func(ctx SpecContext) {
+			diagram := exportAs(ctx, "mermaid")
+
+			Expect(diagram).To(HavePrefix("gantt\n  title mongo-outage (UTC)\n"))
+			Expect(diagram).To(ContainSubstring("  section mongod\n    Primary stepped down :milestone, 2026-09-11T03:14:07, 0s\n"))
+			Expect(errOut.String()).To(BeEmpty())
+		})
+
+		It("draws the times on the wall clock of the zone --tz names", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "export", "--format", "mermaid", "--tz", "America/New_York")).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring("  title mongo-outage (EDT)\n"))
+			Expect(out.String()).To(ContainSubstring(":milestone, 2026-09-10T23:14:07, 0s\n"))
+		})
+
+		It("writes an unchanged timeline to the same bytes whenever it is exported", func(ctx SpecContext) {
+			first := exportAs(ctx, "mermaid")
+			now = now.Add(time.Hour)
+
+			Expect(exportAs(ctx, "mermaid")).To(Equal(first))
+		})
+	})
+
+	DescribeTable("warns on stderr, still writing the whole diagram, when it is too long for Mermaid to draw",
+		func(ctx SpecContext, args ...string) {
+			text := strings.Repeat("x", export.MermaidMaxTextSize)
+			Expect(run(ctx, "event", "add", text, "--at", "2026-09-11T03:16:00Z")).To(Equal(0), errOut.String())
+
+			Expect(run(ctx, append([]string{"timeline", "export"}, args...)...)).To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring(text + " :milestone, 2026-09-11T03:16:00, 0s\n"))
+			Expect(errOut.String()).To(ContainSubstring("--since, --until or --source"))
+		},
+		Entry("--format mermaid", "--format", "mermaid"),
+		Entry("--format md --diagram", "--format", "md", "--diagram"),
+	)
 
 	DescribeTable("exits 2, naming the flag, on a Markdown option it cannot apply",
 		func(ctx SpecContext, flagName string, args ...string) {
@@ -184,5 +234,7 @@ var _ = Describe("timeline export", func() {
 		Entry("--include-raw with jsonl", "--include-raw", "--format", "jsonl", "--include-raw"),
 		Entry("an unknown --group-by", "--group-by", "--format", "md", "--group-by", "kind"),
 		Entry("an empty --group-by", "--group-by", "--format", "md", "--group-by", ""),
+		Entry("--diagram with json", "--diagram", "--format", "json", "--diagram"),
+		Entry("--diagram with mermaid", "--diagram", "--format", "mermaid", "--diagram"),
 	)
 })
