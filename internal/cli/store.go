@@ -12,21 +12,26 @@ import (
 	"github.com/macintacos/coroner/internal/store"
 )
 
-// withStore opens the database that --db, --config and the environment select, runs fn
-// against it and closes it. Config errors return as usage; errors from opening the store or
-// from fn pass through storeError.
+// withStore opens the database the configuration selects, through resolveConfig and
+// withStorePath.
 func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.Store) error) error {
 	resolved, err := resolveConfig(cmd, app)
 	if err != nil {
 		return err
 	}
 
-	s, err := app.OpenStore(ctx, resolved.DBPath)
+	return withStorePath(ctx, app, resolved.DBPath, fn)
+}
+
+// withStorePath opens the database at path, runs fn against it and closes it. Errors from
+// opening the store or from fn pass through storeError.
+func withStorePath(ctx context.Context, app App, path string, fn func(*store.Store) error) error {
+	s, err := app.OpenStore(ctx, path)
 	if err != nil {
-		return storeError(err, resolved.DBPath)
+		return storeError(err, path)
 	}
 
-	err = storeError(fn(s), resolved.DBPath)
+	err = storeError(fn(s), path)
 	closeErr := s.Close()
 	if closeErr != nil {
 		return errors.Join(err, closeErr)
@@ -62,7 +67,7 @@ func changedString(flags *pflag.FlagSet, name string) *string {
 }
 
 // storeError gives the database failures a user can fix their kinds and messages, and
-// returns any other error as it is. path is the database withStore opened.
+// returns any other error as it is. path is the database withStorePath opened.
 func storeError(err error, path string) error {
 	switch {
 	case errors.Is(err, store.ErrBusy):

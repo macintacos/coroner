@@ -11,6 +11,7 @@ USAGE
   coroner <command> [flags]
 
 CORE COMMANDS
+  event        Add events to a timeline
   timeline     Create, list and switch between timelines
 
 ADDITIONAL COMMANDS

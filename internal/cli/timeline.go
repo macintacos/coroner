@@ -15,11 +15,13 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// nameCharacters and maxNameLength describe a timeline name; keep in sync with
-// timeline.ValidateTimelineName.
+// The characters and length of timeline names, sources and tags; keep in sync with
+// internal/timeline/grammar.go.
 const (
-	nameCharacters = "abcdefghijklmnopqrstuvwxyz0123456789._-"
-	maxNameLength  = 64
+	slugAlphanumerics = "abcdefghijklmnopqrstuvwxyz0123456789"
+	namePunct         = "._-"
+	sourceTagPunct    = "._:/-"
+	maxSlugLength     = 64
 )
 
 func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
@@ -206,13 +208,13 @@ func lookupTimeline(
 // one it is timeline_required, with a hint listing the timelines.
 func selectTimeline(
 	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
-) (timeline.Timeline, selectedBy, error) {
+) (timeline.Timeline, error) {
 	t, by, err := lookupTimeline(ctx, s, flag, lookupEnv)
 	if err == nil && by == "" {
-		return t, by, timelineRequiredError(ctx, s)
+		return t, timelineRequiredError(ctx, s)
 	}
 
-	return t, by, err
+	return t, err
 }
 
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines
@@ -263,7 +265,7 @@ func checkName(name string) error {
 	}
 
 	hint := "Use lowercase letters, digits, '.', '_' and '-'; put free text in --title."
-	if suggestion := suggestName(name); suggestion != "" {
+	if suggestion := suggestSlug(name, namePunct, timeline.ValidateTimelineName); suggestion != "" {
 		hint = fmt.Sprintf("Did you mean `%s`? Put free text in --title.", suggestion)
 	}
 
@@ -274,12 +276,12 @@ func timelineExistsError(name, hint string, err error) *Error {
 	return &Error{Kind: KindTimelineExists, Message: fmt.Sprintf("timeline %q already exists", name), Hint: hint, Err: err}
 }
 
-// suggestName returns input made into a timeline name (lowercased, other characters dashed,
-// trimmed, cut to 64), or "" when nothing valid remains.
-func suggestName(input string) string {
+// suggestSlug returns input made into a slug of letters, digits and punct (lowercased, other
+// characters dashed, trimmed, cut to 64) that valid accepts, or "" when nothing valid remains.
+func suggestSlug(input, punct string, valid func(string) error) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(input) {
-		if !strings.ContainsRune(nameCharacters, r) {
+		if !strings.ContainsRune(slugAlphanumerics+punct, r) {
 			r = '-'
 		}
 		if r == '-' && strings.HasSuffix(b.String(), "-") {
@@ -288,24 +290,24 @@ func suggestName(input string) string {
 		b.WriteRune(r)
 	}
 
-	name := strings.TrimLeft(b.String(), "._-")
-	name = strings.TrimRight(name[:min(len(name), maxNameLength)], "-")
-	if timeline.ValidateTimelineName(name) != nil {
+	slug := strings.TrimLeft(b.String(), punct)
+	slug = strings.TrimRight(slug[:min(len(slug), maxSlugLength)], "-")
+	if valid(slug) != nil {
 		return ""
 	}
 
-	return name
+	return slug
 }
 
-// appendRefs appends each ref in add that refs does not hold yet.
-func appendRefs(refs []string, add ...string) []string {
-	for _, ref := range add {
-		if !slices.Contains(refs, ref) {
-			refs = append(refs, ref)
+// appendUnique appends each value in add that values does not hold yet.
+func appendUnique(values []string, add ...string) []string {
+	for _, value := range add {
+		if !slices.Contains(values, value) {
+			values = append(values, value)
 		}
 	}
 
-	return refs
+	return values
 }
 
 // stringArray returns the values of the repeatable flag called name as given: pflag's
@@ -325,6 +327,6 @@ func printTimeline(o output, t timeline.Timeline) error {
 }
 
 func displayInstant(t time.Time) string {
-	// ponytail: instants print in UTC; show them in the --tz zone once EXC-1308 resolves it.
+	// ponytail: instants print in UTC; show them in the --tz zone with EXC-1309's event list.
 	return timeline.FormatInstant(t)
 }

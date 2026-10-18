@@ -1,0 +1,41 @@
+# JSON output and exit codes of event add. Ids are UUIDv7 and differ per run, so they match
+# by pattern; created at comes from CORONER_TEST_NOW. Times are RFC 3339 only, the stable
+# input grammar.
+
+exits 0 coroner timeline create mongo-outage
+exits 0 coroner timeline use mongo-outage
+
+# --dry-run prints the event object with a null seq, and adds nothing.
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07.412Z --dry-run --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","seq":null,'
+
+# add prints the event object, every key present. A Z time has a null offset.
+exits 0 coroner event add 'Primary stepped down: replSetStepDown' --at 2026-09-11T03:14:07.412Z --ended 2026-09-11T03:20:00Z --source mongod --tag election --tag phase:detect --url https://logs.example.com/l/1 --author julian --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","seq":1,"occurred_at":"2026-09-11T03:14:07\.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07\.412Z","ended_at":"2026-09-11T03:20:00\.000000000Z","source":"mongod","tags":\["election","phase:detect"\],"text":"Primary stepped down: replSetStepDown","url":"https://logs\.example\.com/l/1","author":"julian","created_at":"2026-09-13T01:30:00\.000000000Z","updated_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+
+# An offset in the input wins over --tz, and is kept in seconds east of UTC.
+exits 0 coroner event add 'Pager fires for db-2' --at 2026-09-11T05:15:00+02:00 --tz Asia/Tokyo --json
+stdout '"seq":2,"occurred_at":"2026-09-11T03:15:00\.000000000Z","occurred_offset":7200,"precision":"second",'
+
+# No text exits 2, kind usage.
+exits 2 coroner event add --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# An unknown zone exits 2, kind usage.
+exits 2 coroner event add 'Pager fires' --tz Mars/Olympus --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+# An invalid source exits 2, kind invalid_name, with a suggestion in the hint.
+exits 2 coroner event add 'Pager fires' --source 'DB 2' --json
+stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*db-2[^\n]*"\}\}\n\z'
+
+# --ended before --at exits 2, kind invalid_time.
+exits 2 coroner event add 'Failover' --at 2026-09-11T03:20:00Z --ended 2026-09-11T03:14:00Z --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_time","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# With no timeline current, add exits 2, kind timeline_required.
+exits 0 coroner timeline use --clear
+exits 2 coroner event add 'Pager fires' --json
+stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'

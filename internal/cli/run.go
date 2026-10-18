@@ -21,6 +21,8 @@ type App struct {
 	Args     []string
 	In       io.Reader
 	Out, Err io.Writer
+	// A command never waits on a terminal In.
+	InIsTTY bool
 	// Color and layout are decided per stream.
 	OutIsTTY, ErrIsTTY bool
 	// Version is the build's module version, as debug.ReadBuildInfo reports it.
@@ -28,7 +30,9 @@ type App struct {
 	LookupEnv func(key string) (string, bool)
 	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
 	ReadFile func(name string) ([]byte, error)
-	Now      func() time.Time
+	// Now returns the time in the local zone, which is where time input with no zone is read
+	// when neither --tz nor the config file names one.
+	Now func() time.Time
 	// NewID returns the ID for a new record, a UUIDv7 in main.go.
 	NewID func() (uuid.UUID, error)
 	// OpenStore creates the database at path, so only commands that use it may call it, and

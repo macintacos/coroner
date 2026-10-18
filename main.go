@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	// Embeds the zone database so --tz and default_timezone resolve on hosts without one.
+	_ "time/tzdata"
+
 	"github.com/google/uuid"
 	"github.com/mattn/go-isatty"
 
@@ -31,6 +34,7 @@ func main() {
 		In:                os.Stdin,
 		Out:               os.Stdout,
 		Err:               os.Stderr,
+		InIsTTY:           isatty.IsTerminal(os.Stdin.Fd()),
 		OutIsTTY:          isatty.IsTerminal(os.Stdout.Fd()),
 		ErrIsTTY:          isatty.IsTerminal(os.Stderr.Fd()),
 		Version:           version,
