@@ -49,6 +49,7 @@ digraph coroner_rules_router {
     "Load docs/agents/documentation-rules.md" [shape=box];
     "Load docs/agents/timeline-rules.md" [shape=box];
     "Load docs/agents/store-rules.md" [shape=box];
+    "Load docs/agents/timeparse-rules.md" [shape=box];
 
     "Working on coroner" -> "What does the change touch?";
     "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
@@ -60,15 +61,16 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load docs/agents/documentation-rules.md" [label="adding, removing, renaming or changing a doc, a mise task or hk hook, a docs/agents/ rule file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load docs/agents/timeline-rules.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load docs/agents/store-rules.md" [label="internal/store: a migration, a query, sqlc.yaml or the SQL it runs"];
+    "What does the change touch?" -> "Load docs/agents/timeparse-rules.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
 }
 ```
 
 ## Where things live and what to call them
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
-  Config file, XDG paths and precedence: `internal/config`. `main.go` hands args, stdio,
-  env, file reads, clock and signals to `cli.Run`; code below it takes them from
-  `cli.App`, never from `os`.
+  Typed time input: `internal/timeparse`. Config file, XDG paths and precedence:
+  `internal/config`. `main.go` hands args, stdio, env, file reads, clock and signals to
+  `cli.Run`; code below it takes them from `cli.App`, never from `os`.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`
   and the fixed clock `CORONER_TEST_NOW`. Contract scripts live in
