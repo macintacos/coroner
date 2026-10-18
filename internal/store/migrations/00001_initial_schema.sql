@@ -19,7 +19,7 @@ CREATE TABLE timeline_ref (
 
 CREATE TABLE source (
   id TEXT PRIMARY KEY CHECK (length(id) = 36),
-  name TEXT NOT NULL UNIQUE CHECK (name GLOB '[a-z0-9]*' AND name NOT GLOB '*[^a-z0-9._:/-]*' AND length(name) <= 64),
+  name TEXT NOT NULL UNIQUE CHECK (name GLOB '[a-z0-9]*' AND name NOT GLOB '*[^a-z0-9._:/-]*' AND length(name) <= 64 AND name <> 'none'),
   timezone TEXT, -- reserved; nothing reads or writes it yet
   created_at TEXT NOT NULL CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]Z')
 ) STRICT;

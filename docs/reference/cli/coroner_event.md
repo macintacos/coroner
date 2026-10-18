@@ -4,13 +4,14 @@ title: coroner event
 
 ## coroner event
 
-Add events to a timeline
+Add, list, view, edit and delete events
 
 ### Synopsis
 
 An event is something that happened at a moment or over an interval, as a source reported
-it. Events go to the timeline -t names, else CORONER_TIMELINE, else the one
-'coroner timeline use' picked.
+it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else
+the one 'coroner timeline use' picked. view, edit and delete also take an event's id, from
+any timeline.
 
 ```
 coroner event [flags]
@@ -20,6 +21,7 @@ coroner event [flags]
 
 ```
   $ coroner event add "Primary stepped down" --at 2026-09-11T03:14:07Z --source mongod
+  $ coroner event list --tag election
 ```
 
 ### Options
@@ -46,4 +48,8 @@ coroner event [flags]
 
 * [coroner](coroner.md)	 - Build root-cause investigation timelines
 * [coroner event add](coroner_event_add.md)	 - Add an event to the current timeline
+* [coroner event delete](coroner_event_delete.md)	 - Delete events and their annotations
+* [coroner event edit](coroner_event_edit.md)	 - Change an event's text, time, source, tags or other fields
+* [coroner event list](coroner_event_list.md)	 - List a timeline's events, filtered
+* [coroner event view](coroner_event_view.md)	 - Show an event and its annotations
 

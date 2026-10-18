@@ -11,19 +11,27 @@ import (
 func newEventCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "event",
-		Short:   "Add events to a timeline",
+		Short:   "Add, list, view, edit and delete events",
 		GroupID: coreCommands,
 		Long: "An event is something that happened at a moment or over an interval, as a source reported\n" +
-			"it. Events go to the timeline -t names, else CORONER_TIMELINE, else the one\n" +
-			"'coroner timeline use' picked.",
-		Example: "  $ coroner event add \"Primary stepped down\" --at 2026-09-11T03:14:07Z --source mongod",
+			"it. Events go to, and are listed from, the timeline -t names, else CORONER_TIMELINE, else\n" +
+			"the one 'coroner timeline use' picked. view, edit and delete also take an event's id, from\n" +
+			"any timeline.",
+		Example: "  $ coroner event add \"Primary stepped down\" --at 2026-09-11T03:14:07Z --source mongod\n" +
+			"  $ coroner event list --tag election",
 		// Help and the unknown-verb error print under any format.
 		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
 		RunE:        runNoun,
 	}
 
 	addTimelineFlag(cmd.PersistentFlags())
-	cmd.AddCommand(newEventAddCommand(ctx, app))
+	cmd.AddCommand(
+		newEventAddCommand(ctx, app),
+		newEventListCommand(ctx, app),
+		newEventViewCommand(ctx, app),
+		newEventEditCommand(ctx, app),
+		newEventDeleteCommand(ctx, app),
+	)
 
 	return cmd
 }

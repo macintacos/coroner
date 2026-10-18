@@ -11,7 +11,7 @@ USAGE
   coroner <command> [flags]
 
 CORE COMMANDS
-  event        Add events to a timeline
+  event        Add, list, view, edit and delete events
   source       List sources and fix their names
   tag          List the tags events carry
   timeline     Create, list and switch between timelines

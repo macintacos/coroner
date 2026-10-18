@@ -19,8 +19,12 @@ func ValidateTimelineName(name string) error {
 }
 
 // ValidateSourceName returns an error unless name matches [a-z0-9][a-z0-9._:/-]* in at
-// most 64 characters.
+// most 64 characters and is not none, the keyword that clears an event's source.
 func ValidateSourceName(name string) error {
+	if name == "none" {
+		return fmt.Errorf("source %q: is reserved for clearing a source", name)
+	}
+
 	return validateSlug("source", name, sourceTagPunct)
 }
 

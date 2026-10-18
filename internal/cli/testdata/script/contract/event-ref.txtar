@@ -1,0 +1,41 @@
+# JSON output and exit codes of event view, edit and delete, which name an event by seq,
+# timeline#seq or id. Ids are UUIDv7 and differ per run, so they match by pattern; created and
+# updated at come from CORONER_TEST_NOW.
+
+exits 0 coroner timeline create mongo-outage
+exits 0 coroner timeline use mongo-outage
+exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07.412Z --source mongod --tag election
+exits 0 coroner event add 'Pager fires for db-2' --at 2026-09-11T03:15:00Z
+
+# view prints the event object event add prints, every key present.
+exits 0 coroner event view 'mongo-outage#1' --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","timeline_id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","seq":1,"occurred_at":"2026-09-11T03:14:07\.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07\.412Z","ended_at":null,"source":"mongod","tags":\["election"\],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00\.000000000Z","updated_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+
+# edit --dry-run prints the edited event object, and changes nothing.
+exits 0 coroner event edit 1 --add-tag root-cause --remove-tag election --source none --dry-run --json
+stdout '"seq":1,[^\n]*"source":null,"tags":\["root-cause"\],'
+exits 0 coroner event view 1 --json
+stdout '"source":"mongod","tags":\["election"\],'
+
+# delete prints the deleted events as event list does.
+exits 0 coroner event delete 2 --json
+stdout '^\{"events":\[\{"id":"[0-9a-f-]{36}",[^{}]*"seq":2,[^{}]*\}\],"truncated":false,"total":1\}$'
+
+# A missing event exits 3, kind event_not_found, and delete then deletes nothing.
+exits 3 coroner event view 2 --json
+! stdout .
+stderr '^\{"error":\{"kind":"event_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 3 coroner event delete 1 2 --json
+stderr '^\{"error":\{"kind":"event_not_found",[^\n]+\}\}\n\z'
+exits 0 coroner event view 1 --json
+
+# An id start two events share exits 2, kind ambiguous_id.
+exits 0 coroner event add 'New primary elected' --at 2026-09-11T03:16:00Z
+exits 2 coroner event view 0 --json
+stderr '^\{"error":\{"kind":"ambiguous_id","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# Something that is not an event reference, or an edit of nothing, exits 2, kind usage.
+exits 2 coroner event view '#1' --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 2 coroner event edit 1 --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'

@@ -15,6 +15,12 @@ WHERE id = ?;
 SELECT * FROM event
 WHERE timeline_id = ? AND seq = ?;
 
+-- name: ListEventsByIDPrefix :many
+SELECT * FROM event
+WHERE id GLOB ?
+ORDER BY id
+LIMIT ?;
+
 -- name: ListEvents :many
 SELECT * FROM event
 WHERE timeline_id = ?

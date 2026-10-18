@@ -25,13 +25,18 @@ func newTagListCommand(ctx context.Context, app App) *cobra.Command {
 				return err
 			}
 
-			return withStore(ctx, cmd, app, func(s *store.Store) error {
+			cfg, z, err := resolveZone(cmd, app)
+			if err != nil {
+				return err
+			}
+
+			return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 				usages, err := s.TagUsages(ctx)
 				if err != nil {
 					return err
 				}
 
-				return printTags(o, usages)
+				return printTags(o, z, usages)
 			})
 		},
 	}
@@ -50,7 +55,7 @@ type tagJSON struct {
 	LastOccurredAt  string `json:"last_occurred_at"`
 }
 
-func printTags(o output, usages []store.TagUsage) error {
+func printTags(o output, z zone, usages []store.TagUsage) error {
 	if o.format == formatJSON {
 		return o.json(newTagListJSON(usages))
 	}
@@ -58,7 +63,7 @@ func printTags(o output, usages []store.TagUsage) error {
 		return o.notify("No tags yet. Add one with: coroner event add <text> --tag <tag>")
 	}
 
-	return o.rows(tagRows(usages))
+	return o.rows(tagRows(usages, z))
 }
 
 func newTagListJSON(usages []store.TagUsage) tagListJSON {
@@ -76,12 +81,12 @@ func newTagListJSON(usages []store.TagUsage) tagListJSON {
 	return tagListJSON{Tags: tags, Total: len(tags)}
 }
 
-// tagRows returns a row per tag: its name, event count, and first and last occurred at.
-func tagRows(usages []store.TagUsage) [][]string {
+// tagRows returns a row per tag: its name, event count, and first and last occurred at in z.
+func tagRows(usages []store.TagUsage, z zone) [][]string {
 	rows := make([][]string, 0, len(usages))
 	for _, u := range usages {
 		rows = append(rows, []string{
-			u.Name, strconv.Itoa(u.EventCount), displayInstant(u.FirstOccurredAt), displayInstant(u.LastOccurredAt),
+			u.Name, strconv.Itoa(u.EventCount), displayTime(u.FirstOccurredAt, timeline.PrecisionSecond, z), displayTime(u.LastOccurredAt, timeline.PrecisionSecond, z),
 		})
 	}
 

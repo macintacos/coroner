@@ -90,13 +90,80 @@ var _ = Describe("Events", func() {
 		for n := range 3 {
 			Expect(s.AddEvent(ctx, newEvent(10+n, quarterPast), uuid(20))).Error().NotTo(HaveOccurred())
 		}
-		Expect(s.DeleteEvent(ctx, uuid(12))).To(Succeed())
+		Expect(s.DeleteEvents(ctx, uuid(12))).To(Succeed())
 
 		added, err := s.AddEvent(ctx, newEvent(13, quarterPast), uuid(20))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(added.Seq).To(Equal(int64(4)))
 		Expect(s.EventBySeq(ctx, incident.ID, 3)).Error().To(MatchError(store.ErrNotFound))
+	})
+
+	It("finds events across timelines by id prefix, in id order and up to a limit", func(ctx SpecContext) {
+		other := timeline.Timeline{ID: uuid(2), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+		Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+		for _, e := range []timeline.Event{newEvent(11, quarterPast), newEvent(10, quarterPast), newEvent(20, quarterPast)} {
+			Expect(s.AddEvent(ctx, e, uuid(30))).Error().NotTo(HaveOccurred())
+		}
+		elsewhere := newEvent(12, quarterPast)
+		elsewhere.TimelineID = other.ID
+		Expect(s.AddEvent(ctx, elsewhere, uuid(30))).Error().NotTo(HaveOccurred())
+		ids := func(prefix string, limit int) []string {
+			GinkgoHelper()
+			events, err := s.EventsByIDPrefix(ctx, prefix, limit)
+			Expect(err).NotTo(HaveOccurred())
+			out := []string{}
+			for _, e := range events {
+				out = append(out, e.ID)
+			}
+			return out
+		}
+
+		Expect(ids("0199a1b2-0000-7000-8000-00000000001", 10)).To(Equal([]string{uuid(10), uuid(11), uuid(12)}))
+		Expect(ids("0199a1b2-0000-7000-8000-00000000001", 2)).To(Equal([]string{uuid(10), uuid(11)}))
+		Expect(ids(uuid(20), 10)).To(Equal([]string{uuid(20)}))
+		Expect(ids("0199a1b2-0000-7000-8000-00000000003", 10)).To(BeEmpty())
+	})
+
+	DescribeTable("rejects an id prefix that is empty or is not lowercase hex and dashes, which GLOB would read as a pattern",
+		func(ctx SpecContext, prefix string) {
+			Expect(s.AddEvent(ctx, newEvent(10, quarterPast), uuid(30))).Error().NotTo(HaveOccurred())
+
+			events, err := s.EventsByIDPrefix(ctx, prefix, 10)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err).NotTo(MatchError(store.ErrNotFound))
+			Expect(events).To(BeEmpty())
+		},
+		Entry("empty", ""),
+		Entry("a star", "*"),
+		Entry("a question mark", "0199a1b2-?"),
+		Entry("a character class", "[0-9]"),
+		Entry("uppercase hex", "0199A1B2"),
+	)
+
+	It("deletes events with their annotations", func(ctx SpecContext) {
+		for n := range 2 {
+			Expect(s.AddEvent(ctx, newEvent(10+n, quarterPast), uuid(30))).Error().NotTo(HaveOccurred())
+		}
+		eventID := uuid(10)
+		Expect(s.AddAnnotation(ctx, timeline.Annotation{
+			ID: uuid(40), TimelineID: incident.ID, EventID: &eventID, Kind: timeline.AnnotationEvidence,
+			Body: "replSetStepDown", CreatedAt: created, UpdatedAt: created,
+		}, uuid(30))).To(Succeed())
+
+		Expect(s.DeleteEvents(ctx, uuid(10), uuid(11))).To(Succeed())
+
+		Expect(s.Events(ctx, incident.ID)).To(BeEmpty())
+		Expect(s.Annotations(ctx, incident.ID)).To(BeEmpty())
+	})
+
+	It("deletes none of the events when one does not exist", func(ctx SpecContext) {
+		Expect(s.AddEvent(ctx, newEvent(10, quarterPast), uuid(30))).Error().NotTo(HaveOccurred())
+
+		Expect(s.DeleteEvents(ctx, uuid(10), uuid(99))).To(MatchError(store.ErrNotFound))
+
+		Expect(s.Events(ctx, incident.ID)).To(HaveLen(1))
 	})
 
 	It("creates a source on first use and reuses it after", func(ctx SpecContext) {
@@ -157,8 +224,8 @@ var _ = Describe("Events", func() {
 		Entry("UpdateEvent", func(s *store.Store, ctx SpecContext) error {
 			return s.UpdateEvent(ctx, newEvent(9, quarterPast), uuid(20))
 		}),
-		Entry("DeleteEvent", func(s *store.Store, ctx SpecContext) error {
-			return s.DeleteEvent(ctx, uuid(9))
+		Entry("DeleteEvents", func(s *store.Store, ctx SpecContext) error {
+			return s.DeleteEvents(ctx, uuid(9))
 		}),
 	)
 

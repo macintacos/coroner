@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -324,9 +323,4 @@ func printTimeline(o output, t timeline.Timeline) error {
 	}
 
 	return o.json(newTimelineJSON(t))
-}
-
-func displayInstant(t time.Time) string {
-	// ponytail: instants print in UTC; show them in the --tz zone with EXC-1309's event list.
-	return timeline.FormatInstant(t)
 }

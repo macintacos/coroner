@@ -120,6 +120,19 @@ var _ = Describe("time input", func() {
 			resolved(0, timeline.PrecisionSecond, true), "local",
 			"~2026-09-11T03:14:07Z (-03:00 local: 00:14:07)"),
 	)
+
+	DescribeTable("displayTime shows an instant's wall clock in the zone, to its precision, with the zone's offset",
+		func(nanos int, precision timeline.Precision, zoneName, want string) {
+			z, err := timeZone(&zoneName, "local", local)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(displayTime(resolved(nanos, precision, false).Instant, precision, z)).To(Equal(want))
+		},
+		Entry("seconds, in local", 0, timeline.PrecisionSecond, "local", "2026-09-11T00:14:07-03:00"),
+		Entry("milliseconds, across midnight in a named zone",
+			412_000_000, timeline.PrecisionMillisecond, "America/New_York", "2026-09-10T23:14:07.412-04:00"),
+		Entry("nanoseconds, in UTC", 412, timeline.PrecisionNanosecond, "UTC", "2026-09-11T03:14:07.000000412Z"),
+	)
 })
 
 // resolved is 2026-09-11T03:14:07Z plus nanos, at precision.

@@ -39,7 +39,7 @@ coroner <command> [flags]
 ### SEE ALSO
 
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
-* [coroner event](coroner_event.md)	 - Add events to a timeline
+* [coroner event](coroner_event.md)	 - Add, list, view, edit and delete events
 * [coroner source](coroner_source.md)	 - List sources and fix their names
 * [coroner status](coroner_status.md)	 - Show the database and the timeline commands act on
 * [coroner tag](coroner_tag.md)	 - List the tags events carry

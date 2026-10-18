@@ -60,5 +60,5 @@ coroner event add {<text> | -} [flags]
 
 ### SEE ALSO
 
-* [coroner event](coroner_event.md)	 - Add events to a timeline
+* [coroner event](coroner_event.md)	 - Add, list, view, edit and delete events
 

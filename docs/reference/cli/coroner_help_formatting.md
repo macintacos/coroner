@@ -20,8 +20,11 @@ to JSON on its own. A command exits 2 when asked for a format it cannot print.
 
 - Keys are snake_case, and every key is always present: an empty value is `null`, never a
   missing key.
-- A collection is wrapped in an object that says whether it was cut short (`truncated`)
-  and how many items matched (`total`).
+- Under `json`, a collection is wrapped in an object that says whether it was cut short
+  (`truncated`) and how many items matched (`total`).
+- Under `jsonl`, each item of a collection is its own line, with no wrapping object. A
+  limit that cuts the collection short says so on stderr, so scripts that need `truncated`
+  or `total` use `json`.
 - Instants are fixed-width RFC 3339 in UTC, such as `2026-09-12T14:05:03.000000000Z`. See
   `coroner help time`.
 - Each JSONL line is an object whose `type` key says what it holds.

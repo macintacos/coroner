@@ -25,13 +25,18 @@ func newSourceListCommand(ctx context.Context, app App) *cobra.Command {
 				return err
 			}
 
-			return withStore(ctx, cmd, app, func(s *store.Store) error {
+			cfg, z, err := resolveZone(cmd, app)
+			if err != nil {
+				return err
+			}
+
+			return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 				usages, err := s.SourceUsages(ctx)
 				if err != nil {
 					return err
 				}
 
-				return printSources(o, usages)
+				return printSources(o, z, usages)
 			})
 		},
 	}
@@ -43,7 +48,7 @@ type sourceListJSON struct {
 	Truncated bool               `json:"truncated"`
 }
 
-func printSources(o output, usages []store.SourceUsage) error {
+func printSources(o output, z zone, usages []store.SourceUsage) error {
 	if o.format == formatJSON {
 		return o.json(newSourceListJSON(usages))
 	}
@@ -51,7 +56,7 @@ func printSources(o output, usages []store.SourceUsage) error {
 		return o.notify("No sources yet. Name one with: coroner event add <text> --source <name>")
 	}
 
-	return o.rows(sourceRows(usages))
+	return o.rows(sourceRows(usages, z))
 }
 
 func newSourceListJSON(usages []store.SourceUsage) sourceListJSON {
@@ -65,16 +70,16 @@ func newSourceListJSON(usages []store.SourceUsage) sourceListJSON {
 }
 
 // sourceRows returns a row per source: its name, event and annotation counts, and first and
-// last occurred at.
-func sourceRows(usages []store.SourceUsage) [][]string {
+// last occurred at in z.
+func sourceRows(usages []store.SourceUsage, z zone) [][]string {
 	rows := make([][]string, 0, len(usages))
 	for _, u := range usages {
 		rows = append(rows, []string{
 			u.Name,
 			strconv.Itoa(u.EventCount),
 			strconv.Itoa(u.AnnotationCount),
-			displayOptionalInstant(u.FirstOccurredAt),
-			displayOptionalInstant(u.LastOccurredAt),
+			displayOptionalInstant(u.FirstOccurredAt, z),
+			displayOptionalInstant(u.LastOccurredAt, z),
 		})
 	}
 
