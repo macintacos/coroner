@@ -1,10 +1,14 @@
-# JSON output and exit codes of status. Its fields are experimental until 1.0.
+# JSON output and exit codes of status. Its fields are experimental until 1.0. Its output
+# matches by pattern, not a file: db_path holds $WORK and schema_version grows with each
+# migration.
 
 # With no database, status exits 0, reports it missing and creates nothing.
 exits 0 coroner status --json
+jsonvalid stdout
 stdout '^\{"db_path":"[^"]+/\.local/share/coroner/coroner\.db","db_exists":false,"schema_version":null,"timeline":null,"selected_by":null\}$'
 ! exists $WORK/.local/share/coroner
 exits 0 coroner status --db $WORK/missing/coroner.db --json
+jsonvalid stdout
 stdout '^\{"db_path":"[^"]+/missing/coroner\.db","db_exists":false,"schema_version":null,"timeline":null,"selected_by":null\}$'
 ! exists $WORK/missing
 
@@ -13,16 +17,20 @@ exits 0 coroner timeline create first
 exits 0 coroner timeline create second
 exits 0 coroner timeline create third
 exits 0 coroner status --json
+jsonvalid stdout
 stdout '^\{"db_path":"[^"]+/\.local/share/coroner/coroner\.db","db_exists":true,"schema_version":[1-9][0-9]*,"timeline":null,"selected_by":null\}$'
 
 # selected_by names the layer that selected the timeline: use, then env, then flag.
 exits 0 coroner timeline use first
 exits 0 coroner status --json
+jsonvalid stdout
 stdout '"timeline":\{"id":"[^"]{36}","name":"first"\},"selected_by":"use"\}$'
 env CORONER_TIMELINE=second
 exits 0 coroner status --json
+jsonvalid stdout
 stdout '"timeline":\{"id":"[^"]{36}","name":"second"\},"selected_by":"env"\}$'
 exits 0 coroner status -t third --json
+jsonvalid stdout
 stdout '"timeline":\{"id":"[^"]{36}","name":"third"\},"selected_by":"flag"\}$'
 
 # A layer naming a missing timeline exits 3, kind timeline_not_found.

@@ -14,10 +14,12 @@ stderr '^\{"error":\{"kind":"timeline_required","message":"[^\n]+","hint":"[^\n]
 exits 0 coroner timeline use first
 env CORONER_TIMELINE=second
 exits 0 coroner timeline view --json
+jsonvalid stdout
 stdout '"name":"second"'
 
 # -t wins over CORONER_TIMELINE.
 exits 0 coroner timeline view -t third --json
+jsonvalid stdout
 stdout '"name":"third"'
 
 # A missing timeline named by CORONER_TIMELINE or -t exits 3, kind timeline_not_found.
@@ -32,6 +34,7 @@ stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
 
 # An empty CORONER_TIMELINE counts as unset.
 exits 0 coroner timeline view --json
+jsonvalid stdout
 stdout '"name":"first"'
 
 # event add selects its timeline the same way: CORONER_TIMELINE over the timeline in use, -t

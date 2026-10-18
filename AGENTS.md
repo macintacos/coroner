@@ -90,9 +90,9 @@ digraph coroner_rules_router {
   `--json` exits 2 as `usage`. `cli.Run` prints every error once, adding the JSON error
   envelope under `--format json|jsonl`.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
-  [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`
-  and the fixed clock `CORONER_TEST_NOW`. Contract scripts live in
-  [`contract/`](internal/cli/testdata/script/contract/README.md).
+  [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
+  the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract
+  scripts live in [`contract/`](internal/cli/testdata/script/contract/README.md).
 - Examples: [`internal/cli/examples_test.go`](internal/cli/examples_test.go) parses every
   `coroner` line in every command's `Example` against the command tree, without running
   it.

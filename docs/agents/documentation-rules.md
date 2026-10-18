@@ -39,7 +39,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
-    "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin, and what a diff under contract/ means"];
+    "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, and what a diff under contract/ means"];
     "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun"];
     "Which doc does the change affect?" -> "Edit STABILITY.md (not in the repo yet — EXC-1303)" [label="what is a contract, format_version bumps, deprecation windows"];
     "Which doc does the change affect?" -> "Edit the docs site pages (not in the repo yet — EXC-1300, EXC-1301, EXC-1302)" [label="user-visible behaviour: tutorial, how-to guides, reference and explanation pages"];
@@ -68,10 +68,11 @@ digraph coroner_docs_router {
   agents) — the migration policy, the fixture database each release commits and how to add
   it, and the migration gaps deferred so far.
 - **[`.github/pull_request_template.md`](../../.github/pull_request_template.md)** — the
-  checkbox that makes a pull request cite the checklist IDs it was checked against.
+  checkbox that makes a pull request cite the checklist IDs it was checked against, and
+  the contract section that makes it state a contract change's stability.
 - **[`internal/cli/testdata/script/contract/README.md`](../../internal/cli/testdata/script/contract/README.md)**
-  (humans and agents) — what the contract scripts pin, and that a diff under `contract/`
-  is a contract change.
+  (humans and agents) — what the contract scripts pin and how, and that a diff under
+  `contract/` is a contract change.
 - **[`CONTEXT.md`](../../CONTEXT.md)** — the vocabulary glossary for names in code, flags,
   JSON and docs.
 - **`STABILITY.md`** (not in the repo yet — EXC-1303) — what counts as a contract, and the

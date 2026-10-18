@@ -1,0 +1,24 @@
+# jsonvalid passes a file that is empty or holds only JSON values, as json and jsonl output do.
+jsonvalid empty.txt
+jsonvalid object.json
+jsonvalid lines.jsonl
+
+# Anything else beside the JSON, such as a deprecation notice, fails it.
+! jsonvalid notice-before.txt
+! jsonvalid notice-after.txt
+! jsonvalid truncated.json
+
+-- empty.txt --
+-- object.json --
+{"coroner_version":"(devel)"}
+-- lines.jsonl --
+{"type":"event","seq":1}
+{"type":"event","seq":2}
+-- notice-before.txt --
+Flag --since has been deprecated, use --after instead
+{"events":[]}
+-- notice-after.txt --
+{"events":[]}
+Flag --since has been deprecated, use --after instead
+-- truncated.json --
+{"events":[

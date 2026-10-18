@@ -1,12 +1,12 @@
-# JSON output and exit codes of the source and tag commands. Ids are UUIDv7 and differ per
-# run, so they match by pattern; created at comes from CORONER_TEST_NOW and occurred at from
-# --at.
+# JSON output and exit codes of the source and tag commands. Ids come from CORONER_TEST_IDS,
+# created at from CORONER_TEST_NOW and occurred at from --at, so whole documents are compared
+# with the files below.
 
 # With no events, both lists are empty.
 exits 0 coroner source list --json
-stdout '^\{"sources":\[\],"total":0,"truncated":false\}$'
+cmp stdout no-sources.json
 exits 0 coroner tag list --json
-stdout '^\{"tags":\[\],"total":0,"truncated":false\}$'
+cmp stdout no-tags.json
 
 exits 0 coroner timeline create mongo-outage
 exits 0 coroner timeline use mongo-outage
@@ -16,24 +16,23 @@ exits 0 coroner event add 'Election timeout logged' --at 2026-09-11T03:15:00Z --
 
 # source list prints every source by name, every key present.
 exits 0 coroner source list --json
-stdout '^\{"sources":\[\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"db-2/mongod","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":1,"annotation_count":0,"first_occurred_at":"2026-09-11T03:15:00\.000000000Z","last_occurred_at":"2026-09-11T03:15:00\.000000000Z"\},\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongo","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:20:00\.000000000Z"\}\],"total":2,"truncated":false\}$'
+cmp stdout sources.json
 
 # tag list prints every tag by name; an event without tags adds none.
 exits 0 coroner tag list --json
-stdout '^\{"tags":\[\{"name":"phase:detect","event_count":1,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:14:07\.000000000Z"\}\],"total":1,"truncated":false\}$'
+cmp stdout tags.json
 
 # edit --dry-run prints the source as it would be renamed, and renames nothing.
 exits 0 coroner source edit mongo --name mongodb --dry-run --json
-stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongodb","created_at":"2026-09-13T01:30:00\.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07\.000000000Z","last_occurred_at":"2026-09-11T03:20:00\.000000000Z"\}$'
-cp stdout renamed.json
+cmp stdout renamed.json
 exits 0 coroner source list --json
-stdout '"name":"mongo",'
-! stdout '"name":"mongodb"'
+cmp stdout sources.json
 
 # edit prints the renamed source, and its events follow it.
 exits 0 coroner source edit mongo --name mongodb --json
 cmp stdout renamed.json
 exits 0 coroner source list --json
+jsonvalid stdout
 stdout '"name":"mongodb",[^}]*"event_count":2,'
 ! stdout '"name":"mongo",'
 
@@ -52,8 +51,21 @@ stderr '^\{"error":\{"kind":"source_not_found","message":"[^\n]+","hint":"[^\n]+
 
 # An invalid name exits 2, kind invalid_name, with a suggested name in the hint.
 exits 2 coroner source edit mongodb --name 'Mongo DB' --json
+! stdout .
 stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*mongo-db[^\n]*"\}\}\n\z'
 
 # edit without --name exits 2, kind usage.
 exits 2 coroner source edit mongodb --json
+! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+-- no-sources.json --
+{"sources":[],"total":0,"truncated":false}
+-- no-tags.json --
+{"tags":[],"total":0,"truncated":false}
+-- sources.json --
+{"sources":[{"id":"01a09862-b1c0-7000-8000-000000000007","name":"db-2/mongod","created_at":"2026-09-13T01:30:00.000000000Z","event_count":1,"annotation_count":0,"first_occurred_at":"2026-09-11T03:15:00.000000000Z","last_occurred_at":"2026-09-11T03:15:00.000000000Z"},{"id":"01a09862-b1c0-7000-8000-000000000003","name":"mongo","created_at":"2026-09-13T01:30:00.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07.000000000Z","last_occurred_at":"2026-09-11T03:20:00.000000000Z"}],"total":2,"truncated":false}
+-- tags.json --
+{"tags":[{"name":"phase:detect","event_count":1,"first_occurred_at":"2026-09-11T03:14:07.000000000Z","last_occurred_at":"2026-09-11T03:14:07.000000000Z"}],"total":1,"truncated":false}
+-- renamed.json --
+{"id":"01a09862-b1c0-7000-8000-000000000003","name":"mongodb","created_at":"2026-09-13T01:30:00.000000000Z","event_count":2,"annotation_count":0,"first_occurred_at":"2026-09-11T03:14:07.000000000Z","last_occurred_at":"2026-09-11T03:20:00.000000000Z"}
