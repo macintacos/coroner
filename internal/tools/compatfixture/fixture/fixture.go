@@ -32,10 +32,11 @@ func Write(ctx context.Context, path string) error {
 		return err
 	}
 
-	return errors.Join(fill(ctx, s), s.Close())
+	return errors.Join(Fill(ctx, s), s.Close())
 }
 
-func fill(ctx context.Context, s *store.Store) error {
+// Fill writes the fixture's records into s, which must hold none of them yet.
+func Fill(ctx context.Context, s *store.Store) error {
 	err := add(Timelines(), func(t timeline.Timeline) error {
 		return s.CreateTimeline(ctx, t)
 	})

@@ -15,6 +15,9 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// Renaming it moves every default user's blob directory, stranding their blobs.
+const defaultDBName = "coroner.db"
+
 // Flags holds the global flag values. A nil field means the flag was not given, so an
 // explicitly empty value can be rejected.
 type Flags struct {
@@ -64,7 +67,7 @@ func Resolve(
 			return Config{}, err
 		}
 
-		dbPath = filepath.Join(dataHome, "coroner", "coroner.db")
+		dbPath = filepath.Join(dataHome, "coroner", defaultDBName)
 	}
 
 	return Config{
@@ -73,6 +76,19 @@ func Resolve(
 		DefaultTimezone: cmp.Or(file.DefaultTimezone, "local"),
 		Author:          file.Author,
 	}, nil
+}
+
+// BlobDir returns the directory the database at dbPath keeps attachment blobs in: blobs
+// beside a database named coroner.db, as the default is, and <dbPath>.blobs for any other.
+// No two database paths share one, so collecting one database's garbage never deletes
+// another's blobs. It reads only the path's spelling: a symlink or a differently cased
+// name gives the same database another blob directory.
+func BlobDir(dbPath string) string {
+	if filepath.Base(dbPath) == defaultDBName {
+		return filepath.Join(filepath.Dir(dbPath), "blobs")
+	}
+
+	return dbPath + ".blobs"
 }
 
 func rejectEmpty(flags Flags) error {

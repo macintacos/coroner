@@ -222,3 +222,19 @@ var _ = Describe("Resolve", func() {
 		Expect(err.Error()).To(ContainSubstring(userConfig))
 	})
 })
+
+var _ = Describe("BlobDir", func() {
+	DescribeTable("places blobs",
+		func(dbPath, want string) {
+			Expect(config.BlobDir(dbPath)).To(Equal(want))
+		},
+		Entry("for the default database, in its data directory's blobs",
+			"/home/ada/.local/share/coroner/coroner.db", "/home/ada/.local/share/coroner/blobs"),
+		Entry("for any other database, beside it and named after it",
+			"/srv/inc/other.db", "/srv/inc/other.db.blobs"),
+	)
+
+	It("gives two databases in one directory different blob directories", func() {
+		Expect(config.BlobDir("/srv/inc/coroner.db")).NotTo(Equal(config.BlobDir("/srv/inc/other.db")))
+	})
+})

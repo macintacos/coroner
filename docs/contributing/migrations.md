@@ -27,7 +27,8 @@ failing test.
    `<db>.pre-v<N>.bak`, where N is the newest schema the build embeds: one backup, however
    many migrations are pending. It never overwrites a backup: when that file exists, it
    fails with `ErrBackupExists` and names the file to move aside. A new database gets no
-   backup.
+   backup. The backup copies the database file only; its attachments' blobs stay in the
+   live blob directory, where garbage collection can delete them.
 5. **Every release commits a fixture database.** Each release, even one with no new
    migration, adds `internal/store/testdata/compat/v<X.Y.Z>.db`, written by that release,
    and every later build must open, migrate and read it
@@ -35,6 +36,13 @@ failing test.
 6. **The schema is internal, never a contract.** JSON and JSONL exports are the sharing
    contract ([`AGENTS.md`](../../AGENTS.md) Rule 3). The schema can change freely through
    new migrations, as long as every committed fixture still opens.
+7. **One process migrates a database at a time.** goose ships lockers for Postgres and
+   MySQL, but not for SQLite. When migrations are pending, `store.Open` holds an exclusive
+   `flock` on `<db>.lock` while it takes the backup and applies them, and reads the schema
+   version again once it holds the lock, so a second coroner started at the same moment
+   waits and then finds nothing left to do, or refuses a schema a newer coroner migrated
+   to meanwhile (rule 3). A database with nothing pending never takes the lock. The lock
+   file stays beside the database once created. `flock` makes the store unix-only.
 
 ## Fixture databases
 
@@ -80,19 +88,8 @@ tagged:
 
 ## Deferred gaps
 
-- **No migration lock.** goose ships lockers for Postgres and MySQL, but not for SQLite.
-  Two coroner processes that open the same database while a migration is pending,
-  including a brand-new file, can both run it. One of them then fails, with a migration
-  error such as "table timeline already exists", with `ErrBusy`, or with `ErrBackupExists`
-  on the backup the other just took. Nothing is lost: the other process finishes the
-  migration, and the failed command succeeds when run again. The fix is to hold
-  `syscall.Flock` on `<db>.lock` around the version check, the backup and `Up`, and to
-  check for pending migrations again once the lock is held. While `00001` is the only
-  migration, no existing database can have one pending, so only the first commands on a
-  brand-new database can race; the fix waits for the second migration, `00002_attachments`
-  (EXC-1296).
 - **Migrations run with foreign keys on.** A migration that rebuilds a table other tables
   reference relies on [store rule 3](../agents/store-rules.md) to turn foreign keys off;
   one that forgets it deletes every child row through the cascade. Running goose on a
   connection opened without `foreign_keys(1)`, then `PRAGMA foreign_key_check`, would rule
-  that out. No migration rebuilds a table yet, so this waits for the same migration.
+  that out. No migration rebuilds a table yet, so this waits for the first one that does.
