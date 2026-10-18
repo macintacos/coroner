@@ -4,11 +4,12 @@ title: coroner event view
 
 ## coroner event view
 
-Show an event and its annotations
+Show an event, its annotations and its links
 
 ### Synopsis
 
-Show every field of an event, then its annotations. --json prints the event object alone.
+Show every field of an event, then its annotations, then its links to and from other events
+in any timeline. --json prints the event object with its links.
 
 An event is named by its seq in the current timeline (12), by a timeline and seq
 (mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts
@@ -43,5 +44,5 @@ coroner event view <event> [flags]
 
 ### SEE ALSO
 
-* [coroner event](coroner_event.md)	 - Add, list, view, edit and delete events
+* [coroner event](coroner_event.md)	 - Add, list, view, edit, delete and link events
 

@@ -24,6 +24,7 @@ type ImportRecords struct {
 	Events, EventReplacements           []timeline.Event
 	Annotations, AnnotationReplacements []timeline.Annotation
 	Attachments                         []ImportAttachment
+	Links                               []timeline.Link
 }
 
 // ImportAttachment is an attachment row to insert, with its content, or nil Content when the
@@ -56,6 +57,7 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 			func() error { return writeEach(ctx, q, records.Annotations, importAnnotation) },
 			func() error { return writeEach(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
 			func() error { return insertStoredBlobAttachments(ctx, q, s.blobDir, records.Attachments) },
+			func() error { return writeEach(ctx, q, records.Links, createLink) },
 		} {
 			err := step()
 			if err != nil {

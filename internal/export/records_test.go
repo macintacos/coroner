@@ -35,6 +35,8 @@ func label(r export.Record) string {
 		return "annotation " + r.ID
 	case export.Attachment:
 		return "attachment " + r.ID
+	case export.Link:
+		return "link " + r.ID
 	}
 
 	return "unknown"
@@ -120,7 +122,7 @@ var _ = Describe("Records", func() {
 			"event e1", "annotation z-e1-early", "annotation a-e1-late", "event e2", "annotation a-e2", "event e3",
 		}))
 		Expect(records[0]).To(Equal(export.Header{
-			Format: "coroner.export", FormatVersion: "1.1", CoronerVersion: "0.1.0", ExportedAt: instant(9, 0), Query: env.Query,
+			Format: "coroner.export", FormatVersion: "1.2", CoronerVersion: "0.1.0", ExportedAt: instant(9, 0), Query: env.Query,
 		}))
 	})
 
@@ -207,6 +209,45 @@ var _ = Describe("Records", func() {
 		Entry("an event", timeline.AttachmentOwner{EventID: new("gone")}),
 		Entry("an annotation", timeline.AttachmentOwner{AnnotationID: new("gone")}),
 	)
+
+	link := func(id, from, to string, created time.Time) export.Link {
+		return export.Link{ID: id, FromEventID: from, ToEventID: to, CreatedAt: export.Instant(created)}
+	}
+
+	It("ends with the links, by created at then id, after every event they join", func() {
+		env := export.NewEnvelope("0.1.0", at(9, 0))
+		b1, a1 := event("b1", 1, at(3, 15)), event("a1", 1, at(3, 14))
+		b1.TimelineID, a1.TimelineID = "tb", "ta"
+		env.Events = []export.Event{b1, a1}
+		env.Annotations = []export.Annotation{annotation("n-b1", new("b1"), at(10, 0))}
+		env.Links = []export.Link{
+			link("l-late", "b1", "a1", at(12, 0)),
+			link("l-cross", "a1", "b1", at(11, 0)),
+			// Created earlier than l-late but with a larger id: created at decides first.
+			link("z-early", "b1", "a1", at(11, 0)),
+		}
+
+		records, err := export.Records(env)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(labels(records)).To(Equal([]string{
+			"header", "event a1", "event b1", "annotation n-b1", "link l-cross", "link z-early", "link l-late",
+		}))
+	})
+
+	DescribeTable("fails naming a link whose event is not in the export",
+		func(from, to string) {
+			env := export.NewEnvelope("0.1.0", at(9, 0))
+			env.Events = []export.Event{event("e1", 1, at(3, 14))}
+			env.Links = []export.Link{link("l1", from, to, at(11, 0))}
+
+			_, err := export.Records(env)
+
+			Expect(err).To(MatchError(And(ContainSubstring("l1"), ContainSubstring("gone"))))
+		},
+		Entry("the event it leaves", "gone", "e1"),
+		Entry("the event it reaches", "e1", "gone"),
+	)
 })
 
 var _ = Describe("WriteRecords", func() {
@@ -220,7 +261,7 @@ var _ = Describe("WriteRecords", func() {
 
 		Expect(export.WriteRecords(&b, records)).To(Succeed())
 		Expect(b.String()).To(Equal(
-			`{"type":"header","format":"coroner.export","format_version":"1.1","coroner_version":"0.1.0","exported_at":"2026-09-11T09:00:00.000000000Z",` +
+			`{"type":"header","format":"coroner.export","format_version":"1.2","coroner_version":"0.1.0","exported_at":"2026-09-11T09:00:00.000000000Z",` +
 				`"query":{"timelines":[],"since":null,"until":null,"sources":[],"tags":[],"contains":null,"limit":null,"order":"asc"}}` + "\n" +
 				`{"type":"source","id":"s1","name":"mongod","created_at":"2026-09-11T04:00:00.000000000Z"}` + "\n"))
 	})

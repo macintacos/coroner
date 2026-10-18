@@ -46,9 +46,30 @@ type Event struct {
 	UpdatedAt         string
 }
 
+type EventLink struct {
+	ID          string
+	FromEventID string
+	ToEventID   string
+	Kind        string
+	CreatedAt   string
+	Author      *string
+}
+
 type EventTag struct {
 	EventID string
 	Tag     string
+}
+
+type Overlay struct {
+	ID        string
+	Name      string
+	CreatedAt string
+}
+
+type OverlayTimeline struct {
+	OverlayID  string
+	TimelineID string
+	Position   int64
 }
 
 type Setting struct {

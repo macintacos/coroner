@@ -30,12 +30,13 @@ func definitions(schema []byte) map[reflect.Type]object {
 
 	// Listing $defs exactly makes a new definition fail here until it joins byType, so every
 	// spec that ranges over definitions covers it.
-	Expect(slices.Sorted(maps.Keys(defs))).To(Equal([]string{"Annotation", "Attachment", "Event", "Query", "Source", "Timeline"}))
+	Expect(slices.Sorted(maps.Keys(defs))).To(Equal([]string{"Annotation", "Attachment", "Event", "Link", "Query", "Source", "Timeline"}))
 
 	byType := map[reflect.Type]object{reflect.TypeFor[export.Envelope](): root}
 	for _, t := range []reflect.Type{
 		reflect.TypeFor[export.Query](), reflect.TypeFor[export.Timeline](), reflect.TypeFor[export.Source](),
 		reflect.TypeFor[export.Event](), reflect.TypeFor[export.Annotation](), reflect.TypeFor[export.Attachment](),
+		reflect.TypeFor[export.Link](),
 	} {
 		def, ok := defs[t.Name()].(object)
 		Expect(ok).To(BeTrue(), t.Name())
@@ -198,7 +199,7 @@ var _ = Describe("schemagen", func() {
 			reflect.TypeFor[export.Envelope](): "## The envelope", reflect.TypeFor[export.Query](): "### query",
 			reflect.TypeFor[export.Timeline](): "### Timeline", reflect.TypeFor[export.Source](): "### Source",
 			reflect.TypeFor[export.Event](): "### Event", reflect.TypeFor[export.Annotation](): "### Annotation",
-			reflect.TypeFor[export.Attachment](): "### Attachment",
+			reflect.TypeFor[export.Attachment](): "### Attachment", reflect.TypeFor[export.Link](): "### Link",
 		}
 
 		for t := range definitions(schema) {

@@ -1,0 +1,89 @@
+# JSON output and exit codes of event link and event unlink, and the links event view shows.
+# Ids come from CORONER_TEST_IDS and created at from CORONER_TEST_NOW, so whole documents are
+# compared with the files below. Times are RFC 3339 only, the stable input grammar. A
+# timeline#seq ref is quoted, since # starts a comment.
+
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner event add 'Primary stepped down' -t mongo-failover --at 2026-09-11T03:14:07Z
+exits 0 coroner event add 'Checkout p99 above 2s' -t checkout-latency --at 2026-09-11T03:15:00Z
+exits 0 coroner event add 'Slack: is checkout down?' -t checkout-latency --at 2026-09-11T03:16:00Z
+
+# --dry-run prints the link object, and links nothing.
+exits 0 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to --dry-run --json
+cmp stdout dry-run.json
+stderr '^Would link `mongo-failover#1` to `checkout-latency#1` as led_to\.\n\z'
+exits 0 coroner event view 'checkout-latency#1' --json
+jsonvalid stdout
+stdout '"links":\[\]\}$'
+
+# link prints the link object, every key present, across timelines.
+exits 0 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to --author julian --json
+cmp stdout linked.json
+
+# Without --author, the author is the config's, then USER's, or null.
+exits 0 coroner event link 'checkout-latency#2' 'checkout-latency#1' --kind same_as --json
+jsonvalid stdout
+stdout '"kind":"same_as","created_at":"[^"]+","author":null\}$'
+
+# view prints the event with its links in both directions, oldest first.
+exits 0 coroner event view 'checkout-latency#1' --json
+cmp stdout view.json
+exits 0 coroner event view 'checkout-latency#1'
+stdout '^Links:\s+2\n'
+stdout '^led_to\s+from\s+mongo-failover#1\s+Primary stepped down$'
+stdout '^same_as\s+from\s+checkout-latency#2\s+Slack: is checkout down\?$'
+exits 0 coroner event view 'mongo-failover#1'
+stdout '^led_to\s+to\s+checkout-latency#1\s+Checkout p99 above 2s$'
+
+# A second link of one kind between the same events exits 4, kind link_exists, even as a dry run.
+exits 4 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to --json
+! stdout .
+stderr '^\{"error":\{"kind":"link_exists","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+exits 4 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to --dry-run --json
+stderr '^\{"error":\{"kind":"link_exists",[^\n]+\}\}\n\z'
+
+# An event cannot link to itself: exit 2, kind usage.
+exits 2 coroner event link 'checkout-latency#1' 'checkout-latency#1' --kind same_as --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# An unknown kind, or none, exits 2, kind usage.
+exits 2 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind caused_by --json
+stderr '^\{"error":\{"kind":"usage","message":"[^\n]*caused_by[^\n]*","hint":"[^\n]+"\}\}\n\z'
+exits 2 coroner event link 'mongo-failover#1' 'checkout-latency#1' --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+# One event, not two, exits 2, kind usage.
+exits 2 coroner event link 'mongo-failover#1' --kind led_to --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+
+# An event that does not exist exits 3, kind event_not_found.
+exits 3 coroner event link 'mongo-failover#9' 'checkout-latency#1' --kind led_to --json
+! stdout .
+stderr '^\{"error":\{"kind":"event_not_found",[^\n]+\}\}\n\z'
+
+# unlink --dry-run prints the link it would remove, and removes nothing; unlink prints it.
+exits 0 coroner event unlink 'mongo-failover#1' 'checkout-latency#1' --kind led_to --dry-run --json
+cmp stdout linked.json
+stderr '^Would unlink `mongo-failover#1` from `checkout-latency#1` as led_to\.\n\z'
+exits 0 coroner event unlink 'mongo-failover#1' 'checkout-latency#1' --kind led_to --json
+cmp stdout linked.json
+
+# Unlinking a link that does not exist exits 3, kind link_not_found.
+exits 3 coroner event unlink 'mongo-failover#1' 'checkout-latency#1' --kind led_to --json
+! stdout .
+stderr '^\{"error":\{"kind":"link_not_found","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# Deleting an event deletes its links: the other event shows none from it.
+exits 0 coroner event delete 'checkout-latency#2'
+exits 0 coroner event view 'checkout-latency#1' --json
+jsonvalid stdout
+stdout '"links":\[\]\}$'
+
+-- dry-run.json --
+{"id":"01a09862-b1c0-7000-8000-000000000006","from_event_id":"01a09862-b1c0-7000-8000-000000000003","to_event_id":"01a09862-b1c0-7000-8000-000000000004","kind":"led_to","created_at":"2026-09-13T01:30:00.000000000Z","author":null}
+-- linked.json --
+{"id":"01a09862-b1c0-7000-8000-000000000007","from_event_id":"01a09862-b1c0-7000-8000-000000000003","to_event_id":"01a09862-b1c0-7000-8000-000000000004","kind":"led_to","created_at":"2026-09-13T01:30:00.000000000Z","author":"julian"}
+-- view.json --
+{"id":"01a09862-b1c0-7000-8000-000000000004","timeline_id":"01a09862-b1c0-7000-8000-000000000002","seq":1,"occurred_at":"2026-09-11T03:15:00.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":"2026-09-11T03:15:00Z","ended_at":null,"source":null,"tags":[],"text":"Checkout p99 above 2s","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z","attachments":[],"links":[{"id":"01a09862-b1c0-7000-8000-000000000007","from_event_id":"01a09862-b1c0-7000-8000-000000000003","to_event_id":"01a09862-b1c0-7000-8000-000000000004","kind":"led_to","created_at":"2026-09-13T01:30:00.000000000Z","author":"julian"},{"id":"01a09862-b1c0-7000-8000-000000000008","from_event_id":"01a09862-b1c0-7000-8000-000000000005","to_event_id":"01a09862-b1c0-7000-8000-000000000004","kind":"same_as","created_at":"2026-09-13T01:30:00.000000000Z","author":null}]}

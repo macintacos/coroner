@@ -126,6 +126,29 @@ exits 0 coroner timeline list --json
 stdout '"name":"later-minor"'
 ! stdout '"name":"invalid-line"'
 
+# A link stored unchanged is identical. A link of the same kind between the same events under
+# another id conflicts: exit 4 by default, and --on-conflict skip keeps the stored one. A
+# timeline#seq ref is quoted, since # starts a comment.
+env CORONER_DB=$WORK/links.db
+exits 0 coroner timeline create mongo-failover
+exits 0 coroner timeline create checkout-latency
+exits 0 coroner event add 'Primary stepped down' -t mongo-failover --at 2026-09-11T03:14:07Z
+exits 0 coroner event add 'Checkout p99 above 2s' -t checkout-latency --at 2026-09-11T03:15:00Z
+exits 0 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to
+exits 0 coroner timeline export -t mongo-failover -t checkout-latency --format jsonl
+cp stdout linked.jsonl
+exits 0 coroner import linked.jsonl --json
+jsonvalid stdout
+stdout '"links":\{"inserted":0,"identical":1,"conflicting":0\}'
+exits 0 coroner event unlink 'mongo-failover#1' 'checkout-latency#1' --kind led_to
+exits 0 coroner event link 'mongo-failover#1' 'checkout-latency#1' --kind led_to
+exits 4 coroner import linked.jsonl --json
+jsonvalid stdout
+stdout '"links":\{"inserted":0,"identical":0,"conflicting":1\}'
+stdout '"conflicts":\[\{"type":"link","id":"[^"]+","fields":\["id"\]\}\]'
+stderr '^\{"error":\{"kind":"id_conflict",[^\n]+\}\}\n\z'
+exits 0 coroner import linked.jsonl --on-conflict skip
+
 -- stepdown.log --
 2026-09-11T03:14:07.412Z I REPL [replexec-0] Stepping down from primary
 -- rs-status.json --
@@ -144,14 +167,14 @@ stdout '"name":"later-minor"'
 -- dangling.jsonl --
 {"type":"event","id":"01a09862-b1c0-7000-8000-0000000000d2","timeline_id":"01a09862-b1c0-7000-8000-0000000000d1","seq":1,"occurred_at":"2026-09-11T03:14:07.000000000Z","occurred_offset":null,"precision":"second","approximate":false,"occurred_raw":null,"ended_at":null,"source":null,"tags":[],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
 -- dry-run.json --
-{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":2,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
+{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":2,"identical":0,"conflicting":0},"links":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
 -- imported.json --
-{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":2,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":2,"identical":0,"conflicting":0},"links":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
 -- reimported.json --
-{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":2,"conflicting":0},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[],"missing_attachments":[]}
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":2,"conflicting":0},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"links":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[]}
 -- conflict.json --
-{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"links":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
 -- conflict-dry-run.json --
-{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
+{"dry_run":true,"on_conflict":"fail","timelines":{"inserted":0,"identical":1,"conflicting":0},"sources":{"inserted":0,"identical":2,"conflicting":0},"events":{"inserted":0,"identical":1,"conflicting":1},"annotations":{"inserted":0,"identical":2,"conflicting":0},"attachments":{"inserted":0,"identical":2,"conflicting":0},"links":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[{"type":"event","id":"01a09862-b1c0-7000-8000-000000000005","fields":["text"]}],"missing_attachments":[]}
 -- missing-attachments.json --
-{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[{"id":"01a09862-b1c0-7000-8000-000000000004","sha256":"bc082b2ec4e84fa588e9fc93b3a8bd08c32fa91db36475a20ccdd93d0d37e369"},{"id":"01a09862-b1c0-7000-8000-000000000009","sha256":"61428d234f39bedd8934cbbf2a3e1217c29e5b72e234ef5b074cb7be51a7fe8a"}]}
+{"dry_run":false,"on_conflict":"fail","timelines":{"inserted":1,"identical":0,"conflicting":0},"sources":{"inserted":2,"identical":0,"conflicting":0},"events":{"inserted":2,"identical":0,"conflicting":0},"annotations":{"inserted":2,"identical":0,"conflicting":0},"attachments":{"inserted":0,"identical":0,"conflicting":0},"links":{"inserted":0,"identical":0,"conflicting":0},"conflicts":[],"missing_attachments":[{"id":"01a09862-b1c0-7000-8000-000000000004","sha256":"bc082b2ec4e84fa588e9fc93b3a8bd08c32fa91db36475a20ccdd93d0d37e369"},{"id":"01a09862-b1c0-7000-8000-000000000009","sha256":"61428d234f39bedd8934cbbf2a3e1217c29e5b72e234ef5b074cb7be51a7fe8a"}]}

@@ -24,16 +24,16 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 		Short:   "Import records from a JSONL export",
 		GroupID: coreCommands,
 		Long: "Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'\n" +
-			"writes it, into the database: its timelines, sources, events, annotations and attachments.\n" +
-			"- reads the export from stdin, so concatenated exports import together. Every record is\n" +
-			"checked before anything is written, and the import is written in one transaction.\n\n" +
+			"writes it, into the database: its timelines, sources, events, annotations, attachments and\n" +
+			"links. Pass - to read the export from stdin, so concatenated exports import together. Every\n" +
+			"record is checked before anything is written, and the import is written in one transaction.\n\n" +
 			"Records match by id, and sources by name. A record stored unchanged is skipped, so importing a\n" +
 			"file twice changes nothing. A record stored with different content is a conflict: by default\n" +
 			"the import writes nothing and exits 4; --on-conflict skip keeps the stored record, and\n" +
-			"--on-conflict replace takes the import's. Replace never changes an attachment or moves an event\n" +
-			"or annotation, so such a conflict exits 4 under replace too. Authors and created and updated\n" +
-			"times come from the export. An imported event keeps its seq unless its timeline has already\n" +
-			"reached that seq, when it gets the next one.\n\n" +
+			"--on-conflict replace takes the import's. Replace never changes an attachment or link, or moves\n" +
+			"an event or annotation, so such a conflict exits 4 under replace too. Authors and created and\n" +
+			"updated times come from the export. An imported event keeps its seq unless its timeline has\n" +
+			"already reached that seq, when it gets the next one.\n\n" +
 			"An attachment is imported with its file from the attachments/ directory beside the export,\n" +
 			"which 'coroner timeline export -o <directory>/' writes, or when the database already has that\n" +
 			"file. Otherwise it is left out and listed.\n\n" +
@@ -285,8 +285,9 @@ func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.Fi
 	return blobs
 }
 
-// readStoredRecords returns every stored timeline and source, and the stored events, annotations
-// and attachments whose ids records name.
+// readStoredRecords returns every stored timeline and source, the stored events, annotations,
+// attachments and links whose ids records name, and the stored links joining a link record's
+// events with its kind.
 // ponytail: one read per id; a batched read if large imports read slowly.
 func readStoredRecords(ctx context.Context, s *store.Store, records []export.Record) (storedRecords, error) {
 	timelines, err := s.Timelines(ctx)
@@ -296,6 +297,7 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 	stored := storedRecords{
 		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
 		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
+		links: map[string]timeline.Link{}, linksByJoin: map[string]timeline.Link{},
 	}
 	for _, t := range timelines {
 		stored.timelines[t.ID] = t
@@ -316,6 +318,11 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 				addStored(ctx, &r.ID, stored.attachments, s.Attachment),
 				addStored(ctx, r.EventID, stored.events, s.Event), addStored(ctx, r.AnnotationID, stored.annotations, s.Annotation),
 			)
+		case export.Link:
+			err = errors.Join(
+				addStored(ctx, &r.ID, stored.links, s.Link), addStoredJoining(ctx, s, r, stored.linksByJoin),
+				addStored(ctx, &r.FromEventID, stored.events, s.Event), addStored(ctx, &r.ToEventID, stored.events, s.Event),
+			)
 		}
 		if err != nil {
 			return storedRecords{}, err
@@ -323,6 +330,21 @@ func readStoredRecords(ctx context.Context, s *store.Store, records []export.Rec
 	}
 
 	return stored, nil
+}
+
+// addStoredJoining adds the stored link of l's kind between l's events to into, by linkJoin, unless
+// none is stored.
+func addStoredJoining(ctx context.Context, s *store.Store, l export.Link, into map[string]timeline.Link) error {
+	stored, err := s.LinkBetween(ctx, l.FromEventID, l.ToEventID, l.Kind)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	case err != nil:
+		return err
+	}
+	into[linkJoin(stored.FromEventID, stored.ToEventID, stored.Kind)] = stored
+
+	return nil
 }
 
 // addStored adds the record get finds under id to into, unless id is nil, already there or not
@@ -355,7 +377,7 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 		verb = "Would import"
 	}
 	r := plan.result
-	lines := make([]string, 0, 7+len(r.Conflicts))
+	lines := make([]string, 0, 8+len(r.Conflicts))
 	if n := len(plan.timelineNames); n > 0 {
 		noun := "timelines"
 		if n == 1 {
@@ -367,7 +389,12 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 		name   string
 		counts importCounts
 	}{
-		{"timelines", r.Timelines}, {"sources", r.Sources}, {"events", r.Events}, {"annotations", r.Annotations}, {"attachments", r.Attachments},
+		{"timelines", r.Timelines},
+		{"sources", r.Sources},
+		{"events", r.Events},
+		{"annotations", r.Annotations},
+		{"attachments", r.Attachments},
+		{"links", r.Links},
 	} {
 		lines = append(lines, fmt.Sprintf("%s %s: %d inserted, %d identical, %d conflicting",
 			verb, c.name, c.counts.Inserted, c.counts.Identical, c.counts.Conflicting))

@@ -23,7 +23,8 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 			"Repeat -t to overlay several timelines: their events merge into one list by occurred at,\n" +
 			"then timeline id, then seq, and each text row starts with its timeline's name. --json lists\n" +
 			"the selected timelines under timelines, and --format jsonl starts with a timeline line for\n" +
-			"each, so an event's timeline_id names one of them.\n\n" +
+			"each, so an event's timeline_id names one of them. --overlay <name> reads the timelines an\n" +
+			"overlay saved with 'coroner overlay create' holds, in place of -t.\n\n" +
 			"--since is inclusive and --until exclusive. Repeated --source flags match any of them,\n" +
 			"and repeated --tag flags must all match. Times with no offset are read, and times print,\n" +
 			"in --tz, then the config file's default_timezone, then the local zone. Piped, the\n" +
@@ -33,13 +34,15 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner event list --tag election --source mongod\n" +
 			"  $ coroner event list --since \"2026-09-11T03:00Z\" --until \"2026-09-11T04:00Z\" --tag election --format jsonl\n" +
 			"  $ coroner event list --contains stepdown --order desc --limit 20\n" +
-			"  $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json",
+			"  $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json\n" +
+			"  $ coroner event list --overlay checkout-incident --tag phase:detect",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return listEvents(ctx, cmd, app)
 		},
 	}
 
 	addEventFilterFlags(cmd.Flags())
+	addOverlayFlag(cmd.Flags())
 
 	return cmd
 }
@@ -62,7 +65,7 @@ func addEventMatchFlags(flags *pflag.FlagSet) {
 }
 
 func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
-	names, err := timelineFlags(cmd.Flags())
+	choice, err := readTimelineChoice(cmd.Flags())
 	if err != nil {
 		return err
 	}
@@ -80,7 +83,7 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		timelines, err := selectTimelines(ctx, s, names, app.LookupEnv)
+		timelines, err := selectChosenTimelines(ctx, s, choice, app.LookupEnv)
 		if err != nil {
 			return err
 		}

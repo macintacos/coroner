@@ -23,10 +23,12 @@ const (
 	eventID2     = "01a09862-b1c0-7000-8000-000000000004"
 	annotationID = "01a09862-b1c0-7000-8000-000000000005"
 	attachmentID = "01a09862-b1c0-7000-8000-000000000006"
+	linkID       = "01a09862-b1c0-7000-8000-000000000007"
 )
 
 // sampleExport returns the JSONL export of a small timeline: a header, a timeline, a source,
-// two events, an annotation on the first and an attachment on that annotation.
+// two events, an annotation on the first, an attachment on that annotation and a link from the
+// first event to the second.
 func sampleExport() string {
 	env := export.NewEnvelope("0.1.0", at(9, 0))
 	env.Query.Timelines = []string{"mongo-outage"}
@@ -38,6 +40,7 @@ func sampleExport() string {
 		Body: "rs.status() showed no primary", Source: new("db-2/mongod"), CreatedAt: instant(4, 0), UpdatedAt: instant(4, 0),
 	}}
 	env.Attachments = []export.Attachment{sampleAttachment()}
+	env.Links = []export.Link{sampleLink()}
 
 	records, err := export.Records(env)
 	Expect(err).NotTo(HaveOccurred())
@@ -59,6 +62,12 @@ func sampleAttachment() export.Attachment {
 	return export.Attachment{
 		ID: attachmentID, AnnotationID: new(annotationID), Filename: "rs-status.txt", MIME: "text/plain; charset=utf-8",
 		SHA256: strings.Repeat("0f", 32), Size: 2048, CreatedAt: instant(4, 0),
+	}
+}
+
+func sampleLink() export.Link {
+	return export.Link{
+		ID: linkID, FromEventID: eventID, ToEventID: eventID2, Kind: timeline.LinkLedTo, CreatedAt: instant(5, 0), Author: new("julian"),
 	}
 }
 
@@ -118,7 +127,7 @@ var _ = Describe("Decode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		one := []string{
 			"header", "timeline " + timelineID, "source " + sourceID, "event " + eventID, "annotation " + annotationID, "attachment " + attachmentID,
-			"event " + eventID2,
+			"event " + eventID2, "link " + linkID,
 		}
 		Expect(labels(records)).To(Equal(append(one, one...)))
 	})
@@ -262,6 +271,10 @@ var _ = Describe("Decode", func() {
 			func() string { return attachmentLine(func(m map[string]any) { m["annotation_id"] = "a1" }) }, `"a1"`),
 		Entry("an attachment with a negative size",
 			func() string { return attachmentLine(func(m map[string]any) { m["size"] = -1 }) }, "size -1"),
+		Entry("a link missing a key",
+			func() string { return recordLine(sampleLink(), func(m map[string]any) { delete(m, "to_event_id") }) }, `"to_event_id"`),
+		Entry("a link whose event id is not a UUID",
+			func() string { return recordLine(sampleLink(), func(m map[string]any) { m["from_event_id"] = "e1" }) }, `"e1"`),
 		Entry("a missing type", func() string { return eventLine(func(m map[string]any) { delete(m, "type") }) }, `"type"`),
 		Entry("a type that is not a string", func() string { return eventLine(func(m map[string]any) { m["type"] = 1 }) }, `key "type"`),
 		Entry("a line that is not an object", func() string { return "[1,2]\n" }, "not a JSON object"),

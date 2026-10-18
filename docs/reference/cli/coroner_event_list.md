@@ -13,7 +13,8 @@ List the current timeline's events in the order they happened: by occurred at, t
 Repeat -t to overlay several timelines: their events merge into one list by occurred at,
 then timeline id, then seq, and each text row starts with its timeline's name. --json lists
 the selected timelines under timelines, and --format jsonl starts with a timeline line for
-each, so an event's timeline_id names one of them.
+each, so an event's timeline_id names one of them. --overlay <name> reads the timelines an
+overlay saved with 'coroner overlay create' holds, in place of -t.
 
 --since is inclusive and --until exclusive. Repeated --source flags match any of them,
 and repeated --tag flags must all match. Times with no offset are read, and times print,
@@ -31,6 +32,7 @@ coroner event list [flags]
   $ coroner event list --since "2026-09-11T03:00Z" --until "2026-09-11T04:00Z" --tag election --format jsonl
   $ coroner event list --contains stepdown --order desc --limit 20
   $ coroner event list -t mongo-failover -t checkout-latency --since 2026-09-10T14:00Z --json
+  $ coroner event list --overlay checkout-incident --tag phase:detect
 ```
 
 ### Options
@@ -39,6 +41,7 @@ coroner event list [flags]
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
       --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
+      --overlay name    Read the timelines of the overlay called name, instead of -t
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
       --tag tag         Keep events with this tag; repeat to require all of them
@@ -63,5 +66,5 @@ coroner event list [flags]
 
 ### SEE ALSO
 
-* [coroner event](coroner_event.md)	 - Add, list, view, edit and delete events
+* [coroner event](coroner_event.md)	 - Add, list, view, edit, delete and link events
 

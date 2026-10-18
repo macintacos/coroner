@@ -17,9 +17,10 @@ import (
 
 func newEventViewCommand(ctx context.Context, app App) *cobra.Command {
 	return &cobra.Command{
-		Use:         "view <event>",
-		Short:       "Show an event and its annotations",
-		Long:        "Show every field of an event, then its annotations. --json prints the event object alone.\n\n" + eventRefHelp,
+		Use:   "view <event>",
+		Short: "Show an event, its annotations and its links",
+		Long: "Show every field of an event, then its annotations, then its links to and from other events\n" +
+			"in any timeline. --json prints the event object with its links.\n\n" + eventRefHelp,
 		Args:        cobra.ExactArgs(1),
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event view 12\n" +
@@ -53,36 +54,102 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 		if err != nil {
 			return err
 		}
+		links, err := s.EventLinks(ctx, e.ID)
+		if err != nil {
+			return err
+		}
 		if o.format == formatJSON {
 			attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
 			if err != nil {
 				return err
 			}
-			return o.json(newEventJSON(e, newAttachmentJSONs(attachments, cfg.DBPath)))
+			return o.json(eventViewJSON{eventJSON: newEventJSON(e, newAttachmentJSONs(attachments, cfg.DBPath)), Links: newLinkJSONs(links)})
 		}
 
 		annotations, err := s.EventAnnotations(ctx, e.ID)
 		if err != nil {
 			return err
 		}
+		linkRows, err := eventLinkRows(ctx, s, e.ID, links)
+		if err != nil {
+			return err
+		}
 
-		return writeEventView(o, z, e, t, annotations)
+		return writeEventView(o, z, eventView{event: e, timeline: t, annotations: annotations, linkRows: linkRows})
 	})
 }
 
-// writeEventView writes e's summary, then its annotations, with times in z.
-func writeEventView(o output, z zone, e timeline.Event, t timeline.Timeline, annotations []timeline.Annotation) error {
-	var b strings.Builder
-	b.WriteString(eventSummary(e, t, z))
-	b.WriteString("\n")
-	writeField(&b, "Annotations:", strconv.Itoa(len(annotations)))
+// eventViewJSON is event view's object: the event's, with its links in either direction.
+type eventViewJSON struct {
+	eventJSON
 
+	// Never nil, so no links encode as [] rather than null.
+	Links []linkJSON `json:"links"`
+}
+
+func newLinkJSONs(links []timeline.Link) []linkJSON {
+	objects := make([]linkJSON, 0, len(links))
+	for _, l := range links {
+		objects = append(objects, newLinkJSON(l))
+	}
+
+	return objects
+}
+
+// eventView is what event view shows in text.
+type eventView struct {
+	event       timeline.Event
+	timeline    timeline.Timeline
+	annotations []timeline.Annotation
+	linkRows    [][]string
+}
+
+// writeEventView writes the event's summary and annotations, with times in z, then its links.
+func writeEventView(o output, z zone, v eventView) error {
+	_, err := io.WriteString(o.out, eventSummary(v.event, v.timeline, z)+"\n")
+	if err == nil {
+		err = writeSection(o, "Annotations:", annotationRows(v.annotations, z))
+	}
+	if err == nil {
+		err = writeSection(o, "Links:", v.linkRows)
+	}
+
+	return err
+}
+
+// writeSection writes heading with how many rows follow it, then the rows.
+func writeSection(o output, heading string, rows [][]string) error {
+	var b strings.Builder
+	writeField(&b, heading, strconv.Itoa(len(rows)))
 	_, err := io.WriteString(o.out, b.String())
-	if err != nil || len(annotations) == 0 {
+	if err != nil || len(rows) == 0 {
 		return err
 	}
 
-	return o.rows(annotationRows(annotations, z))
+	return o.rows(rows)
+}
+
+// eventLinkRows returns a row per link of the event with eventID: kind, to or from, the event at
+// the link's other end as timeline#seq, and that event's text.
+func eventLinkRows(ctx context.Context, s *store.Store, eventID string, links []timeline.Link) ([][]string, error) {
+	rows := make([][]string, 0, len(links))
+	for _, l := range links {
+		direction, otherID := "to", l.ToEventID
+		if l.ToEventID == eventID {
+			direction, otherID = "from", l.FromEventID
+		}
+		other, err := s.Event(ctx, otherID)
+		if err != nil {
+			return nil, err
+		}
+		t, err := s.Timeline(ctx, other.TimelineID)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, []string{string(l.Kind), direction, seqRef(t, other), other.Text})
+	}
+
+	return rows, nil
 }
 
 // eventSummary describes e, in t, one field per line under a heading, with times in z.

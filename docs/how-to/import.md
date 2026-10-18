@@ -35,10 +35,10 @@ When your colleague sends their export back, preview what it would change first:
 coroner import their-inc-4821/inc-4821.jsonl --dry-run --json
 ```
 
-The result counts, for timelines, sources, events, annotations and attachments, how many
-records would be inserted, how many are identical to what you have, and how many conflict
-with it. A dry run does not create or change your database, and exits with the code the
-real import would.
+The result counts, for timelines, sources, events, annotations, attachments and links, how
+many records would be inserted, how many are identical to what you have, and how many
+conflict with it. A dry run does not create or change your database, and exits with the
+code the real import would.
 
 Then import it:
 
@@ -56,6 +56,7 @@ Imported sources: 1 inserted, 2 identical, 0 conflicting
 Imported events: 1 inserted, 8 identical, 0 conflicting
 Imported annotations: 3 inserted, 2 identical, 0 conflicting
 Imported attachments: 1 inserted, 1 identical, 0 conflicting
+Imported links: 0 inserted, 0 identical, 0 conflicting
 ```
 
 Every record keeps its `author`, `created_at` and `updated_at`, so you can still see who
@@ -77,11 +78,11 @@ Choose which copy wins, and import again:
 - `--on-conflict skip` keeps your records and imports everything else.
 - `--on-conflict replace` overwrites your records with theirs.
 
-`replace` cannot overwrite an attachment, which never changes once added. Nor can it move
-an event to another timeline, or an annotation to another timeline or event. For those,
-the import stops with exit 4 and writes nothing. `--on-conflict` applies to the whole
-import, so importing again with `skip` keeps your copy of every conflicting record, not
-only those.
+`replace` cannot overwrite an attachment or a link, which never change once added. Nor can
+it move an event to another timeline, or an annotation to another timeline or event. For
+those, the import stops with exit 4 and writes nothing. `--on-conflict` applies to the
+whole import, so importing again with `skip` keeps your copy of every conflicting record,
+not only those.
 
 A different conflict is a timeline whose name you already use for another timeline. The
 import exits 4 with the kind `timeline_exists`, and `--on-conflict` does not resolve it.

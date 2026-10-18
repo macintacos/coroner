@@ -223,19 +223,19 @@ var _ = Describe("Open from several processes at once", func() {
 
 	It("upgrades an older database exactly once, taking one backup", func(ctx SpecContext) {
 		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-		s, err := store.OpenWithMigrations(ctx, path, schemaOne())
+		s, err := store.OpenWithMigrations(ctx, path, schemaUpTo(1))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(s.Close()).To(Succeed())
 
 		Expect(openAll(ctx, path)).To(HaveEach(Succeed()))
 
 		Expect(filepath.Glob(path + ".pre-v*.bak")).To(HaveLen(1))
-		Expect(querySQLite(ctx, path, "SELECT count(*) FROM sqlite_schema WHERE name = 'attachment'")).To(Equal(int64(1)))
+		Expect(querySQLite(ctx, path, "SELECT count(*) FROM sqlite_schema WHERE name IN ('attachment', 'event_link')")).To(Equal(int64(2)))
 	}, SpecTimeout(time.Minute))
 
 	It("refuses a database a newer coroner migrated while it waited for the lock", func(ctx SpecContext) {
 		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-		s, err := store.OpenWithMigrations(ctx, path, schemaOne())
+		s, err := store.OpenWithMigrations(ctx, path, schemaUpTo(1))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(s.Close()).To(Succeed())
 		lock, err := os.OpenFile(filepath.Clean(path+".lock"), os.O_RDWR|os.O_CREATE, 0o600)
@@ -254,7 +254,7 @@ var _ = Describe("Open from several processes at once", func() {
 		}()
 		Consistently(opened).WithTimeout(200 * time.Millisecond).ShouldNot(Receive())
 
-		execSQLite(ctx, path, "INSERT INTO goose_db_version (version_id, is_applied) VALUES (2, 1), (3, 1)")
+		execSQLite(ctx, path, "INSERT INTO goose_db_version (version_id, is_applied) VALUES (98, 1), (99, 1)")
 		Expect(lock.Close()).To(Succeed())
 
 		Eventually(ctx, opened).Should(Receive(&err))
@@ -337,12 +337,21 @@ var _ = Describe("OpenReadOnly", func() {
 	})
 })
 
-// schemaOne returns the migrations up to schema 1, the schema before attachments.
-func schemaOne() fstest.MapFS {
+// schemaUpTo returns the migrations up to schema n, as an older coroner embedded them.
+func schemaUpTo(n int64) fstest.MapFS {
 	GinkgoHelper()
-	initial, err := os.ReadFile("migrations/00001_initial_schema.sql")
+	paths, err := filepath.Glob("migrations/*.sql")
 	Expect(err).NotTo(HaveOccurred())
-	return fstest.MapFS{"00001_initial_schema.sql": {Data: initial}}
+	Expect(len(paths)).To(BeNumerically(">", n))
+
+	migrations := fstest.MapFS{}
+	for _, path := range paths[:n] {
+		data, err := os.ReadFile(filepath.Clean(path))
+		Expect(err).NotTo(HaveOccurred())
+		migrations[filepath.Base(path)] = &fstest.MapFile{Data: data}
+	}
+
+	return migrations
 }
 
 // migratedDatabase returns the path of a new database Open migrated to the latest schema.

@@ -36,6 +36,17 @@ var _ = Describe("Frozen export fixtures", func() {
 		"v1.1/hostile-text.jsonl",
 		"v1.1/minimal.jsonl",
 		"v1.1/ordering.jsonl",
+		"v1.2/annotations.jsonl",
+		"v1.2/attachments.json",
+		"v1.2/attachments.jsonl",
+		"v1.2/concatenated.jsonl",
+		"v1.2/full-model.json",
+		"v1.2/full-model.jsonl",
+		"v1.2/hostile-text.jsonl",
+		"v1.2/links.json",
+		"v1.2/links.jsonl",
+		"v1.2/minimal.jsonl",
+		"v1.2/ordering.jsonl",
 	}
 	entries := make([]TableEntry, 0, len(frozen))
 	var currentEntries []TableEntry
@@ -70,7 +81,7 @@ var _ = Describe("Frozen export fixtures", func() {
 				if typ == "header" {
 					// A header is the envelope without its record lists.
 					typ = "envelope"
-					for _, key := range []string{"timelines", "sources", "events", "annotations", "attachments"} {
+					for _, key := range []string{"timelines", "sources", "events", "annotations", "attachments", "links"} {
 						record[key] = []any{}
 					}
 				}
@@ -110,7 +121,7 @@ var _ = Describe("Frozen export fixtures", func() {
 
 var _ = Describe("Compatibility fixtures", func() {
 	It("decodes a later minor version, ignoring the keys, record types and enum values it adds", func() {
-		records, err := export.Decode(bytes.NewReader(readFixture("compat/v1.2-unknown-keys-and-types.jsonl")))
+		records, err := export.Decode(bytes.NewReader(readFixture("compat/v1.3-unknown-keys-and-types.jsonl")))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(labels(records)).To(Equal([]string{
@@ -153,7 +164,7 @@ func exportSchemas() map[string]*jsonschema.Schema {
 	schemas := map[string]*jsonschema.Schema{}
 	for typ, pointer := range map[string]string{
 		"envelope": "", "timeline": "#/$defs/Timeline", "source": "#/$defs/Source", "event": "#/$defs/Event",
-		"annotation": "#/$defs/Annotation", "attachment": "#/$defs/Attachment",
+		"annotation": "#/$defs/Annotation", "attachment": "#/$defs/Attachment", "link": "#/$defs/Link",
 	} {
 		schemas[typ], err = compiler.Compile(path + pointer)
 		Expect(err).NotTo(HaveOccurred())
@@ -217,6 +228,8 @@ func envelopes(records []export.Record) []export.Envelope {
 			env.Annotations = append(env.Annotations, record)
 		case export.Attachment:
 			env.Attachments = append(env.Attachments, record)
+		case export.Link:
+			env.Links = append(env.Links, record)
 		}
 	}
 

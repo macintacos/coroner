@@ -23,6 +23,8 @@ func roundTrip(record any) any {
 		return export.NewAnnotation(r.Domain())
 	case export.Attachment:
 		return export.NewAttachment(r.Domain())
+	case export.Link:
+		return export.NewLink(r.Domain())
 	}
 	Fail("no round trip for this record type")
 
@@ -64,6 +66,10 @@ var _ = DescribeTable("Domain returns a record's domain value, which New turns b
 		SHA256: strings.Repeat("ab", 32), Size: 2048, CreatedAt: instant(4, 0),
 	}),
 	Entry("an attachment kept with an annotation", sampleAttachment()),
+	Entry("a link with an author", sampleLink()),
+	Entry("a link with no author", export.Link{
+		ID: linkID, FromEventID: eventID2, ToEventID: eventID, Kind: timeline.LinkCopiedFrom, CreatedAt: instant(5, 0),
+	}),
 )
 
 var _ = Describe("Timeline.Domain", func() {

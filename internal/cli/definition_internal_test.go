@@ -32,12 +32,16 @@ func writeDefinitions() map[string]definition {
 		"event add":       eventAddDefinition(),
 		"event edit":      eventEditDefinition(),
 		"event delete":    eventDeleteDefinition(),
+		"event link":      eventLinkDefinition(),
+		"event unlink":    eventUnlinkDefinition(),
 
 		"annotation add":    annotationAddDefinition(),
 		"annotation edit":   annotationEditDefinition(),
 		"annotation delete": annotationDeleteDefinition(),
 
 		"attachment delete": attachmentDeleteDefinition(),
+
+		"overlay create": overlayCreateDefinition(),
 	}
 }
 
@@ -201,9 +205,12 @@ var _ = Describe("write run functions", func() {
 		Entry("timeline use", errorOf(useTimeline), fieldValues{}),
 		Entry("event edit", errorOf(editEvent), fieldValues{"author": {"sre"}}),
 		Entry("event delete", errorOf(deleteEvents), fieldValues{}),
+		Entry("event link", errorOf(linkEvents), fieldValues{"kind": {"led_to"}}),
+		Entry("event unlink", errorOf(unlinkEvents), fieldValues{"kind": {"led_to"}}),
 		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"kind": {"comment"}}),
 		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
 		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
+		Entry("overlay create", errorOf(createOverlay), fieldValues{"timeline": {"mongo-failover"}}),
 	)
 })
 
@@ -344,6 +351,11 @@ func badValues() []badValue {
 		{"event edit", "tz", "Mars/Olympus", []string{"12"}},
 		{"event edit", "attach", "-", []string{"12"}},
 		{"event delete", "events", "Bad Ref!", nil},
+		{"event link", "events", "Bad Ref!", []string{"--kind", "led_to", "12"}},
+		{"event link", "kind", "caused_by", []string{"12", "14"}},
+		{"event link", "author", " ", []string{"--kind", "led_to", "12", "14"}},
+		{"event unlink", "events", "Bad Ref!", []string{"--kind", "led_to", "12"}},
+		{"event unlink", "kind", "caused_by", []string{"12", "14"}},
 		{"annotation add", "body", " ", []string{"--kind", "comment"}},
 		{"annotation add", "event", "Bad Ref!", []string{"--kind", "comment", "Election timeout"}},
 		{"annotation add", "kind", "note", []string{"Election timeout"}},
@@ -359,6 +371,7 @@ func badValues() []badValue {
 		{"annotation edit", "attach", "-", []string{"0199a1b2"}},
 		{"annotation delete", "ids", "Bad Ref!", nil},
 		{"attachment delete", "ids", "Bad Ref!", nil},
+		{"overlay create", "name", "Checkout Incident", []string{"-t", "mongo-failover"}},
 	}
 }
 

@@ -133,6 +133,11 @@ func findEventByID(ctx context.Context, s *store.Store, prefix string) (timeline
 	return events[0], t, err
 }
 
+// seqRef names e as its timeline and seq, as in mongo-outage#12.
+func seqRef(t timeline.Timeline, e timeline.Event) string {
+	return fmt.Sprintf("%s#%d", t.Name, e.Seq)
+}
+
 func eventNotFoundError(message string, err error) *Error {
 	return &Error{Kind: KindEventNotFound, Message: message, Hint: "Run 'coroner event list' to see a timeline's events.", Err: err}
 }

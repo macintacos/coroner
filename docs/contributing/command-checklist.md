@@ -218,6 +218,8 @@ Every new command reuses one of these verbs.
 | `use` | Set the stored current selection |
 | `export` | Render an object into a document format |
 | `import` | Ingest the machine format that `list` and `export` produce |
+| `link` | Connect one object to another with a directed, typed link |
+| `unlink` | Remove a link `link` made |
 
 Rejected synonyms: `show`, `get`, `describe`, and `inspect` (use `view`); `rm` and
 `remove` (use `delete`); `update` (use `edit`). S-3 forbids `show` next to `view`, so

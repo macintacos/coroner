@@ -41,6 +41,8 @@ every timeline, and their events merge by occurred at, then timeline id, then se
 each event with its timeline, and mermaid draws a section per timeline and source, as in
 mongo-failover/mongod. html and svg export one timeline. An overlay written into a directory
 is named after its timelines joined by +, as in mongo-failover+checkout-latency.jsonl.
+--overlay <name> exports the timelines an overlay saved with 'coroner overlay create' holds,
+in place of -t. json and jsonl carry every link between two exported events.
 
 --group-by is experimental and may change before 1.0.
 
@@ -60,6 +62,7 @@ coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o 
   $ coroner timeline export --format html -o inc-4821.html
   $ coroner timeline export -t inc-4821 --format svg > inc-4821.svg
   $ coroner timeline export -t mongo-failover -t checkout-latency --format jsonl > overlay.jsonl
+  $ coroner timeline export --overlay checkout-incident --format md -o rca/
 ```
 
 ### Options
@@ -72,6 +75,7 @@ coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o 
       --limit number       Export at most this number of events (default: every one)
       --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
   -o, --output path        Write the export to this path, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
+      --overlay name       Read the timelines of the overlay called name, instead of -t
       --since time         Keep events at or after this time
       --source source      Keep events from this source; repeat to match any of several
       --tag tag            Keep events with this tag; repeat to require all of them

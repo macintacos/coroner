@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// Record is one JSONL record: a Header, Timeline, Source, Event, Annotation or Attachment.
+// Record is one JSONL record: a Header, Timeline, Source, Event, Annotation, Attachment or
+// Link.
 type Record interface {
 	// line returns the record as its JSONL object, with "type" as the first key.
 	line() any
@@ -60,14 +61,26 @@ func (a Attachment) line() any {
 	}{"attachment", a}
 }
 
+func (l Link) line() any {
+	return struct {
+		Type string `json:"type"`
+		Link
+	}{"link", l}
+}
+
 // Records returns env's records in export order: the header; the timelines, by name; the
-// annotations on no event, by created at then id; the sources, by name; then the events, by
+// annotations on no event, by created at then id; the sources, by name; the events, by
 // occurred at, timeline id, seq, then id, each followed by its annotations, by created at
-// then id. Every event and annotation is followed by its attachments, by created at then id,
-// before anything else. env's own list order does not matter. It fails when an annotation's
-// event, or an attachment's event or annotation, is not in env.
+// then id; then the links, by created at then id. Every event and annotation is followed by
+// its attachments, by created at then id, before anything else. env's own list order does not
+// matter. It fails when an annotation's event, an attachment's event or annotation, or either
+// of a link's events is not in env.
 func Records(env Envelope) ([]Record, error) {
 	byOwner, err := groupAttachments(env)
+	if err != nil {
+		return nil, err
+	}
+	links, err := sortedLinks(env)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +121,35 @@ func Records(env Envelope) ([]Record, error) {
 			return nil, fmt.Errorf("annotation %s: its event %s is not in the export", a.ID, *a.EventID)
 		}
 	}
+	for _, l := range links {
+		records = append(records, l)
+	}
 
 	return records, nil
+}
+
+// sortedLinks returns env's links by created at then id, and fails naming the first whose event
+// is not in env.
+func sortedLinks(env Envelope) ([]Link, error) {
+	events := map[string]bool{}
+	for _, e := range env.Events {
+		events[e.ID] = true
+	}
+
+	links := slices.SortedFunc(slices.Values(env.Links), compareLinks)
+	for _, l := range links {
+		for _, id := range []string{l.FromEventID, l.ToEventID} {
+			if !events[id] {
+				return nil, fmt.Errorf("link %s: its event %s is not in the export", l.ID, id)
+			}
+		}
+	}
+
+	return links, nil
+}
+
+func compareLinks(a, b Link) int {
+	return cmp.Or(time.Time(a.CreatedAt).Compare(time.Time(b.CreatedAt)), cmp.Compare(a.ID, b.ID))
 }
 
 // WriteRecords writes each record as one JSONL line, and writes nothing to w when any record

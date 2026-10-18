@@ -24,6 +24,7 @@ var _ = Describe("Grammar", func() {
 		validate validator
 	}{
 		{"ValidateTimelineName", timeline.ValidateTimelineName},
+		{"ValidateOverlayName", timeline.ValidateOverlayName},
 		{"ValidateSourceName", timeline.ValidateSourceName},
 		{"ValidateTag", timeline.ValidateTag},
 	} {
@@ -50,11 +51,12 @@ var _ = Describe("Grammar", func() {
 		)
 	}
 
-	DescribeTable("sources and tags also allow : and /, timeline names do not",
+	DescribeTable("sources and tags also allow : and /, timeline and overlay names do not",
 		func(s string) {
 			accepts(timeline.ValidateSourceName, s)
 			accepts(timeline.ValidateTag, s)
 			rejects(timeline.ValidateTimelineName, s)
+			rejects(timeline.ValidateOverlayName, s)
 		},
 		Entry("namespaced tag", "phase:detect"),
 		Entry("host and process", "db-2/mongod"),
