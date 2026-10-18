@@ -6,7 +6,17 @@ importers.*
 An export is coroner's only sharing contract. The SQLite database stays on the machine
 that wrote it and its schema can change in any release; an export is what leaves. This
 page describes the export format: its envelope, its objects, how they are encoded, and how
-the format evolves. The commands that write exports are not in coroner yet (EXC-1316).
+the format evolves.
+
+`coroner timeline export` writes to stdout an export of the timeline that `-t`,
+`CORONER_TIMELINE` or `coroner timeline use` selects. `--format json` writes the
+[envelope](#the-envelope), and `--format jsonl` writes the
+[JSONL stream](#the-jsonl-stream):
+
+```sh
+coroner timeline export -t mongo-outage --format json > rca.json
+coroner timeline export -t mongo-outage --format jsonl --since "2026-09-11T03:00Z" --source mongod > mongod.jsonl
+```
 
 Command `--json` and JSONL output uses the same keys for a timeline, source, event, or
 annotation today. A command may wrap them, as `event list`, `source list`, and `tag list`
@@ -40,7 +50,8 @@ A JSON export is one object, the envelope. Its shape, with the record lists left
     "sources": [],
     "tags": [],
     "contains": null,
-    "limit": null
+    "limit": null,
+    "order": "asc"
   },
   "timelines": [],
   "sources": [],
@@ -66,13 +77,25 @@ its timeline, and an annotation carries its `event_id` rather than sitting insid
 event. Reading several timelines together is then a merge of their events on time, and an
 export can hold any mix of timelines without changing shape.
 
-`events` is ordered by `occurred_at`, then `seq`. The other lists have no defined order;
-sort them yourself if you need one.
+`events` is ordered by `occurred_at`, then `seq`. The envelope's other lists have no
+defined order; sort them yourself if you need one. The JSONL stream orders every record,
+under its own [record order](#record-order).
+
+An export made with filters holds only what those filters kept: the events that match, the
+annotations on those events or on the whole timeline, and the sources those events and
+annotations name. An annotation is kept or left out with its event, whatever its own
+`source`, so `sources` can name a source no exported event came from. Unlike
+`coroner event list --json`, an export has no `truncated` or `total` key: `query.limit`
+records the limit, and `coroner timeline export` says on stderr, in text for people, when
+the limit left events out. From the file alone, an export with exactly `query.limit`
+events may or may not have been cut short.
 
 ### query
 
-`timelines` names the timelines exported. Every other key is a filter on events, and
-`null` or an empty list means that filter was not applied.
+`timelines` names the timelines exported, and `order` says which events `limit` kept.
+Every other key is a filter on events, and `null` or an empty list means that filter was
+not applied. `coroner timeline export` records its flags here under the same names:
+`--since` as `since`, each `--source` in `sources`, each `--tag` in `tags`, and so on.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -83,6 +106,7 @@ sort them yourself if you need one.
 | `tags` | array of string | Kept events carrying **all** of these tags. |
 | `contains` | string or null | Kept events whose text contains it, ignoring ASCII case. |
 | `limit` | integer or null | At most this many events were exported. |
+| `order` | string | `asc` or `desc`: which end `limit` kept events from, the earliest or the latest. Without a limit it changes nothing, and `events` is ascending either way. |
 
 ## Records
 
@@ -163,13 +187,47 @@ coarse event stands for the start of its window, so an event at `10:15` with pre
 | `created_at` | instant | When the annotation was added to coroner. |
 | `updated_at` | instant | When the annotation was last changed in coroner. |
 
-### JSONL records
+## The JSONL stream
 
-A JSONL export writes one record per line. A record is the object above with one extra key
-first, `type`, naming the object: `timeline`, `source`, `event`, or `annotation`.
+A JSONL export is [JSON Lines](https://jsonlines.org/): UTF-8, one record per line, each
+line ended by `\n`. A record is the header or one of the objects above, with one extra key
+first, `type`, naming it: `header`, `timeline`, `source`, `event`, or `annotation`.
 
 ```json
 {"type":"event","id":"01a09862-b1c0-7000-8000-000000000002","timeline_id":"01a09862-b1c0-7000-8000-000000000001","seq":1,"occurred_at":"2026-09-11T03:14:07.412000000Z","occurred_offset":null,"precision":"millisecond","approximate":false,"occurred_raw":"2026-09-11T03:14:07.412Z","ended_at":null,"source":"mongod","tags":["election"],"text":"Primary stepped down","url":null,"author":null,"created_at":"2026-09-13T01:30:00.000000000Z","updated_at":"2026-09-13T01:30:00.000000000Z"}
+```
+
+The first record has `type` `header`. It is not one of the objects above: it carries the
+envelope's leading keys, `format`, `format_version`, `coroner_version`, `exported_at`, and
+`query`, with the same meanings, and none of its record lists.
+
+### Record order
+
+The records of an export always come in this order. It is part of the contract: changing
+it is a major version.
+
+1. The `header`.
+2. The timelines, by `name`.
+3. The annotations on the whole timeline, by `created_at`, then `id`.
+4. The sources, by `name`.
+5. The events, by `occurred_at`, then `seq`, then `id`. Each event is followed immediately
+   by its annotations, by `created_at`, then `id`.
+
+Records stay in this order under every filter, and under `--order desc`: `--order` only
+decides which end `--limit` keeps events from.
+
+### Reading a stream
+
+Exports can be concatenated, as in `cat a.jsonl b.jsonl`. The result is the exports back
+to back, each in its own record order, so a timeline or source record can appear more than
+once. A reader accepts a `header` wherever one appears, and reads the records after it
+under that header's `format_version`. Records before any header, such as event lines
+written by hand, are read under the newest major version the reader supports.
+
+To pick one kind of record, select on `type`:
+
+```sh
+cat a.jsonl b.jsonl | jq 'select(.type=="event")'
 ```
 
 ## Encoding rules

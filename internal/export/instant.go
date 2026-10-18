@@ -20,3 +20,11 @@ func (i Instant) MarshalText() ([]byte, error) {
 
 	return []byte(timeline.FormatInstant(time.Time(i))), nil
 }
+
+// UnmarshalText reads an instant in the canonical spelling only.
+func (i *Instant) UnmarshalText(b []byte) error {
+	t, err := timeline.ParseInstant(string(b))
+	*i = Instant(t)
+
+	return err
+}

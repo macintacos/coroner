@@ -30,6 +30,12 @@ prints plain text instead.
 - Instants are fixed-width RFC 3339 in UTC, such as `2026-09-12T14:05:03.000000000Z`. See
   `coroner help time`.
 - Each JSONL line is an object whose `type` key says what it holds.
+- `coroner timeline export` writes the export format instead: under `json` one envelope
+  with no `truncated` or `total`, and under `jsonl` a `header` line before the records.
+  Its `query.limit` records a limit, and the command says on stderr when a limit cut the
+  export short. The export format reference,
+  <https://github.com/macintacos/coroner/blob/main/docs/reference/export-format.md>,
+  describes both.
 
 ## What consumers must do
 
