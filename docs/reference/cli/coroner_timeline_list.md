@@ -8,9 +8,13 @@ List timelines, marking the current one
 
 ### Synopsis
 
-List every timeline, oldest first. Each row is a marker, the name and the title; a '*'
-marks the current timeline, the one 'coroner timeline use' selected. Piped, the fields
-are tab-separated.
+List every timeline, oldest first. A '*' marks the current timeline, the one
+'coroner timeline use' selected.
+
+On a terminal it opens a picker that also shows each timeline's refs, event count and
+last event: / filters, enter makes the timeline under the cursor current, and q quits.
+--format text, --json or piping the output prints the list instead: a marker, the name
+and the title on each row, tab-separated when piped.
 
 ```
 coroner timeline list [flags]

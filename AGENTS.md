@@ -83,10 +83,10 @@ digraph coroner_rules_router {
   `internal/config`. JSON export types, envelope, encoder and JSONL decoder:
   `internal/export`, described by
   [the export format reference](docs/reference/export-format.md). The terminal viewer
-  `timeline view` opens: `internal/viewer`. `main.go` builds `cli.App` from the process;
-  code below it takes everything from `cli.App`, never from `os`. Dev tools run with
-  `go run`: `internal/tools/` (`docgen` writes the CLI reference, `schemagen` the export
-  schema, `compatfixture` a release's fixture database).
+  `timeline view` opens and the picker `timeline list` opens: `internal/viewer`. `main.go`
+  builds `cli.App` from the process; code below it takes everything from `cli.App`, never
+  from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen` writes the CLI
+  reference, `schemagen` the export schema, `compatfixture` a release's fixture database).
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`. Specs fail when
   `exit-codes` disagrees with the exit-code map or `environment` misses an environment
@@ -97,7 +97,7 @@ digraph coroner_rules_router {
   output formats it supports in its `formats` annotation, and any other `--format` or
   `--json` exits 2 as `usage`. `cli.Run` prints every error once, adding the JSON error
   envelope under `--format json|jsonl`.
-- Write commands (`timeline create|edit|delete`, `event add|edit|delete`,
+- Write commands (`timeline create|edit|delete|use`, `event add|edit|delete`,
   `annotation add|edit|delete`): each declares its flags, positional argument and their
   checks once, in a `definition`
   ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
