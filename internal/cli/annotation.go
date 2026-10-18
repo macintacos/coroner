@@ -125,6 +125,11 @@ func checkAnnotationKind(kind string) (timeline.AnnotationKind, error) {
 	return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: annotationKindHint}
 }
 
+func checkAnnotationKindName(kind string) error {
+	_, err := checkAnnotationKind(kind)
+	return err
+}
+
 // annotationBody returns the body value gives, reading in when that is -. Stdin loses one
 // trailing newline and is otherwise kept verbatim; it is never read from a terminal.
 func annotationBody(value string, in io.Reader, inIsTTY bool) (string, error) {
@@ -144,23 +149,41 @@ func annotationBody(value string, in io.Reader, inIsTTY bool) (string, error) {
 		body = strings.TrimSuffix(string(data), "\n")
 	}
 
+	return body, checkBody(body)
+}
+
+// checkBodyOrStdin checks a body as typed, where - stands for a body read from stdin later.
+func checkBodyOrStdin(body string) error {
+	if body == "-" {
+		return nil
+	}
+
+	return checkBody(body)
+}
+
+func checkBody(body string) error {
 	if strings.TrimSpace(body) == "" {
-		return "", &Error{Kind: KindUsage, Message: "annotation body must not be blank", Hint: "Pass non-blank text, or - to read it from stdin."}
+		return &Error{Kind: KindUsage, Message: "annotation body must not be blank", Hint: "Pass non-blank text, or - to read it from stdin."}
 	}
 	// JSON would replace invalid bytes, so an export could never match what is stored.
 	if !utf8.ValidString(body) {
-		return "", &Error{
+		return &Error{
 			Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
 		}
 	}
 
-	return body, nil
+	return nil
 }
 
 // eventFlag returns the event reference -e gives, or nil when -e is not given.
 func eventFlag(flags *pflag.FlagSet) (*eventRef, error) {
+	return optionalEventRef(changedString(flags, "event"))
+}
+
+// optionalEventRef returns the event reference value gives, or nil when value is nil.
+func optionalEventRef(value *string) (*eventRef, error) {
 	var ref *eventRef
-	if value := changedString(flags, "event"); value != nil {
+	if value != nil {
 		parsed, err := parseEventRef(*value)
 		if err != nil {
 			return nil, err
@@ -204,6 +227,11 @@ func parseAnnotationRef(ref string) (string, error) {
 	return prefix, nil
 }
 
+func checkAnnotationRef(ref string) error {
+	_, err := parseAnnotationRef(ref)
+	return err
+}
+
 // findAnnotation returns the annotation whose id is, or uniquely starts with, prefix, in any
 // timeline.
 func findAnnotation(ctx context.Context, s *store.Store, prefix string) (timeline.Annotation, error) {
@@ -236,20 +264,14 @@ func annotationNotFoundError(message string, err error) *Error {
 	return &Error{Kind: KindAnnotationNotFound, Message: message, Hint: listAnnotationsHint, Err: err}
 }
 
-// annotationFields are the source and URL the flags give an annotation, each nil when not
+// annotationFields are the source and URL an annotation's fields give it, each nil when not
 // given.
 type annotationFields struct {
 	source, url *string
 }
 
-func readAnnotationFields(flags *pflag.FlagSet) (annotationFields, error) {
-	f := annotationFields{source: changedString(flags, "source"), url: changedString(flags, "url")}
-	err := checkNotBlank("--url", f.url)
-	if err != nil {
-		return f, err
-	}
-
-	return f, checkSlugs(f.source, nil)
+func readAnnotationFields(in fieldValues) annotationFields {
+	return annotationFields{source: in.value("source"), url: in.value("url")}
 }
 
 // annotationTarget names the event e in t, or t itself when e is nil.

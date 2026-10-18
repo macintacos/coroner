@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -27,6 +27,7 @@ func eventEditFlags() []string {
 }
 
 func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
+	def := eventEditDefinition()
 	cmd := &cobra.Command{
 		Use:   "edit <event>",
 		Short: "Change an event's text, time, source, tags or other fields",
@@ -39,53 +40,109 @@ func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event edit 12 --add-tag root-cause --remove-tag election --dry-run\n" +
 			"  $ coroner event edit mongo-outage-2026-09-11#12 --at \"2026-09-11T03:14:07.412Z\" --source none",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return editEvent(ctx, cmd, app, args[0])
-		},
+		RunE: writeRunE(ctx, app, def, editEvent),
 	}
 
-	flags := cmd.Flags()
-	flags.String("text", "", "New `text`, or - to read it from stdin")
-	flags.String("at", "", "When it happened, as a `time`")
-	flags.String("ended", "", "When it ended, as a `time`, or none")
-	flags.Bool("approximate", false, "Mark the time as a guess; --approximate=false unmarks it")
-	flags.String("source", "", "System, service or person it came from, as a `source`, or none")
-	flags.StringArray("add-tag", nil, "Add a `tag`; repeat for more")
-	flags.StringArray("remove-tag", nil, "Remove a `tag`; repeat for more")
-	flags.String("url", "", "Permalink to the log line or message, as a `url`, or none")
-	flags.String("author", "", "Who added it, as a `name`, or none")
-	flags.Bool("dry-run", false, "Show the edited event, and change nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func editEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
-	parsed, err := parseEventRef(ref)
-	if err != nil {
-		return err
-	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, z, err := resolveZone(cmd, app)
-	if err != nil {
-		return err
-	}
-	edit, err := readEventEdit(cmd.Flags(), app, z)
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
+func eventEditDefinition() definition {
+	return definition{fields: []field{
+		inherited(timelineField()),
+		{name: "event", arg: true, usage: "Event to edit, as a `ref`: seq, timeline#seq or id", check: withoutEnv(checkEventRef)},
+		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
+		{name: "at", usage: "When it happened, as a `time`", check: checkAt},
+		{
+			name: "ended", usage: "When it ended, as a `time`, or none",
+			check: func(ended string, env checkEnv) error {
+				if ended == clearKeyword {
+					return nil
+				}
+				_, err := resolveEnded(ended, env, editedEndedHint)
+				return err
+			},
+		},
+		{name: "approximate", typ: boolField, usage: "Mark the time as a guess; --approximate=false unmarks it"},
+		{name: "source", usage: "System, service or person it came from, as a `source`, or none", check: withoutEnv(checkEditedSource)},
+		{name: "add-tag", typ: stringsField, usage: "Add a `tag`; repeat for more", check: withoutEnv(checkTag)},
+		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more"},
+		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("--url")},
+		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("--author")},
+		{name: "dry-run", typ: boolField, usage: "Show the edited event, and change nothing"},
+		tzField(),
+	}}
+}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+const editedEndedHint = "~ and around mark --at only; pass --approximate."
+
+// checkEditedSource accepts none, which clears the source, and otherwise a source name.
+func checkEditedSource(source string) error {
+	if source == clearKeyword {
+		return nil
+	}
+	err := checkNotBlank("--source", &source)
+	if err != nil {
+		return err
+	}
+
+	return checkSource(source)
+}
+
+// clearableNotBlank returns a field check that accepts none, which clears the field, and
+// otherwise rejects a blank value of flag.
+func clearableNotBlank(flag string) func(string, checkEnv) error {
+	return withoutEnv(func(value string) error {
+		if value == clearKeyword {
+			return nil
+		}
+
+		return checkNotBlank(flag, &value)
+	})
+}
+
+// eventEdited is the event as edit stored it or, with --dry-run, would store it, with the zone
+// its times print in.
+type eventEdited struct {
+	event    timeline.Event
+	timeline timeline.Timeline
+	zone     zone
+	// when is the edit's resolved times as the command echoes them, or "" when it sets none.
+	when   string
+	dryRun bool
+}
+
+func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventEdited, error) {
+	now := app.Now()
+	z, err := timeZone(in.value("tz"), cfg.DefaultTimezone, now.Location())
+	if err != nil {
+		return eventEdited{}, err
+	}
+	env := checkEnv{now: now, zone: z}
+	err = eventEditDefinition().check(in, env)
+	if err != nil {
+		return eventEdited{}, err
+	}
+	event := in.value("event")
+	if event == nil {
+		return eventEdited{}, missingValue("event edit", "the event's ref")
+	}
+	ref, err := parseEventRef(*event)
+	if err != nil {
+		return eventEdited{}, err
+	}
+	edit, err := readEventEdit(in, app, env)
+	if err != nil {
+		return eventEdited{}, err
+	}
+	dryRun, _ := in.boolean("dry-run")
+
+	edited := eventEdited{zone: z, when: edit.when, dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// event is overwritten; apply the edit inside one store write if that matters.
-		e, t, err := findEvent(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		e, t, err := findEvent(ctx, s, ref, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
 		}
@@ -93,33 +150,42 @@ func editEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 		if err != nil {
 			return err
 		}
+		edited.event, edited.timeline = e, t
 		if dryRun {
-			err = previewEventEdit(o, z, e, t)
-			if err != nil {
-				return err
-			}
-
-			return o.notify("Would edit event #%d in timeline `%s`%s", e.Seq, t.Name, edit.when)
+			return nil
 		}
 
 		err = s.UpdateEvent(ctx, e, edit.newSourceID)
 		if errors.Is(err, store.ErrNotFound) {
 			return eventNotFoundError("another coroner deleted the event first", err)
 		}
-		if err != nil {
-			return err
-		}
-		err = printEvent(o, e)
-		if err != nil {
-			return err
-		}
 
-		return o.notify("Edited event #%d in timeline `%s`%s", e.Seq, t.Name, edit.when)
+		return err
 	})
+
+	return edited, err
 }
 
-// fieldEdit is an optional field's new value: set when its flag was given, and a nil value
-// when the flag said none.
+func (e eventEdited) render(o output) error {
+	if e.dryRun {
+		err := previewEventEdit(o, e.zone, e.event, e.timeline)
+		if err != nil {
+			return err
+		}
+
+		return o.notify("Would edit event #%d in timeline `%s`%s", e.event.Seq, e.timeline.Name, e.when)
+	}
+
+	err := printEvent(o, e.event)
+	if err != nil {
+		return err
+	}
+
+	return o.notify("Edited event #%d in timeline `%s`%s", e.event.Seq, e.timeline.Name, e.when)
+}
+
+// fieldEdit is an optional field's new value: set when its field was given, and a nil value
+// when it said none.
 type fieldEdit struct {
 	set   bool
 	value *string
@@ -133,7 +199,7 @@ func (f fieldEdit) apply(current *string) *string {
 	return current
 }
 
-// eventEdit is the change edit's flags ask for, read and resolved before the store opens.
+// eventEdit is the change edit's fields ask for, read and resolved before the store opens.
 type eventEdit struct {
 	editFields
 	editTimes
@@ -161,10 +227,10 @@ type editTimes struct {
 	when string
 }
 
-// readEventEdit returns the edit the flags ask for, with times read in z. It reads stdin
-// last, so a bad flag never waits on it.
-func readEventEdit(flags *pflag.FlagSet, app App, z zone) (eventEdit, error) {
-	if !slices.ContainsFunc(eventEditFlags(), flags.Changed) {
+// readEventEdit returns the edit in asks for, with times read as of env. It reads stdin last, so
+// a bad field never waits on it.
+func readEventEdit(in fieldValues, app App, env checkEnv) (eventEdit, error) {
+	if !slices.ContainsFunc(eventEditFlags(), in.given) {
 		return eventEdit{}, &Error{
 			Kind:    KindUsage,
 			Message: "nothing to edit",
@@ -172,13 +238,9 @@ func readEventEdit(flags *pflag.FlagSet, app App, z zone) (eventEdit, error) {
 		}
 	}
 
-	edit := eventEdit{now: app.Now()}
+	edit := eventEdit{now: env.now, editFields: readEditFields(in)}
 	var err error
-	edit.editFields, err = readEditFields(flags)
-	if err != nil {
-		return edit, err
-	}
-	edit.editTimes, err = readEditTimes(flags, edit.now, z)
+	edit.editTimes, err = readEditTimes(in, env)
 	if err != nil {
 		return edit, err
 	}
@@ -189,7 +251,7 @@ func readEventEdit(flags *pflag.FlagSet, app App, z zone) (eventEdit, error) {
 		return edit, err
 	}
 	edit.newSourceID = sourceID.String()
-	if text := changedString(flags, "text"); text != nil {
+	if text := in.value("text"); text != nil {
 		value, err := eventText([]string{*text}, app.In, app.InIsTTY)
 		edit.text = &value
 		return edit, err
@@ -198,68 +260,54 @@ func readEventEdit(flags *pflag.FlagSet, app App, z zone) (eventEdit, error) {
 	return edit, nil
 }
 
-// readEditFields reads the source, URL, author, approximate mark and tags, rejecting any no
-// event could have.
-func readEditFields(flags *pflag.FlagSet) (editFields, error) {
-	f := editFields{addTags: appendUnique(nil, stringArray(flags, "add-tag")...), removeTags: stringArray(flags, "remove-tag")}
-	if approximate, _ := flags.GetBool("approximate"); flags.Changed("approximate") {
+// readEditFields reads the source, URL, author, approximate mark and tags.
+func readEditFields(in fieldValues) editFields {
+	f := editFields{
+		source: readFieldEdit(in, "source"), url: readFieldEdit(in, "url"), author: readFieldEdit(in, "author"),
+		addTags: appendUnique(nil, in.values("add-tag")...), removeTags: in.values("remove-tag"),
+	}
+	if approximate, given := in.boolean("approximate"); given {
 		f.approximate = &approximate
 	}
 
-	var err error
-	for _, field := range []struct {
-		name string
-		edit *fieldEdit
-	}{{"source", &f.source}, {"url", &f.url}, {"author", &f.author}} {
-		*field.edit, err = readFieldEdit(flags, field.name)
-		if err != nil {
-			return f, err
-		}
-	}
-
-	return f, checkSlugs(f.source.value, f.addTags)
+	return f
 }
 
-// readFieldEdit reads the optional field flag name sets, or clears with none.
-func readFieldEdit(flags *pflag.FlagSet, name string) (fieldEdit, error) {
-	value := changedString(flags, name)
+// readFieldEdit reads the optional field name sets, or clears with none.
+func readFieldEdit(in fieldValues, name string) fieldEdit {
+	value := in.value(name)
 	switch {
 	case value == nil:
-		return fieldEdit{}, nil
+		return fieldEdit{}
 	case *value == clearKeyword:
-		return fieldEdit{set: true}, nil
+		return fieldEdit{set: true}
 	}
 
-	return fieldEdit{set: true, value: value}, checkNotBlank("--"+name, value)
+	return fieldEdit{set: true, value: value}
 }
 
-// readEditTimes resolves --at and --ended as of now in z, rejecting an approximate --ended.
-func readEditTimes(flags *pflag.FlagSet, now time.Time, z zone) (editTimes, error) {
+// readEditTimes resolves --at and --ended as of env, rejecting an approximate --ended.
+func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
 	var times editTimes
 	var echoes []string
-	if raw := changedString(flags, "at"); raw != nil {
-		at, err := resolveTime("--at", raw, now, z.loc)
+	if raw := in.value("at"); raw != nil {
+		at, err := resolveTime("--at", raw, env.now, env.zone.loc)
 		if err != nil {
 			return times, err
 		}
 		times.at, times.raw = &at, raw
-		echoes = append(echoes, "at "+formatResolved(at, z))
+		echoes = append(echoes, "at "+formatResolved(at, env.zone))
 	}
 
-	ended := changedString(flags, "ended")
+	ended := in.value("ended")
 	times.clearEnded = ended != nil && *ended == clearKeyword
 	if ended != nil && !times.clearEnded {
-		r, err := resolveTime("--ended", ended, now, z.loc)
+		r, err := resolveEnded(*ended, env, editedEndedHint)
 		if err != nil {
 			return times, err
 		}
-		if r.Approximate {
-			return times, &Error{
-				Kind: KindInvalidTime, Message: "--ended must not be approximate", Hint: "~ and around mark --at only; pass --approximate.",
-			}
-		}
 		times.ended = &r
-		echoes = append(echoes, "ended "+formatResolved(r, z))
+		echoes = append(echoes, "ended "+formatResolved(r, env.zone))
 	}
 
 	if len(echoes) > 0 {

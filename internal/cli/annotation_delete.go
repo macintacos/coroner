@@ -7,11 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newAnnotationDeleteCommand(ctx context.Context, app App) *cobra.Command {
+	def := annotationDeleteDefinition()
 	cmd := &cobra.Command{
 		Use:   "delete <id>...",
 		Short: "Delete annotations",
@@ -22,35 +24,60 @@ func newAnnotationDeleteCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation delete 0199a1b2-7c1e --dry-run\n" +
 			"  $ coroner annotation delete 0199a1b2-7c1e 0199a1b2-7d40 --json",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return deleteAnnotations(ctx, cmd, app, args)
-		},
+		RunE: writeRunE(ctx, app, def, deleteAnnotations),
 	}
 
-	cmd.Flags().Bool("dry-run", false, "Show what would be deleted, and delete nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func deleteAnnotations(ctx context.Context, cmd *cobra.Command, app App, refs []string) error {
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	o, err := newOutput(cmd, app)
+func annotationDeleteDefinition() definition {
+	return definition{fields: []field{
+		{
+			name: "ids", arg: true, typ: stringsField, check: withoutEnv(checkAnnotationRef),
+			usage: "Annotations to delete, as `id`s or unique id prefixes",
+		},
+		{name: "dry-run", typ: boolField, usage: "Show what would be deleted, and delete nothing"},
+	}}
+}
+
+// annotationsDeleted are the annotations delete removed or, with --dry-run, would remove, with
+// their timelines' names by timeline id.
+type annotationsDeleted struct {
+	annotations   []timeline.Annotation
+	timelineNames map[string]string
+	dryRun        bool
+}
+
+func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationsDeleted, error) {
+	err := annotationDeleteDefinition().check(in, checkEnv{})
 	if err != nil {
-		return err
+		return annotationsDeleted{}, err
 	}
+	if len(in.values("ids")) == 0 {
+		return annotationsDeleted{}, missingValue("annotation delete", "at least one annotation id")
+	}
+	prefixes := make([]string, 0, len(in.values("ids")))
+	for _, ref := range in.values("ids") {
+		prefix, err := parseAnnotationRef(ref)
+		if err != nil {
+			return annotationsDeleted{}, err
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	dryRun, _ := in.boolean("dry-run")
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
-		annotations, err := findAnnotations(ctx, s, refs)
+	deleted := annotationsDeleted{dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+		annotations, err := findAnnotations(ctx, s, prefixes)
 		if err != nil {
 			return err
 		}
-		timelineNames, err := annotationTimelineNames(ctx, s, annotations)
-		if err != nil {
+		deleted.annotations = annotations
+		deleted.timelineNames, err = annotationTimelineNames(ctx, s, annotations)
+		if err != nil || dryRun {
 			return err
-		}
-
-		if dryRun {
-			return previewAnnotationDeletion(o, annotations, timelineNames)
 		}
 
 		ids := make([]string, 0, len(annotations))
@@ -61,23 +88,26 @@ func deleteAnnotations(ctx context.Context, cmd *cobra.Command, app App, refs []
 		if errors.Is(err, store.ErrNotFound) {
 			return annotationNotFoundError("an annotation was deleted by another command first, so none were", err)
 		}
-		if err != nil {
-			return err
-		}
 
-		return reportAnnotationDeletion(o, annotations, timelineNames)
+		return err
 	})
+
+	return deleted, err
 }
 
-// findAnnotations returns the annotation each ref names, in order and once each.
-func findAnnotations(ctx context.Context, s *store.Store, refs []string) ([]timeline.Annotation, error) {
-	found := make([]timeline.Annotation, 0, len(refs))
+func (d annotationsDeleted) render(o output) error {
+	if d.dryRun {
+		return previewAnnotationDeletion(o, d.annotations, d.timelineNames)
+	}
+
+	return reportAnnotationDeletion(o, d.annotations, d.timelineNames)
+}
+
+// findAnnotations returns the annotation each id prefix names, in order and once each.
+func findAnnotations(ctx context.Context, s *store.Store, prefixes []string) ([]timeline.Annotation, error) {
+	found := make([]timeline.Annotation, 0, len(prefixes))
 	seen := map[string]bool{}
-	for _, ref := range refs {
-		prefix, err := parseAnnotationRef(ref)
-		if err != nil {
-			return nil, err
-		}
+	for _, prefix := range prefixes {
 		a, err := findAnnotation(ctx, s, prefix)
 		if err != nil {
 			return nil, err

@@ -54,6 +54,11 @@ func parseEventRef(ref string) (eventRef, error) {
 	return eventRef{idPrefix: prefix}, nil
 }
 
+func checkEventRef(ref string) error {
+	_, err := parseEventRef(ref)
+	return err
+}
+
 func badEventRefError(ref string) *Error {
 	return &Error{Kind: KindUsage, Message: fmt.Sprintf("%q is not an event reference", ref), Hint: eventRefHelp}
 }

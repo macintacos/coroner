@@ -11,7 +11,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
@@ -25,6 +24,7 @@ const missingTextHint = "Pass the text, or - to read it from stdin:\n" +
 	"Run 'coroner event add --help' for more."
 
 func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
+	def := eventAddDefinition()
 	cmd := &cobra.Command{
 		Use:   "add {<text> | -}",
 		Short: "Add an event to the current timeline",
@@ -40,69 +40,99 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ pbpaste | coroner event add - --source slack --at \"yesterday 23:02\"\n" +
 			"  $ coroner event add \"Deploy started\" --at \"around 2026-09-11 14:00\" \\\n" +
 			"      --ended \"2026-09-11 14:20\" --dry-run --json",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return addEvent(ctx, cmd, app, args)
-		},
+		RunE: writeRunE(ctx, app, def, addEvent),
 	}
 
-	flags := cmd.Flags()
-	flags.String("at", "", "When it happened, as a `time` (default: now)")
-	flags.String("ended", "", "When it ended, as a `time`, for an event that lasted")
-	flags.Bool("approximate", false, "Mark the time as a guess, as a ~ or around prefix does")
-	flags.String("source", "", "System, service or person it came from, as a `source`, created on first use")
-	flags.StringArray("tag", nil, "Keyword such as phase:detect, as a `tag`; repeat for more")
-	flags.String("url", "", "Permalink to the log line or message, as a `url`")
-	flags.String("author", "", "Who is adding it, as a `name` (default: config author, then USER)")
-	flags.Bool("dry-run", false, "Show the event as it would be added, and add nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func addEvent(ctx context.Context, cmd *cobra.Command, app App, args []string) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, err := resolveConfig(cmd, app)
-	if err != nil {
-		return err
-	}
-	draft, err := draftEvent(cmd.Flags(), app, cfg, args)
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
-		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
-		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		draft.event.TimelineID = t.ID
-		if dryRun {
-			return previewEvent(o, t, draft)
-		}
-
-		added, err := s.AddEvent(ctx, draft.event, draft.newSourceID)
-		if err != nil {
-			return err
-		}
-		err = printEvent(o, added)
-		if err != nil {
-			return err
-		}
-
-		return o.notify("Added event #%d to timeline `%s` at %s", added.Seq, t.Name, draft.when)
-	})
+func eventAddDefinition() definition {
+	return definition{fields: []field{
+		inherited(timelineField()),
+		{name: "text", arg: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
+		{name: "at", usage: "When it happened, as a `time` (default: now)", check: checkAt},
+		{
+			name: "ended", usage: "When it ended, as a `time`, for an event that lasted",
+			check: func(ended string, env checkEnv) error {
+				_, err := resolveEnded(ended, env, addedEndedHint)
+				return err
+			},
+		},
+		{name: "approximate", typ: boolField, usage: "Mark the time as a guess, as a ~ or around prefix does"},
+		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
+		{name: "tag", typ: stringsField, usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
+		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
+		tzField(),
+	}}
 }
 
-// eventDraft is an event read from the command line and checked, still without its timeline.
+const addedEndedHint = "~ and around mark --at only; pass --approximate to mark the event."
+
+// eventAdded is the event add stored or, with --dry-run, would store, in its timeline.
+type eventAdded struct {
+	event    timeline.Event
+	timeline timeline.Timeline
+	// when is the event's resolved time as the command prints it.
+	when   string
+	dryRun bool
+}
+
+func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {
+	now := app.Now()
+	z, err := timeZone(in.value("tz"), cfg.DefaultTimezone, now.Location())
+	if err != nil {
+		return eventAdded{}, err
+	}
+	env := checkEnv{now: now, zone: z}
+	err = eventAddDefinition().check(in, env)
+	if err != nil {
+		return eventAdded{}, err
+	}
+	draft, err := draftEvent(in, app, cfg, env)
+	if err != nil {
+		return eventAdded{}, err
+	}
+	dryRun, _ := in.boolean("dry-run")
+
+	added := eventAdded{event: draft.event, when: draft.when, dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
+		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
+		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		added.timeline = t
+		added.event.TimelineID = t.ID
+		if dryRun {
+			return nil
+		}
+
+		added.event, err = s.AddEvent(ctx, added.event, draft.newSourceID)
+		return err
+	})
+
+	return added, err
+}
+
+func (a eventAdded) render(o output) error {
+	if a.dryRun {
+		return previewEvent(o, a.timeline, a.event, a.when)
+	}
+
+	err := printEvent(o, a.event)
+	if err != nil {
+		return err
+	}
+
+	return o.notify("Added event #%d to timeline `%s` at %s", a.event.Seq, a.timeline.Name, a.when)
+}
+
+// eventDraft is an event read from its fields and checked, still without its timeline.
 type eventDraft struct {
 	event timeline.Event
 	// newSourceID is the id event.Source gets when no source has that name yet.
@@ -111,19 +141,15 @@ type eventDraft struct {
 	when string
 }
 
-// draftEvent reads the event args and flags describe and gives it new ids, rejecting anything
-// the store would. It reads stdin last, so a bad flag never waits on it.
-func draftEvent(flags *pflag.FlagSet, app App, cfg config.Config, args []string) (eventDraft, error) {
-	fields, err := readEventFields(flags, cfg.Author, app.LookupEnv)
+// draftEvent returns the event in describes, with times read as of env, and gives it new ids,
+// rejecting anything the store would. It reads stdin last, so a bad field never waits on it.
+func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (eventDraft, error) {
+	fields := readEventFields(in, cfg.Author, app.LookupEnv)
+	times, err := resolveEventTimes(in, env)
 	if err != nil {
 		return eventDraft{}, err
 	}
-	now := app.Now()
-	times, err := resolveEventTimes(flags, now, cfg.DefaultTimezone)
-	if err != nil {
-		return eventDraft{}, err
-	}
-	text, err := eventText(args, app.In, app.InIsTTY)
+	text, err := eventText(in.values("text"), app.In, app.InIsTTY)
 	if err != nil {
 		return eventDraft{}, err
 	}
@@ -149,8 +175,8 @@ func draftEvent(flags *pflag.FlagSet, app App, cfg config.Config, args []string)
 		Text:           text,
 		URL:            fields.url,
 		Author:         fields.author,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		CreatedAt:      env.now,
+		UpdatedAt:      env.now,
 	}
 	err = e.Validate()
 	if err != nil {
@@ -208,6 +234,16 @@ func eventText(args []string, in io.Reader, inIsTTY bool) (string, error) {
 	return checkText(strings.TrimSuffix(string(data), "\n"))
 }
 
+// checkTextOrStdin checks event text as typed, where - stands for text read from stdin later.
+func checkTextOrStdin(text string) error {
+	if text == "-" {
+		return nil
+	}
+
+	_, err := checkText(text)
+	return err
+}
+
 func checkText(text string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", &Error{Kind: KindUsage, Message: "event text must not be blank", Hint: "Pass non-blank text."}
@@ -222,40 +258,21 @@ func checkText(text string) (string, error) {
 	return text, nil
 }
 
-// eventFields are the source, tags, URL and author the flags give an event.
+// eventFields are the source, tags, URL and author an event's fields give it.
 type eventFields struct {
 	source, url, author *string
 	tags                []string
 }
 
-// readEventFields returns the event fields the flags give, with the author defaulting to
+// readEventFields returns the event fields in gives, with the author defaulting to
 // configuredAuthor, then USER.
-func readEventFields(
-	flags *pflag.FlagSet, configuredAuthor string, lookupEnv func(string) (string, bool),
-) (eventFields, error) {
-	f := eventFields{
-		source: changedString(flags, "source"),
-		tags:   appendUnique(nil, stringArray(flags, "tag")...),
-		url:    changedString(flags, "url"),
-		author: changedString(flags, "author"),
+func readEventFields(in fieldValues, configuredAuthor string, lookupEnv func(string) (string, bool)) eventFields {
+	return eventFields{
+		source: in.value("source"),
+		tags:   appendUnique(nil, in.values("tag")...),
+		url:    in.value("url"),
+		author: eventAuthor(in.value("author"), configuredAuthor, lookupEnv),
 	}
-
-	err := checkNotBlank("--url", f.url)
-	if err != nil {
-		return f, err
-	}
-	err = checkNotBlank("--author", f.author)
-	if err != nil {
-		return f, err
-	}
-	err = checkSlugs(f.source, f.tags)
-	if err != nil {
-		return f, err
-	}
-
-	f.author = eventAuthor(f.author, configuredAuthor, lookupEnv)
-
-	return f, nil
 }
 
 func checkNotBlank(flag string, value *string) error {
@@ -264,6 +281,13 @@ func checkNotBlank(flag string, value *string) error {
 	}
 
 	return &Error{Kind: KindUsage, Message: flag + " must not be blank", Hint: "Leave " + flag + " out instead."}
+}
+
+// notBlank returns a field check that rejects a blank value of flag.
+func notBlank(flag string) func(string, checkEnv) error {
+	return withoutEnv(func(value string) error {
+		return checkNotBlank(flag, &value)
+	})
 }
 
 // checkSlugs returns invalid_name, with a suggestion, for the first of source and tags that
@@ -284,6 +308,14 @@ func checkSlugs(source *string, tags []string) error {
 	}
 
 	return nil
+}
+
+func checkSource(source string) error {
+	return checkSlug(source, timeline.ValidateSourceName)
+}
+
+func checkTag(tag string) error {
+	return checkSlug(tag, timeline.ValidateTag)
 }
 
 func checkSlug(slug string, validate func(string) error) error {
@@ -326,49 +358,36 @@ type eventTimes struct {
 	when string
 }
 
-// resolveEventTimes resolves --at (marked approximate by --approximate) and --ended as of now,
-// in the zone timeZone selects, with now's location as local, rejecting an --ended that is
-// approximate or before --at.
-func resolveEventTimes(flags *pflag.FlagSet, now time.Time, defaultTimezone string) (eventTimes, error) {
-	z, err := timeZone(changedString(flags, "tz"), defaultTimezone, now.Location())
+// resolveEventTimes resolves --at (marked approximate by --approximate) and --ended as of env,
+// rejecting an --ended that is approximate or before --at.
+func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
+	raw := in.value("at")
+	at, err := resolveTime("--at", raw, env.now, env.zone.loc)
 	if err != nil {
 		return eventTimes{}, err
 	}
-
-	raw := changedString(flags, "at")
-	at, err := resolveTime("--at", raw, now, z.loc)
-	if err != nil {
-		return eventTimes{}, err
-	}
-	approximate, _ := flags.GetBool("approximate")
+	approximate, _ := in.boolean("approximate")
 	at.Approximate = at.Approximate || approximate
-	times := eventTimes{at: at, raw: raw, when: formatResolved(at, z)}
+	times := eventTimes{at: at, raw: raw, when: formatResolved(at, env.zone)}
 
-	endedInput := changedString(flags, "ended")
+	endedInput := in.value("ended")
 	if endedInput == nil {
 		return times, nil
 	}
-	ended, err := resolveTime("--ended", endedInput, now, z.loc)
+	ended, err := resolveEnded(*endedInput, env, addedEndedHint)
 	if err != nil {
 		return eventTimes{}, err
-	}
-	if ended.Approximate {
-		return eventTimes{}, &Error{
-			Kind:    KindInvalidTime,
-			Message: "--ended must not be approximate",
-			Hint:    "~ and around mark --at only; pass --approximate to mark the event.",
-		}
 	}
 	if ended.Instant.Before(at.Instant) {
 		return eventTimes{}, &Error{
 			Kind:    KindInvalidTime,
-			Message: fmt.Sprintf("--ended %s is before --at %s", formatResolved(ended, z), times.when),
+			Message: fmt.Sprintf("--ended %s is before --at %s", formatResolved(ended, env.zone), times.when),
 			Hint:    "Pass an --ended time no earlier than --at.",
 		}
 	}
 
 	times.ended = &ended.Instant
-	times.when += ", ended " + formatResolved(ended, z)
+	times.when += ", ended " + formatResolved(ended, env.zone)
 
 	return times, nil
 }
@@ -382,15 +401,14 @@ func printEvent(o output, e timeline.Event) error {
 	return o.json(newEventJSON(e))
 }
 
-// previewEvent prints d as it would be added to t: its JSON object, or a description.
-func previewEvent(o output, t timeline.Timeline, d eventDraft) error {
+// previewEvent prints e as it would be added to t at when: its JSON object, or a description.
+func previewEvent(o output, t timeline.Timeline, e timeline.Event, when string) error {
 	if o.format == formatJSON {
-		return o.json(newEventJSON(d.event))
+		return o.json(newEventJSON(e))
 	}
 
-	e := d.event
 	var b strings.Builder
-	fmt.Fprintf(&b, "Would add to timeline `%s` at %s\n", t.Name, d.when)
+	fmt.Fprintf(&b, "Would add to timeline `%s` at %s\n", t.Name, when)
 	writeField(&b, "Precision:", string(e.Precision))
 	writeField(&b, "Source:", orDash(e.Source))
 	writeField(&b, "Tags:", cmp.Or(strings.Join(e.Tags, ", "), "-"))

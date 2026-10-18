@@ -6,11 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
+	def := timelineCreateDefinition()
 	cmd := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Create a timeline",
@@ -22,66 +24,83 @@ func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner timeline create mongo-outage-2026-09-11 --title \"Primary election storm\" \\\n" +
 			"      --ref INC-4821 --ref https://jira.example.com/browse/INC-4821\n" +
 			"  $ coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return createTimeline(ctx, cmd, app, args[0])
-		},
+		RunE: writeRunE(ctx, app, def, createTimeline),
 	}
 
-	cmd.Flags().String("title", "", "Free-text `title`")
-	cmd.Flags().StringArray("ref", nil, "Ticket key or URL the timeline belongs to; repeat for more")
-	cmd.Flags().Bool("if-not-exists", false, "Print the existing timeline instead of failing when the name is taken")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func createTimeline(ctx context.Context, cmd *cobra.Command, app App, name string) error {
-	flags := cmd.Flags()
-	title, _ := flags.GetString("title")
-	ifNotExists, _ := flags.GetBool("if-not-exists")
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
+func timelineCreateDefinition() definition {
+	return definition{fields: []field{
+		{name: "name", usage: "Timeline `name`, which commands select it by", arg: true, check: withoutEnv(checkName)},
+		{name: "title", usage: "Free-text `title`"},
+		{name: "ref", typ: stringsField, usage: "Ticket key or URL the timeline belongs to; repeat for more"},
+		{name: "if-not-exists", typ: boolField, usage: "Print the existing timeline instead of failing when the name is taken"},
+	}}
+}
 
+// timelineCreated is the timeline create made, or the one --if-not-exists found.
+type timelineCreated struct {
+	timeline timeline.Timeline
+	existed  bool
+}
+
+func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineCreated, error) {
+	// Before the checks, so a rejected name still uses an ID, as the contract scripts number them.
 	id, err := app.NewID()
 	if err != nil {
-		return err
+		return timelineCreated{}, err
+	}
+	err = timelineCreateDefinition().check(in, checkEnv{})
+	if err != nil {
+		return timelineCreated{}, err
+	}
+	name := in.value("name")
+	if name == nil {
+		return timelineCreated{}, missingValue("timeline create", "the timeline's name")
 	}
 	now := app.Now()
 	t := timeline.Timeline{
-		ID: id.String(), Name: name, Title: title, Refs: appendUnique(nil, stringArray(flags, "ref")...),
+		ID: id.String(), Name: *name, Refs: appendUnique(nil, in.values("ref")...),
 		CreatedAt: now, UpdatedAt: now,
+	}
+	if title := in.value("title"); title != nil {
+		t.Title = *title
 	}
 	err = checkTimeline(t)
 	if err != nil {
-		return err
+		return timelineCreated{}, err
 	}
+	ifNotExists, _ := in.boolean("if-not-exists")
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+	created := timelineCreated{timeline: t}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		err := s.CreateTimeline(ctx, t)
 		switch {
 		case errors.Is(err, store.ErrConflict) && ifNotExists:
-			existing, err := s.TimelineByName(ctx, name)
-			if err != nil {
-				return err
-			}
-			err = printTimeline(o, existing)
-			if err != nil {
-				return err
-			}
-
-			return o.notify("Timeline `%s` already exists.", name)
+			created.timeline, err = s.TimelineByName(ctx, t.Name)
+			created.existed = true
+			return err
 		case errors.Is(err, store.ErrConflict):
-			return timelineExistsError(name, "Pick another name, or pass --if-not-exists to use the existing timeline.", err)
-		case err != nil:
-			return err
+			return timelineExistsError(t.Name, "Pick another name, or pass --if-not-exists to use the existing timeline.", err)
 		}
 
-		err = printTimeline(o, t)
-		if err != nil {
-			return err
-		}
-
-		return o.notify("Created timeline `%[1]s`.\nNext: coroner timeline use %[1]s\n      coroner event add -t %[1]s <text>", name)
+		return err
 	})
+
+	return created, err
+}
+
+func (c timelineCreated) render(o output) error {
+	err := printTimeline(o, c.timeline)
+	if err != nil {
+		return err
+	}
+	if c.existed {
+		return o.notify("Timeline `%s` already exists.", c.timeline.Name)
+	}
+
+	return o.notify("Created timeline `%[1]s`.\nNext: coroner timeline use %[1]s\n      coroner event add -t %[1]s <text>", c.timeline.Name)
 }
