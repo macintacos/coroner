@@ -19,7 +19,7 @@ digraph coroner_docs_router {
 
     "Edit README.md" [shape=box];
     "Edit AGENTS.md" [shape=box];
-    "Edit agents/*.md" [shape=box];
+    "Edit rules/*.md" [shape=box];
     "Edit docs/contributing/command-checklist.md" [shape=box];
     "Edit docs/contributing/migrations.md" [shape=box];
     "Edit docs/contributing/releasing.md" [shape=box];
@@ -40,7 +40,7 @@ digraph coroner_docs_router {
     "Changing documentation" -> "Which doc does the change affect?";
     "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, installing the agent skill, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
     "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks, hk hooks and what CI runs, the routing digraph, where things live, the repository rules"];
-    "Which doc does the change affect?" -> "Edit agents/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
+    "Which doc does the change affect?" -> "Edit rules/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
     "Which doc does the change affect?" -> "Edit docs/contributing/releasing.md" [label="how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, or the steps before and after a tag"];
@@ -69,7 +69,7 @@ digraph coroner_docs_router {
   tasks, `hk` hooks and what CI runs, the routing digraph, where things live, and the
   repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through
   the import; it never gains content of its own.
-- **`agents/*.md`** (agent-facing) — on-demand rule files, one per area, each reached from
+- **`rules/*.md`** (agent-facing) — on-demand rule files, one per area, each reached from
   an edge in `AGENTS.md`'s digraph.
 - **[`docs/contributing/command-checklist.md`](../docs/contributing/command-checklist.md)**
   — the [clig.dev](https://clig.dev/) rules with stable IDs (cite them as "violates
@@ -177,7 +177,7 @@ the title first), so a reader knows in one line whether it is written for them. 
 docs such as `docs/reference/cli/` are exempt; their landscape entry names the audience.
 
 `README.md` and the docs site are **human-facing**. `AGENTS.md` and everything under
-`agents/` are **agent-facing**. A new doc outside both groups names its audience when it
+`rules/` are **agent-facing**. A new doc outside both groups names its audience when it
 lands.
 
 Diagrams follow the same split, **deliberately**: human-facing docs use **mermaid**, which
@@ -197,7 +197,7 @@ Documentation drifts when a map and the thing it maps change in separate pull re
 So, **in the same change**:
 
 1. **When one of these is added, removed, or renamed:**
-   - a doc updates its box and landscape entry here, and a rule file under `agents/` also
+   - a doc updates its box and landscape entry here, and a rule file under `rules/` also
      adds or updates its edge in `AGENTS.md`'s digraph;
    - a `mise` task, `hk` hook or CI workflow step updates `AGENTS.md` § How to work here
      and every doc that names it, such as `README.md`'s Development section, and so does a
@@ -209,7 +209,7 @@ So, **in the same change**:
    its edge) and turns the path mention into a link, outside code blocks.
 3. **An area gets rules only once it has code.** An area is a top-level package under
    `internal/` or a top-level directory such as `skills/`. The first issue with rules for
-   an area that an agent would otherwise get wrong adds `agents/<area>-rules.md` and the
+   an area that an agent would otherwise get wrong adds `rules/<area>.md` and the
    `AGENTS.md` edge that loads it.
 4. **A new doc** states its audience and uses that audience's diagram tool
    ([§ Audience](#audience-stated-at-the-top-of-every-new-doc)).

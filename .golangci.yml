@@ -111,7 +111,7 @@ linters:
             - "!$test"
           deny:
             - pkg: github.com/macintacos/coroner/internal/store
-              desc: read through Options.Load; the viewer never holds the database (viewer-rules 1)
+              desc: read through Options.Load; the viewer never holds the database (rules/viewer.md rule 1)
     exhaustive:
       check:
         - switch

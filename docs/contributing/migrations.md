@@ -91,8 +91,8 @@ because older ones do not.
 
 - **Migrations run with foreign keys on.** A migration that rebuilds a table other tables
   reference relies on
-  [store rule 3](https://github.com/macintacos/coroner/blob/main/agents/store-rules.md) to
-  turn foreign keys off; one that forgets it deletes every child row through the cascade.
+  [store rule 3](https://github.com/macintacos/coroner/blob/main/rules/store.md) to turn
+  foreign keys off; one that forgets it deletes every child row through the cascade.
   Running goose on a connection opened without `foreign_keys(1)`, then
   `PRAGMA foreign_key_check`, would rule that out. No migration rebuilds a table yet, so
   this waits for the first one that does.
