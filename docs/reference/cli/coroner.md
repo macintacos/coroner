@@ -39,5 +39,6 @@ coroner <command> [flags]
 ### SEE ALSO
 
 * [coroner completion](coroner_completion.md)	 - Generate the autocompletion script for the specified shell
+* [coroner timeline](coroner_timeline.md)	 - Create, list and switch between timelines
 * [coroner version](coroner_version.md)	 - Show coroner's version
 

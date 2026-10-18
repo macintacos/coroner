@@ -1,0 +1,74 @@
+# JSON output and exit codes of the timeline commands. Ids are UUIDv7 and differ per run,
+# so they match by pattern; instants come from CORONER_TEST_NOW.
+
+# create prints the timeline object, every key present.
+exits 0 coroner timeline create mongo-outage-2026-09-11 --title 'Primary election storm' --ref INC-4821 --ref https://jira.example.com/browse/INC-4821 --json
+stdout '^\{"id":"[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[0-9a-f]{4}-[0-9a-f]{12}","name":"mongo-outage-2026-09-11","title":"Primary election storm","refs":\["INC-4821","https://jira.example.com/browse/INC-4821"\],"created_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+cp stdout created.json
+
+# A taken name exits 4, kind timeline_exists.
+exits 4 coroner timeline create mongo-outage-2026-09-11 --json
+! stdout .
+stderr '^\{"error":\{"kind":"timeline_exists","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
+
+# --if-not-exists exits 0 and prints the existing object.
+exits 0 coroner timeline create mongo-outage-2026-09-11 --if-not-exists --json
+cmp stdout created.json
+
+# An invalid name exits 2, kind invalid_name, with a suggested name in the hint.
+exits 2 coroner timeline create 'Mongo Outage' --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_name","message":"[^\n]+","hint":"[^\n]*mongo-outage[^\n]*"\}\}\n\z'
+
+# An unknown verb exits 2, kind usage, even under --json.
+exits 2 coroner timeline craete --json
+! stdout .
+stderr '^\{"error":\{"kind":"usage","message":"unknown command \\"craete\\"[^\n]+\}\}\n\z'
+
+# list prints every timeline with current, true only for the one in use.
+exits 0 coroner timeline create second --json
+exits 0 coroner timeline list --json
+stdout '^\{"timelines":\[\{"id":"[^"]{36}","name":"[^"]+","title":"[^"]*","refs":\[[^]]*\],"created_at":"[^"]{30}","current":false\},\{[^}]+\}\]\}$'
+stdout '"name":"mongo-outage-2026-09-11",[^}]*"current":false\}'
+stdout '"name":"second",[^}]*"current":false\}'
+exits 0 coroner timeline use second
+exits 0 coroner timeline list --json
+stdout '"name":"second",[^}]*"current":true\}'
+stdout '"name":"mongo-outage-2026-09-11",[^}]*"current":false\}'
+
+# view prints the bare timeline object, of the current timeline when none is named.
+exits 0 coroner timeline view mongo-outage-2026-09-11 --json
+cmp stdout created.json
+exits 0 coroner timeline view --json
+stdout '^\{"id":"[^"]{36}","name":"second","title":"","refs":\[\],"created_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+
+# edit prints the edited object: refs are removed, then added.
+exits 0 coroner timeline edit mongo-outage-2026-09-11 --name mongo-failover --add-ref INC-4822 --remove-ref https://jira.example.com/browse/INC-4821 --json
+stdout '^\{"id":"[^"]{36}","name":"mongo-failover","title":"Primary election storm","refs":\["INC-4821","INC-4822"\],"created_at":"2026-09-13T01:30:00\.000000000Z"\}$'
+
+# edit exits 2 with no field to change, and 4 onto a taken name.
+exits 2 coroner timeline edit mongo-failover --json
+stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
+exits 4 coroner timeline edit mongo-failover --name second --json
+stderr '^\{"error":\{"kind":"timeline_exists",[^\n]+\}\}\n\z'
+
+# A timeline that does not exist exits 3, kind timeline_not_found.
+exits 3 coroner timeline view mongo-outage-2026-09-11 --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+exits 3 coroner timeline edit mongo-outage-2026-09-11 --title x --json
+stderr '^\{"error":\{"kind":"timeline_not_found",[^\n]+\}\}\n\z'
+exits 3 coroner timeline use mongo-outage-2026-09-11
+
+# delete exits 2 without --yes, deleting nothing, and 3 for a missing timeline.
+exits 2 coroner timeline delete mongo-failover
+exits 0 coroner timeline view mongo-failover --json
+exits 3 coroner timeline delete mongo-outage-2026-09-11 --yes
+
+# use exits 2 given neither or both of a timeline and --clear.
+exits 2 coroner timeline use
+exits 2 coroner timeline use second --clear
+
+# With nothing named and nothing current, view exits 2, kind timeline_required.
+exits 0 coroner timeline delete second --yes
+exits 2 coroner timeline view --json
+stderr '^\{"error":\{"kind":"timeline_required",[^\n]+\}\}\n\z'

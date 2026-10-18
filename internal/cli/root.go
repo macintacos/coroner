@@ -1,18 +1,27 @@
 package cli
 
 import (
+	"cmp"
+	"context"
+	"errors"
 	"fmt"
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
 
-const additionalCommands = "additional"
+const (
+	coreCommands       = "core"
+	additionalCommands = "additional"
+)
 
 // NewRoot builds coroner's command tree, whose commands run against app. Execute it only
-// through Run, which supplies its arguments, streams and exit codes.
-func NewRoot(app App) *cobra.Command {
+// through Run, which supplies its arguments, streams and exit codes. Commands use ctx, the
+// context Run executes them with, not cmd.Context(): contextcheck accepts only a context
+// that arrives as a parameter.
+func NewRoot(ctx context.Context, app App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "coroner <command> [flags]",
 		Short: "Build root-cause investigation timelines",
@@ -46,10 +55,13 @@ func NewRoot(app App) *cobra.Command {
 		_ = help.Execute(app.Out, cmd)
 	})
 
-	root.AddGroup(&cobra.Group{ID: additionalCommands, Title: "ADDITIONAL COMMANDS"})
+	root.AddGroup(
+		&cobra.Group{ID: coreCommands, Title: "CORE COMMANDS"},
+		&cobra.Group{ID: additionalCommands, Title: "ADDITIONAL COMMANDS"},
+	)
 	root.SetHelpCommandGroupID(additionalCommands)
 	root.SetCompletionCommandGroupID(additionalCommands)
-	root.AddCommand(newVersionCommand(app))
+	root.AddCommand(newVersionCommand(app), newTimelineCommand(ctx, app))
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
 	// and wrapRunErrors wraps only the commands already added.
@@ -58,6 +70,23 @@ func NewRoot(app App) *cobra.Command {
 	wrapRunErrors(root)
 
 	return root
+}
+
+// runNoun is the RunE of a command that only groups verbs. It prints help without a verb
+// and rejects an unknown one, which cobra checks only on root.
+func runNoun(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+
+	message := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
+	// cobra defaults the distance to 2 only when it suggests for root.
+	cmd.SuggestionsMinimumDistance = cmp.Or(cmd.SuggestionsMinimumDistance, 2)
+	if suggestions := cmd.SuggestionsFor(args[0]); len(suggestions) > 0 {
+		message += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
+	}
+
+	return usageError(cmd, errors.New(message))
 }
 
 // globalFlags declares the flags every command accepts. Each call returns a fresh set.

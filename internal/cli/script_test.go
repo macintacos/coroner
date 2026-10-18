@@ -18,6 +18,7 @@ import (
 	// Embeds the zone database so TZ resolves on machines without system tzdata instead of silently becoming UTC.
 	_ "time/tzdata"
 
+	"github.com/google/uuid"
 	"github.com/mattn/go-isatty"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -107,6 +108,7 @@ func runCoroner() {
 		LookupEnv: os.LookupEnv,
 		ReadFile:  os.ReadFile,
 		Now:       time.Now,
+		NewID:     uuid.NewV7,
 		OpenStore: store.Open,
 	})
 	if err != nil {

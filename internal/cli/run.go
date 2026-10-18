@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/store"
@@ -28,6 +29,8 @@ type App struct {
 	// ReadFile must report a missing file as fs.ErrNotExist, as os.ReadFile does.
 	ReadFile func(name string) ([]byte, error)
 	Now      func() time.Time
+	// NewID returns the ID for a new record, a UUIDv7 in main.go.
+	NewID func() (uuid.UUID, error)
 	// OpenStore creates the database at path, so only commands that use it may call it, and
 	// never from PersistentPreRunE.
 	OpenStore func(ctx context.Context, path string) (*store.Store, error)
@@ -35,7 +38,7 @@ type App struct {
 
 // Run executes the command line in app.Args and returns the process exit code.
 func Run(ctx context.Context, app App) int {
-	root := NewRoot(app)
+	root := NewRoot(ctx, app)
 	// Cobra falls back to os.Args when given nil.
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
