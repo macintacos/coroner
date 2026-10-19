@@ -162,6 +162,7 @@ type OverwriteTimelineParams struct {
 	ID        string
 }
 
+// OverwriteTimeline returns id only so that a missing row is sql.ErrNoRows.
 func (q *Queries) OverwriteTimeline(ctx context.Context, arg OverwriteTimelineParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, overwriteTimeline,
 		arg.Name,

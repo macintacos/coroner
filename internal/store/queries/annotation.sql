@@ -27,6 +27,7 @@ WHERE event_id = ?
 ORDER BY created_at, id;
 
 -- name: OverwriteAnnotation :one
+-- OverwriteAnnotation returns id only so that a missing row is sql.ErrNoRows.
 UPDATE annotation
 SET kind = sqlc.arg(kind),
   body = sqlc.arg(body),

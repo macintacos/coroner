@@ -27,6 +27,7 @@ WHERE timeline_id = ?
 ORDER BY occurred_at, seq;
 
 -- name: OverwriteEvent :one
+-- OverwriteEvent returns id only so that a missing row is sql.ErrNoRows.
 UPDATE event
 SET occurred_at = sqlc.arg(occurred_at),
   occurred_offset = sqlc.arg(occurred_offset),

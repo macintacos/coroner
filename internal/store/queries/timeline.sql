@@ -19,6 +19,7 @@ SELECT * FROM timeline
 ORDER BY name;
 
 -- name: OverwriteTimeline :one
+-- OverwriteTimeline returns id only so that a missing row is sql.ErrNoRows.
 UPDATE timeline
 SET name = sqlc.arg(name),
   title = sqlc.arg(title),

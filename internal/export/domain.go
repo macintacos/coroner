@@ -6,7 +6,8 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// NewTimeline returns t as its canonical object.
+// NewTimeline returns t as its canonical object, with refs never nil: --json encodes it with
+// encoding/json v1, which writes a nil slice as null.
 func NewTimeline(t timeline.Timeline) Timeline {
 	return Timeline{ID: t.ID, Name: t.Name, Title: t.Title, Refs: append([]string{}, t.Refs...), CreatedAt: Instant(t.CreatedAt)}
 }
@@ -28,7 +29,8 @@ func (s Source) Domain() timeline.Source {
 	return timeline.Source{ID: s.ID, Name: s.Name, CreatedAt: time.Time(s.CreatedAt)}
 }
 
-// NewEvent returns e as its canonical object, with a null seq when e has none yet.
+// NewEvent returns e as its canonical object, with a null seq when e has none yet, and tags
+// never nil: --json encodes it with encoding/json v1, which writes a nil slice as null.
 func NewEvent(e timeline.Event) Event {
 	out := Event{
 		ID:             e.ID,

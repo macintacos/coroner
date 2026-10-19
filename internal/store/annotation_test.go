@@ -92,6 +92,18 @@ var _ = Describe("Annotations", func() {
 		Expect(s.Annotation(ctx, evidence.ID)).To(Equal(evidence))
 	})
 
+	It("clears an annotation's author, source and URL", func(ctx SpecContext) {
+		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
+		evidence.Author = nil
+		evidence.Source = nil
+		evidence.URL = nil
+		evidence.UpdatedAt = created.Add(time.Hour)
+
+		Expect(s.UpdateAnnotation(ctx, evidence, uuid(21))).To(Succeed())
+
+		Expect(s.Annotation(ctx, evidence.ID)).To(Equal(evidence))
+	})
+
 	It("UpdateAnnotation keeps created at, even when handed a record with another created at", func(ctx SpecContext) {
 		Expect(s.AddAnnotation(ctx, evidence, uuid(20))).To(Succeed())
 		edited := evidence

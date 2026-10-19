@@ -203,8 +203,8 @@ func createEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event, seq 
 	return addTags(ctx, q, e.ID, e.Tags)
 }
 
-// overwriteEvent stores every field of e but its timeline and seq, naming the source with
-// sourceID and keeping the stored created at unless createdAt is set, and replaces its tags.
+// overwriteEvent stores e's fields but its timeline and seq, naming the source with sourceID
+// and setting created at to createdAt unless it is nil, and replaces its tags.
 func overwriteEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event, sourceID, createdAt *string) error {
 	_, err := q.OverwriteEvent(ctx, sqlcgen.OverwriteEventParams{
 		OccurredAt:        timeline.FormatInstant(e.OccurredAt),

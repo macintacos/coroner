@@ -243,6 +243,7 @@ type OverwriteAnnotationParams struct {
 	ID        string
 }
 
+// OverwriteAnnotation returns id only so that a missing row is sql.ErrNoRows.
 func (q *Queries) OverwriteAnnotation(ctx context.Context, arg OverwriteAnnotationParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, overwriteAnnotation,
 		arg.Kind,

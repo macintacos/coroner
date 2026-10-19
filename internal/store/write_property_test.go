@@ -2,12 +2,12 @@ package store_test
 
 import (
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"pgregory.net/rapid"
 
 	"github.com/macintacos/coroner/internal/store"
@@ -49,8 +49,8 @@ func TestEventWritesReadBack(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(got, want) {
-				t.Fatalf("%s: got %+v, want %+v", step, got, want)
+			if diff := cmp.Diff(want, got); diff != "" {
+				t.Fatalf("%s (-want +got):\n%s", step, diff)
 			}
 		}
 
@@ -96,7 +96,9 @@ func sortedTags(e timeline.Event) timeline.Event {
 }
 
 // fullEvent draws an event without ids or seq, every optional field sometimes set, its occurred
-// at the start of its precision window in its offset.
+// at the start of its precision window in its offset. It and the generators below copy event,
+// optionalSource, tag, text, blankable and instant in internal/cli/roundtrip_test.go; change
+// both together.
 func fullEvent(sources []string) *rapid.Generator[timeline.Event] {
 	return rapid.Custom(func(t *rapid.T) timeline.Event {
 		e := timeline.Event{
@@ -104,7 +106,7 @@ func fullEvent(sources []string) *rapid.Generator[timeline.Event] {
 				timeline.PrecisionDay, timeline.PrecisionHour, timeline.PrecisionMinute, timeline.PrecisionSecond,
 				timeline.PrecisionMillisecond, timeline.PrecisionMicrosecond, timeline.PrecisionNanosecond,
 			}).Draw(t, "precision"),
-			OccurredOffset: rapid.Ptr(rapid.IntRange(-86400, 86400), true).Draw(t, "offset"),
+			OccurredOffset: rapid.Ptr(rapid.IntRange(-timeline.MaxOccurredOffset, timeline.MaxOccurredOffset), true).Draw(t, "offset"),
 			Approximate:    rapid.Bool().Draw(t, "approximate"),
 			OccurredRaw:    rapid.Ptr(anyBlankable(), true).Draw(t, "raw"),
 			Source:         anySource(sources).Draw(t, "source"),
@@ -145,7 +147,7 @@ func anyTag() *rapid.Generator[string] {
 func anyText() *rapid.Generator[string] {
 	return rapid.OneOf(
 		rapid.StringN(1, 32, -1),
-		rapid.SampledFrom([]string{"</script><script>alert(1)</script>", "line one\nline two\r\n", "Réplica caída — 東京 ✓", "a b\u0000c"}),
+		rapid.SampledFrom([]string{"</script><script>alert(1)</script>", "line one\nline two\r\n", "Réplica caída — 東京 ✓", "a\u2028b\u0000c"}),
 		rapid.StringN(1000, 5000, -1),
 	).Filter(func(s string) bool {
 		// SQLite's length() stops at a NUL, so the CHECK reads text whose trimmed start is NUL as blank.

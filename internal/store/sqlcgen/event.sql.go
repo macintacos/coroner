@@ -277,6 +277,7 @@ type OverwriteEventParams struct {
 	ID                string
 }
 
+// OverwriteEvent returns id only so that a missing row is sql.ErrNoRows.
 func (q *Queries) OverwriteEvent(ctx context.Context, arg OverwriteEventParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, overwriteEvent,
 		arg.OccurredAt,
