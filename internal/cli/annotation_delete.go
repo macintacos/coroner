@@ -127,7 +127,7 @@ func (d annotationsDeleted) render(o output) error {
 }
 
 // findAnnotations returns the annotation each id prefix names, in order and once each.
-func findAnnotations(ctx context.Context, s *store.Store, prefixes []string) ([]timeline.Annotation, error) {
+func findAnnotations(ctx context.Context, s records, prefixes []string) ([]timeline.Annotation, error) {
 	found := make([]timeline.Annotation, 0, len(prefixes))
 	seen := map[string]bool{}
 	for _, prefix := range prefixes {
@@ -145,7 +145,7 @@ func findAnnotations(ctx context.Context, s *store.Store, prefixes []string) ([]
 }
 
 // annotationTimelineNames returns the name of each annotation's timeline, keyed by timeline id.
-func annotationTimelineNames(ctx context.Context, s *store.Store, annotations []timeline.Annotation) (map[string]string, error) {
+func annotationTimelineNames(ctx context.Context, s records, annotations []timeline.Annotation) (map[string]string, error) {
 	names := map[string]string{}
 	for _, a := range annotations {
 		if _, ok := names[a.TimelineID]; ok {

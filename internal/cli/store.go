@@ -10,7 +10,24 @@ import (
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/internal/timeline"
 )
+
+// records is what the shared lookups read: a *store.Store, or a *store.Tx inside a Change.
+type records interface {
+	Timeline(ctx context.Context, id string) (timeline.Timeline, error)
+	TimelineByName(ctx context.Context, name string) (timeline.Timeline, error)
+	CurrentTimeline(ctx context.Context) (timeline.Timeline, error)
+	Timelines(ctx context.Context) ([]timeline.Timeline, error)
+	OverlayByName(ctx context.Context, name string) (timeline.Overlay, error)
+	Event(ctx context.Context, id string) (timeline.Event, error)
+	EventBySeq(ctx context.Context, timelineID string, seq int64) (timeline.Event, error)
+	EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error)
+	Annotation(ctx context.Context, id string) (timeline.Annotation, error)
+	AnnotationsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Annotation, error)
+	AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error)
+	ListAttachments(ctx context.Context, owner timeline.AttachmentOwner) ([]timeline.Attachment, error)
+}
 
 // withStorePath opens the database at path, creating and migrating it as needed, through
 // withStoreOpenedBy.

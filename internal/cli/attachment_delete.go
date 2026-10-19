@@ -137,7 +137,7 @@ func (d attachmentsDeleted) write(o output) error {
 }
 
 // findAttachments returns the attachment each id prefix names, in order and once each.
-func findAttachments(ctx context.Context, s *store.Store, prefixes []string) ([]timeline.Attachment, error) {
+func findAttachments(ctx context.Context, s records, prefixes []string) ([]timeline.Attachment, error) {
 	found := make([]timeline.Attachment, 0, len(prefixes))
 	seen := map[string]bool{}
 	for _, prefix := range prefixes {
@@ -156,7 +156,7 @@ func findAttachments(ctx context.Context, s *store.Store, prefixes []string) ([]
 
 // attachmentTimelineNames returns the name of the timeline each attachment is in, keyed by
 // attachment id.
-func attachmentTimelineNames(ctx context.Context, s *store.Store, attachments []timeline.Attachment) (map[string]string, error) {
+func attachmentTimelineNames(ctx context.Context, s records, attachments []timeline.Attachment) (map[string]string, error) {
 	names := map[string]string{}
 	for _, a := range attachments {
 		timelineID, err := ownerTimelineID(ctx, s, a.Owner)
@@ -174,7 +174,7 @@ func attachmentTimelineNames(ctx context.Context, s *store.Store, attachments []
 }
 
 // ownerTimelineID returns the id of the timeline owner's event or annotation is in.
-func ownerTimelineID(ctx context.Context, s *store.Store, owner timeline.AttachmentOwner) (string, error) {
+func ownerTimelineID(ctx context.Context, s records, owner timeline.AttachmentOwner) (string, error) {
 	if owner.EventID != nil {
 		e, err := s.Event(ctx, *owner.EventID)
 		return e.TimelineID, err

@@ -166,7 +166,7 @@ func overlayExistsError(name string, err error) *Error {
 }
 
 // timelinesByID returns the timeline with each of ids, in their order.
-func timelinesByID(ctx context.Context, s *store.Store, ids []string) ([]timeline.Timeline, error) {
+func timelinesByID(ctx context.Context, s records, ids []string) ([]timeline.Timeline, error) {
 	timelines := make([]timeline.Timeline, 0, len(ids))
 	for _, id := range ids {
 		t, err := s.Timeline(ctx, id)

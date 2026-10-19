@@ -69,7 +69,7 @@ func checkAttachmentRef(ref string) error {
 
 // findAttachment returns the attachment whose id is, or uniquely starts with, prefix, in any
 // timeline.
-func findAttachment(ctx context.Context, s *store.Store, prefix string) (timeline.Attachment, error) {
+func findAttachment(ctx context.Context, s records, prefix string) (timeline.Attachment, error) {
 	attachments, err := s.AttachmentsByIDPrefix(ctx, prefix, shownAttachments+1)
 	switch {
 	case err != nil:
@@ -337,7 +337,7 @@ func attachmentsByOwner(attachments []timeline.Attachment, dbPath string) map[st
 }
 
 // ownersAttachments returns the attachments of each of owners, in owner order.
-func ownersAttachments(ctx context.Context, s *store.Store, owners []timeline.AttachmentOwner) ([]timeline.Attachment, error) {
+func ownersAttachments(ctx context.Context, s records, owners []timeline.AttachmentOwner) ([]timeline.Attachment, error) {
 	var attachments []timeline.Attachment
 	for _, owner := range owners {
 		owned, err := s.ListAttachments(ctx, owner)

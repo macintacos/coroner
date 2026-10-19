@@ -221,7 +221,7 @@ func readLinkRequest(command string, def definition, in fieldValues) ([2]eventRe
 
 // findLinkEnds finds the events refs name.
 func findLinkEnds(
-	ctx context.Context, s *store.Store, refs [2]eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, refs [2]eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (linkEnds, error) {
 	var ends linkEnds
 	for i, ref := range refs {

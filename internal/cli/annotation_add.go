@@ -148,7 +148,7 @@ func (a annotationAdded) render(o output) error {
 
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.
 func annotatedEvent(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
+	ctx context.Context, s records, t timeline.Timeline, ref *eventRef,
 ) (*timeline.Event, error) {
 	var e *timeline.Event
 	if ref != nil {

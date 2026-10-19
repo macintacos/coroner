@@ -126,7 +126,7 @@ type foundEvents struct {
 
 // findEvents finds the event each of refs names, failing on the first that finds none.
 func findEvents(
-	ctx context.Context, s *store.Store, refs []eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, refs []eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (foundEvents, error) {
 	found := foundEvents{timelines: map[string]timeline.Timeline{}}
 	for _, ref := range refs {

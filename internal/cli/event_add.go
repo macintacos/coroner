@@ -208,7 +208,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 // storedSameEvent returns the event stored under e's id and true when adding e, with files
 // attached, would change nothing; e and false when no event has that id; and id_conflict when
 // adding e would change the stored event.
-func storedSameEvent(ctx context.Context, s *store.Store, e timeline.Event, files []attachFile) (timeline.Event, bool, error) {
+func storedSameEvent(ctx context.Context, s records, e timeline.Event, files []attachFile) (timeline.Event, bool, error) {
 	stored, err := s.Event(ctx, e.ID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
