@@ -14,7 +14,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # git-cliff reads the whole history, and the build stamps its version from the tag.
+          # The build stamps its version from the tag, which needs the history.
           fetch-depth: 0
           persist-credentials: false
       - name: Install tools
@@ -23,7 +23,9 @@ jobs:
           # mise.lock pins every tool but mise itself.
           version: 2026.9.6
       - name: Release notes
-        run: git cliff --latest --strip header -o "$RUNNER_TEMP/release-notes.md"
+        env:
+          TAG: ${{ github.ref_name }}
+        run: go run ./internal/tools/release tag-notes --tag "$TAG" --out "$RUNNER_TEMP/release-notes.md"
       - name: Release
         run: goreleaser release --clean --release-notes "$RUNNER_TEMP/release-notes.md"
         env:
