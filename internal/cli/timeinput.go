@@ -6,9 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
-
-	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
 )
@@ -132,18 +129,6 @@ func formatResolved(r timeparse.Resolved, z zone) string {
 
 	return fmt.Sprintf("%s%s (%s %s: %s)", mark, r.Instant.UTC().Format("2006-01-02T15:04:05"+fraction(r.Precision)+"Z"),
 		wall.Format("-07:00"), z.label, wall.Format(time.TimeOnly))
-}
-
-// resolveZone returns the configuration and the zone times print in: --tz, else the config
-// file's default_timezone, else the local zone.
-func resolveZone(cmd *cobra.Command, app App) (config.Config, zone, error) {
-	cfg, err := resolveConfig(cmd, app)
-	if err != nil {
-		return cfg, zone{}, err
-	}
-	z, err := timeZone(changedString(cmd.Flags(), "tz"), cfg.DefaultTimezone, app.Now().Location())
-
-	return cfg, z, err
 }
 
 // occurredText renders e's occurred at in z to its precision, marked ~ when approximate.

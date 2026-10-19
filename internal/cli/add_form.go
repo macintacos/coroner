@@ -45,12 +45,8 @@ var errAskAgain = errors.New("ask the form again")
 // formSession is what one run of a write command's form reads and writes.
 type formSession struct {
 	app App
-	cfg config.Config
-	o   output
+	inv invocation
 	ask askFunc
-	// global are the --db and --config args the command line gave, which each echoed command repeats.
-	global []string
-	style  errorStyle
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
 }
@@ -65,32 +61,28 @@ type formCommand struct {
 	// flagsOnly runs the command line without a form.
 	flagsOnly func(*cobra.Command, []string) error
 	// session runs the form, prefilled from the command line's values.
-	session func(cmd *cobra.Command, s formSession, in fieldValues) error
+	session func(s formSession, in fieldValues) error
 }
 
 // attach registers c's flags and --interactive on cmd, and a RunE that asks through forms when
 // formMode opens the form, and otherwise runs flagsOnly.
 func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool, images graphics.Protocol) askFunc) *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		interactive, _ := cmd.Flags().GetBool("interactive")
-		inputOff := noInput(cmd, app)
-		terminal := interactiveTerminal(app, inputOff)
-		if interactive && !terminal {
-			return interactiveRefusal(cmd, inputOff)
-		}
-		in := c.def.read(cmd.Flags(), args)
-		// wrapRunErrors has already rejected a bad format.
-		chosen, _ := outputFormat(cmd)
-		if !formMode(formGate{interactive: interactive, ready: c.ready(in), machine: chosen.machine(), terminal: terminal}) {
-			return c.flagsOnly(cmd, args)
-		}
-
-		s, err := newFormSession(cmd, app, forms)
+		inv, err := readInvocation(cmd, app)
 		if err != nil {
 			return err
 		}
+		interactive, _ := cmd.Flags().GetBool("interactive")
+		if interactive && !inv.terminal {
+			return interactiveRefusal(cmd, inv.inputOff)
+		}
+		in := c.def.read(cmd.Flags(), args)
+		if !formMode(formGate{interactive: interactive, ready: c.ready(in), machine: inv.out.format.machine(), terminal: inv.terminal}) {
+			// ponytail: flagsOnly reads the invocation again; pass inv to flagsOnly if that read grows costly.
+			return c.flagsOnly(cmd, args)
+		}
 
-		return c.session(cmd, s, in)
+		return c.session(newFormSession(app, inv, forms), in)
 	}
 
 	c.def.addFlags(cmd.Flags())
@@ -108,7 +100,7 @@ func (f addForm[R]) attach(
 		def:       f.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(f.def, in) },
 		flagsOnly: writeRunE(ctx, app, f.def, f.run),
-		session: func(_ *cobra.Command, s formSession, in fieldValues) error {
+		session: func(s formSession, in fieldValues) error {
 			return f.session(ctx, s, in)
 		},
 	}.attach(cmd, app, forms)
@@ -136,54 +128,17 @@ func interactiveRefusal(cmd *cobra.Command, inputOff bool) error {
 	}
 }
 
-// newFormSession returns the session cmd's form runs in, asking through forms.
-func newFormSession(cmd *cobra.Command, app App, forms func(color bool, images graphics.Protocol) askFunc) (formSession, error) {
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return formSession{}, err
-	}
-	cfg, err := resolveConfig(cmd, app)
-	if err != nil {
-		return formSession{}, err
-	}
-
-	var global []string
-	for _, name := range []string{"db", "config"} {
-		if value := changedString(cmd.Flags(), name); value != nil {
-			global = append(global, "--"+name, *value)
-		}
-	}
-	noColor, _ := cmd.Flags().GetBool("no-color")
-	color := colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)
+// newFormSession returns the session a form runs in under inv, asking through forms.
+func newFormSession(app App, inv invocation, forms func(color bool, images graphics.Protocol) askFunc) formSession {
 	images := graphics.None
-	if color {
+	if inv.outColor {
 		images = graphics.Detect(app.LookupEnv)
 	}
 
 	return formSession{
-		app: app, cfg: cfg, o: o, ask: forms(color, images), global: global,
+		app: app, inv: inv, ask: forms(inv.outColor, images),
 		thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
-		// A rejected entry is reported to the person at the form, never as a JSON envelope.
-		style: errorStyle{color: colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv)},
-	}, nil
-}
-
-// interactiveTerminal reports whether a command may take over app's terminal: input is not turned
-// off, keys can arrive, and the screen is a terminal that can draw (I-1, I-2).
-func interactiveTerminal(app App, inputOff bool) bool {
-	term, _ := app.LookupEnv("TERM")
-	return !inputOff && app.InIsTTY && app.OutIsTTY && term != "dumb"
-}
-
-// noInput reports whether --no-input, or CORONER_NO_INPUT when the flag is not given, turns every
-// form, picker and viewer off.
-func noInput(cmd *cobra.Command, app App) bool {
-	if cmd.Flags().Changed("no-input") {
-		flag, _ := cmd.Flags().GetBool("no-input")
-		return flag
 	}
-
-	return envTrue(app.LookupEnv, "CORONER_NO_INPUT")
 }
 
 // formGate is what formMode decides from: whether --interactive asks for the form, the command
@@ -240,7 +195,7 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 func chooseTimeline(ctx context.Context, s formSession, def definition, in fieldValues) (fieldValues, bool, error) {
 	var by selectedBy
 	var timelines []timeline.Timeline
-	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		var err error
 		_, by, err = lookupTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
 		if err != nil || by != "" {
@@ -328,7 +283,8 @@ func (s formSession) askUntil(
 		switch {
 		case errors.Is(err, errAskAgain):
 		case correctable(err):
-			err = writeError(s.app.Err, rejected, s.style)
+			// A rejected entry is reported to the person at the form, never as a JSON envelope.
+			err = writeError(s.app.Err, rejected, errorStyle{color: s.inv.errColor})
 			if err != nil {
 				return typed, err
 			}
@@ -343,7 +299,7 @@ func (s formSession) askUntil(
 // in z.
 func (f addForm[R]) entryChoices(ctx context.Context, s formSession, in fieldValues, z zone) (formChoices, error) {
 	var choices formChoices
-	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		t, err := selectTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
 		if err != nil {
 			return err
@@ -366,11 +322,11 @@ func correctable(err error) bool {
 // submit runs values as the command line would, and prints the result and the flags-only command it
 // equals, against the same database.
 func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldValues) error {
-	result, err := w.run(ctx, s.app, s.cfg, values)
+	result, err := w.run(ctx, s.app, s.inv.cfg, values)
 	if err != nil {
 		return err
 	}
-	err = result.render(s.o)
+	err = result.render(s.inv.out)
 	if err != nil {
 		return err
 	}
@@ -382,7 +338,7 @@ func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldVal
 // fields, against the same database.
 func (s formSession) echo(path string, def definition, values fieldValues) error {
 	args := commandArgs(path, def, values)
-	return s.o.notify("Equivalent command: %s", shellLine(slices.Concat(args[:1], s.global, args[1:])))
+	return s.inv.out.notify("Equivalent command: %s", shellLine(slices.Concat(args[:1], s.inv.echoArgs, args[1:])))
 }
 
 // baseCheckEnv is what a form's checks read time input against before a zone is typed into it:
@@ -390,7 +346,7 @@ func (s formSession) echo(path string, def definition, values fieldValues) error
 // add reports where it reads it.
 func baseCheckEnv(s formSession) checkEnv {
 	now := s.app.Now()
-	z, err := timeZone(nil, s.cfg.DefaultTimezone, now.Location())
+	z, err := timeZone(nil, s.inv.cfg.DefaultTimezone, now.Location())
 	if err != nil {
 		z = zone{loc: now.Location(), label: "local"}
 	}

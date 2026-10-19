@@ -175,20 +175,40 @@ func writeRunE[R renderer](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		o, err := newOutput(cmd, app)
+		inv, err := readInvocation(cmd, app)
 		if err != nil {
 			return err
 		}
-		cfg, err := resolveConfig(cmd, app)
-		if err != nil {
-			return err
-		}
-		result, err := run(ctx, app, cfg, def.read(cmd.Flags(), args))
+		result, err := run(ctx, app, inv.cfg, def.read(cmd.Flags(), args))
 		if err != nil {
 			return err
 		}
 
-		return result.render(o)
+		return result.render(inv.out)
+	}
+}
+
+type zonedRenderer interface{ render(o output, z zone) error }
+
+// writeRunEInZone is writeRunE for a result printed in the zone, resolved before run writes anything.
+func writeRunEInZone[R zonedRenderer](
+	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
+) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		inv, err := readInvocation(cmd, app)
+		if err != nil {
+			return err
+		}
+		z, err := inv.zone()
+		if err != nil {
+			return err
+		}
+		result, err := run(ctx, app, inv.cfg, def.read(cmd.Flags(), args))
+		if err != nil {
+			return err
+		}
+
+		return result.render(inv.out, z)
 	}
 }
 

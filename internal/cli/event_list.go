@@ -69,11 +69,11 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
-	cfg, z, err := resolveZone(cmd, app)
+	z, err := inv.zone()
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 		return err
 	}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		timelines, err := selectChosenTimelines(ctx, s, choice, app.LookupEnv)
 		if err != nil {
 			return err
@@ -93,23 +93,23 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 			return err
 		}
 		listing := eventListing{timelines: timelines, page: page}
-		if o.format.machine() {
+		if inv.out.format.machine() {
 			attachments, err := readEach(timelines, func(id string) ([]timeline.Attachment, error) {
 				return s.TimelineAttachments(ctx, id)
 			})
 			if err != nil {
 				return err
 			}
-			listing.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			listing.attached = attachmentsByOwner(attachments, inv.cfg.DBPath)
 		}
 		if bounds != "" {
-			err = o.notify("Events %s", bounds)
+			err = inv.out.notify("Events %s", bounds)
 			if err != nil {
 				return err
 			}
 		}
 
-		return printEventPage(o, z, listing, noEventsMessage(filter))
+		return printEventPage(inv.out, z, listing, noEventsMessage(filter))
 	})
 }
 

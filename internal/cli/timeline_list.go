@@ -27,21 +27,21 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example:     "  $ coroner timeline list\n  $ coroner timeline list --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o, err := newOutput(cmd, app)
+			inv, err := readInvocation(cmd, app)
 			switch {
 			case err != nil:
 				return err
-			case o.format != formatJSON && interactive(cmd, app):
-				return pickTimeline(ctx, cmd, app, o)
+			case inv.out.format != formatJSON && inv.interactive():
+				return pickTimeline(ctx, app, inv)
 			}
 
-			return withStore(ctx, cmd, app, func(s *store.Store) error {
+			return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 				timelines, currentID, err := listTimelines(ctx, s)
 				if err != nil {
 					return err
 				}
 
-				return printTimelines(o, timelines, currentID)
+				return printTimelines(inv.out, timelines, currentID)
 			})
 		},
 	}
@@ -50,13 +50,13 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 // pickTimeline reads the timelines, closes the database, shows the picker, and makes the
 // timeline picked current through timeline use's run function, warning when CORONER_TIMELINE
 // still selects another. With no timelines it prints the plain list's hint instead.
-func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) error {
-	cfg, z, err := resolveZone(cmd, app)
+func pickTimeline(ctx context.Context, app App, inv invocation) error {
+	z, err := inv.zone()
 	if err != nil {
 		return err
 	}
 	var rows []viewer.TimelineRow
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		var err error
 		rows, err = readTimelineRows(ctx, s)
 		return err
@@ -65,12 +65,11 @@ func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) er
 	case err != nil:
 		return err
 	case len(rows) == 0:
-		return printTimelines(o, nil, "")
+		return printTimelines(inv.out, nil, "")
 	}
 
-	noColor, _ := cmd.Flags().GetBool("no-color")
 	picked, ok, err := viewer.Pick(ctx,
-		viewer.Terminal{In: app.In, Out: app.Out, NoColor: !colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)},
+		viewer.Terminal{In: app.In, Out: app.Out, NoColor: !inv.outColor},
 		viewer.PickOptions{Rows: rows, Notice: shadowNotice(app.LookupEnv), Location: z.loc})
 	switch {
 	case errors.Is(err, viewer.ErrInterrupted):
@@ -79,11 +78,11 @@ func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) er
 		return err
 	}
 
-	used, err := useTimeline(ctx, app, cfg, fieldValues{"timeline": {picked.ID}})
+	used, err := useTimeline(ctx, app, inv.cfg, fieldValues{"timeline": {picked.ID}})
 	if err != nil {
 		return err
 	}
-	err = used.render(o)
+	err = used.render(inv.out)
 	if err != nil {
 		return err
 	}
@@ -92,7 +91,7 @@ func pickTimeline(ctx context.Context, cmd *cobra.Command, app App, o output) er
 		return nil
 	}
 
-	return o.notify("%s", warning)
+	return inv.out.notify("%s", warning)
 }
 
 // readTimelineRows returns listTimelines' timelines with their event counts and last events.

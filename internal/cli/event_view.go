@@ -40,16 +40,16 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
-	cfg, z, err := resolveZone(cmd, app)
+	z, err := inv.zone()
 	if err != nil {
 		return err
 	}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		e, t, err := findEvent(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
 		if err != nil {
 			return err
@@ -58,12 +58,12 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 		if err != nil {
 			return err
 		}
-		if o.format == formatJSON {
+		if inv.out.format == formatJSON {
 			attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
 			if err != nil {
 				return err
 			}
-			return o.json(eventViewJSON{eventJSON: newEventJSON(e, newAttachmentJSONs(attachments, cfg.DBPath)), Links: newLinkJSONs(links)})
+			return inv.out.json(eventViewJSON{eventJSON: newEventJSON(e, newAttachmentJSONs(attachments, inv.cfg.DBPath)), Links: newLinkJSONs(links)})
 		}
 
 		annotations, err := s.EventAnnotations(ctx, e.ID)
@@ -75,7 +75,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 			return err
 		}
 
-		return writeEventView(o, z, eventView{event: e, timeline: t, annotations: annotations, linkRows: linkRows})
+		return writeEventView(inv.out, z, eventView{event: e, timeline: t, annotations: annotations, linkRows: linkRows})
 	})
 }
 

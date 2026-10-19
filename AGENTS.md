@@ -129,6 +129,11 @@ digraph coroner_rules_router {
   `docgen` writes no page for it.
   [`help-reference.txtar`](internal/cli/testdata/script/help-reference.txtar) pins the
   page, and any command or flag change rewrites it.
+- Global flags and environment: `readInvocation`
+  ([`invocation.go`](internal/cli/invocation.go)) reads them once at the top of a RunE,
+  and resolves `--tz` only when a command asks for the zone. `agent skill`, `version`,
+  shell completion and `errorStyleFor`, which runs when cobra failed to parse, never call
+  it, so a malformed config file cannot break them.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the
@@ -167,10 +172,11 @@ digraph coroner_rules_router {
   `timeline create` and `timeline edit` open that form, attached through `formCommand`
   ([`add_form.go`](internal/cli/add_form.go)), run each submit through the same run
   function, and print the flags-only command it equals
-  ([`command_echo.go`](internal/cli/command_echo.go)). `interactiveTerminal` there is the
-  terminal decision every form, the viewer and the picker share: stdin and stdout on a
-  terminal, `TERM` not `dumb`, and no `--no-input` or `CORONER_NO_INPUT`. Each command
-  also checks its format: under `--json` a form opens only with `--interactive`.
+  ([`command_echo.go`](internal/cli/command_echo.go)). `interactiveTerminal` in
+  [`invocation.go`](internal/cli/invocation.go) is the terminal decision every form, the
+  viewer and the picker share: stdin and stdout on a terminal, `TERM` not `dumb`, and no
+  `--no-input` or `CORONER_NO_INPUT`. Each command also checks its format: under `--json`
+  a form opens only with `--interactive`.
   [`no-input.txtar`](internal/cli/testdata/script/no-input.txtar) runs each such command
   with no terminal, and a spec in [`no_input_test.go`](internal/cli/no_input_test.go)
   fails when a command with `--interactive`, or `timeline view` or `timeline list`, which

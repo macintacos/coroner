@@ -20,23 +20,23 @@ func newTagListCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example:     "  $ coroner tag list\n  $ coroner tag list --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o, err := newOutput(cmd, app)
+			inv, err := readInvocation(cmd, app)
 			if err != nil {
 				return err
 			}
 
-			cfg, z, err := resolveZone(cmd, app)
+			z, err := inv.zone()
 			if err != nil {
 				return err
 			}
 
-			return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+			return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 				usages, err := s.TagUsages(ctx)
 				if err != nil {
 					return err
 				}
 
-				return printTags(o, z, usages)
+				return printTags(inv.out, z, usages)
 			})
 		},
 	}

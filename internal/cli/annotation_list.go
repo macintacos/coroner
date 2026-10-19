@@ -46,16 +46,12 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, err := resolveConfig(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
@@ -66,15 +62,15 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 		}
 		order := orderEvents(events)
 		sortAnnotations(annotations, order)
-		if o.format == formatJSON {
+		if inv.out.format == formatJSON {
 			attachments, err := s.TimelineAttachments(ctx, t.ID)
 			if err != nil {
 				return err
 			}
-			return o.json(newAnnotationListJSON(annotations, attachmentsByOwner(attachments, cfg.DBPath)))
+			return inv.out.json(newAnnotationListJSON(annotations, attachmentsByOwner(attachments, inv.cfg.DBPath)))
 		}
 
-		return printAnnotations(o, annotations, order)
+		return printAnnotations(inv.out, annotations, order)
 	})
 }
 

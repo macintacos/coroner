@@ -56,44 +56,10 @@ var _ = Describe("add forms", func() {
 	)
 
 	It("read times in the local zone when the config file's default_timezone is unknown", func() {
-		env := baseCheckEnv(formSession{app: App{Now: testNow}, cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}})
+		env := baseCheckEnv(formSession{app: App{Now: testNow}, inv: invocation{cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}}})
 
 		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
-
-	DescribeTable("find a terminal only when stdin and stdout are one, TERM can draw and input is not turned off",
-		func(inTTY, outTTY bool, term string, inputOff, want bool) {
-			app := App{InIsTTY: inTTY, OutIsTTY: outTTY, LookupEnv: func(key string) (string, bool) {
-				return term, key == "TERM"
-			}}
-
-			Expect(interactiveTerminal(app, inputOff)).To(Equal(want))
-		},
-		Entry("both terminals", true, true, "xterm-256color", false, true),
-		Entry("stdin piped", false, true, "xterm-256color", false, false),
-		Entry("stdout piped", true, false, "xterm-256color", false, false),
-		Entry("a dumb terminal", true, true, "dumb", false, false),
-		Entry("input turned off", true, true, "xterm-256color", true, false),
-	)
-
-	DescribeTable("turn input off with --no-input, or CORONER_NO_INPUT when the flag is not given",
-		func(env map[string]string, args []string, want bool) {
-			app := App{LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			}}
-			cmd := &cobra.Command{}
-			cmd.Flags().AddFlagSet(globalFlags())
-			Expect(cmd.ParseFlags(args)).To(Succeed())
-
-			Expect(noInput(cmd, app)).To(Equal(want))
-		},
-		Entry("neither", nil, nil, false),
-		Entry("--no-input", nil, []string{"--no-input"}, true),
-		Entry("CORONER_NO_INPUT set", map[string]string{"CORONER_NO_INPUT": "1"}, nil, true),
-		Entry("CORONER_NO_INPUT false", map[string]string{"CORONER_NO_INPUT": "false"}, nil, false),
-		Entry("--no-input=false over CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}, []string{"--no-input=false"}, false),
-	)
 
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
 		cancelled := false
@@ -450,9 +416,12 @@ var _ = Describe("add forms", func() {
 
 		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
+				lookupEnv := app.LookupEnv
 				app.LookupEnv = func(key string) (string, bool) {
-					value, ok := env[key]
-					return value, ok
+					if value, ok := env[key]; ok {
+						return value, true
+					}
+					return lookupEnv(key)
 				}
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add", "Pager fires", "--interactive"}, flags...)...)
