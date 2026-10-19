@@ -62,7 +62,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
@@ -71,10 +71,6 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return err
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	cfg, err := resolveConfig(cmd, app)
-	if err != nil {
-		return err
-	}
 	records, err := readImportRecords(path, app.ReadFile, app.In, app.InIsTTY)
 	if err != nil {
 		return err
@@ -87,7 +83,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	}
 
 	in := importInput{
-		records: records, sidecars: sidecars, localBlobs: localBlobs(cfg.DBPath, records, app.Stat),
+		records: records, sidecars: sidecars, localBlobs: localBlobs(inv.cfg.DBPath, records, app.Stat),
 		onConflict: policy, newID: app.NewID, now: app.Now(),
 	}
 	open := app.OpenStore
@@ -95,7 +91,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		open = app.OpenStoreReadOnly
 	}
 	var plan importPlan
-	err = withStoreOpenedBy(ctx, open, cfg.DBPath, func(s *store.Store) error {
+	err = withStoreOpenedBy(ctx, open, inv.cfg.DBPath, func(s *store.Store) error {
 		plan, err = planStoredImport(ctx, s, in, flag)
 		if err != nil || dryRun || plan.blocked != nil {
 			return err
@@ -111,7 +107,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	}
 
 	plan.result.DryRun = dryRun
-	err = renderImport(o, plan, dryRun || plan.blocked != nil)
+	err = renderImport(inv.out, plan, dryRun || plan.blocked != nil)
 	if err != nil || plan.blocked == nil {
 		return err
 	}

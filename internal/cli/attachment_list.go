@@ -42,16 +42,12 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	cfg, err := resolveConfig(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
 
-	return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
 		if err != nil {
 			return err
@@ -60,8 +56,8 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
-		if o.format == formatJSON {
-			return o.json(newAttachmentListJSON(newAttachmentJSONs(attachments, cfg.DBPath)))
+		if inv.out.format == formatJSON {
+			return inv.out.json(newAttachmentListJSON(newAttachmentJSONs(attachments, inv.cfg.DBPath)))
 		}
 		if ref == nil && len(attachments) > 0 {
 			events, err = s.Events(ctx, t.ID)
@@ -70,7 +66,7 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 			}
 		}
 
-		return printAttachments(o, attachments, orderEvents(events))
+		return printAttachments(inv.out, attachments, orderEvents(events))
 	})
 }
 

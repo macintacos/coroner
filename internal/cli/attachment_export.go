@@ -40,11 +40,11 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
-	path, err := outputPath(cmd.Flags(), o.format)
+	path, err := outputPath(cmd.Flags(), inv.out.format)
 	if err != nil {
 		return err
 	}
@@ -58,13 +58,8 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 			Hint: "Pass -o <file>, or redirect stdout to a file.",
 		}
 	}
-	cfg, err := resolveConfig(cmd, app)
-	if err != nil {
-		return err
-	}
-
 	var a timeline.Attachment
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		a, err = findAttachment(ctx, s, prefix)
 		return err
 	})
@@ -73,12 +68,12 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 	}
 	// Read and written only once the store is closed: withStorePath would report a permission
 	// error from either as the database's.
-	content, err := app.ReadFile(store.BlobPath(cfg.DBPath, a.SHA256))
+	content, err := app.ReadFile(store.BlobPath(inv.cfg.DBPath, a.SHA256))
 	if err != nil {
 		return fmt.Errorf("read the blob of attachment %s: %w", a.ID, err)
 	}
 
-	return writeAttachment(o, path, content, writeFile)
+	return writeAttachment(inv.out, path, content, writeFile)
 }
 
 // newFileWriter returns a function that creates name with open and writes data to it, failing

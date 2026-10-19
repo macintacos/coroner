@@ -57,25 +57,21 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
-	resolved, err := resolveConfig(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
 
-	s, err := app.OpenStoreReadOnly(ctx, resolved.DBPath)
+	s, err := app.OpenStoreReadOnly(ctx, inv.cfg.DBPath)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return writeStatus(o, statusJSON{DBPath: resolved.DBPath})
+		return writeStatus(inv.out, statusJSON{DBPath: inv.cfg.DBPath})
 	case err != nil:
-		return storeError(err, resolved.DBPath)
+		return storeError(err, inv.cfg.DBPath)
 	}
 
 	report, err := readStatus(ctx, s, flag, app.LookupEnv)
-	err = storeError(err, resolved.DBPath)
+	err = storeError(err, inv.cfg.DBPath)
 	closeErr := s.Close()
 	if closeErr != nil {
 		return errors.Join(err, closeErr)
@@ -84,8 +80,8 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 		return err
 	}
 
-	report.DBPath = resolved.DBPath
-	return writeStatus(o, report)
+	report.DBPath = inv.cfg.DBPath
+	return writeStatus(inv.out, report)
 }
 
 // readStatus reads the schema version of the database s, and the timeline flag,

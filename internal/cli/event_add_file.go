@@ -19,17 +19,13 @@ const fromFileUsage = "Add every event record in this JSONL `file`, or - to read
 // addEventsFromFile adds the event records in --from-file's file, or stdin for -, to the selected
 // timeline in one transaction.
 func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []string) error {
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
 	in := eventAddDefinition().read(cmd.Flags(), args)
 	interactive, _ := cmd.Flags().GetBool("interactive")
 	err = checkFromFileAlone(in, interactive)
-	if err != nil {
-		return err
-	}
-	cfg, err := resolveConfig(cmd, app)
 	if err != nil {
 		return err
 	}
@@ -45,7 +41,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 
 	dryRun, _ := in.boolean("dry-run")
 	var added eventsAdded
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
 		if err != nil {
 			return err
@@ -71,7 +67,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 			}
 		}
 		added = newEventsAdded(events, input.stored.events, inserted)
-		added.timeline, added.dryRun, added.dbPath = t, dryRun, cfg.DBPath
+		added.timeline, added.dryRun, added.dbPath = t, dryRun, inv.cfg.DBPath
 		added.attached, err = eventsAttachments(ctx, s, added.identical)
 		return err
 	})
@@ -79,7 +75,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 		return err
 	}
 
-	return added.render(o)
+	return added.render(inv.out)
 }
 
 // checkFromFileAlone returns usage when in, or --interactive, gives a value --from-file's records
