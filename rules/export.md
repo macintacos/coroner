@@ -8,10 +8,15 @@
    `{}` when empty. A schemagen spec fails when a pointer field lacks the tag.
 2. **An instant is an `export.Instant`,** never a `string` or a `time.Time`: its
    `MarshalText` is what routes the value through `timeline.FormatInstant`.
-3. **An `internal/export` value is encoded with `json.Deterministic(true)` and
-   `jsontext.EscapeForHTML(true)`,** never `encoding/json` v1. `export.Write` applies both
-   and writes nothing when encoding fails; a caller needing another presentation, such as
-   indentation, adds options without dropping those two.
+3. **An export document is encoded with `json.Deterministic(true)` and
+   `jsontext.EscapeForHTML(true)`,** never `encoding/json` v1: the JSON envelope, JSONL
+   and the HTML page's embedded JSON. `export.Write` applies both and writes nothing when
+   encoding fails; a caller needing another presentation, such as indentation, adds
+   options without dropping those two. Command `--json` is `writeJSON`'s v1 encoding with
+   HTML unescaped, as `coroner help formatting` describes, and its event, annotation,
+   timeline and link objects are `Event`, `Annotation`, `Timeline` and `Link`, so a field
+   change to one is a `--json` change too, under the same `format_version` bump. Each
+   slice field is made non-nil in its `NewX`, since v1 encodes a nil slice as `null`.
 4. **A changed type is a contract change:** edit the Go type, run
    `go run ./internal/tools/schemagen`, and classify the change by the evolution rules in
    [the export format reference](../docs/reference/export-format.md#evolution-rules), with
