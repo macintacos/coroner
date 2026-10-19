@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -121,19 +120,13 @@ func previewAnnotation(o output, a timeline.Annotation, attachments []attachment
 	return err
 }
 
-// checkAnnotationKind returns kind as an annotation kind, or usage naming the kinds there are.
-func checkAnnotationKind(kind string) (timeline.AnnotationKind, error) {
-	switch k := timeline.AnnotationKind(kind); k {
-	case timeline.AnnotationEvidence, timeline.AnnotationComment:
-		return k, nil
+// checkAnnotationKindName returns usage naming the kinds there are unless kind is one.
+func checkAnnotationKindName(kind string) error {
+	if timeline.AnnotationKind(kind).Valid() {
+		return nil
 	}
 
-	return "", &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: annotationKindHint}
-}
-
-func checkAnnotationKindName(kind string) error {
-	_, err := checkAnnotationKind(kind)
-	return err
+	return &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: annotationKindHint}
 }
 
 // annotationBody returns the body value gives, reading in when that is -. Stdin loses one
@@ -168,17 +161,20 @@ func checkBodyOrStdin(body string) error {
 }
 
 func checkBody(body string) error {
-	if strings.TrimSpace(body) == "" {
+	err := timeline.ValidateText("body", body)
+	p, ok := firstProblem(err)
+	switch {
+	case !ok:
+		return nil
+	case p.Rule == timeline.RuleBlank:
 		return &Error{Kind: KindUsage, Message: "annotation body must not be blank", Hint: "Pass non-blank text, or - to read it from stdin."}
-	}
-	// JSON would replace invalid bytes, so an export could never match what is stored.
-	if !utf8.ValidString(body) {
+	case p.Rule == timeline.RuleNotUTF8:
 		return &Error{
 			Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
 		}
 	}
 
-	return nil
+	return recordError(err, "")
 }
 
 // eventFlag returns the event reference -e gives, or nil when -e is not given.

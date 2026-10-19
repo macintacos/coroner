@@ -12,7 +12,12 @@ import (
 // AddAnnotation adds a with attachments. When no source is called a.Source yet, it creates
 // one with id newSourceID.
 func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
+	err := a.Validate()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		err := checkTarget(ctx, q, a.TimelineID, a.EventID)
 		if err != nil {
 			return err
@@ -67,7 +72,12 @@ func (s *Store) EventAnnotations(ctx context.Context, eventID string) ([]timelin
 // UpdateAnnotation stores a's kind, body, author, source, URL and updated at, and adds
 // attachments. When no source is called a.Source yet, it creates one with id newSourceID.
 func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
+	err := a.Validate()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, a.Source, newSourceID, a.UpdatedAt)
 		if err != nil {
 			return err

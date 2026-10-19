@@ -52,8 +52,8 @@ func annotationAddDefinition() definition {
 		},
 		{name: "kind", required: true, usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		perEntry(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
 	}}
@@ -170,12 +170,12 @@ type annotationDraft struct {
 	newSourceID string
 }
 
-// draftAnnotation reads the annotation in describes and gives it new ids. It reads stdin last,
-// so a bad field never waits on it.
+// draftAnnotation reads the annotation in describes, checks it, and gives it new ids. It reads
+// stdin after every field check, so a bad field never waits on it.
 func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraft, error) {
-	kind, err := requiredAnnotationKind(in)
-	if err != nil {
-		return annotationDraft{}, err
+	kind := in.value("kind")
+	if kind == nil {
+		return annotationDraft{}, &Error{Kind: KindUsage, Message: "annotation add needs --kind", Hint: annotationKindHint}
 	}
 	fields := readAnnotationFields(in)
 	rawBody := in.value("body")
@@ -186,37 +186,35 @@ func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraf
 	if err != nil {
 		return annotationDraft{}, err
 	}
-	id, err := app.NewID()
+	author, err := eventAuthor(in.value("author"), cfg.Author, app.LookupEnv)
 	if err != nil {
 		return annotationDraft{}, err
 	}
-	sourceID, err := newSourceID(fields.source, app.NewID)
-	if err != nil {
-		return annotationDraft{}, err
-	}
-
 	now := app.Now()
 	a := timeline.Annotation{
-		ID:        id.String(),
-		Kind:      kind,
+		Kind:      timeline.AnnotationKind(*kind),
 		Body:      body,
-		Author:    eventAuthor(in.value("author"), cfg.Author, app.LookupEnv),
+		Author:    author,
 		Source:    fields.source,
 		URL:       fields.url,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-
-	return annotationDraft{annotation: a, newSourceID: sourceID}, nil
-}
-
-func requiredAnnotationKind(in fieldValues) (timeline.AnnotationKind, error) {
-	kind := in.value("kind")
-	if kind == nil {
-		return "", &Error{Kind: KindUsage, Message: "annotation add needs --kind", Hint: annotationKindHint}
+	err = recordError(a.Validate(), "Run 'coroner annotation add --help' for what each flag takes.")
+	if err != nil {
+		return annotationDraft{}, err
+	}
+	id, err := app.NewID()
+	if err != nil {
+		return annotationDraft{}, err
+	}
+	a.ID = id.String()
+	sourceID, err := newSourceID(fields.source, app.NewID)
+	if err != nil {
+		return annotationDraft{}, err
 	}
 
-	return checkAnnotationKind(*kind)
+	return annotationDraft{annotation: a, newSourceID: sourceID}, nil
 }
 
 // annotationBodyArg rejects more than one argument, which is most often a body left unquoted.

@@ -1,8 +1,6 @@
 package timeline
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -33,7 +31,7 @@ type Attachment struct {
 // Validate returns an error unless exactly one of EventID and AnnotationID is set.
 func (o AttachmentOwner) Validate() error {
 	if (o.EventID == nil) == (o.AnnotationID == nil) {
-		return errors.New("owner: must be exactly one event or annotation")
+		return problem("event_id", RuleOwner, "owner: must be exactly one event or annotation")
 	}
 
 	return nil
@@ -43,16 +41,18 @@ func (o AttachmentOwner) Validate() error {
 func (a Attachment) Validate() error {
 	errs := []error{a.Owner.Validate(), ValidateSHA256(a.SHA256)}
 	if a.Size < 0 {
-		errs = append(errs, fmt.Errorf("size %d: must not be negative", a.Size))
+		errs = append(errs, problem("size", RuleNegativeSize, "size %d: must not be negative", a.Size))
 	}
 
-	return errors.Join(errs...)
+	errs = append(errs, ValidateUTF8("filename", a.Filename), ValidateUTF8("mime", a.MIME))
+
+	return join(errs...)
 }
 
 // ValidateSHA256 returns an error unless hash is 64 lowercase hex digits.
 func ValidateSHA256(hash string) error {
 	if len(hash) != 64 || strings.Trim(hash, "0123456789abcdef") != "" {
-		return fmt.Errorf("sha256 %q: must be 64 lowercase hex digits", hash)
+		return problem("sha256", RuleSHA256, "sha256 %q: must be 64 lowercase hex digits", hash)
 	}
 
 	return nil

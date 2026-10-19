@@ -33,8 +33,29 @@ func tzField() field {
 
 // checkAt resolves value as --at, as of env.
 func checkAt(value string, env checkEnv) error {
-	_, err := resolveTime("--at", &value, env.now, env.zone.loc)
+	_, err := resolveAt(&value, env.now, env.zone.loc)
 	return err
+}
+
+// resolveAt resolves input as --at, as resolveTime does, and also rejects an offset more than
+// a day from UTC, which an event cannot store, and input that is not UTF-8.
+func resolveAt(input *string, now time.Time, loc *time.Location) (timeparse.Resolved, error) {
+	if input != nil {
+		err := checkUTF8("--at", *input)
+		if err != nil {
+			return timeparse.Resolved{}, err
+		}
+	}
+	r, err := resolveTime("--at", input, now, loc)
+	if err != nil {
+		return r, err
+	}
+	offsetErr := timeline.ValidateOccurredOffset(r.Offset)
+	if offsetErr != nil {
+		return r, &Error{Kind: kindOf(timeline.RuleOffsetRange), Message: "--at: " + offsetErr.Error(), Hint: "Use an offset from -24:00 to +24:00."}
+	}
+
+	return r, nil
 }
 
 // resolveEnded resolves input as --ended, as of env, rejecting an approximate time with hint.

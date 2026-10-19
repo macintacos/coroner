@@ -72,6 +72,11 @@ func scanSourceUsage(rows *sql.Rows) (SourceUsage, error) {
 // RenameSource sets the name of the source with id. Its events and annotations name it by id,
 // so they follow.
 func (s *Store) RenameSource(ctx context.Context, id, name string) error {
+	err := timeline.ValidateSourceName(name)
+	if err != nil {
+		return err
+	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		_, err := q.UpdateSource(ctx, sqlcgen.UpdateSourceParams{Name: name, ID: id})
 		return err

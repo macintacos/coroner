@@ -14,3 +14,8 @@ type Overlay struct {
 	TimelineIDs []string
 	CreatedAt   time.Time
 }
+
+// Validate reports a name outside the overlay name grammar.
+func (o Overlay) Validate() error {
+	return ValidateOverlayName(o.Name)
+}

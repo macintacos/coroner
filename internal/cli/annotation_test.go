@@ -150,6 +150,29 @@ var _ = Describe("annotation", func() {
 			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
 		})
 
+		DescribeTable("exits 2 with kind usage on a flag that is not UTF-8, adding nothing",
+			func(ctx SpecContext, flag, value string) {
+				Expect(run(ctx, "annotation", "add", "election log", "-e", "1", "--kind", "evidence", "--json", flag, value)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+				Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
+				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			},
+			Entry(nil, "--url", "https://logs.example.com/\xff"),
+			Entry(nil, "--author", "julian\xff"),
+		)
+
+		It("exits 2 with kind usage on a USER author that is not UTF-8, adding nothing", func(ctx SpecContext) {
+			env["USER"] = "julian\xff"
+
+			Expect(run(ctx, "annotation", "add", "election log", "-e", "1", "--kind", "evidence", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
+			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+		})
+
 		Describe("its body", func() {
 			It("comes from stdin given -, verbatim but for one trailing newline", func(ctx SpecContext) {
 				in = strings.NewReader("[conn42] stepping down\r\n\tretrying  \n\n")
@@ -420,6 +443,14 @@ var _ = Describe("annotation", func() {
 			Expect(run(ctx, "annotation", "edit", electionLogID, "--kind", "comment", "--json")).To(Equal(0))
 
 			Expect(out.String()).To(ContainSubstring(`"body":"election log","author":"julian","source":"mongod"`))
+		})
+
+		It("exits 2 with kind usage on a --url that is not UTF-8", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--url", "https://logs.example.com/\xff", "--json")).
+				To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
 		})
 
 		It("reads --body - from stdin", func(ctx SpecContext) {

@@ -15,8 +15,13 @@ import (
 func (s *Store) AddEvent(
 	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
 ) (timeline.Event, error) {
+	err := e.Validate()
+	if err != nil {
+		return timeline.Event{}, err
+	}
+
 	var seq int64
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
+	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		var err error
 		seq, err = q.AllocateSeq(ctx, e.TimelineID)
 		if err != nil {
@@ -97,7 +102,12 @@ func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event
 // its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
 // creates one with id newSourceID.
 func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
+	err := e.Validate()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, e.Source, newSourceID, e.UpdatedAt)
 		if err != nil {
 			return err

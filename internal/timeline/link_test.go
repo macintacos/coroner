@@ -37,5 +37,6 @@ var _ = Describe("Link.Validate", func() {
 		},
 		Entry("an unknown kind", "link kind", func(l *timeline.Link) { l.Kind = "after" }),
 		Entry("a link from an event to itself", "link", func(l *timeline.Link) { l.ToEventID = l.FromEventID }),
+		Entry("an author that is not UTF-8", "author: must be UTF-8", func(l *timeline.Link) { l.Author = new("Ren\xe9") }),
 	)
 })

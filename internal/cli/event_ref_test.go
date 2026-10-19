@@ -307,7 +307,45 @@ var _ = Describe("event view, edit and delete", func() {
 			Entry("an end before the event", "invalid_time", "--ended", "2026-09-11T03:00:00Z"),
 			Entry("an approximate end", "invalid_time", "--ended", "~2026-09-11T03:20:00Z"),
 			Entry("a time it cannot read", "invalid_time", "--at", "the day before"),
+			Entry("an offset beyond a day", "invalid_time", "--at", "2026-09-11T03:14:00-24:59"),
+			Entry("an offset beyond a day under --dry-run", "invalid_time", "--at", "2026-09-11T03:14:00-24:59",
+				"--dry-run"),
 		)
+
+		DescribeTable("exits 2 with kind usage on a flag that is not UTF-8, changing nothing",
+			func(ctx SpecContext, flag, value string) {
+				before := stored(ctx, steppedDown)
+
+				Expect(run(ctx, "event", "edit", "1", "--json", flag, value)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+				Expect(stored(ctx, steppedDown)).To(Equal(before))
+				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			},
+			Entry(nil, "--url", "https://logs.example.com/\xff"),
+			Entry(nil, "--author", "julian\xff"),
+		)
+	})
+
+	Describe("link", func() {
+		It("exits 2 with kind usage on an --author that is not UTF-8", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "link", "1", "2", "--kind", "led_to", "--author", "julian\xff", "--json")).
+				To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+		})
+
+		It("exits 2 with kind usage on a USER author that is not UTF-8, linking nothing", func(ctx SpecContext) {
+			env["USER"] = "julian\xff"
+
+			Expect(run(ctx, "event", "link", "1", "2", "--kind", "led_to", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			Expect(out.String()).NotTo(ContainSubstring(`"type":"link"`))
+		})
 	})
 
 	It("exits 2 on event add --source none, saying why none is no source", func(ctx SpecContext) {

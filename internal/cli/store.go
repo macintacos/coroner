@@ -63,8 +63,9 @@ func changedString(flags *pflag.FlagSet, name string) *string {
 	return &value
 }
 
-// storeError gives the database failures a user can fix their kinds and messages, and
-// returns any other error as it is. path is the database withStorePath opened.
+// storeError gives the database failures a user can fix their kinds and messages, gives a
+// record the store rejected the kind its first rule names, and returns any other error as it
+// is. path is the database withStorePath opened.
 func storeError(err error, path string) error {
 	switch {
 	case errors.Is(err, store.ErrBusy):
@@ -90,5 +91,5 @@ func storeError(err error, path string) error {
 		}
 	}
 
-	return err
+	return recordError(err, "")
 }

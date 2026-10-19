@@ -2,10 +2,10 @@ package timeline
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // AnnotationKind says whether an annotation is raw material or investigator commentary.
@@ -17,7 +17,8 @@ const (
 	AnnotationComment  AnnotationKind = "comment"
 )
 
-func (k AnnotationKind) valid() bool {
+// Valid reports whether k is a known annotation kind.
+func (k AnnotationKind) Valid() bool {
 	switch k {
 	case AnnotationEvidence, AnnotationComment:
 		return true
@@ -93,42 +94,48 @@ type Source struct {
 
 // Validate reports every way t breaks the domain rules, or nil.
 func (t Timeline) Validate() error {
-	errs := []error{ValidateTimelineName(t.Name)}
+	errs := []error{ValidateTimelineName(t.Name), ValidateUTF8("title", t.Title)}
 	for i, ref := range t.Refs {
-		errs = append(errs, validateNotBlank(fmt.Sprintf("ref %d", i+1), ref))
+		what := fmt.Sprintf("ref %d", i+1)
+		errs = append(errs, validateNotBlank("refs", what, ref), validateUTF8("refs", what, ref))
 	}
 
-	return errors.Join(errs...)
+	return join(errs...)
 }
 
 // Validate reports every way e breaks the domain rules, or nil.
 func (e Event) Validate() error {
 	errs := []error{
-		validateNotBlank("text", e.Text),
+		ValidateText("text", e.Text),
 		validatePrecision(e.Precision),
 		validateOccurredAt(e.OccurredAt, e.OccurredOffset, e.Precision),
-		validateEndedAt(e.EndedAt, e.OccurredAt),
+		ValidateOccurredOffset(e.OccurredOffset),
+		validateOptionalUTF8("occurred_raw", e.OccurredRaw),
+		ValidateEndedAt(e.EndedAt, e.OccurredAt),
 		validateOptional(ValidateSourceName, e.Source),
 	}
 	for _, tag := range e.Tags {
 		errs = append(errs, ValidateTag(tag))
 	}
+	errs = append(errs, validateOptionalUTF8("url", e.URL), validateOptionalUTF8("author", e.Author))
 
-	return errors.Join(errs...)
+	return join(errs...)
 }
 
 // Validate reports every way a breaks the domain rules, or nil.
 func (a Annotation) Validate() error {
-	return errors.Join(
+	return join(
 		validateAnnotationKind(a.Kind),
-		validateNotBlank("body", a.Body),
+		ValidateText("body", a.Body),
 		validateOptional(ValidateSourceName, a.Source),
+		validateOptionalUTF8("url", a.URL),
+		validateOptionalUTF8("author", a.Author),
 	)
 }
 
 // Validate reports every way s breaks the domain rules, or nil.
 func (s Source) Validate() error {
-	return ValidateSourceName(s.Name)
+	return validateSourceName("name", s.Name)
 }
 
 // CompareEvents orders events by occurred at, then timeline id, then seq, for
@@ -138,9 +145,37 @@ func CompareEvents(a, b Event) int {
 	return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.TimelineID, b.TimelineID), cmp.Compare(a.Seq, b.Seq))
 }
 
-func validateNotBlank(what, s string) error {
+// ValidateText reports s, the value of field, when it is blank or not UTF-8, or nil.
+func ValidateText(field, s string) error {
+	return join(validateNotBlank(field, field, s), ValidateUTF8(field, s))
+}
+
+// ValidateUTF8 reports s, the value of field, when it is not UTF-8, which JSON cannot carry
+// byte for byte, or nil.
+func ValidateUTF8(field, s string) error {
+	return validateUTF8(field, field, s)
+}
+
+// validateOptionalUTF8 is [ValidateUTF8] for a field that may be absent.
+func validateOptionalUTF8(field string, s *string) error {
+	if s == nil {
+		return nil
+	}
+
+	return ValidateUTF8(field, *s)
+}
+
+func validateUTF8(field, what, s string) error {
+	if !utf8.ValidString(s) {
+		return problem(field, RuleNotUTF8, "%s: must be UTF-8", what)
+	}
+
+	return nil
+}
+
+func validateNotBlank(field, what, s string) error {
 	if strings.TrimSpace(s) == "" {
-		return fmt.Errorf("%s: must not be blank", what)
+		return problem(field, RuleBlank, "%s: must not be blank", what)
 	}
 
 	return nil
@@ -155,24 +190,24 @@ func validateOptional(validate func(string) error, s *string) error {
 }
 
 func validateAnnotationKind(kind AnnotationKind) error {
-	if kind.valid() {
+	if kind.Valid() {
 		return nil
 	}
 
-	return fmt.Errorf("annotation kind %q: must be %q or %q", kind, AnnotationEvidence, AnnotationComment)
+	return problem("kind", RuleUnknown, "annotation kind %q: must be %q or %q", kind, AnnotationEvidence, AnnotationComment)
 }
 
 func validatePrecision(precision Precision) error {
-	if precision.valid() {
+	if precision.Valid() {
 		return nil
 	}
 
-	return fmt.Errorf("precision %q: must be day, hour, minute, second, millisecond, microsecond or nanosecond", precision)
+	return problem("precision", RuleUnknown, "precision %q: must be day, hour, minute, second, millisecond, microsecond or nanosecond", precision)
 }
 
 func validateOccurredAt(at time.Time, offset *int, precision Precision) error {
-	err := validateInstantRange("occurred at", at)
-	if err != nil || !precision.valid() {
+	err := validateInstantRange("occurred_at", "occurred at", at)
+	if err != nil || !precision.Valid() {
 		return err
 	}
 
@@ -181,31 +216,55 @@ func validateOccurredAt(at time.Time, offset *int, precision Precision) error {
 		zone = time.FixedZone("", *offset)
 	}
 	if !precision.Truncate(at.In(zone)).Equal(at) {
-		return fmt.Errorf("occurred at %s: must be the start of its %s", at.In(zone).Format(time.RFC3339Nano), precision)
+		return problem("occurred_at", RulePrecisionStart, "occurred at %s: must be the start of its %s", at.In(zone).Format(time.RFC3339Nano), precision)
 	}
 
 	return nil
 }
 
-func validateEndedAt(ended *time.Time, occurred time.Time) error {
+// MaxOccurredOffset is the furthest an occurred offset may be from UTC, in seconds.
+// It mirrors the event table's occurred_offset CHECK.
+const MaxOccurredOffset = 86400
+
+// ValidateOccurredOffset reports an offset more than [MaxOccurredOffset] from UTC, or nil.
+func ValidateOccurredOffset(offset *int) error {
+	if offset == nil || (*offset >= -MaxOccurredOffset && *offset <= MaxOccurredOffset) {
+		return nil
+	}
+
+	// uint so negating math.MinInt cannot overflow
+	sign, abs := '+', uint(*offset)
+	if *offset < 0 {
+		sign, abs = '-', -abs
+	}
+	text := fmt.Sprintf("%c%02d:%02d", sign, abs/3600, abs%3600/60)
+	if abs%60 != 0 {
+		text += fmt.Sprintf(":%02d", abs%60)
+	}
+
+	return problem("occurred_offset", RuleOffsetRange, "occurred offset %s: must be within a day of UTC", text)
+}
+
+// ValidateEndedAt reports an ended at the canonical instant cannot render, or one before occurred, or nil.
+func ValidateEndedAt(ended *time.Time, occurred time.Time) error {
 	if ended == nil {
 		return nil
 	}
 
-	err := validateInstantRange("ended at", *ended)
+	err := validateInstantRange("ended_at", "ended at", *ended)
 	if err != nil {
 		return err
 	}
 	if ended.Before(occurred) {
-		return fmt.Errorf("ended at %s: must not be before occurred at %s", FormatInstant(*ended), FormatInstant(occurred))
+		return problem("ended_at", RuleEndedBeforeOccurred, "ended at %s: must not be before occurred at %s", FormatInstant(*ended), FormatInstant(occurred))
 	}
 
 	return nil
 }
 
-func validateInstantRange(what string, t time.Time) error {
+func validateInstantRange(field, what string, t time.Time) error {
 	if year := t.UTC().Year(); year < 0 || year > 9999 {
-		return fmt.Errorf("%s: year %d is outside 0000–9999", what, year)
+		return problem(field, RuleYearRange, "%s: year %d is outside 0000–9999", what, year)
 	}
 
 	return nil

@@ -18,6 +18,17 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
+// readCounter counts the reads made of r.
+type readCounter struct {
+	r     io.Reader
+	reads int
+}
+
+func (c *readCounter) Read(p []byte) (int, error) {
+	c.reads++
+	return c.r.Read(p)
+}
+
 var _ = Describe("event add", func() {
 	const timelineID = "0199a1b2-0000-7000-8000-000000000001"
 
@@ -205,6 +216,17 @@ var _ = Describe("event add", func() {
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
 		})
 
+		It("rejects --ended before --at without reading stdin", func(ctx SpecContext) {
+			stdin := &readCounter{r: strings.NewReader("Deploy")}
+			in = stdin
+
+			Expect(run(ctx, "event", "add", "-", "--at", "2026-09-11T14:20:00Z", "--ended", "2026-09-11T14:00:00Z",
+				"--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
+			Expect(stdin.reads).To(BeZero())
+		})
+
 		DescribeTable("exits 2 with kind invalid_time and a hint to use --approximate on an approximate --ended",
 			func(ctx SpecContext, ended string) {
 				Expect(run(ctx, "event", "add", "Deploy", "--at", "2026-09-11 14:00", "--ended", ended, "--json")).To(Equal(2))
@@ -222,6 +244,55 @@ var _ = Describe("event add", func() {
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
 			Expect(errOut.String()).To(ContainSubstring("0000 to 9999"))
+		})
+
+		DescribeTable("exits 2 with kind invalid_time on an --at offset beyond a day, with or without --dry-run, adding nothing",
+			func(ctx SpecContext, at string, dryRun bool) {
+				args := []string{"event", "add", "Failover", "--at", at, "--json"}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+
+				Expect(run(ctx, args...)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
+				Expect(storedEvents(ctx)).To(BeEmpty())
+			},
+			Entry(nil, "2026-09-11T03:14:00+24:30", false),
+			Entry(nil, "2026-09-11T03:14:00+24:30", true),
+			Entry(nil, "2026-09-11T03:14:00-24:59", false),
+			Entry(nil, "2026-09-11T03:14:00-24:59", true),
+		)
+
+		It("accepts an --at offset of exactly a day", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "add", "Failover", "--at", "2026-09-11T03:14:00+24:00", "--json")).
+				To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring(`"occurred_offset":86400`))
+		})
+
+		DescribeTable("exits 2 with kind usage on a flag that is not UTF-8, adding nothing",
+			func(ctx SpecContext, args ...string) {
+				Expect(run(ctx, append([]string{"event", "add", "Failover", "--json"}, args...)...)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+				Expect(storedEvents(ctx)).To(BeEmpty())
+				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			},
+			Entry("--url", "--url", "https://logs.example.com/\xff"),
+			Entry("--author", "--author", "julian\xff"),
+			Entry("--at", "--at", "2026-09-11T03:14:00Z\xff"),
+		)
+
+		It("exits 2 with kind usage on a USER author that is not UTF-8, adding nothing", func(ctx SpecContext) {
+			env["USER"] = "julian\xff"
+
+			Expect(run(ctx, "event", "add", "Failover", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
+			Expect(storedEvents(ctx)).To(BeEmpty())
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
 		})
 
 		Describe("--dry-run", func() {

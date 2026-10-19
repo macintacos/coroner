@@ -1,7 +1,10 @@
 package timeline_test
 
 import (
+	"errors"
+	"math"
 	"slices"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -33,6 +36,18 @@ var _ = Describe("Timeline.Validate", func() {
 		t := valid()
 		t.Name = "INC 465"
 		Expect(t.Validate()).To(MatchError(HavePrefix("timeline name")))
+	})
+
+	It("rejects a title that is not UTF-8", func() {
+		t := valid()
+		t.Title = "caf\xe9"
+		Expect(t.Validate()).To(MatchError("title: must be UTF-8"))
+	})
+
+	It("rejects a ref that is not UTF-8", func() {
+		t := valid()
+		t.Refs = append(t.Refs, "INC-\xff")
+		Expect(t.Validate()).To(MatchError("ref 3: must be UTF-8"))
 	})
 
 	It("rejects a blank ref", func() {
@@ -85,9 +100,23 @@ var _ = Describe("Event.Validate", func() {
 			func(e *timeline.Event) { e.OccurredAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) }),
 		Entry("an ended at year the canonical instant cannot render", "ended at",
 			func(e *timeline.Event) { e.EndedAt = new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)) }),
+		Entry("an occurred offset more than a day east of UTC", "occurred offset +24:30",
+			func(e *timeline.Event) { e.OccurredOffset = new(88200) }),
+		Entry("an occurred offset more than a day west of UTC", "occurred offset -24:59",
+			func(e *timeline.Event) { e.OccurredOffset = new(-89940) }),
 		Entry("a source outside the grammar", "source", func(e *timeline.Event) { e.Source = new("Slack") }),
 		Entry("a tag outside the grammar", "tag", func(e *timeline.Event) { e.Tags = []string{"Phase Detect"} }),
+		Entry("text that is not UTF-8", "text: must be UTF-8", func(e *timeline.Event) { e.Text = "caf\xe9" }),
+		Entry("an occurred raw that is not UTF-8", "occurred_raw: must be UTF-8",
+			func(e *timeline.Event) { e.OccurredRaw = new("10:15\xff") }),
+		Entry("a url that is not UTF-8", "url: must be UTF-8", func(e *timeline.Event) { e.URL = new("https://x/\xff") }),
+		Entry("an author that is not UTF-8", "author: must be UTF-8", func(e *timeline.Event) { e.Author = new("Ren\xe9") }),
 	)
+
+	It("names the most negative occurred offset with one sign", func() {
+		Expect(timeline.ValidateOccurredOffset(new(math.MinInt))).
+			To(MatchError("occurred offset -2562047788015215:30:08: must be within a day of UTC"))
+	})
 
 	It("accepts an hour window measured in the stated +05:30", func() {
 		e := valid()
@@ -96,6 +125,17 @@ var _ = Describe("Event.Validate", func() {
 		e.OccurredAt = time.Date(2026, 9, 12, 4, 30, 0, 0, time.UTC)
 		Expect(e.Validate()).To(Succeed())
 	})
+
+	DescribeTable("accepts an occurred offset of exactly a day",
+		func(offset int) {
+			e := valid()
+			e.OccurredOffset = new(offset)
+			e.OccurredAt = quarterPast()
+			Expect(e.Validate()).To(Succeed())
+		},
+		Entry("east", 86400),
+		Entry("west", -86400),
+	)
 
 	It("accepts an interval that ends when it starts", func() {
 		e := valid()
@@ -151,6 +191,9 @@ var _ = Describe("Annotation.Validate", func() {
 		Entry("whitespace-only body", "body", func(a *timeline.Annotation) { a.Body = "  " }),
 		Entry("an unknown kind", "annotation kind", func(a *timeline.Annotation) { a.Kind = "note" }),
 		Entry("a source outside the grammar", "source", func(a *timeline.Annotation) { a.Source = new("db 2") }),
+		Entry("a body that is not UTF-8", "body: must be UTF-8", func(a *timeline.Annotation) { a.Body = "caf\xe9" }),
+		Entry("a url that is not UTF-8", "url: must be UTF-8", func(a *timeline.Annotation) { a.URL = new("https://x/\xff") }),
+		Entry("an author that is not UTF-8", "author: must be UTF-8", func(a *timeline.Annotation) { a.Author = new("Ren\xe9") }),
 	)
 })
 
@@ -208,4 +251,76 @@ var _ = Describe("CompareEvents", func() {
 		slices.SortFunc(events, timeline.CompareEvents)
 		Expect(seqs(events)).To(Equal([]int64{2, 1}))
 	})
+})
+
+// fieldRules returns each problem err reports as its field and rule, without its message.
+func fieldRules(err error) []timeline.Problem {
+	verr, ok := errors.AsType[*timeline.ValidationError](err)
+	Expect(ok).To(BeTrue(), "want a *timeline.ValidationError, got %v", err)
+	out := make([]timeline.Problem, 0, len(verr.Problems))
+	for _, p := range verr.Problems {
+		out = append(out, timeline.Problem{Field: p.Field, Rule: p.Rule})
+	}
+	return out
+}
+
+var _ = Describe("ValidationError", func() {
+	event := func() timeline.Event {
+		return timeline.Event{OccurredAt: quarterPast(), Precision: timeline.PrecisionMinute, Text: "Pager fires"}
+	}
+
+	It("reports each problem's field and rule, in the order Validate checks them", func() {
+		e := event()
+		e.Text = ""
+		e.EndedAt = new(quarterPast().Add(-time.Minute))
+		Expect(fieldRules(e.Validate())).To(Equal([]timeline.Problem{
+			{Field: "text", Rule: timeline.RuleBlank},
+			{Field: "ended_at", Rule: timeline.RuleEndedBeforeOccurred},
+		}))
+	})
+
+	It("joins messages as errors.Join did", func() {
+		e := event()
+		e.Text = ""
+		e.EndedAt = new(quarterPast().Add(-time.Minute))
+		Expect(e.Validate()).To(MatchError("text: must not be blank\n" +
+			"ended at 2026-09-12T10:14:00.000000000Z: must not be before occurred at 2026-09-12T10:15:00.000000000Z"))
+	})
+
+	DescribeTable("names the field and rule of",
+		func(err error, want timeline.Problem) {
+			Expect(fieldRules(err)).To(Equal([]timeline.Problem{want}))
+		},
+		Entry("a self link", timeline.Link{FromEventID: "a", ToEventID: "a", Kind: timeline.LinkLedTo}.Validate(),
+			timeline.Problem{Field: "to_event_id", Rule: timeline.RuleSelfLink}),
+		Entry("an unknown link kind", timeline.Link{FromEventID: "a", ToEventID: "b", Kind: "after"}.Validate(),
+			timeline.Problem{Field: "kind", Rule: timeline.RuleUnknown}),
+		Entry("an unknown precision", func() error { e := event(); e.Precision = "fortnight"; return e.Validate() }(),
+			timeline.Problem{Field: "precision", Rule: timeline.RuleUnknown}),
+		Entry("a blank ref", timeline.Timeline{Name: "inc-465", Refs: []string{" "}}.Validate(),
+			timeline.Problem{Field: "refs", Rule: timeline.RuleBlank}),
+		Entry("the source none", timeline.Source{Name: "none"}.Validate(),
+			timeline.Problem{Field: "name", Rule: timeline.RuleReserved}),
+		Entry("the source none on an event", func() error { e := event(); e.Source = new("none"); return e.Validate() }(),
+			timeline.Problem{Field: "source", Rule: timeline.RuleReserved}),
+		Entry("a bad tag", func() error { e := event(); e.Tags = []string{"Phase"}; return e.Validate() }(),
+			timeline.Problem{Field: "tags", Rule: timeline.RuleGrammar}),
+		Entry("an out-of-range offset", func() error { e := event(); e.OccurredOffset = new(88200); return e.Validate() }(),
+			timeline.Problem{Field: "occurred_offset", Rule: timeline.RuleOffsetRange}),
+		Entry("a negative size", timeline.Attachment{
+			Owner: timeline.AttachmentOwner{EventID: new("a")}, SHA256: strings.Repeat("ab", 32), Size: -1,
+		}.Validate(), timeline.Problem{Field: "size", Rule: timeline.RuleNegativeSize}),
+		Entry("a bad owner", timeline.AttachmentOwner{}.Validate(),
+			timeline.Problem{Field: "event_id", Rule: timeline.RuleOwner}),
+	)
+
+	DescribeTable("Valid reports enum membership",
+		func(valid, want bool) { Expect(valid).To(Equal(want)) },
+		Entry("a precision", timeline.PrecisionHour.Valid(), true),
+		Entry("an unknown precision", timeline.Precision("fortnight").Valid(), false),
+		Entry("an annotation kind", timeline.AnnotationComment.Valid(), true),
+		Entry("an unknown annotation kind", timeline.AnnotationKind("note").Valid(), false),
+		Entry("a link kind", timeline.LinkSameAs.Valid(), true),
+		Entry("an unknown link kind", timeline.LinkKind("after").Valid(), false),
+	)
 })

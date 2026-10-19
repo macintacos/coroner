@@ -62,12 +62,18 @@ func TestExportImportRoundTrip(t *testing.T) {
 		}
 	})
 
-	// With fewer checks than rapid's default 100, as when debugging, or under -short, which runs a
-	// fifth of them, too few models are drawn to cover every key.
-	checks, _ := strconv.Atoi(flag.Lookup("rapid.checks").Value.String())
-	if missing := unseen(seen); checks >= 100 && !testing.Short() && len(missing) > 0 {
+	if missing := unseen(seen); enoughChecksToCover() && len(missing) > 0 {
 		t.Errorf("no generated export held %s", strings.Join(missing, ", "))
 	}
+}
+
+// enoughChecksToCover reports whether rapid drew enough cases for a property to require that every
+// case kind it generates was seen. With fewer checks than rapid's default 100, as when debugging,
+// or under -short, which runs a fifth of them, too few are drawn.
+func enoughChecksToCover() bool {
+	checks, _ := strconv.Atoi(flag.Lookup("rapid.checks").Value.String())
+
+	return checks >= 100 && !testing.Short()
 }
 
 var _ = Describe("Frozen export fixtures", func() {
@@ -353,6 +359,16 @@ type coroner struct {
 // run returns what the command line args wrote to stdout, or an error holding its stderr unless
 // it exited 0.
 func (c coroner) run(ctx context.Context, args ...string) (string, error) {
+	out, errOut, code := c.exec(ctx, args...)
+	if code != 0 {
+		return "", fmt.Errorf("coroner %s exited %d:\n%s", strings.Join(args, " "), code, errOut)
+	}
+
+	return out, nil
+}
+
+// exec returns what the command line args wrote to stdout and stderr, and its exit code.
+func (c coroner) exec(ctx context.Context, args ...string) (string, string, int) {
 	var out, errOut bytes.Buffer
 	var ids uint64
 	code := cli.Run(ctx, cli.App{
@@ -377,11 +393,8 @@ func (c coroner) run(ctx context.Context, args ...string) (string, error) {
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
 	})
-	if code != 0 {
-		return "", fmt.Errorf("coroner %s exited %d:\n%s", strings.Join(args, " "), code, errOut.String())
-	}
 
-	return out.String(), nil
+	return out.String(), errOut.String(), code
 }
 
 // dirDiff returns a diff of every file that is in only one of the directories a and b, or differs

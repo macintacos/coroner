@@ -324,7 +324,7 @@ var _ = Describe("planImport", func() {
 				far := stepdown
 				far.OccurredOffset = new(86401)
 				return []export.Record{tl, far}
-			}, nil, "occurred_offset"),
+			}, nil, "occurred offset"),
 		Entry("an event whose seq leaves its timeline no room to number more events",
 			func() []export.Record {
 				huge := stepdown

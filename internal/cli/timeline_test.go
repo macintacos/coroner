@@ -100,6 +100,17 @@ var _ = Describe("timeline", func() {
 			Expect(run(ctx, "timeline", "create", "mongo-outage", "--ref", "")).To(Equal(2))
 		})
 
+		DescribeTable("exits 2 with kind usage on a flag that is not UTF-8, creating nothing",
+			func(ctx SpecContext, flag, value string) {
+				Expect(run(ctx, "timeline", "create", "mongo-outage", "--json", flag, value)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+				Expect(run(ctx, "timeline", "export", "-t", "mongo-outage", "--format", "jsonl")).To(Equal(3))
+			},
+			Entry(nil, "--title", "Primary election storm \xff"),
+			Entry(nil, "--ref", "INC-4821\xff"),
+		)
+
 		It("leaves the current timeline alone", func(ctx SpecContext) {
 			run(ctx, "timeline", "create", "first")
 			run(ctx, "timeline", "use", "first")
@@ -361,6 +372,18 @@ var _ = Describe("timeline", func() {
 
 				Expect(errOut.String()).To(ContainSubstring("must not be blank"))
 			})
+
+			DescribeTable("exits 2 with kind usage on a flag that is not UTF-8",
+				func(ctx SpecContext, flag, value string) {
+					Expect(run(ctx, "timeline", "edit", "mongo-outage", "--json", flag, value)).To(Equal(2))
+
+					Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+					Expect(run(ctx, "timeline", "export", "-t", "mongo-outage", "--format", "jsonl")).
+						To(Equal(0), errOut.String())
+				},
+				Entry(nil, "--title", "Failover \xff"),
+				Entry(nil, "--add-ref", "INC-4821\xff"),
+			)
 
 			It("writes nothing under --dry-run", func(ctx SpecContext) {
 				Expect(run(ctx, "timeline", "edit", "mongo-outage", "--name", "mongo-failover", "--dry-run")).To(Equal(0))

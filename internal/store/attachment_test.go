@@ -275,6 +275,102 @@ var _ = Describe("Attachments", func() {
 			Expect(os.ReadDir(blobDir)).To(BeEmpty())
 		})
 
+		offsetBeyondADay := func() timeline.Event {
+			e := pager
+			e.ID, e.Seq, e.OccurredOffset = uuid(20), 5, new(timeline.MaxOccurredOffset+1)
+			return e
+		}
+		eventsUnchanged := func(ctx context.Context) {
+			Expect(s.Event(ctx, uuid(20))).Error().To(MatchError(store.ErrNotFound))
+			Expect(s.Event(ctx, pager.ID)).To(HaveField("OccurredOffset", BeNil()))
+			next := pager
+			next.ID = uuid(40)
+			Expect(s.AddEvent(ctx, next, uuid(9))).To(HaveField("Seq", int64(2)))
+		}
+
+		DescribeTable("rejects an invalid record before writing anything",
+			func(ctx SpecContext, write func(context.Context) error, unchanged func(context.Context)) {
+				_, ok := errors.AsType[*timeline.ValidationError](write(ctx))
+
+				Expect(ok).To(BeTrue())
+				unchanged(ctx)
+				Expect(filepath.Glob(filepath.Join(blobDir, "*"))).To(BeEmpty())
+			},
+			Entry("AddEvent with an attachment", func(ctx context.Context) error {
+				_, err := s.AddEvent(ctx, offsetBeyondADay(), uuid(9), newFile(21, "grafana.png", screenshot))
+				return err
+			}, eventsUnchanged),
+			Entry("AddEvent with an attachment filename that is not UTF-8", func(ctx context.Context) error {
+				e := pager
+				e.ID, e.Seq = uuid(20), 5
+				_, err := s.AddEvent(ctx, e, uuid(9), newFile(21, "caf\xe9.png", screenshot))
+				return err
+			}, eventsUnchanged),
+			Entry("UpdateEvent with an attachment", func(ctx context.Context) error {
+				e := offsetBeyondADay()
+				e.ID, e.Seq = pager.ID, pager.Seq
+				return s.UpdateEvent(ctx, e, uuid(9), newFile(21, "grafana.png", screenshot))
+			}, eventsUnchanged),
+			Entry("Import with an attachment", func(ctx context.Context) error {
+				e := offsetBeyondADay()
+				a := described(21, timeline.AttachmentOwner{EventID: new(e.ID)}, "grafana.png", "image/png", screenshot)
+				return s.Import(ctx, store.ImportRecords{
+					Events:      []timeline.Event{e},
+					Attachments: []store.ImportAttachment{{Attachment: a, Content: bytes.NewReader(screenshot)}},
+				})
+			}, eventsUnchanged),
+			Entry("AddAnnotation with an attachment", func(ctx context.Context) error {
+				blank := evidence
+				blank.ID, blank.Body = uuid(30), " "
+				return s.AddAnnotation(ctx, blank, uuid(9), newFile(31, "trace.pdf", trace))
+			}, func(ctx context.Context) {
+				Expect(s.Annotation(ctx, uuid(30))).Error().To(MatchError(store.ErrNotFound))
+			}),
+			Entry("UpdateAnnotation with an attachment", func(ctx context.Context) error {
+				blank := evidence
+				blank.Body = " "
+				return s.UpdateAnnotation(ctx, blank, uuid(9), newFile(31, "trace.pdf", trace))
+			}, func(ctx context.Context) {
+				Expect(s.Annotation(ctx, evidence.ID)).To(HaveField("Body", evidence.Body))
+			}),
+			Entry("AddLink", func(ctx context.Context) error {
+				return s.AddLink(ctx, timeline.Link{
+					ID: uuid(30), FromEventID: pager.ID, ToEventID: pager.ID, Kind: timeline.LinkLedTo, CreatedAt: created,
+				})
+			}, func(ctx context.Context) {
+				Expect(s.EventLinks(ctx, pager.ID)).To(BeEmpty())
+			}),
+			Entry("CreateTimeline", func(ctx context.Context) error {
+				badName := incident
+				badName.ID, badName.Name = uuid(30), "inc 466"
+				return s.CreateTimeline(ctx, badName)
+			}, func(ctx context.Context) {
+				Expect(s.Timeline(ctx, uuid(30))).Error().To(MatchError(store.ErrNotFound))
+			}),
+			Entry("UpdateTimeline", func(ctx context.Context) error {
+				blankRef := incident
+				blankRef.Refs = []string{" "}
+				return s.UpdateTimeline(ctx, blankRef)
+			}, func(ctx context.Context) {
+				Expect(s.Timeline(ctx, incident.ID)).To(Equal(incident))
+			}),
+			Entry("CreateOverlay", func(ctx context.Context) error {
+				return s.CreateOverlay(ctx, timeline.Overlay{
+					ID: uuid(30), Name: "db outage", TimelineIDs: []string{incident.ID}, CreatedAt: created,
+				})
+			}, func(ctx context.Context) {
+				Expect(s.TimelineOverlays(ctx, incident.ID)).To(BeEmpty())
+			}),
+			Entry("RenameSource", func(ctx context.Context) error {
+				sourced := evidence
+				sourced.ID, sourced.Source = uuid(30), new("db-2/mongod")
+				Expect(s.AddAnnotation(ctx, sourced, uuid(32))).To(Succeed())
+				return s.RenameSource(ctx, uuid(32), "db-2 mongod")
+			}, func(ctx context.Context) {
+				Expect(s.Sources(ctx)).To(ConsistOf(HaveField("Name", "db-2/mongod")))
+			}),
+		)
+
 		It("adds no event when an attachment's content cannot be read", func(ctx SpecContext) {
 			boom := errors.New("boom")
 			stepDown := pager

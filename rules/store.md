@@ -14,12 +14,17 @@
    source and tag grammars, the canonical instant, the precisions, the annotation and link
    kinds, the not-blank checks on ref, text and body, ended at not before occurred at, an
    attachment's single owner, sha256 and non-negative size, and a link's two different
-   events. Change the Go and the SQL in the same change. No rule in `internal/timeline`
-   mirrors the table's checks that `id` is 36 characters, `seq > 0`, `occurred_offset` is
-   within ±86400 seconds and `approximate` is 0 or 1; `import` checks the
-   `occurred_offset` bound, and a `seq` headroom bound, on JSONL input before writing.
-   SQLite cannot alter a CHECK, so changing one, even to add a precision or an annotation
-   kind, needs a migration that rebuilds the table
+   events. Change the Go and the SQL in the same change. `timeline.MaxOccurredOffset`
+   mirrors the table's ±86400-second `occurred_offset` bound; only its checks that `id` is
+   36 characters, `seq > 0` and `approximate` is 0 or 1 stay unmirrored, and `import`
+   checks a `seq` headroom bound on JSONL input before writing. The Go rules `not_utf8`
+   and `precision_start` have no CHECK, since SQLite cannot express them. Every store
+   write method runs its record's `Validate` (`RenameSource` runs
+   `timeline.ValidateSourceName`; `AddAttachment` runs only its owner's `Validate` and the
+   filename check, since the SHA256 and size are unknown before staging) before staging a
+   blob or opening a transaction, and returns its error unwrapped. SQLite cannot alter a
+   CHECK, so changing one, even to add a precision or an annotation kind, needs a
+   migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
    another table references (`timeline`, `event`, `annotation`, `source`, `overlay`) is
    rebuilt in a migration marked `-- +goose NO TRANSACTION`, because inside goose's

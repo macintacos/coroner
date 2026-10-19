@@ -16,7 +16,8 @@ const (
 	PrecisionNanosecond  Precision = "nanosecond"
 )
 
-func (p Precision) valid() bool {
+// Valid reports whether p is a known precision.
+func (p Precision) Valid() bool {
 	switch p {
 	case PrecisionDay, PrecisionHour, PrecisionMinute, PrecisionSecond,
 		PrecisionMillisecond, PrecisionMicrosecond, PrecisionNanosecond:

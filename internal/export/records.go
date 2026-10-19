@@ -3,6 +3,7 @@ package export
 import (
 	"bytes"
 	"cmp"
+	"fmt"
 	"io"
 	"slices"
 	"time"
@@ -15,6 +16,8 @@ type Record interface {
 	line() any
 	// validate reports why the decoded record is not one coroner can read.
 	validate() error
+	// name returns "header", or the record's type and id, for an error to name it by.
+	name() string
 }
 
 // The JSONL objects embed the record, which json/v2 inlines after "type".
@@ -66,6 +69,14 @@ func (l Link) line() any {
 		Link
 	}{"link", l}
 }
+
+func (Header) name() string       { return "header" }
+func (t Timeline) name() string   { return "timeline " + t.ID }
+func (s Source) name() string     { return "source " + s.ID }
+func (e Event) name() string      { return "event " + e.ID }
+func (a Annotation) name() string { return "annotation " + a.ID }
+func (a Attachment) name() string { return "attachment " + a.ID }
+func (l Link) name() string       { return "link " + l.ID }
 
 // Records returns env's records in export order: the header; the timelines, by name; the
 // annotations on no event, by created at then id; the sources, by name; the events, by
@@ -119,7 +130,7 @@ func WriteRecords(w io.Writer, records []Record) error {
 	for _, r := range records {
 		err := Write(&b, r.line())
 		if err != nil {
-			return err
+			return fmt.Errorf("%s: %w", r.name(), err)
 		}
 	}
 

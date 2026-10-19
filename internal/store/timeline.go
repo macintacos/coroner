@@ -9,6 +9,11 @@ import (
 
 // CreateTimeline adds t with its refs, kept in the order given.
 func (s *Store) CreateTimeline(ctx context.Context, t timeline.Timeline) error {
+	err := t.Validate()
+	if err != nil {
+		return err
+	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		return createTimeline(ctx, q, t)
 	})
@@ -70,6 +75,11 @@ func (s *Store) Timelines(ctx context.Context) ([]timeline.Timeline, error) {
 // UpdateTimeline stores t's name, title and updated at, and replaces its refs with t.Refs
 // in the order given.
 func (s *Store) UpdateTimeline(ctx context.Context, t timeline.Timeline) error {
+	err := t.Validate()
+	if err != nil {
+		return err
+	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		_, err := q.UpdateTimeline(ctx, sqlcgen.UpdateTimelineParams{
 			Name:      t.Name,
