@@ -364,7 +364,8 @@ the [evolution rules](#evolution-rules) like the rest of the format.
 - **`<`, `>`, and `&` are escaped** as `\u003c`, `\u003e`, and `\u0026`, so the JSON can
   sit inside an HTML `<script>` element. Every JSON parser decodes them back.
 - **Output is deterministic:** the same values encode to the same bytes.
-- **Strings are valid UTF-8.**
+- **Strings are valid UTF-8.** coroner rejects a value that is not UTF-8 with exit 2,
+  `usage`, so it never stores one.
 
 jq's `fromdateiso8601` rejects fractional seconds
 ([jqlang/jq#2224](https://github.com/jqlang/jq/issues/2224)). Strip them first; the result

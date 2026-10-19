@@ -153,7 +153,8 @@ var _ = Describe("write command definitions", func() {
 		for path, def := range writeDefinitions() {
 			for _, f := range def.fields {
 				// -t's and --add-ref's checks reject only a blank value, which a form reads as not given.
-				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref"
+				// --title's rejects only bytes that are not UTF-8, which a form's input replaces.
+				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref" || f.name == "title"
 				if f.check != nil && !exempt && !covered[path+" "+f.name] {
 					missing = append(missing, path+" "+f.name)
 				}
@@ -424,6 +425,7 @@ type badValue struct {
 func badValues() []badValue {
 	return []badValue{
 		{"timeline create", "name", "Mongo Outage", nil},
+		{"timeline create", "ref", "INC-\xff", []string{"mongo-outage"}},
 		{"timeline edit", "name", "Bad Name", []string{"mongo-outage"}},
 		{"event add", "text", " ", nil},
 		{"event add", "tz", "Mars/Olympus", []string{"Pager fires"}},

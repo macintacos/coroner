@@ -96,7 +96,12 @@ func clearableNotBlank(flag string) func(string, checkEnv) error {
 			return nil
 		}
 
-		return checkNotBlank(flag, &value)
+		err := checkNotBlank(flag, &value)
+		if err != nil {
+			return err
+		}
+
+		return checkUTF8(flag, value)
 	})
 }
 

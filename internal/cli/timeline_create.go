@@ -139,8 +139,11 @@ func timelineCreateDefinition() definition {
 			name: "name", usage: "Timeline `name`, which commands select it by", arg: true, required: true,
 			check: withoutEnv(checkName), suggest: suggestName,
 		},
-		{name: "title", usage: "Free-text `title`"},
-		{name: "ref", typ: stringsField, list: true, usage: "Ticket key or URL the timeline belongs to; repeat for more"},
+		{name: "title", usage: "Free-text `title`", check: utf8Only("--title")},
+		{
+			name: "ref", typ: stringsField, list: true, usage: "Ticket key or URL the timeline belongs to; repeat for more",
+			check: utf8Only("--ref"),
+		},
 		{name: "if-not-exists", typ: boolField, usage: "Print the existing timeline instead of failing when the name is taken"},
 		{name: "dry-run", typ: boolField, usage: "Show the timeline as it would be created, and create nothing"},
 	}}

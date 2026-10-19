@@ -38,8 +38,14 @@ func checkAt(value string, env checkEnv) error {
 }
 
 // resolveAt resolves input as --at, as resolveTime does, and also rejects an offset more than
-// a day from UTC, which an event cannot store.
+// a day from UTC, which an event cannot store, and input that is not UTF-8.
 func resolveAt(input *string, now time.Time, loc *time.Location) (timeparse.Resolved, error) {
+	if input != nil {
+		err := checkUTF8("--at", *input)
+		if err != nil {
+			return timeparse.Resolved{}, err
+		}
+	}
 	r, err := resolveTime("--at", input, now, loc)
 	if err != nil {
 		return r, err

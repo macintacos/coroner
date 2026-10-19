@@ -484,10 +484,31 @@ func checkNotBlank(flag string, value *string) error {
 	return &Error{Kind: KindUsage, Message: flag + " must not be blank", Hint: "Leave " + flag + " out instead."}
 }
 
-// notBlank returns a field check that rejects a blank value of flag.
+// checkUTF8 returns usage when value of flag is not UTF-8, which an export could not carry.
+func checkUTF8(flag, value string) error {
+	if utf8.ValidString(value) {
+		return nil
+	}
+
+	return &Error{Kind: KindUsage, Message: flag + " must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8"}
+}
+
+// utf8Only returns a field check that rejects a value of flag that is not UTF-8.
+func utf8Only(flag string) func(string, checkEnv) error {
+	return withoutEnv(func(value string) error {
+		return checkUTF8(flag, value)
+	})
+}
+
+// notBlank returns a field check that rejects a blank value of flag, or one that is not UTF-8.
 func notBlank(flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
-		return checkNotBlank(flag, &value)
+		err := checkNotBlank(flag, &value)
+		if err != nil {
+			return err
+		}
+
+		return checkUTF8(flag, value)
 	})
 }
 
