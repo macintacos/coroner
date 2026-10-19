@@ -172,18 +172,7 @@ func createSource(ctx context.Context, q *sqlcgen.Queries, source timeline.Sourc
 }
 
 func replaceTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timeline) error {
-	err := q.ReplaceTimeline(ctx, sqlcgen.ReplaceTimelineParams{
-		Name:      t.Name,
-		Title:     t.Title,
-		CreatedAt: timeline.FormatInstant(t.CreatedAt),
-		UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
-		ID:        t.ID,
-	})
-	if err != nil {
-		return err
-	}
-
-	return replaceRefs(ctx, q, t.ID, t.Refs)
+	return overwriteTimeline(ctx, q, t, new(timeline.FormatInstant(t.CreatedAt)))
 }
 
 func importEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event) error {
@@ -219,26 +208,7 @@ func replaceEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event) err
 		return err
 	}
 
-	err = q.ReplaceEvent(ctx, sqlcgen.ReplaceEventParams{
-		OccurredAt:        timeline.FormatInstant(e.OccurredAt),
-		OccurredOffset:    offsetParam(e.OccurredOffset),
-		OccurredPrecision: string(e.Precision),
-		Approximate:       sqliteBool(e.Approximate),
-		OccurredRaw:       e.OccurredRaw,
-		EndedAt:           formatOptional(e.EndedAt),
-		SourceID:          source,
-		Text:              e.Text,
-		Url:               e.URL,
-		Author:            e.Author,
-		CreatedAt:         timeline.FormatInstant(e.CreatedAt),
-		UpdatedAt:         timeline.FormatInstant(e.UpdatedAt),
-		ID:                e.ID,
-	})
-	if err != nil {
-		return err
-	}
-
-	return replaceTags(ctx, q, e.ID, e.Tags)
+	return overwriteEvent(ctx, q, e, source, new(timeline.FormatInstant(e.CreatedAt)))
 }
 
 func importAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annotation) error {
@@ -256,16 +226,7 @@ func replaceAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annot
 		return err
 	}
 
-	return q.ReplaceAnnotation(ctx, sqlcgen.ReplaceAnnotationParams{
-		Kind:      string(a.Kind),
-		Body:      a.Body,
-		Author:    a.Author,
-		SourceID:  source,
-		Url:       a.URL,
-		CreatedAt: timeline.FormatInstant(a.CreatedAt),
-		UpdatedAt: timeline.FormatInstant(a.UpdatedAt),
-		ID:        a.ID,
-	})
+	return overwriteAnnotation(ctx, q, a, source, new(timeline.FormatInstant(a.CreatedAt)))
 }
 
 // storedSourceID returns the id of the stored source called name. A nil name gives a nil id.

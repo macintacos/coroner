@@ -81,18 +81,25 @@ func (s *Store) UpdateTimeline(ctx context.Context, t timeline.Timeline) error {
 	}
 
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		_, err := q.UpdateTimeline(ctx, sqlcgen.UpdateTimelineParams{
-			Name:      t.Name,
-			Title:     t.Title,
-			UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
-			ID:        t.ID,
-		})
-		if err != nil {
-			return err
-		}
-
-		return replaceRefs(ctx, q, t.ID, t.Refs)
+		return overwriteTimeline(ctx, q, t, nil)
 	})
+}
+
+// overwriteTimeline stores t's name, title and updated at, keeping the stored created at
+// unless createdAt is set, and replaces its refs with t.Refs in the order given.
+func overwriteTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timeline, createdAt *string) error {
+	_, err := q.OverwriteTimeline(ctx, sqlcgen.OverwriteTimelineParams{
+		Name:      t.Name,
+		Title:     t.Title,
+		CreatedAt: createdAt,
+		UpdatedAt: timeline.FormatInstant(t.UpdatedAt),
+		ID:        t.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return replaceRefs(ctx, q, t.ID, t.Refs)
 }
 
 // DeleteTimeline deletes the timeline with id and everything in it.

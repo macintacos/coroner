@@ -18,21 +18,14 @@ WHERE name = ?;
 SELECT * FROM timeline
 ORDER BY name;
 
--- name: UpdateTimeline :one
+-- name: OverwriteTimeline :one
 UPDATE timeline
-SET name = ?,
-  title = ?,
-  updated_at = ?
-WHERE id = ?
-RETURNING *;
-
--- name: ReplaceTimeline :exec
-UPDATE timeline
-SET name = ?,
-  title = ?,
-  created_at = ?,
-  updated_at = ?
-WHERE id = ?;
+SET name = sqlc.arg(name),
+  title = sqlc.arg(title),
+  created_at = COALESCE(sqlc.narg(created_at), created_at),
+  updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+RETURNING id;
 
 -- name: SetNextSeq :exec
 UPDATE timeline

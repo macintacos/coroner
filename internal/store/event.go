@@ -113,25 +113,7 @@ func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID s
 			return err
 		}
 
-		_, err = q.UpdateEvent(ctx, sqlcgen.UpdateEventParams{
-			OccurredAt:        timeline.FormatInstant(e.OccurredAt),
-			OccurredOffset:    offsetParam(e.OccurredOffset),
-			OccurredPrecision: string(e.Precision),
-			Approximate:       sqliteBool(e.Approximate),
-			OccurredRaw:       e.OccurredRaw,
-			EndedAt:           formatOptional(e.EndedAt),
-			SourceID:          source,
-			Text:              e.Text,
-			Url:               e.URL,
-			Author:            e.Author,
-			UpdatedAt:         timeline.FormatInstant(e.UpdatedAt),
-			ID:                e.ID,
-		})
-		if err != nil {
-			return err
-		}
-
-		return replaceTags(ctx, q, e.ID, e.Tags)
+		return overwriteEvent(ctx, q, e, source, nil)
 	})
 	return err
 }
@@ -219,6 +201,31 @@ func createEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event, seq 
 	}
 
 	return addTags(ctx, q, e.ID, e.Tags)
+}
+
+// overwriteEvent stores every field of e but its timeline and seq, naming the source with
+// sourceID and keeping the stored created at unless createdAt is set, and replaces its tags.
+func overwriteEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event, sourceID, createdAt *string) error {
+	_, err := q.OverwriteEvent(ctx, sqlcgen.OverwriteEventParams{
+		OccurredAt:        timeline.FormatInstant(e.OccurredAt),
+		OccurredOffset:    offsetParam(e.OccurredOffset),
+		OccurredPrecision: string(e.Precision),
+		Approximate:       sqliteBool(e.Approximate),
+		OccurredRaw:       e.OccurredRaw,
+		EndedAt:           formatOptional(e.EndedAt),
+		SourceID:          sourceID,
+		Text:              e.Text,
+		Url:               e.URL,
+		Author:            e.Author,
+		CreatedAt:         createdAt,
+		UpdatedAt:         timeline.FormatInstant(e.UpdatedAt),
+		ID:                e.ID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return replaceTags(ctx, q, e.ID, e.Tags)
 }
 
 func addTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []string) error {
