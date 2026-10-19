@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/viewer"
@@ -125,7 +126,7 @@ type timelineListJSON struct {
 // listedTimelineJSON adds current, which is state of this database rather than of the
 // timeline, to a timeline's JSON.
 type listedTimelineJSON struct {
-	timelineJSON
+	export.Timeline
 
 	Current bool `json:"current"`
 }
@@ -166,7 +167,7 @@ func printTimelines(o output, timelines []timeline.Timeline, currentID string) e
 func newTimelineListJSON(timelines []timeline.Timeline, currentID string) timelineListJSON {
 	listed := make([]listedTimelineJSON, 0, len(timelines))
 	for _, t := range timelines {
-		listed = append(listed, listedTimelineJSON{timelineJSON: newTimelineJSON(t), Current: t.ID == currentID})
+		listed = append(listed, listedTimelineJSON{Timeline: newTimelineJSON(t), Current: t.ID == currentID})
 	}
 
 	return timelineListJSON{Timelines: listed}

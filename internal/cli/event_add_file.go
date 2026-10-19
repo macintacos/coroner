@@ -282,7 +282,7 @@ func newEventsAdded(events []export.Event, stored, inserted map[string]timeline.
 type eventsAddedJSON struct {
 	DryRun bool `json:"dry_run"`
 	// Timelines resolves every event's timeline_id.
-	Timelines []timelineJSON `json:"timelines"`
+	Timelines []export.Timeline `json:"timelines"`
 	// Inserted are the events added, or that would be; Identical those already stored unchanged.
 	Inserted  []eventJSON `json:"inserted"`
 	Identical []eventJSON `json:"identical"`
@@ -292,7 +292,7 @@ func (a eventsAdded) render(o output) error {
 	if o.format == formatJSON {
 		attached := attachmentsByOwner(a.attached, a.dbPath)
 		err := o.json(eventsAddedJSON{
-			DryRun: a.dryRun, Timelines: []timelineJSON{newTimelineJSON(a.timeline)},
+			DryRun: a.dryRun, Timelines: []export.Timeline{newTimelineJSON(a.timeline)},
 			Inserted: eventJSONs(a.inserted, attached), Identical: eventJSONs(a.identical, attached),
 		})
 		if err != nil {

@@ -187,6 +187,31 @@ var _ = Describe("Import", func() {
 			Expect(s.Annotation(ctx, evidence.ID)).To(Equal(revised))
 		})
 
+	DescribeTable("returns ErrNotFound when a replacement names a record that is not stored",
+		func(ctx SpecContext, records store.ImportRecords) {
+			Expect(s.Import(ctx, store.ImportRecords{
+				Timelines: []timeline.Timeline{incident},
+				Events:    []timeline.Event{newEvent(10, 1)},
+			})).To(Succeed())
+
+			Expect(s.Import(ctx, records)).To(MatchError(store.ErrNotFound))
+		},
+		Entry("a timeline replacement", store.ImportRecords{
+			TimelineReplacements: []timeline.Timeline{{
+				ID: uuid(2), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created,
+			}},
+		}),
+		Entry("an event replacement", store.ImportRecords{
+			EventReplacements: []timeline.Event{newEvent(11, 2)},
+		}),
+		Entry("an annotation replacement", store.ImportRecords{
+			AnnotationReplacements: []timeline.Annotation{{
+				ID: uuid(30), TimelineID: incident.ID, EventID: new(uuid(10)), Kind: timeline.AnnotationComment,
+				Body: "the timeout is too short", CreatedAt: created, UpdatedAt: created,
+			}},
+		}),
+	)
+
 	Describe("attachments", func() {
 		pager := newEvent(10, 1)
 		onPager := timeline.AttachmentOwner{EventID: new(pager.ID)}

@@ -26,37 +26,23 @@ SELECT * FROM event
 WHERE timeline_id = ?
 ORDER BY occurred_at, seq;
 
--- name: UpdateEvent :one
+-- name: OverwriteEvent :one
+-- OverwriteEvent returns id only so that a missing row is sql.ErrNoRows.
 UPDATE event
-SET occurred_at = ?,
-  occurred_offset = ?,
-  occurred_precision = ?,
-  approximate = ?,
-  occurred_raw = ?,
-  ended_at = ?,
-  source_id = ?,
-  text = ?,
-  url = ?,
-  author = ?,
-  updated_at = ?
-WHERE id = ?
-RETURNING *;
-
--- name: ReplaceEvent :exec
-UPDATE event
-SET occurred_at = ?,
-  occurred_offset = ?,
-  occurred_precision = ?,
-  approximate = ?,
-  occurred_raw = ?,
-  ended_at = ?,
-  source_id = ?,
-  text = ?,
-  url = ?,
-  author = ?,
-  created_at = ?,
-  updated_at = ?
-WHERE id = ?;
+SET occurred_at = sqlc.arg(occurred_at),
+  occurred_offset = sqlc.arg(occurred_offset),
+  occurred_precision = sqlc.arg(occurred_precision),
+  approximate = sqlc.arg(approximate),
+  occurred_raw = sqlc.arg(occurred_raw),
+  ended_at = sqlc.arg(ended_at),
+  source_id = sqlc.arg(source_id),
+  text = sqlc.arg(text),
+  url = sqlc.arg(url),
+  author = sqlc.arg(author),
+  created_at = COALESCE(sqlc.narg(created_at), created_at),
+  updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+RETURNING id;
 
 -- name: DeleteEvent :exec
 DELETE FROM event

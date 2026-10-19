@@ -243,24 +243,25 @@ func (q *Queries) ListEventsByIDPrefix(ctx context.Context, arg ListEventsByIDPr
 	return items, nil
 }
 
-const replaceEvent = `-- name: ReplaceEvent :exec
+const overwriteEvent = `-- name: OverwriteEvent :one
 UPDATE event
-SET occurred_at = ?,
-  occurred_offset = ?,
-  occurred_precision = ?,
-  approximate = ?,
-  occurred_raw = ?,
-  ended_at = ?,
-  source_id = ?,
-  text = ?,
-  url = ?,
-  author = ?,
-  created_at = ?,
-  updated_at = ?
-WHERE id = ?
+SET occurred_at = ?1,
+  occurred_offset = ?2,
+  occurred_precision = ?3,
+  approximate = ?4,
+  occurred_raw = ?5,
+  ended_at = ?6,
+  source_id = ?7,
+  text = ?8,
+  url = ?9,
+  author = ?10,
+  created_at = COALESCE(?11, created_at),
+  updated_at = ?12
+WHERE id = ?13
+RETURNING id
 `
 
-type ReplaceEventParams struct {
+type OverwriteEventParams struct {
 	OccurredAt        string
 	OccurredOffset    *int64
 	OccurredPrecision string
@@ -271,13 +272,14 @@ type ReplaceEventParams struct {
 	Text              string
 	Url               *string
 	Author            *string
-	CreatedAt         string
+	CreatedAt         *string
 	UpdatedAt         string
 	ID                string
 }
 
-func (q *Queries) ReplaceEvent(ctx context.Context, arg ReplaceEventParams) error {
-	_, err := q.db.ExecContext(ctx, replaceEvent,
+// OverwriteEvent returns id only so that a missing row is sql.ErrNoRows.
+func (q *Queries) OverwriteEvent(ctx context.Context, arg OverwriteEventParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, overwriteEvent,
 		arg.OccurredAt,
 		arg.OccurredOffset,
 		arg.OccurredPrecision,
@@ -292,73 +294,7 @@ func (q *Queries) ReplaceEvent(ctx context.Context, arg ReplaceEventParams) erro
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	return err
-}
-
-const updateEvent = `-- name: UpdateEvent :one
-UPDATE event
-SET occurred_at = ?,
-  occurred_offset = ?,
-  occurred_precision = ?,
-  approximate = ?,
-  occurred_raw = ?,
-  ended_at = ?,
-  source_id = ?,
-  text = ?,
-  url = ?,
-  author = ?,
-  updated_at = ?
-WHERE id = ?
-RETURNING id, timeline_id, seq, occurred_at, occurred_offset, occurred_precision, approximate, occurred_raw, ended_at, source_id, text, url, author, created_at, updated_at
-`
-
-type UpdateEventParams struct {
-	OccurredAt        string
-	OccurredOffset    *int64
-	OccurredPrecision string
-	Approximate       int64
-	OccurredRaw       *string
-	EndedAt           *string
-	SourceID          *string
-	Text              string
-	Url               *string
-	Author            *string
-	UpdatedAt         string
-	ID                string
-}
-
-func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event, error) {
-	row := q.db.QueryRowContext(ctx, updateEvent,
-		arg.OccurredAt,
-		arg.OccurredOffset,
-		arg.OccurredPrecision,
-		arg.Approximate,
-		arg.OccurredRaw,
-		arg.EndedAt,
-		arg.SourceID,
-		arg.Text,
-		arg.Url,
-		arg.Author,
-		arg.UpdatedAt,
-		arg.ID,
-	)
-	var i Event
-	err := row.Scan(
-		&i.ID,
-		&i.TimelineID,
-		&i.Seq,
-		&i.OccurredAt,
-		&i.OccurredOffset,
-		&i.OccurredPrecision,
-		&i.Approximate,
-		&i.OccurredRaw,
-		&i.EndedAt,
-		&i.SourceID,
-		&i.Text,
-		&i.Url,
-		&i.Author,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }

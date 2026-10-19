@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -84,11 +85,11 @@ type eventViewJSON struct {
 	eventJSON
 
 	// Never nil, so no links encode as [] rather than null.
-	Links []linkJSON `json:"links"`
+	Links []export.Link `json:"links"`
 }
 
-func newLinkJSONs(links []timeline.Link) []linkJSON {
-	objects := make([]linkJSON, 0, len(links))
+func newLinkJSONs(links []timeline.Link) []export.Link {
+	objects := make([]export.Link, 0, len(links))
 	for _, l := range links {
 		objects = append(objects, newLinkJSON(l))
 	}

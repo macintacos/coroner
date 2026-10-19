@@ -83,16 +83,23 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 			return err
 		}
 
-		_, err = q.UpdateAnnotation(ctx, sqlcgen.UpdateAnnotationParams{
-			Kind:      string(a.Kind),
-			Body:      a.Body,
-			Author:    a.Author,
-			SourceID:  source,
-			Url:       a.URL,
-			UpdatedAt: timeline.FormatInstant(a.UpdatedAt),
-			ID:        a.ID,
-		})
-		return err
+		return overwriteAnnotation(ctx, q, a, source, nil)
+	})
+	return err
+}
+
+// overwriteAnnotation stores a's kind, body, author, URL and updated at, naming the source
+// with sourceID and keeping the stored created at unless createdAt is set.
+func overwriteAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annotation, sourceID, createdAt *string) error {
+	_, err := q.OverwriteAnnotation(ctx, sqlcgen.OverwriteAnnotationParams{
+		Kind:      string(a.Kind),
+		Body:      a.Body,
+		Author:    a.Author,
+		SourceID:  sourceID,
+		Url:       a.URL,
+		CreatedAt: createdAt,
+		UpdatedAt: timeline.FormatInstant(a.UpdatedAt),
+		ID:        a.ID,
 	})
 	return err
 }

@@ -604,7 +604,8 @@ func timelineModel(name string, sources []string, nextID func() string) *rapid.G
 }
 
 // event draws an event without ids, its occurred_at at the start of its precision window in its
-// offset.
+// offset. It and its generators are copied as fullEvent and its generators in
+// internal/store/write_property_test.go; change both together.
 func event(sources []string) *rapid.Generator[timeline.Event] {
 	return rapid.Custom(func(t *rapid.T) timeline.Event {
 		e := timeline.Event{

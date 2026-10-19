@@ -144,32 +144,36 @@ func (q *Queries) ListTimelines(ctx context.Context) ([]Timeline, error) {
 	return items, nil
 }
 
-const replaceTimeline = `-- name: ReplaceTimeline :exec
+const overwriteTimeline = `-- name: OverwriteTimeline :one
 UPDATE timeline
-SET name = ?,
-  title = ?,
-  created_at = ?,
-  updated_at = ?
-WHERE id = ?
+SET name = ?1,
+  title = ?2,
+  created_at = COALESCE(?3, created_at),
+  updated_at = ?4
+WHERE id = ?5
+RETURNING id
 `
 
-type ReplaceTimelineParams struct {
+type OverwriteTimelineParams struct {
 	Name      string
 	Title     string
-	CreatedAt string
+	CreatedAt *string
 	UpdatedAt string
 	ID        string
 }
 
-func (q *Queries) ReplaceTimeline(ctx context.Context, arg ReplaceTimelineParams) error {
-	_, err := q.db.ExecContext(ctx, replaceTimeline,
+// OverwriteTimeline returns id only so that a missing row is sql.ErrNoRows.
+func (q *Queries) OverwriteTimeline(ctx context.Context, arg OverwriteTimelineParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, overwriteTimeline,
 		arg.Name,
 		arg.Title,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	return err
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const setNextSeq = `-- name: SetNextSeq :exec
@@ -186,39 +190,4 @@ type SetNextSeqParams struct {
 func (q *Queries) SetNextSeq(ctx context.Context, arg SetNextSeqParams) error {
 	_, err := q.db.ExecContext(ctx, setNextSeq, arg.NextSeq, arg.ID)
 	return err
-}
-
-const updateTimeline = `-- name: UpdateTimeline :one
-UPDATE timeline
-SET name = ?,
-  title = ?,
-  updated_at = ?
-WHERE id = ?
-RETURNING id, name, title, next_seq, created_at, updated_at
-`
-
-type UpdateTimelineParams struct {
-	Name      string
-	Title     string
-	UpdatedAt string
-	ID        string
-}
-
-func (q *Queries) UpdateTimeline(ctx context.Context, arg UpdateTimelineParams) (Timeline, error) {
-	row := q.db.QueryRowContext(ctx, updateTimeline,
-		arg.Name,
-		arg.Title,
-		arg.UpdatedAt,
-		arg.ID,
-	)
-	var i Timeline
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Title,
-		&i.NextSeq,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
 }

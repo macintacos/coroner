@@ -26,27 +26,18 @@ SELECT * FROM annotation
 WHERE event_id = ?
 ORDER BY created_at, id;
 
--- name: UpdateAnnotation :one
+-- name: OverwriteAnnotation :one
+-- OverwriteAnnotation returns id only so that a missing row is sql.ErrNoRows.
 UPDATE annotation
-SET kind = ?,
-  body = ?,
-  author = ?,
-  source_id = ?,
-  url = ?,
-  updated_at = ?
-WHERE id = ?
-RETURNING *;
-
--- name: ReplaceAnnotation :exec
-UPDATE annotation
-SET kind = ?,
-  body = ?,
-  author = ?,
-  source_id = ?,
-  url = ?,
-  created_at = ?,
-  updated_at = ?
-WHERE id = ?;
+SET kind = sqlc.arg(kind),
+  body = sqlc.arg(body),
+  author = sqlc.arg(author),
+  source_id = sqlc.arg(source_id),
+  url = sqlc.arg(url),
+  created_at = COALESCE(sqlc.narg(created_at), created_at),
+  updated_at = sqlc.arg(updated_at)
+WHERE id = sqlc.arg(id)
+RETURNING id;
 
 -- name: DeleteAnnotation :exec
 DELETE FROM annotation

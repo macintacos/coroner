@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -229,7 +230,7 @@ func readBound(flags *pflag.FlagSet, name string, now time.Time, z zone) (*time.
 
 type eventListJSON struct {
 	// Timelines are the timelines the events are listed from. Never nil, like Events.
-	Timelines []timelineJSON `json:"timelines"`
+	Timelines []export.Timeline `json:"timelines"`
 	// Never nil, so no events encode as [] rather than null.
 	Events    []eventJSON `json:"events"`
 	Truncated bool        `json:"truncated"`
@@ -247,7 +248,7 @@ type eventLineJSON struct {
 type timelineLineJSON struct {
 	Type string `json:"type"`
 
-	timelineJSON
+	export.Timeline
 }
 
 // eventListing is a page of events from timelines, with their attachments' objects, keyed by
@@ -259,7 +260,7 @@ type eventListing struct {
 }
 
 func newEventListJSON(l eventListing) eventListJSON {
-	timelines := make([]timelineJSON, 0, len(l.timelines))
+	timelines := make([]export.Timeline, 0, len(l.timelines))
 	for _, t := range l.timelines {
 		timelines = append(timelines, newTimelineJSON(t))
 	}
@@ -317,7 +318,7 @@ func writeEventPage(o output, z zone, l eventListing, noEvents string) error {
 // writeEventLines writes a JSONL line for each of l's timelines, then for each of its events.
 func writeEventLines(o output, l eventListing) error {
 	for _, t := range l.timelines {
-		err := writeJSON(o.out, false, timelineLineJSON{Type: "timeline", timelineJSON: newTimelineJSON(t)})
+		err := writeJSON(o.out, false, timelineLineJSON{Type: "timeline", Timeline: newTimelineJSON(t)})
 		if err != nil {
 			return err
 		}

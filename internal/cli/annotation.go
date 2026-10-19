@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -44,36 +45,16 @@ func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// annotationJSON is the canonical annotation object's keys, every one always present.
+// annotationJSON is the export annotation with its output-only attachments.
 type annotationJSON struct {
-	ID         string  `json:"id"`
-	TimelineID string  `json:"timeline_id"`
-	EventID    *string `json:"event_id"`
-	Kind       string  `json:"kind"`
-	Body       string  `json:"body"`
-	Author     *string `json:"author"`
-	Source     *string `json:"source"`
-	URL        *string `json:"url"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
+	export.Annotation
+
 	// Never nil, so no attachments encode as [] rather than null.
 	Attachments []attachmentJSON `json:"attachments"`
 }
 
 func newAnnotationJSON(a timeline.Annotation, attachments []attachmentJSON) annotationJSON {
-	return annotationJSON{
-		ID:          a.ID,
-		TimelineID:  a.TimelineID,
-		EventID:     a.EventID,
-		Kind:        string(a.Kind),
-		Body:        a.Body,
-		Author:      a.Author,
-		Source:      a.Source,
-		URL:         a.URL,
-		CreatedAt:   timeline.FormatInstant(a.CreatedAt),
-		UpdatedAt:   timeline.FormatInstant(a.UpdatedAt),
-		Attachments: append([]attachmentJSON{}, attachments...),
-	}
+	return annotationJSON{Annotation: export.NewAnnotation(a), Attachments: append([]attachmentJSON{}, attachments...)}
 }
 
 type annotationListJSON struct {

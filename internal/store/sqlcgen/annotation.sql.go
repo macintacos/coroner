@@ -219,31 +219,33 @@ func (q *Queries) ListEventAnnotations(ctx context.Context, eventID *string) ([]
 	return items, nil
 }
 
-const replaceAnnotation = `-- name: ReplaceAnnotation :exec
+const overwriteAnnotation = `-- name: OverwriteAnnotation :one
 UPDATE annotation
-SET kind = ?,
-  body = ?,
-  author = ?,
-  source_id = ?,
-  url = ?,
-  created_at = ?,
-  updated_at = ?
-WHERE id = ?
+SET kind = ?1,
+  body = ?2,
+  author = ?3,
+  source_id = ?4,
+  url = ?5,
+  created_at = COALESCE(?6, created_at),
+  updated_at = ?7
+WHERE id = ?8
+RETURNING id
 `
 
-type ReplaceAnnotationParams struct {
+type OverwriteAnnotationParams struct {
 	Kind      string
 	Body      string
 	Author    *string
 	SourceID  *string
 	Url       *string
-	CreatedAt string
+	CreatedAt *string
 	UpdatedAt string
 	ID        string
 }
 
-func (q *Queries) ReplaceAnnotation(ctx context.Context, arg ReplaceAnnotationParams) error {
-	_, err := q.db.ExecContext(ctx, replaceAnnotation,
+// OverwriteAnnotation returns id only so that a missing row is sql.ErrNoRows.
+func (q *Queries) OverwriteAnnotation(ctx context.Context, arg OverwriteAnnotationParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, overwriteAnnotation,
 		arg.Kind,
 		arg.Body,
 		arg.Author,
@@ -253,53 +255,7 @@ func (q *Queries) ReplaceAnnotation(ctx context.Context, arg ReplaceAnnotationPa
 		arg.UpdatedAt,
 		arg.ID,
 	)
-	return err
-}
-
-const updateAnnotation = `-- name: UpdateAnnotation :one
-UPDATE annotation
-SET kind = ?,
-  body = ?,
-  author = ?,
-  source_id = ?,
-  url = ?,
-  updated_at = ?
-WHERE id = ?
-RETURNING id, timeline_id, event_id, kind, body, author, source_id, url, created_at, updated_at
-`
-
-type UpdateAnnotationParams struct {
-	Kind      string
-	Body      string
-	Author    *string
-	SourceID  *string
-	Url       *string
-	UpdatedAt string
-	ID        string
-}
-
-func (q *Queries) UpdateAnnotation(ctx context.Context, arg UpdateAnnotationParams) (Annotation, error) {
-	row := q.db.QueryRowContext(ctx, updateAnnotation,
-		arg.Kind,
-		arg.Body,
-		arg.Author,
-		arg.SourceID,
-		arg.Url,
-		arg.UpdatedAt,
-		arg.ID,
-	)
-	var i Annotation
-	err := row.Scan(
-		&i.ID,
-		&i.TimelineID,
-		&i.EventID,
-		&i.Kind,
-		&i.Body,
-		&i.Author,
-		&i.SourceID,
-		&i.Url,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
