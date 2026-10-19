@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -79,7 +78,7 @@ var _ = Describe("Schema", func() {
 	}
 
 	BeforeEach(func(ctx SpecContext) {
-		s, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
+		s, err := store.Open(ctx, newDatabase())
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)
 		queries = sqlcgen.New(s.DB())

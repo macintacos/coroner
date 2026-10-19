@@ -438,7 +438,7 @@ func (m model) deletedEventIDs() []string {
 
 // seedStore writes m into a new database at path through the store API.
 func seedStore(ctx context.Context, path string, m model) error {
-	s, err := store.Open(ctx, path)
+	s, err := store.OpenWithoutBlobSync(ctx, path)
 	if err != nil {
 		return err
 	}

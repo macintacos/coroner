@@ -48,13 +48,13 @@ type ChangeOptions struct {
 type Tx struct {
 	q       *sqlcgen.Queries
 	db      sqlcgen.DBTX // for SQL sqlc did not generate
-	blobDir string
+	blobDir blobDir
 	owner   *timeline.AttachmentOwner // the owner Attach named; nil attaches nothing
 	blobs   map[string]stagedBlob     // the Change's Blobs, by SHA256
 	claimed []stagedBlob              // the blobs Tx.Import claimed
 }
 
-func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
+func newTx(db sqlcgen.DBTX, blobDir blobDir) *Tx {
 	return &Tx{q: sqlcgen.New(db), db: db, blobDir: blobDir}
 }
 

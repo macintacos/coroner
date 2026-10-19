@@ -258,7 +258,7 @@ func (tx *Tx) importAttachments(ctx context.Context, attachments []timeline.Atta
 func (tx *Tx) claimBlob(a timeline.Attachment) error {
 	blob, ok := tx.blobs[a.SHA256]
 	if !ok {
-		_, err := os.Lstat(filepath.Join(tx.blobDir, a.SHA256))
+		_, err := os.Lstat(filepath.Join(tx.blobDir.path, a.SHA256))
 		if err != nil {
 			return fmt.Errorf("attachment %s: no blob %s: %w", a.ID, a.SHA256, ErrNotFound)
 		}

@@ -58,7 +58,7 @@ var _ = Describe("Import", func() {
 	)
 
 	BeforeEach(func(ctx SpecContext) {
-		dbPath = filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		dbPath = newDatabase()
 		blobDir = config.BlobDir(dbPath)
 		var err error
 		s, err = store.Open(ctx, dbPath)

@@ -125,7 +125,7 @@ var _ = Describe("Open", func() {
 		DeferCleanup(conn.Close)
 		Expect(conn.ExecContext(ctx, "BEGIN EXCLUSIVE")).Error().NotTo(HaveOccurred())
 
-		_, err = store.Open(ctx, path)
+		_, err = store.OpenWithBusyTimeout(ctx, path, 10*time.Millisecond)
 
 		Expect(err).To(MatchError(store.ErrBusy))
 	}, SpecTimeout(time.Minute))

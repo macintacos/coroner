@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -44,7 +43,7 @@ func changeEvent(n int) timeline.Event {
 // openStoreAt opens a store at a fresh path, closed when the spec ends, and returns the path.
 func openStoreAt(ctx context.Context) (*store.Store, string) {
 	GinkgoHelper()
-	path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+	path := newDatabase()
 	s, err := store.Open(ctx, path)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(s.Close)

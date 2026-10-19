@@ -138,6 +138,8 @@ linters:
           msg: only main.go talks to the process
         - pattern: ^time\.(Now|Since|Until)$
           msg: inject a clock (func() time.Time)
+        - pattern: ^store\.OpenWithoutBlobSync$
+          msg: a power loss can lose its blobs; only tests may skip the sync
     nolintlint:
       require-explanation: true
       require-specific: true

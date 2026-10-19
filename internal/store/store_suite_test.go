@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -13,14 +14,36 @@ import (
 )
 
 func TestStore(t *testing.T) {
+	t.Parallel()
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Store Suite")
+}
+
+// migrated is a database Open migrated to the latest schema once per suite run, which
+// newDatabase copies so a spec not about migrating skips it.
+var migrated []byte //nolint:gochecknoglobals // written once in BeforeSuite, read-only after
+
+var _ = BeforeSuite(func(ctx SpecContext) {
+	path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+	s, err := store.Open(ctx, path)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(s.Close()).To(Succeed())
+	migrated, err = os.ReadFile(filepath.Clean(path))
+	Expect(err).NotTo(HaveOccurred())
+})
+
+// newDatabase returns the path of a copy of the migrated database in the spec's temp directory.
+func newDatabase() string {
+	GinkgoHelper()
+	path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+	Expect(os.WriteFile(path, migrated, 0o600)).To(Succeed())
+	return path
 }
 
 // openStore opens a new store in the spec's temp directory, closed when the spec ends.
 func openStore(ctx context.Context) *store.Store {
 	GinkgoHelper()
-	s, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
+	s, err := store.Open(ctx, newDatabase())
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(s.Close)
 	return s

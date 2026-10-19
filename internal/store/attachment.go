@@ -132,7 +132,7 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 			return err
 		}
 
-		deleted, err = deleteUnreferenced(s.blobDir, referenced)
+		deleted, err = deleteUnreferenced(s.blobDir.path, referenced)
 		return err
 	})
 	if err != nil {
@@ -161,7 +161,7 @@ func owned(staged []stagedAttachment, owner timeline.AttachmentOwner) []stagedAt
 
 // stageAttachments stages the content of each of attachments, with no owner yet, outside any
 // transaction, removing what it staged when one fails.
-func stageAttachments(blobDir string, attachments []NewAttachment) ([]stagedAttachment, error) {
+func stageAttachments(blobDir blobDir, attachments []NewAttachment) ([]stagedAttachment, error) {
 	staged := make([]stagedAttachment, 0, len(attachments))
 	for _, a := range attachments {
 		blob, err := stageBlob(blobDir, a.Content)
@@ -184,7 +184,7 @@ func stageAttachments(blobDir string, attachments []NewAttachment) ([]stagedAtta
 // insertAttachments names each staged blob by its hash and inserts its row, inside the write
 // transaction q belongs to, which keeps GarbageCollectBlobs from deleting a blob before the
 // row that references it commits.
-func insertAttachments(ctx context.Context, q *sqlcgen.Queries, blobDir string, staged []stagedAttachment) error {
+func insertAttachments(ctx context.Context, q *sqlcgen.Queries, blobDir blobDir, staged []stagedAttachment) error {
 	for _, a := range staged {
 		err := commitBlob(blobDir, a.blob)
 		if err != nil {

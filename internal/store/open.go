@@ -39,7 +39,7 @@ var migrations embed.FS
 type Store struct {
 	db         *sql.DB
 	migrations fs.FS
-	blobDir    string
+	blobDir    blobDir
 }
 
 // Schema is a database's schema version, and the latest one this build embeds.
@@ -55,12 +55,41 @@ type Schema struct {
 // not create, ErrDatabaseTooNew for a database a newer coroner migrated, even while Open
 // waited on the lock, and ErrBackupExists when that backup is already there.
 func Open(ctx context.Context, path string) (*Store, error) {
-	fsys, err := embeddedMigrations()
+	opts, err := defaultOpenOptions()
 	if err != nil {
 		return nil, err
 	}
 
-	return open(ctx, path, fsys)
+	return open(ctx, path, opts)
+}
+
+// OpenWithoutBlobSync is Open without syncing a stored blob or the blob directory, which on
+// macOS takes milliseconds each. A power loss can then lose a committed attachment's blob, so
+// only tests, which never crash the machine, may call it.
+func OpenWithoutBlobSync(ctx context.Context, path string) (*Store, error) {
+	opts, err := defaultOpenOptions()
+	if err != nil {
+		return nil, err
+	}
+	opts.syncBlob = func(*os.File) error { return nil }
+
+	return open(ctx, path, opts)
+}
+
+// openOptions is what open varies between Open and the openers tests use.
+type openOptions struct {
+	migrations  fs.FS
+	busyTimeout time.Duration
+	syncBlob    func(*os.File) error
+}
+
+func defaultOpenOptions() (openOptions, error) {
+	fsys, err := embeddedMigrations()
+	if err != nil {
+		return openOptions{}, err
+	}
+
+	return openOptions{migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync}, nil
 }
 
 func embeddedMigrations() (fs.FS, error) {
@@ -74,12 +103,16 @@ func embeddedMigrations() (fs.FS, error) {
 
 // storeAfter returns the Store over db once checkErr, the result of checking it, is nil, and
 // otherwise closes db.
-func storeAfter(path string, db *sql.DB, fsys fs.FS, checkErr error) (*Store, error) {
+func storeAfter(path string, db *sql.DB, opts openOptions, checkErr error) (*Store, error) {
 	if checkErr != nil {
 		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(checkErr)), db.Close())
 	}
 
-	return &Store{db: db, migrations: fsys, blobDir: config.BlobDir(path)}, nil
+	return &Store{
+		db:         db,
+		migrations: opts.migrations,
+		blobDir:    blobDir{path: config.BlobDir(path), sync: opts.syncBlob},
+	}, nil
 }
 
 func tooNew(current int64) error {
@@ -92,7 +125,7 @@ func tooNew(current int64) error {
 // path, and ErrForeignDatabase or ErrDatabaseTooNew as Open does. Below the latest schema,
 // only Schema may be called.
 func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
-	fsys, err := embeddedMigrations()
+	opts, err := defaultOpenOptions()
 	if err != nil {
 		return nil, err
 	}
@@ -107,13 +140,13 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 	}
 
 	// Not immutable=1: it would leave no -shm/-wal behind, but it ignores a live writer's WAL.
-	db, err := sql.Open("sqlite", dsn(path)+"&mode=ro")
+	db, err := sql.Open("sqlite", dsn(path, opts.busyTimeout)+"&mode=ro")
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	_, err = inspect(ctx, db, fsys)
-	return storeAfter(path, db, fsys, err)
+	_, err = inspect(ctx, db, opts.migrations)
+	return storeAfter(path, db, opts, err)
 }
 
 // Schema reads the database's schema version. It is safe to call below Latest; every other
@@ -137,7 +170,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
+func open(ctx context.Context, path string, opts openOptions) (*Store, error) {
 	err := os.MkdirAll(filepath.Dir(path), 0o700)
 	if err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
@@ -148,12 +181,12 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 		return nil, directoryError(path)
 	}
 
-	db, err := sql.Open("sqlite", dsn(path))
+	db, err := sql.Open("sqlite", dsn(path, opts.busyTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	return storeAfter(path, db, fsys, prepare(ctx, db, path, fsys))
+	return storeAfter(path, db, opts, prepare(ctx, db, path, opts.migrations))
 }
 
 // directoryError is the error for a directory at the database path, which SQLite reports only
@@ -165,9 +198,9 @@ func directoryError(path string) error {
 // dsn escapes path because SQLite reads a file: URI, where ?, # and % are syntax.
 // _txlock=immediate makes every write transaction BEGIN IMMEDIATE, while modernc begins a
 // ReadOnly one deferred, which keeps reads off the write lock.
-func dsn(path string) string {
+func dsn(path string, busy time.Duration) string {
 	return fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(%d)&_txlock=immediate",
-		url.PathEscape(path), busyTimeout.Milliseconds())
+		url.PathEscape(path), busy.Milliseconds())
 }
 
 func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {

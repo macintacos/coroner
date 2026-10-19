@@ -17,6 +17,7 @@ const textRunes = "aAbBéÉ%_"
 
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 func TestListEventsMatchesReferenceFilter(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	s, nextID := openPropertyStore(t)
 

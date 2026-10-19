@@ -14,6 +14,7 @@ import (
 
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 func TestEventWritesReadBack(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	s, nextID := openPropertyStore(t)
 

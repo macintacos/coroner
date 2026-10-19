@@ -92,8 +92,8 @@ var _ = Describe("Attachments", func() {
 	}
 
 	BeforeEach(func(ctx SpecContext) {
-		dir = GinkgoT().TempDir()
-		dbPath = filepath.Join(dir, "coroner.db")
+		dbPath = newDatabase()
+		dir = filepath.Dir(dbPath)
 		blobDir = config.BlobDir(dbPath)
 		var err error
 		s, err = store.Open(ctx, dbPath)
@@ -120,6 +120,29 @@ var _ = Describe("Attachments", func() {
 			Expect(permissions(blob)).To(Equal(os.FileMode(0o600)))
 			Expect(permissions(blobDir)).To(Equal(os.FileMode(0o700)))
 		})
+
+	It("syncs a staged blob, then the blob directory, and its parent when it creates it", func(ctx SpecContext) {
+		var synced []string
+		recording, err := store.OpenWithBlobSync(ctx, filepath.Join(dir, "recorded", "coroner.db"),
+			func(f *os.File) error {
+				synced = append(synced, f.Name())
+				return f.Sync()
+			})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(recording.Close)
+		Expect(recording.CreateTimeline(ctx, incident)).To(Succeed())
+		Expect(recording.AddEvent(ctx, pager, uuid(9))).Error().NotTo(HaveOccurred())
+
+		Expect(attach(ctx, recording, newAttachment(10, onPager, "grafana.png"), bytes.NewReader(screenshot))).
+			Error().NotTo(HaveOccurred())
+
+		recordedBlobs := config.BlobDir(filepath.Join(dir, "recorded", "coroner.db"))
+		Expect(synced).To(HaveExactElements(
+			filepath.Join(dir, "recorded"),
+			HavePrefix(filepath.Join(recordedBlobs, ".tmp-")),
+			recordedBlobs,
+		))
+	})
 
 	It("lists an annotation's attachments oldest first", func(ctx SpecContext) {
 		later := add(ctx, newAttachment(11, onEvidence, "later.png"), screenshot)

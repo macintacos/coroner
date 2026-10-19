@@ -17,6 +17,12 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
+// blobDir is the blob directory, and how a blob or the directory is made durable.
+type blobDir struct {
+	path string
+	sync func(*os.File) error
+}
+
 // sniffLen is how many leading bytes http.DetectContentType considers.
 const sniffLen = 512
 
@@ -31,12 +37,12 @@ type stagedBlob struct {
 
 // stageBlob copies content into a new temporary file in blobDir, creating blobDir (mode
 // 0700) when missing, and hashes it on the way.
-func stageBlob(blobDir string, content io.Reader) (stagedBlob, error) {
-	err := os.Mkdir(blobDir, 0o700)
+func stageBlob(blobDir blobDir, content io.Reader) (stagedBlob, error) {
+	err := os.Mkdir(blobDir.path, 0o700)
 	switch {
 	case err == nil:
 		// Without it, a power loss can drop the new directory, and with it a committed row's blob.
-		err = syncDir(filepath.Dir(blobDir))
+		err = syncDir(filepath.Dir(blobDir.path), blobDir.sync)
 	case errors.Is(err, fs.ErrExist):
 		err = nil
 	}
@@ -44,12 +50,12 @@ func stageBlob(blobDir string, content io.Reader) (stagedBlob, error) {
 		return stagedBlob{}, fmt.Errorf("create blob directory: %w", err)
 	}
 
-	f, err := os.CreateTemp(blobDir, ".tmp-*")
+	f, err := os.CreateTemp(blobDir.path, ".tmp-*")
 	if err != nil {
 		return stagedBlob{}, fmt.Errorf("stage blob: %w", err)
 	}
 
-	staged, err := writeBlob(f, content)
+	staged, err := writeBlob(f, content, blobDir.sync)
 	err = errors.Join(err, f.Close())
 	if err != nil {
 		return stagedBlob{}, errors.Join(fmt.Errorf("stage blob: %w", err), os.Remove(f.Name()))
@@ -61,7 +67,7 @@ func stageBlob(blobDir string, content io.Reader) (stagedBlob, error) {
 
 // stageBlobs stages each of contents, outside any transaction, removing what it staged when
 // one fails.
-func stageBlobs(blobDir string, contents []io.Reader) ([]stagedBlob, error) {
+func stageBlobs(blobDir blobDir, contents []io.Reader) ([]stagedBlob, error) {
 	staged := make([]stagedBlob, 0, len(contents))
 	for _, content := range contents {
 		blob, err := stageBlob(blobDir, content)
@@ -96,7 +102,7 @@ func bySHA256(staged []stagedBlob) map[string]stagedBlob {
 
 // writeBlob copies content into f and syncs it, returning its hash, size and first sniffLen
 // bytes.
-func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {
+func writeBlob(f *os.File, content io.Reader, sync func(*os.File) error) (stagedBlob, error) {
 	head := make([]byte, sniffLen)
 	n, err := io.ReadFull(content, head)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -110,7 +116,7 @@ func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {
 		return stagedBlob{}, err
 	}
 
-	err = f.Sync()
+	err = sync(f)
 	if err != nil {
 		return stagedBlob{}, err
 	}
@@ -121,8 +127,8 @@ func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {
 // commitBlob names a staged blob by its hash and syncs blobDir so the name survives a
 // crash, or discards it when a blob with that hash already exists. change may retry it,
 // so a staged file already renamed is not an error.
-func commitBlob(blobDir string, staged stagedBlob) error {
-	final := filepath.Join(blobDir, staged.sha256)
+func commitBlob(blobDir blobDir, staged stagedBlob) error {
+	final := filepath.Join(blobDir.path, staged.sha256)
 	_, err := os.Lstat(final)
 	switch {
 	case err == nil:
@@ -136,19 +142,19 @@ func commitBlob(blobDir string, staged stagedBlob) error {
 		if err != nil {
 			return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 		}
-		return syncDir(blobDir)
+		return syncDir(blobDir.path, blobDir.sync)
 	default:
 		return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 	}
 }
 
-func syncDir(dir string) error {
+func syncDir(dir string, sync func(*os.File) error) error {
 	d, err := os.Open(filepath.Clean(dir))
 	if err != nil {
 		return fmt.Errorf("sync blob directory: %w", err)
 	}
 
-	return errors.Join(d.Sync(), d.Close())
+	return errors.Join(sync(d), d.Close())
 }
 
 // deleteUnreferenced deletes every blob in blobDir whose hash is not in referenced and

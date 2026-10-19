@@ -82,7 +82,7 @@ func (h harness) app(args ...string) cli.App {
 		MkdirAll:          os.MkdirAll,
 		Now:               now,
 		NewID:             newID,
-		OpenStore:         store.Open,
+		OpenStore:         store.OpenWithoutBlobSync,
 		OpenStoreReadOnly: store.OpenReadOnly,
 	}
 }
