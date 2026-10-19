@@ -39,7 +39,7 @@ type mergeOutcome struct {
 func merge(ctx context.Context, s *store.Store, in mergeInput, mode mergeMode) (mergeOutcome, error) {
 	ids := replayIDs{draw: in.newID}
 	var out mergeOutcome
-	plan := func(tx *store.Tx) error {
+	planInTx := func(tx *store.Tx) error {
 		ids.rewind()
 		out = mergeOutcome{}
 		guard, err := mergeGuard(ctx, tx, in.timelines, in.lookupEnv)
@@ -57,7 +57,7 @@ func merge(ctx context.Context, s *store.Store, in mergeInput, mode mergeMode) (
 	}
 
 	if mode == mergePlanOnly {
-		err := s.Read(ctx, plan)
+		err := s.Read(ctx, planInTx)
 		if err != nil {
 			return mergeOutcome{}, err
 		}
@@ -71,7 +71,7 @@ func merge(ctx context.Context, s *store.Store, in mergeInput, mode mergeMode) (
 	}
 
 	_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit, Blobs: sidecarBlobs(in.sidecars, in.localBlobs)}, func(tx *store.Tx) error {
-		err := plan(tx)
+		err := planInTx(tx)
 		if err != nil || !out.plan.canWrite() {
 			return err
 		}

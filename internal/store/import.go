@@ -70,7 +70,7 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) ([]timeline.Eve
 
 	q := tx.q
 	events := inSeqOrder(records.Events)
-	claimed := len(tx.claimed)
+	claimedBefore := len(tx.claimed)
 	err := tx.atomic(ctx, func() error {
 		for _, step := range []func() error{
 			func() error { return writeEach(ctx, q, records.Sources, createSource) },
@@ -92,7 +92,7 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) ([]timeline.Eve
 		return nil
 	})
 	if err != nil {
-		tx.claimed = tx.claimed[:claimed]
+		tx.claimed = tx.claimed[:claimedBefore]
 		return nil, err
 	}
 
