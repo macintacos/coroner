@@ -137,7 +137,7 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 	}
 
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in, timelineRule{}), app.LookupEnv)
+		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -171,7 +171,7 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	change := linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from"}
 
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in, timelineRule{}), app.LookupEnv)
+		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}

@@ -42,11 +42,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 	dryRun, _ := in.boolean("dry-run")
 	var added eventsAdded
 	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, timelineInputOf(in, timelineRule{}), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		t, err := sel.one(ctx, s)
+		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}

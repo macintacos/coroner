@@ -102,11 +102,8 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 	nameOrID := in.value("timeline")
 	var target timelineToEdit
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		sel, err := selectTimelines(ctx, st, timelineInputOf(in, timelineRule{positional: true}), s.app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		target.timeline, err = sel.one(ctx, st)
+		var err error
+		target.timeline, err = selectOne(ctx, st, timelineInput{positional: nameOrID}, s.app.LookupEnv)
 		if err != nil {
 			return err
 		}

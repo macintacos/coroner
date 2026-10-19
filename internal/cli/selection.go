@@ -53,7 +53,7 @@ func addTimelineFlag(flags *pflag.FlagSet) {
 const timelineUsage = "Timeline `name|id` to act on"
 
 // timelineField is -t as a write command's field: a stringsField because -t is a StringArray
-// on every command; wrapRunErrors refuses a second timeline.
+// on every command; wrapRunErrors refuses a second timeline on a command that reads one.
 func timelineField() field {
 	return field{name: "timeline", shorthand: "t", typ: stringsField, usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
 }
@@ -70,14 +70,14 @@ const oneTimelineFormatsAnnotation = "oneTimelineFormats"
 
 // timelineRule is how many timelines a command reads, and how they may be named.
 type timelineRule struct {
-	command    string
+	command    string // the command path the count error names
 	several    bool
 	positional bool
-	guard      bool
+	guard      bool // -t only: no CORONER_TIMELINE or current-timeline layer
 	oneFormats []format
 }
 
-// timelineInput is what the command line names, read and checked before the store opens.
+// timelineInput is what the command line or a write command's fields name.
 type timelineInput struct {
 	names      []string
 	overlay    *string
@@ -128,7 +128,7 @@ func readTimelineInput(flags *pflag.FlagSet, args []string, rule timelineRule) (
 			return timelineInput{}, &Error{
 				Kind:    KindUsage,
 				Message: "pass either a timeline name or id, or -t",
-				Hint:    "Run 'coroner timeline view --help' for usage.",
+				Hint:    "Run '" + rule.command + " --help' for usage.",
 			}
 		}
 		in.positional = &args[0]
@@ -176,18 +176,10 @@ func readOverlay(flags *pflag.FlagSet, names []string) (*string, error) {
 	return overlay, nil
 }
 
-// timelineInputOf returns the timelines a write command's fields name under rule: the timeline
-// field is the positional name when rule is positional, else -t's values. The flags and form
-// fields have already checked them.
-func timelineInputOf(in fieldValues, rule timelineRule) timelineInput {
-	input := timelineInput{rule: rule}
-	if rule.positional {
-		input.positional = in.value("timeline")
-		return input
-	}
-	input.names = appendUnique(nil, in.values("timeline")...)
-
-	return input
+// timelineInputOf returns the timelines -t names in a write command's or form's fields, which
+// have already checked them.
+func timelineInputOf(in fieldValues) timelineInput {
+	return timelineInput{names: appendUnique(nil, in.values("timeline")...)}
 }
 
 func checkTimelineFlag(value string) error {
@@ -198,35 +190,26 @@ func checkTimelineFlag(value string) error {
 	return &Error{Kind: KindUsage, Message: "-t must not be empty", Hint: "Pass -t with a timeline name or id."}
 }
 
-// resolveTimeline returns the nameOrID that selects the timeline, and its layer: flag when
-// -t was given, then a non-empty CORONER_TIMELINE, then stored, the current timeline's id.
-// It returns ("", "") when no layer selects one.
-func resolveTimeline(flag *string, lookupEnv func(string) (string, bool), stored string) (string, selectedBy) {
+// envTimeline returns CORONER_TIMELINE, or "" when it is unset or empty.
+func envTimeline(lookupEnv func(string) (string, bool)) string {
 	env, _ := lookupEnv("CORONER_TIMELINE")
-	switch {
-	case flag != nil:
-		return *flag, selectedByFlag
-	case env != "":
-		return env, selectedByEnv
-	case stored != "":
-		return stored, selectedByUse
-	}
-
-	return "", ""
+	return env
 }
 
-// selection is what selected a command's timelines: none, and by "", when nothing does.
+// selection is the timelines a command's input selects and the layer that selected them: none,
+// and by "", when no layer names one.
 type selection struct {
 	timelines  []timeline.Timeline
 	by         selectedBy
 	oneFormats []format
 }
 
-// selectTimelines returns the timelines in selects: --overlay's, in the overlay's order, then the
-// positional name, then each of -t's names once in the order named, then, unless in's rule is
-// guard, a non-empty CORONER_TIMELINE and the current timeline. A layer naming a missing
-// timeline is timeline_not_found rather than falling through to the next, so a typo never acts
-// on another timeline.
+// selectTimelines returns the timelines the first layer that names any selects: --overlay's, in
+// the overlay's order; the positional name; -t's names, each once in the order named; then,
+// unless in's rule is guard, a non-empty CORONER_TIMELINE, then the current timeline.
+// readTimelineInput lets at most one of --overlay, the positional name and -t through. A layer
+// naming a missing timeline is timeline_not_found rather than falling through to the next, so a
+// typo never acts on another timeline.
 func selectTimelines(
 	ctx context.Context, s *store.Store, in timelineInput, lookupEnv func(string) (string, bool),
 ) (selection, error) {
@@ -253,7 +236,20 @@ func selectTimelines(
 	return sel, nil
 }
 
-// one returns the timeline sel selected, or timeline_required when it selected none.
+// selectOne returns the one timeline in selects, or timeline_required when none does.
+func selectOne(
+	ctx context.Context, s *store.Store, in timelineInput, lookupEnv func(string) (string, bool),
+) (timeline.Timeline, error) {
+	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	if err != nil {
+		return timeline.Timeline{}, err
+	}
+
+	return sel.one(ctx, s)
+}
+
+// one returns the first timeline sel selected, the only one a one-timeline command can, or
+// timeline_required when it selected none.
 func (sel selection) one(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
 	if len(sel.timelines) == 0 {
 		return timeline.Timeline{}, timelineRequiredError(ctx, s)
@@ -272,9 +268,10 @@ func (sel selection) all(ctx context.Context, s *store.Store) ([]timeline.Timeli
 }
 
 // checkFormat returns usage when sel holds several timelines and f is one of the formats that
-// print one. It runs after the lookup, so a timeline's name and its id count once, and before
-// any read.
-// ponytail: worded by format, since view's one-timeline format (json) and export's (svg) are disjoint; key by command if they ever overlap.
+// print one. Call it before reading events; it counts the deduplicated selection, so a name and
+// its id count once.
+// ponytail: worded by format, since view's one-timeline format (json) and export's (svg) are
+// disjoint; key by command if they ever overlap.
 func (sel selection) checkFormat(f format) error {
 	if len(sel.timelines) <= 1 || !slices.Contains(sel.oneFormats, f) {
 		return nil
@@ -282,20 +279,21 @@ func (sel selection) checkFormat(f format) error {
 	if f == formatJSON {
 		return &Error{
 			Kind:    KindUsage,
-			Message: fmt.Sprintf("--format json prints one timeline, and -t selects %d", len(sel.timelines)),
+			Message: fmt.Sprintf("--format json prints one timeline, and %s selects %d", sel.by.setting(), len(sel.timelines)),
 			Hint:    "Pass -t once, or list the timelines' events with 'coroner event list -t <timeline>... --json'.",
 		}
 	}
 
 	return &Error{
 		Kind:    KindUsage,
-		Message: fmt.Sprintf("--format %s exports one timeline, and -t selects %d", f, len(sel.timelines)),
-		Hint:    "Pass -t once, or overlay the timelines with --format json, jsonl, md, mermaid or html.",
+		Message: fmt.Sprintf("--format %s exports one timeline, and %s selects %d", f, sel.by.setting(), len(sel.timelines)),
+		Hint:    "Pass -t for one timeline, or overlay the timelines with --format json, jsonl, md, mermaid or html.",
 	}
 }
 
 // withoutStore returns timeline_not_found when in names a timeline in a database that does not
-// exist yet, which holds none, or nil when it names none.
+// exist yet, which holds none, or nil when it names none. It applies only under the guard rule,
+// since it never consults CORONER_TIMELINE.
 func (in timelineInput) withoutStore() error {
 	if len(in.names) == 0 {
 		return nil
@@ -326,7 +324,7 @@ func namedTimelines(ctx context.Context, s *store.Store, names []string) ([]time
 func defaultTimeline(
 	ctx context.Context, s *store.Store, lookupEnv func(string) (string, bool),
 ) ([]timeline.Timeline, selectedBy, error) {
-	if env, _ := lookupEnv("CORONER_TIMELINE"); env != "" {
+	if env := envTimeline(lookupEnv); env != "" {
 		t, err := findLayerTimeline(ctx, s, fmt.Sprintf("CORONER_TIMELINE=%q", env), env)
 		return []timeline.Timeline{t}, selectedByEnv, err
 	}
@@ -417,24 +415,24 @@ func timelineRequiredError(ctx context.Context, s *store.Store) error {
 // timeline commands act on over the current timeline, or "" when the variable is unset or
 // empty.
 func shadowNotice(lookupEnv func(string) (string, bool)) string {
-	nameOrID, by := resolveTimeline(nil, lookupEnv, "")
-	if by != selectedByEnv {
+	env := envTimeline(lookupEnv)
+	if env == "" {
 		return ""
 	}
 
-	return fmt.Sprintf("CORONER_TIMELINE=%q selects the timeline commands act on", nameOrID)
+	return fmt.Sprintf("CORONER_TIMELINE=%q selects the timeline commands act on", env)
 }
 
 // shadowWarning returns the warning printed once picked is stored while CORONER_TIMELINE
 // selects another timeline, or "" when it is unset, empty or names picked.
 func shadowWarning(lookupEnv func(string) (string, bool), picked timeline.Timeline) string {
-	nameOrID, by := resolveTimeline(nil, lookupEnv, "")
-	if by != selectedByEnv || nameOrID == picked.Name || nameOrID == picked.ID {
+	env := envTimeline(lookupEnv)
+	if env == "" || env == picked.Name || env == picked.ID {
 		return ""
 	}
 
 	return fmt.Sprintf("CORONER_TIMELINE=%q still selects the timeline commands act on. Unset it to act on `%s`.",
-		nameOrID, picked.Name)
+		env, picked.Name)
 }
 
 // addOverlayFlag declares --overlay, on a command whose -t reads several timelines.

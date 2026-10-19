@@ -8,11 +8,13 @@ import (
 	"io"
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -52,17 +54,6 @@ var _ = Describe("timeline selection", func() {
 		return failure
 	}
 
-	// storeless is app failing the spec if anything opens the store.
-	storeless := func() App {
-		a := app
-		a.OpenStore = func(context.Context, string) (*store.Store, error) {
-			Fail("coroner opened the store")
-			return nil, errors.New("unreachable")
-		}
-		a.OpenStoreReadOnly = a.OpenStore
-		return a
-	}
-
 	nameEach := func(timelines []timeline.Timeline) []string {
 		var named []string
 		for _, t := range timelines {
@@ -71,13 +62,9 @@ var _ = Describe("timeline selection", func() {
 		return named
 	}
 
-	// selected returns the names of the timelines names, overlay, env or the current timeline
-	// select, and the layer that selected them.
-	selected := func(ctx context.Context, names []string, overlay *string, env map[string]string) ([]string, selectedBy, error) {
-		in := timelineInput{names: names, overlay: overlay}
-		if overlay != nil || len(names) > 1 {
-			in.rule = timelineRule{several: true}
-		}
+	// selected returns the names of the timelines in, env or the current timeline select, and
+	// the layer that selected them.
+	selected := func(ctx context.Context, in timelineInput, env map[string]string) ([]string, selectedBy, error) {
 		sel, err := selectTimelines(ctx, s, in, lookup(env))
 		if err != nil || sel.by == "" {
 			return nil, sel.by, err
@@ -137,29 +124,32 @@ var _ = Describe("timeline selection", func() {
 
 	Describe("against the store", func() {
 		DescribeTable("selects by the first layer that names a timeline",
-			func(ctx SpecContext, flag []string, env map[string]string, noCurrent bool, want []string, wantBy selectedBy) {
+			func(ctx SpecContext, in timelineInput, env map[string]string, noCurrent bool, want []string, wantBy selectedBy) {
 				if noCurrent {
 					run(ctx, "timeline", "use", "--clear")
 				}
 
-				got, by, err := selected(ctx, flag, nil, env)
+				got, by, err := selected(ctx, in, env)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(got).To(Equal(want))
 				Expect(by).To(Equal(wantBy))
 			},
-			Entry("the flag over the variable and the stored timeline",
-				[]string{"alpha"}, map[string]string{"CORONER_TIMELINE": "beta"}, false, []string{"alpha"}, selectedByFlag),
+			Entry("the flag over the variable and the stored timeline", timelineInput{names: []string{"alpha"}},
+				map[string]string{"CORONER_TIMELINE": "beta"}, false, []string{"alpha"}, selectedByFlag),
 			Entry("the variable over the stored timeline",
-				nil, map[string]string{"CORONER_TIMELINE": "beta"}, false, []string{"beta"}, selectedByEnv),
+				timelineInput{}, map[string]string{"CORONER_TIMELINE": "beta"}, false, []string{"beta"}, selectedByEnv),
 			Entry("the stored timeline under an empty variable",
-				nil, map[string]string{"CORONER_TIMELINE": ""}, false, []string{"gamma"}, selectedByUse),
-			Entry("nothing when no layer names one", nil, nil, true, []string(nil), selectedBy("")),
+				timelineInput{}, map[string]string{"CORONER_TIMELINE": ""}, false, []string{"gamma"}, selectedByUse),
+			Entry("nothing when no layer names one", timelineInput{}, nil, true, []string(nil), selectedBy("")),
+			Entry("nothing under guard, past the variable and the stored timeline",
+				timelineInput{rule: timelineRule{guard: true}}, map[string]string{"CORONER_TIMELINE": "beta"}, false,
+				[]string(nil), selectedBy("")),
 		)
 
 		DescribeTable("never falls through a layer naming a missing timeline",
 			func(ctx SpecContext, flag []string, env map[string]string, message string) {
-				_, _, err := selected(ctx, flag, nil, env)
+				_, _, err := selected(ctx, timelineInput{names: flag}, env)
 
 				Expect(err).To(HaveField("Kind", KindTimelineNotFound))
 				Expect(err).To(HaveField("Message", message))
@@ -171,14 +161,14 @@ var _ = Describe("timeline selection", func() {
 
 		It("reads one timeline for a name and its id given together on a command that reads several",
 			func(ctx SpecContext) {
-				got, _, err := selected(ctx, []string{"alpha", alphaID}, nil, nil)
+				got, _, err := selected(ctx, timelineInput{names: []string{"alpha", alphaID}}, nil)
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(got).To(Equal([]string{"alpha"}))
 			})
 
 		It("reads an overlay's timelines in its order", func(ctx SpecContext) {
-			got, _, err := selected(ctx, nil, new("o"), nil)
+			got, _, err := selected(ctx, timelineInput{overlay: new("o")}, nil)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got).To(Equal([]string{"beta", "alpha"}))
@@ -189,14 +179,14 @@ var _ = Describe("timeline selection", func() {
 			run(ctx, "overlay", "create", "gone", "-t", "delta")
 			run(ctx, "timeline", "delete", "delta", "--yes")
 
-			_, _, err := selected(ctx, nil, new("gone"), nil)
+			_, _, err := selected(ctx, timelineInput{overlay: new("gone")}, nil)
 
 			Expect(err).To(HaveField("Kind", KindTimelineNotFound))
 			Expect(err).To(HaveField("Message", "overlay `gone` reads no timelines: each one was deleted"))
 		})
 
 		It("fails overlay_not_found", func(ctx SpecContext) {
-			_, _, err := selected(ctx, nil, new("missing"), nil)
+			_, _, err := selected(ctx, timelineInput{overlay: new("missing")}, nil)
 
 			Expect(err).To(HaveField("Kind", KindOverlayNotFound))
 			Expect(err).To(HaveField("Message", `no overlay is named "missing"`))
@@ -245,7 +235,7 @@ var _ = Describe("timeline selection", func() {
 
 	DescribeTable("refuses before the store opens",
 		func(ctx SpecContext, args []string, message string) {
-			failure := execute(ctx, storeless(), args...)
+			failure := flagError(ctx, args)
 
 			Expect(failure.Kind).To(Equal(KindUsage))
 			Expect(failure.Message).To(Equal(message))
@@ -262,7 +252,7 @@ var _ = Describe("timeline selection", func() {
 
 	It("counts a name and its id as two values on a command that reads one, before the store opens",
 		func(ctx SpecContext) {
-			failure := execute(ctx, storeless(), "event", "view", "1", "-t", "alpha", "-t", "01a09862-b1c0-7000-8000-000000000001")
+			failure := flagError(ctx, []string{"event", "view", "1", "-t", "alpha", "-t", alphaID})
 
 			Expect(failure.Kind).To(Equal(KindUsage))
 		})
@@ -282,6 +272,35 @@ var _ = Describe("timeline selection", func() {
 		Entry("timeline view --json", []string{"timeline", "view", "--json"}, false),
 		Entry("timeline export --format svg", []string{"timeline", "export", "--format", "svg"}, true),
 	)
+
+	It("names --overlay when an overlay selects several timelines for a format that prints one", func(ctx SpecContext) {
+		file := filepath.Join(filepath.Dir(db), "x.svg")
+
+		failure := execute(ctx, app, "--db", db, "timeline", "export", "--overlay", "o", "--format", "svg", "-o", file)
+
+		Expect(failure.Kind).To(Equal(KindUsage))
+		Expect(failure.Message).To(ContainSubstring("--overlay selects 2"))
+		Expect(file).NotTo(BeAnExistingFile())
+	})
+
+	It("names in the count hint exactly the commands that read several timelines", func(ctx SpecContext) {
+		var several []string
+		var walk func(cmd *cobra.Command)
+		walk = func(cmd *cobra.Command) {
+			if ruleOf(cmd).several {
+				several = append(several, "'"+cmd.CommandPath()+"'")
+			}
+			for _, sub := range cmd.Commands() {
+				walk(sub)
+			}
+		}
+		walk(NewRoot(ctx, app))
+		Expect(several).NotTo(BeEmpty())
+
+		failure := flagError(ctx, []string{"event", "view", "1", "-t", "alpha", "-t", "beta"})
+
+		Expect(regexp.MustCompile(`'coroner [^']+'`).FindAllString(failure.Hint, -1)).To(ConsistOf(several))
+	})
 
 	It("refuses svg for several timelines before reading events", func(ctx SpecContext) {
 		run(ctx, "event", "add", "deploy", "-t", "alpha")
@@ -315,13 +334,8 @@ var _ = Describe("timeline selection", func() {
 		Entry("event view", "event view", timelineRule{}),
 	)
 
-	DescribeTable("reads a write command's timeline field",
-		func(rule timelineRule, want timelineInput) {
-			Expect(timelineInputOf(fieldValues{"timeline": {"alpha", "beta", "alpha"}}, rule)).To(Equal(want))
-		},
-		Entry("as -t's values, each once", timelineRule{several: true},
-			timelineInput{names: []string{"alpha", "beta"}, rule: timelineRule{several: true}}),
-		Entry("as the positional name", timelineRule{positional: true},
-			timelineInput{positional: new("alpha"), rule: timelineRule{positional: true}}),
-	)
+	It("reads a write command's timeline field as -t's values, each once", func() {
+		Expect(timelineInputOf(fieldValues{"timeline": {"alpha", "beta", "alpha"}})).
+			To(Equal(timelineInput{names: []string{"alpha", "beta"}}))
+	})
 })

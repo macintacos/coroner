@@ -89,11 +89,7 @@ func findEvent(
 		return findNamedEvent(ctx, s, ref)
 	}
 
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
-	if err != nil {
-		return timeline.Event{}, timeline.Timeline{}, err
-	}
-	t, err := sel.one(ctx, s)
+	t, err := selectOne(ctx, s, in, lookupEnv)
 	if err != nil {
 		return timeline.Event{}, t, err
 	}

@@ -44,11 +44,7 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		t, err := sel.one(ctx, s)
+		t, err := selectOne(ctx, s, inv.timelines, app.LookupEnv)
 		if err != nil {
 			return err
 		}

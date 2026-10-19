@@ -166,11 +166,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
 		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
-		sel, err := selectTimelines(ctx, s, timelineInputOf(in, timelineRule{}), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		t, err := sel.one(ctx, s)
+		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}

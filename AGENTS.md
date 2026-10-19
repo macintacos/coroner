@@ -146,16 +146,17 @@ digraph coroner_rules_router {
   as `internal`. A command declares the output formats it supports in its `formats`
   annotation, and any other `--format` or `--json` exits 2 as `usage`. `-t` names one
   timeline, and naming more exits 2 as `usage`, unless the command reads several, as
-  `event list`, `timeline export`, `timeline view` and `overlay create` do. Commands
-  select timelines only through [`selection.go`](internal/cli/selection.go):
-  `readTimelineInput` reads the command line before the store opens (from `wrapRunErrors`
-  and `readInvocation`), `timelineInputOf` does so for write commands and forms, and
-  `selectTimelines` selects against the store. A command declares how many timelines it
-  reads in its `timelines` annotation (`several`, `positional`, `guard`), and the formats
-  that print only one in its `oneTimelineFormats` annotation. `event list` and
-  `timeline export` also take `--overlay`, a saved overlay's name, in place of `-t`, and
-  read their events through `store.EventFilter.TimelineIDs`. `cli.Run` prints every error
-  once, adding the JSON error envelope under `--format json|jsonl`.
+  `event list`, `timeline export`, `timeline view` and `overlay create` do. A command that
+  reads `-t`, `--overlay`, `CORONER_TIMELINE` or the current timeline selects only through
+  [`selection.go`](internal/cli/selection.go): `readTimelineInput` reads the command line
+  before the store opens (from `wrapRunErrors` and `readInvocation`), `timelineInputOf`
+  builds the same input from a write command's or form's fields, and `selectTimelines`
+  selects against the store. A command declares how many timelines it reads in its
+  `timelines` annotation (`several`, `positional`, `guard`), and the formats that print
+  only one in its `oneTimelineFormats` annotation. `event list` and `timeline export` also
+  take `--overlay`, a saved overlay's name, in place of `-t`, and read their events
+  through `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the
+  JSON error envelope under `--format json|jsonl`.
 - Deprecating a command or flag: `deprecateCommand` and `deprecateFlag` in
   [`internal/cli/deprecation.go`](internal/cli/deprecation.go), under the process in
   [`STABILITY.md`](STABILITY.md#deprecation).

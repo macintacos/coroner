@@ -98,7 +98,7 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if name == nil {
 		return overlayCreated{}, missingValue("overlay create", "the overlay's name")
 	}
-	timelines := timelineInputOf(in, timelineRule{several: true})
+	timelines := timelineInputOf(in)
 	if len(timelines.names) == 0 {
 		return overlayCreated{}, missingValue("overlay create", "-t for each timeline it reads")
 	}

@@ -93,11 +93,7 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 
 	added := annotationAdded{dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, timelineInputOf(in, timelineRule{}), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		t, err := sel.one(ctx, s)
+		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}

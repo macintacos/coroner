@@ -74,7 +74,7 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 
 	deleted := eventsDeleted{dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		found, err := findEvents(ctx, s, refs, timelineInputOf(in, timelineRule{}), app.LookupEnv)
+		found, err := findEvents(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
