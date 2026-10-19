@@ -44,8 +44,8 @@ func computeFake(lsRemote, base string) *fakeSystem {
 		"ccc\x1fEXC-1 follow-up (#70)",
 	}, "\n")
 	f.answers["gh pr view 70 -R macintacos/coroner --json number,title,body,url"] = `{"number":70,"title":"Add a thing","body":"- [ ] No contract change, or ` + "`stability:` `additive`" + `","url":"https://github.com/macintacos/coroner/pull/70"}`
-	f.answers["git diff --name-status --no-renames "+base+" "+headSHA+" -- internal/cli/testdata/script/contract schema"] = "A\t" + contractA + "\nM\tschema/export-v1.schema.json\nD\tinternal/cli/testdata/script/contract/old.txtar"
-	f.answers["git diff -U0 --no-renames "+base+" "+headSHA+" -- internal/cli :(exclude)internal/cli/*_test.go"] = deprecationDiff
+	f.answers["git diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ --name-status --no-renames "+base+" "+headSHA+" -- internal/cli/testdata/script/contract schema"] = "A\t" + contractA + "\nM\tschema/export-v1.schema.json\nD\tinternal/cli/testdata/script/contract/old.txtar"
+	f.answers["git diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ -U0 --no-renames "+base+" "+headSHA+" -- internal/cli :(exclude)internal/cli/*_test.go"] = deprecationDiff
 
 	return f
 }
@@ -110,6 +110,22 @@ var _ = Describe("compute", func() {
 		Expect(got).To(HaveKeyWithValue("error", HaveKeyWithValue("code", "github_error")))
 	})
 
+	It("still prints one object when a commit subject is not valid UTF-8", func() {
+		f := computeFake("", emptyTree)
+		f.answers["git log --format=%H%x1f%s "+headSHA] = "ddd\x1fcaf\xe9"
+
+		got, code := runJSON(f, "compute", "minor", "--sha", "HEAD")
+
+		Expect(code).To(Equal(0))
+		Expect(got).To(HaveKeyWithValue("commits_without_pr", []any{map[string]any{"sha": "ddd", "subject": "caf�"}}))
+	})
+
+	It("names an unknown flag in its usage error", func() {
+		got, _ := runJSON(newFake(), "compute", "minor", "--sah", "HEAD")
+
+		Expect(got).To(HaveKeyWithValue("error", HaveKeyWithValue("message", ContainSubstring("-sah"))))
+	})
+
 	DescribeTable("rejects bad usage with exit 2",
 		func(args ...string) {
 			got, code := runJSON(newFake(), args...)
@@ -139,5 +155,6 @@ var _ = Describe("stability", func() {
 		Entry("unfilled", "- [ ] No contract change, or `stability:` ___ (`breaking`, `additive` or `experimental`)", "unfilled"),
 		Entry("none when the box is checked", "- [x] No contract change, or `stability:` ___ (`breaking`, `additive` or `experimental`)", "none"),
 		Entry("missing", "Just a description.", "missing"),
+		Entry("the checkbox after a prose mention", "Reads each PR's `stability:` line.\n- [ ] No contract change, or `stability:` additive", "additive"),
 	)
 })

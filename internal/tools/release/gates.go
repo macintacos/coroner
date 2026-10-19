@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json/v2"
 	"slices"
 )
 
@@ -91,35 +90,28 @@ func levelWithOrigin(ctx context.Context, sys system) (string, error) {
 
 // githubGates checks that gh is signed in, the tap token secret is set, and CI passed on sha.
 func githubGates(ctx context.Context, sys system, sha string) error {
-	_, err := sys.output(ctx, "gh", "auth", "status")
+	_, err := sys.output(ctx, "gh", "auth", "status", "--hostname", "github.com", "--active")
 	if err != nil {
 		return &toolError{Code: "gh_unauthenticated", Message: err.Error()}
 	}
 
-	out, err := gh(ctx, sys, "secret", "list", "-R", repo, "--json", "name")
+	secrets, err := ghJSON[[]secret](ctx, sys, "secrets", "secret", "list", "-R", repo, "--json", "name")
 	if err != nil {
 		return err
-	}
-	var secrets []secret
-	err = json.Unmarshal([]byte(out), &secrets)
-	if err != nil {
-		return &toolError{Code: "github_error", Message: "reading secrets: " + err.Error()}
 	}
 	if !slices.Contains(secrets, secret{Name: "HOMEBREW_TAP_GITHUB_TOKEN"}) {
 		return &toolError{Code: "tap_secret_missing", Message: "HOMEBREW_TAP_GITHUB_TOKEN is not set on " + repo}
 	}
 
-	out, err = gh(ctx, sys, "run", "list", "-R", repo, "--workflow", "ci.yml", "--commit", sha, "--json", "status,conclusion", "--limit", "1")
+	runs, err := ghJSON[[]ciRun](ctx, sys, "CI runs", "run", "list", "-R", repo, "--workflow", "ci.yml", "--commit", sha, "--json", "status,conclusion", "--limit", "1")
 	if err != nil {
 		return err
 	}
-	var runs []ciRun
-	err = json.Unmarshal([]byte(out), &runs)
-	if err != nil {
-		return &toolError{Code: "github_error", Message: "reading CI runs: " + err.Error()}
+	if len(runs) == 0 {
+		return &toolError{Code: "ci_not_green", Message: "no ci.yml run on " + sha}
 	}
-	if len(runs) == 0 || runs[0].Status != "completed" || runs[0].Conclusion != "success" {
-		return &toolError{Code: "ci_not_green", Message: "the latest ci.yml run on " + sha + " has not succeeded"}
+	if runs[0].Status != "completed" || runs[0].Conclusion != "success" {
+		return &toolError{Code: "ci_not_green", Message: "the latest ci.yml run on " + sha + " is " + runs[0].Status + "/" + runs[0].Conclusion}
 	}
 
 	return nil

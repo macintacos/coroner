@@ -150,11 +150,10 @@ removing it outright.
    ([`internal/cli/examples_test.go`](internal/cli/examples_test.go)) rejects an example
    that invokes a deprecated command or flag, and move every example, help topic and docs
    page that uses the element to its replacement.
-5. **Announce it in the release notes.** The agent writing the notes finds each
-   deprecation from the pull request's `stability:` line and the release tool's contract
-   hints, which list every `deprecateCommand` or `deprecateFlag` call added or removed
-   since the last release. Deprecating is not a break, since the element keeps working, so
-   it is not listed under **Breaking**.
+5. **Announce it in the release notes.** Name the deprecated element and its replacement
+   in the pull request's body; the release notes list it under **Deprecated**. Deprecating
+   is not a break, since the element keeps working, so it is never listed under
+   **Breaking**.
 6. **Remove it only once its window has passed.** Before 1.0, removing it is a break
    ([§ Before 1.0](#before-10)). After 1.0 a stable element is never removed within v1: it
    stays as a hidden alias that keeps working and keeps warning, until a major version
@@ -174,11 +173,9 @@ rules 5a, 5c and 6, with a shorter window.
   binding, and a change to its behaviour ships opt-in first ([§ Versioning](#versioning)).
   An experimental element may change freely ([§ Tiers](#tiers)).
 - Every break, such as removing a candidate-stable element once its window has passed, is
-  listed under the **Breaking** heading of the release notes. The agent writing the notes
-  puts a pull request there when its `stability:` line says `breaking`, checking that line
-  against the release tool's contract hints: the changed contract scripts and schema
-  files, and the added or removed `deprecateCommand` and `deprecateFlag` calls. A change
-  to an experimental element is not a break, so it is not listed there.
+  listed under the **Breaking** heading of the release notes, and its pull request's
+  `stability:` line says `breaking`. A change to an experimental element is not a break,
+  so it is not listed there.
 
 ## Classifying a contract change
 

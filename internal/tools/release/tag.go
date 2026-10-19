@@ -31,9 +31,9 @@ func tag(ctx context.Context, sys system, args []string) (any, error) {
 	rev := flags.String("sha", "", "the commit to tag")
 	notesFile := flags.String("notes-file", "", "the release notes")
 	dryRun := flags.Bool("dry-run", false, "check, but create nothing")
-	err := flags.Parse(args)
-	if err != nil || flags.NArg() > 0 || *name == "" || *rev == "" || *notesFile == "" {
-		return nil, usageError("%s", usageLine)
+	err := parseFlags(flags, args, "tag", "sha", "notes-file")
+	if err != nil {
+		return nil, err
 	}
 
 	if _, ok := parseTag(*name); !ok {
@@ -61,6 +61,8 @@ func tag(ctx context.Context, sys system, args []string) (any, error) {
 		return result, nil
 	}
 
+	// verbatim keeps the notes' ### headings, which git's default cleanup strips as comments;
+	// --no-sign overrides a tag.gpgSign setting.
 	_, err = git(ctx, sys, "tag", "-a", "--no-sign", "--cleanup=verbatim", "-F", *notesFile, *name, sha)
 	if err != nil {
 		return nil, err
@@ -98,9 +100,9 @@ func tagNotes(ctx context.Context, sys system, args []string) (any, error) {
 	flags.SetOutput(io.Discard)
 	name := flags.String("tag", "", "the tag to read")
 	out := flags.String("out", "", "the file to write the notes to")
-	err := flags.Parse(args)
-	if err != nil || flags.NArg() > 0 || *name == "" || *out == "" {
-		return nil, usageError("%s", usageLine)
+	err := parseFlags(flags, args, "tag", "out")
+	if err != nil {
+		return nil, err
 	}
 
 	message, err := tagMessage(ctx, sys, *name)

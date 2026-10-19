@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os/exec"
@@ -11,7 +12,8 @@ import (
 	"time"
 )
 
-// system is how the tool reaches git and gh, injected so specs can script it.
+// system is how the tool runs git, gh, mise and the downloaded coroner, sleeps, and learns
+// the platform verify checks, injected so specs can script it.
 type system struct {
 	// output runs a command and returns its stdout, trimmed. The child's stderr goes to the
 	// tool's stderr, and a non-zero exit is an error carrying the command and that stderr.
@@ -69,4 +71,19 @@ func gh(ctx context.Context, sys system, args ...string) (string, error) {
 	}
 
 	return out, nil
+}
+
+// ghJSON runs gh and decodes its JSON stdout into T.
+func ghJSON[T any](ctx context.Context, sys system, what string, args ...string) (T, error) {
+	var v T
+	out, err := gh(ctx, sys, args...)
+	if err != nil {
+		return v, err
+	}
+	err = json.Unmarshal([]byte(out), &v)
+	if err != nil {
+		return v, &toolError{Code: "github_error", Message: "reading " + what + ": " + err.Error()}
+	}
+
+	return v, nil
 }

@@ -1,14 +1,16 @@
 // Command release does the deterministic steps of a coroner release for the /release-coroner
 // skill: each subcommand prints exactly one JSON object, {"ok":true,...} on success or
-// {"ok":false,"error":{"code","message"}} on failure, and exits 0, 1 on a failure, or 2 on a
-// usage error. Under go run every non-zero exit becomes 1, so callers branch on ok and
+// {"ok":false,"error":{"code","message"}} on failure, and exits 0 on success, 1 on a failure
+// and 2 on a usage error. Under go run every non-zero exit becomes 1, so callers branch on ok and
 // error.code. Run it from the module root.
 package main
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -58,7 +60,7 @@ func runCommand(ctx context.Context, sys system, args []string, stdout io.Writer
 
 func dispatch(ctx context.Context, sys system, args []string) (any, error) {
 	if len(args) == 0 {
-		return nil, usageError("%s", usageLine)
+		return nil, usageError("no subcommand; %s", usageLine)
 	}
 
 	switch args[0] {
@@ -79,7 +81,26 @@ func dispatch(ctx context.Context, sys system, args []string) (any, error) {
 	return nil, usageError("unknown subcommand %q; %s", args[0], usageLine)
 }
 
+// parseFlags parses args into flags, and fails naming the problem when a flag is unknown or
+// malformed, an argument is left over, or a required flag is empty.
+func parseFlags(flags *flag.FlagSet, args []string, required ...string) error {
+	err := flags.Parse(args)
+	if err != nil {
+		return usageError("%s; %s", err, usageLine)
+	}
+	if flags.NArg() > 0 {
+		return usageError("%s: unexpected argument %q; %s", flags.Name(), flags.Arg(0), usageLine)
+	}
+	for _, name := range required {
+		if flags.Lookup(name).Value.String() == "" {
+			return usageError("%s needs --%s; %s", flags.Name(), name, usageLine)
+		}
+	}
+
+	return nil
+}
+
 func writeJSON(w io.Writer, v any) {
-	_ = json.MarshalWrite(w, v)
+	_ = json.MarshalWrite(w, v, jsontext.AllowInvalidUTF8(true))
 	_, _ = io.WriteString(w, "\n")
 }

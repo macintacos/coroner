@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json/v2"
-	"errors"
 	"flag"
 	"io"
 	"strconv"
@@ -29,6 +27,7 @@ type releaseRun struct {
 }
 
 type runOutcome struct {
+	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
 	URL        string `json:"url"`
 }
@@ -40,9 +39,9 @@ func watch(ctx context.Context, sys system, args []string) (any, error) {
 	flags.SetOutput(io.Discard)
 	name := flags.String("tag", "", "the pushed tag")
 	rev := flags.String("sha", "", "the tagged commit")
-	err := flags.Parse(args)
-	if err != nil || flags.NArg() > 0 || *name == "" || *rev == "" {
-		return nil, usageError("%s", usageLine)
+	err := parseFlags(flags, args, "tag", "sha")
+	if err != nil {
+		return nil, err
 	}
 
 	sha, err := resolveSHA(ctx, sys, *rev)
@@ -56,20 +55,19 @@ func watch(ctx context.Context, sys system, args []string) (any, error) {
 
 	watchCtx, cancel := context.WithTimeout(ctx, watchDeadline)
 	defer cancel()
-	err = sys.run(watchCtx, "gh", "run", "watch", id, "-R", repo, "--exit-status", "--interval", "15")
-	if errors.Is(err, context.DeadlineExceeded) || watchCtx.Err() != nil {
+	watchErr := sys.run(watchCtx, "gh", "run", "watch", id, "-R", repo, "--exit-status", "--interval", strconv.Itoa(int(findInterval.Seconds())))
+	if watchCtx.Err() != nil {
 		return nil, &toolError{Code: "workflow_timeout", Message: "release.yml run " + id + " did not finish within " + watchDeadline.String()}
 	}
 
-	// A failed watch is judged by the run's conclusion below.
-	out, err := gh(ctx, sys, "run", "view", id, "-R", repo, "--json", "conclusion,url")
+	// A failed watch is judged by the run's status and conclusion below: gh run watch also
+	// exits 1 on a network error while the run goes on.
+	outcome, err := ghJSON[runOutcome](ctx, sys, "the run", "run", "view", id, "-R", repo, "--json", "status,conclusion,url")
 	if err != nil {
 		return nil, err
 	}
-	var outcome runOutcome
-	err = json.Unmarshal([]byte(out), &outcome)
-	if err != nil {
-		return nil, &toolError{Code: "github_error", Message: "reading the run: " + err.Error()}
+	if watchErr != nil && outcome.Status != "completed" {
+		return nil, &toolError{Code: "watch_interrupted", Message: "the watch stopped before release.yml run " + id + " finished: " + watchErr.Error()}
 	}
 	if outcome.Conclusion != "success" {
 		return nil, &toolError{Code: "workflow_failed", Message: "release.yml concluded " + outcome.Conclusion + ": " + outcome.URL}
@@ -85,14 +83,9 @@ func findReleaseRun(ctx context.Context, sys system, name, sha string) (string, 
 		if try > 0 {
 			sys.sleep(findInterval)
 		}
-		out, err := gh(ctx, sys, "run", "list", "-R", repo, "--workflow", "release.yml", "--commit", sha, "--event", "push", "--json", "databaseId,headBranch,url")
+		runs, err := ghJSON[[]releaseRun](ctx, sys, "release runs", "run", "list", "-R", repo, "--workflow", "release.yml", "--commit", sha, "--event", "push", "--json", "databaseId,headBranch,url")
 		if err != nil {
 			return "", err
-		}
-		var runs []releaseRun
-		err = json.Unmarshal([]byte(out), &runs)
-		if err != nil {
-			return "", &toolError{Code: "github_error", Message: "reading release runs: " + err.Error()}
 		}
 		for _, run := range runs {
 			if run.HeadBranch == name {

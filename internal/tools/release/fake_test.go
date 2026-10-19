@@ -66,8 +66,13 @@ func (f *fakeSystem) system() system {
 // runJSON runs the tool with args against f, and decodes exactly one JSON object from its
 // output.
 func runJSON(f *fakeSystem, args ...string) (map[string]any, int) {
+	return runJSONContext(context.Background(), f, args...)
+}
+
+// runJSONContext is runJSON under ctx.
+func runJSONContext(ctx context.Context, f *fakeSystem, args ...string) (map[string]any, int) {
 	var out bytes.Buffer
-	code := runCommand(context.Background(), f.system(), args, &out)
+	code := runCommand(ctx, f.system(), args, &out)
 
 	dec := jsontext.NewDecoder(bytes.NewReader(out.Bytes()))
 	var got map[string]any

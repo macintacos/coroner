@@ -23,6 +23,7 @@ digraph coroner_docs_router {
     "Edit docs/contributing/command-checklist.md" [shape=box];
     "Edit docs/contributing/migrations.md" [shape=box];
     "Edit docs/contributing/releasing.md" [shape=box];
+    "Edit .claude/skills/release-coroner/SKILL.md" [shape=box];
     "Edit docs/how-to/install.md" [shape=box];
     "Edit .github/pull_request_template.md" [shape=box];
     "Edit internal/cli/testdata/script/contract/README.md" [shape=box];
@@ -42,7 +43,8 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit rules/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
     "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
     "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
-    "Which doc does the change affect?" -> "Edit docs/contributing/releasing.md" [label="how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, or the steps before and after a tag"];
+    "Which doc does the change affect?" -> "Edit docs/contributing/releasing.md" [label="how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, the release flow /release-coroner runs, or the steps before and after a tag"];
+    "Which doc does the change affect?" -> "Edit .claude/skills/release-coroner/SKILL.md" [label="the release flow, or a subcommand, flag, JSON key or error code of internal/tools/release"];
     "Which doc does the change affect?" -> "Edit docs/how-to/install.md" [label="how coroner is installed, upgraded or removed, what a release archive holds, or the macOS signing decision"];
     "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
     "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, what a diff under contract/ means, and the export round trip in internal/cli/roundtrip_test.go"];
@@ -76,12 +78,13 @@ digraph coroner_docs_router {
   agents) — the migration policy, the fixture database each release commits and how to add
   it, and the migration gaps deferred so far.
 - **[`docs/contributing/releasing.md`](../docs/contributing/releasing.md)** (maintainers)
-  — the release checklist: the one-time tap and token setup, the checks before a `v*` tag,
-  the checks after the release workflow publishes it, and what a rebuilt tag reproduces.
+  — the releasing guide: the one-time tap and token setup, releasing with
+  `/release-coroner` (the gates it runs, the annotated tag carrying the release notes),
+  recovery and rebuilding a tag, and the checks after the release.
 - **[`.claude/skills/release-coroner/SKILL.md`](../.claude/skills/release-coroner/SKILL.md)**
   (the maintainer's agent) — the `/release-coroner` skill that runs a release through
   `internal/tools/release`. It and `releasing.md` describe the same flow, so they change
-  together, and both change with the tool's subcommands and JSON keys.
+  together, and both change with the tool's subcommands, JSON keys and error codes.
 - **[`docs/how-to/install.md`](../docs/how-to/install.md)** (human-facing) — installing,
   upgrading and removing coroner with `go install`, Homebrew or a release archive, what an
   archive holds, and the macOS signing decision.

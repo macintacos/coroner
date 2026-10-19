@@ -17,11 +17,13 @@ import (
 	"strings"
 )
 
+// maxBinarySize caps extraction against a decompression bomb (gosec G110).
 const maxBinarySize = 256 << 20
 
 type target struct{ goos, goarch string }
 
-// targets are the platforms a release builds; keep in sync with .goreleaser.yaml's builds.
+// targets are the platforms a release builds; keep in sync with .goreleaser.yaml's builds,
+// and archiveFor with its default archive name_template.
 func targets() []target {
 	return []target{{"darwin", "amd64"}, {"darwin", "arm64"}, {"linux", "amd64"}, {"linux", "arm64"}}
 }
@@ -52,9 +54,9 @@ func verify(ctx context.Context, sys system, args []string) (any, error) {
 	flags := flag.NewFlagSet("verify", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	name := flags.String("tag", "", "the released tag")
-	err := flags.Parse(args)
-	if err != nil || flags.NArg() > 0 || *name == "" {
-		return nil, usageError("%s", usageLine)
+	err := parseFlags(flags, args, "tag")
+	if err != nil {
+		return nil, err
 	}
 	v, ok := parseTag(*name)
 	if !ok {
@@ -95,17 +97,7 @@ func archiveFor(tag string, t target) string {
 }
 
 func viewRelease(ctx context.Context, sys system, name string) (release, error) {
-	out, err := gh(ctx, sys, "release", "view", name, "-R", repo, "--json", "url,isPrerelease,body,assets")
-	if err != nil {
-		return release{}, err
-	}
-	var rel release
-	err = json.Unmarshal([]byte(out), &rel)
-	if err != nil {
-		return release{}, &toolError{Code: "github_error", Message: "reading the release: " + err.Error()}
-	}
-
-	return rel, nil
+	return ghJSON[release](ctx, sys, "the release", "release", "view", name, "-R", repo, "--json", "url,isPrerelease,body,assets")
 }
 
 // checkRelease checks the release's assets, its prerelease flag and that its body is the
@@ -138,7 +130,7 @@ func checkRelease(ctx context.Context, sys system, name string, rel release) err
 }
 
 // checkBinary downloads this platform's archive into a temporary directory, checks it against
-// checksums.txt, and returns what its coroner prints for `coroner version` and the SHA-256
+// checksums.txt, and returns the coroner_version its coroner reports and the SHA-256
 // sums checksums.txt lists, keyed on file name.
 func checkBinary(ctx context.Context, sys system, name, archive string) (string, map[string]string, error) {
 	dir, err := os.MkdirTemp("", "coroner-verify-")
@@ -161,15 +153,19 @@ func checkBinary(ctx context.Context, sys system, name, archive string) (string,
 	if err != nil {
 		return "", nil, &toolError{Code: "internal", Message: "extracting coroner from " + archive + ": " + err.Error()}
 	}
-	out, err := sys.output(ctx, binary, "version")
+	out, err := sys.output(ctx, binary, "version", "--json")
 	if err != nil {
 		return "", nil, &toolError{Code: "version_mismatch", Message: err.Error()}
 	}
-	if out != "coroner version "+name {
-		return "", nil, &toolError{Code: "version_mismatch", Message: "coroner version printed " + out}
+	var reported struct {
+		CoronerVersion string `json:"coroner_version"`
+	}
+	err = json.Unmarshal([]byte(out), &reported)
+	if err != nil || reported.CoronerVersion != name {
+		return "", nil, &toolError{Code: "version_mismatch", Message: "coroner version --json printed " + out}
 	}
 
-	return out, sums, nil
+	return reported.CoronerVersion, sums, nil
 }
 
 // checkChecksums requires a checksums.txt line for every target's archive, and the

@@ -10,7 +10,7 @@ const (
 	statusCmd    = "git status --porcelain"
 	fetchCmd     = "git fetch origin main"
 	originCmd    = "git rev-parse --verify origin/main^{commit}"
-	authCmd      = "gh auth status"
+	authCmd      = "gh auth status --hostname github.com --active"
 	repoNamesCmd = "gh secret list -R macintacos/coroner --json name"
 	ciCmd        = "gh run list -R macintacos/coroner --workflow ci.yml --commit " + headSHA + " --json status,conclusion --limit 1"
 )
@@ -74,6 +74,20 @@ var _ = Describe("gates", func() {
 		Entry("preflight failing", func(f *fakeSystem) { f.failing["mise run preflight"] = errFailed }, "preflight_failed"),
 		Entry("release:check failing", func(f *fakeSystem) { f.failing["mise run release:check"] = errFailed }, "release_check_failed"),
 		Entry("release:snapshot failing", func(f *fakeSystem) { f.failing["mise run release:snapshot"] = errFailed }, "release_snapshot_failed"),
+	)
+
+	DescribeTable("says which way CI is not green",
+		func(runs, want string) {
+			f := gatesFake()
+			f.answers[ciCmd] = runs
+
+			got, _ := runJSON(f, "gates")
+
+			Expect(got).To(HaveKeyWithValue("error", HaveKeyWithValue("message", ContainSubstring(want))))
+		},
+		Entry("no run", `[]`, "no ci.yml run"),
+		Entry("a run in progress", `[{"status":"in_progress","conclusion":""}]`, "in_progress"),
+		Entry("a failed run", `[{"status":"completed","conclusion":"failure"}]`, "failure"),
 	)
 
 	It("runs no mise task once an earlier gate fails", func() {

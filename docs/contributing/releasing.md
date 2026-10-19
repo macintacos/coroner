@@ -35,7 +35,7 @@ In Claude Code, on an up-to-date `main`, type:
 The bump picks the next version from the latest final tag, or from `v0.0.0` when there is
 none. `rc` makes a release candidate such as `v0.1.0-rc.0`, which publishes a GitHub
 pre-release and leaves the Homebrew cask alone. `dry run` runs every check, prints the tag
-and the notes, and creates nothing.
+and the notes, and creates no tag.
 
 The skill drives `go run ./internal/tools/release`, which does each step and prints one
 JSON object:
@@ -56,8 +56,8 @@ JSON object:
    succeeds.
 6. **`verify`** checks the published release: every archive, SBOM and `checksums.txt`, the
    pre-release flag, the body against the tag's message, your platform's archive against
-   `checksums.txt`, that its `coroner version` prints the tag, and, for a final tag, the
-   version and checksums in the Homebrew cask.
+   `checksums.txt`, that the binary reports the tag as its version, and, for a final tag,
+   the version and checksums in the Homebrew cask.
 
 ## Recovery
 
@@ -65,8 +65,9 @@ A failed Release workflow is re-run, never re-tagged: the tag already carries th
 Re-run it with `gh run rerun <id> -R macintacos/coroner`, then wait for it again with
 `go run ./internal/tools/release watch --tag <tag> --sha <sha>` and check it with
 `go run ./internal/tools/release verify --tag <tag>`. If the failed run already uploaded
-assets, first delete the release as [Rebuilding a tag](#rebuilding-a-tag) describes. The
-skill names the recovery for every other failure.
+assets, first delete the release as [Rebuilding a tag](#rebuilding-a-tag) describes.
+[The skill](https://github.com/macintacos/coroner/blob/main/.claude/skills/release-coroner/SKILL.md)
+names the recovery for every other failure.
 
 ### Rebuilding a tag
 

@@ -31,7 +31,7 @@ type verifyRelease struct {
 	prerelease bool
 	body       string
 	assets     []string
-	binary     string // the extracted coroner prints this, so it doubles as `coroner version`
+	binary     string // the extracted coroner prints this, so it doubles as `coroner version --json`
 	checksums  map[string]string
 	cask       string
 	downloadTo string
@@ -54,6 +54,10 @@ func tarGz(name, content string) []byte {
 	return buf.Bytes()
 }
 
+func versionJSON(tag string) string {
+	return `{"coroner_version":"` + tag + `","format_versions":["1.0"]}`
+}
+
 func sum(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
@@ -66,7 +70,7 @@ func newRelease(tag string) *verifyRelease {
 		prerelease: strings.Contains(tag, "-rc."),
 		body:       "\n" + notes + "\n",
 		assets:     []string{"checksums.txt"},
-		binary:     "coroner version " + tag,
+		binary:     versionJSON(tag),
 		checksums:  map[string]string{},
 	}
 	for _, t := range targets() {
@@ -96,7 +100,7 @@ func (r *verifyRelease) fake() *fakeSystem {
 		case name == "gh" && slices.Equal(args[:2], []string{"release", "download"}):
 			r.download(args[slices.Index(args, "-D")+1])
 			return "", true
-		case filepath.Base(name) == "coroner":
+		case filepath.Base(name) == "coroner" && slices.Equal(args, []string{"version", "--json"}):
 			out, err := os.ReadFile(filepath.Clean(name))
 			Expect(err).NotTo(HaveOccurred())
 			return string(out), true
@@ -146,7 +150,7 @@ var _ = Describe("verify", func() {
 			"release_url":    releaseURL + rcTag,
 			"prerelease":     true,
 			"archive":        "coroner_0.1.0-rc.0_darwin_arm64.tar.gz",
-			"version_output": "coroner version v0.1.0-rc.0",
+			"version_output": rcTag,
 		}))
 		Expect(usedCask(f)).To(BeFalse())
 		Expect(r.downloadTo).NotTo(BeEmpty())
@@ -187,7 +191,7 @@ var _ = Describe("verify", func() {
 			r.checksums[archiveName(rcTag, "darwin", "arm64")] = sum([]byte("other"))
 		}, "checksum_mismatch"),
 		Entry("a binary that reports another version", rcTag, func(r *verifyRelease, _ *fakeSystem) {
-			r.binary = "coroner version v0.0.1"
+			r.binary = versionJSON("v0.0.1")
 			r.checksums[archiveName(rcTag, "darwin", "arm64")] = sum(tarGz("coroner", r.binary))
 		}, "version_mismatch"),
 		Entry("a cask without the version", finalTag, func(r *verifyRelease, f *fakeSystem) {

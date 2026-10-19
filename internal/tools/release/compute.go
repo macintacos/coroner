@@ -3,7 +3,6 @@ package main
 import (
 	"cmp"
 	"context"
-	"encoding/json/v2"
 	"flag"
 	"io"
 	"maps"
@@ -16,7 +15,8 @@ import (
 // prNumber matches the (#N) a squash merge appends to its subject.
 var prNumber = regexp.MustCompile(`\(#(\d+)\)$`)
 
-// deprecationCall matches a line that calls deprecateCommand or deprecateFlag.
+// deprecationCall matches a line that calls deprecateCommand or deprecateFlag, and their
+// declarations, which parseDeprecations filters out.
 var deprecationCall = regexp.MustCompile(`deprecate(Command|Flag)\(`)
 
 type commit struct {
@@ -74,9 +74,9 @@ func compute(ctx context.Context, sys system, args []string) (any, error) {
 	flags.SetOutput(io.Discard)
 	flags.BoolVar(&result.RC, "rc", false, "tag a release candidate")
 	rev := flags.String("sha", "", "the commit to release")
-	err := flags.Parse(args[1:])
-	if err != nil || flags.NArg() > 0 || *rev == "" {
-		return nil, usageError("%s", usageLine)
+	err := parseFlags(flags, args[1:], "sha")
+	if err != nil {
+		return nil, err
 	}
 
 	sha, err := resolveSHA(ctx, sys, *rev)
@@ -164,15 +164,9 @@ func pullRequests(ctx context.Context, sys system, commits []commit) ([]pullRequ
 }
 
 func fetchPullRequest(ctx context.Context, sys system, number string) (pullRequest, error) {
-	out, err := gh(ctx, sys, "pr", "view", number, "-R", repo, "--json", "number,title,body,url")
+	pr, err := ghJSON[pullRequest](ctx, sys, "pull request "+number, "pr", "view", number, "-R", repo, "--json", "number,title,body,url")
 	if err != nil {
 		return pullRequest{}, err
-	}
-
-	var pr pullRequest
-	err = json.Unmarshal([]byte(out), &pr)
-	if err != nil {
-		return pullRequest{}, &toolError{Code: "github_error", Message: "reading pull request " + number + ": " + err.Error()}
 	}
 	pr.Stability = stability(pr.Body)
 
@@ -180,12 +174,14 @@ func fetchPullRequest(ctx context.Context, sys system, number string) (pullReque
 }
 
 func gatherContractHints(ctx context.Context, sys system, base, sha string) (contractHints, error) {
-	nameStatus, err := git(ctx, sys, "diff", "--name-status", "--no-renames", base, sha, "--", "internal/cli/testdata/script/contract", "schema")
+	// Pin what a user's diff.external, diff.noprefix or color.diff would change.
+	plain := []string{"diff", "--no-ext-diff", "--no-color", "--src-prefix=a/", "--dst-prefix=b/"}
+	nameStatus, err := git(ctx, sys, append(plain, "--name-status", "--no-renames", base, sha, "--", "internal/cli/testdata/script/contract", "schema")...)
 	if err != nil {
 		return contractHints{}, err
 	}
 
-	diff, err := git(ctx, sys, "diff", "-U0", "--no-renames", base, sha, "--", "internal/cli", ":(exclude)internal/cli/*_test.go")
+	diff, err := git(ctx, sys, append(plain, "-U0", "--no-renames", base, sha, "--", "internal/cli", ":(exclude)internal/cli/*_test.go")...)
 	if err != nil {
 		return contractHints{}, err
 	}
@@ -230,6 +226,10 @@ func parseLog(out string) []commit {
 // none when its box is checked, unfilled when neither, and missing when the line is absent.
 func stability(body string) string {
 	for line := range strings.Lines(body) {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "- [") && !strings.HasPrefix(trimmed, "* [") {
+			continue
+		}
 		lower := strings.ToLower(strings.ReplaceAll(line, "`", ""))
 		_, after, found := strings.Cut(lower, "stability:")
 		if !found {
@@ -271,6 +271,7 @@ func parseDeprecations(diff string) []deprecation {
 	path := ""
 	for line := range strings.Lines(diff) {
 		line = strings.TrimRight(line, "\n")
+		// A deleted file's new side is +++ /dev/null, so its path comes from the old side.
 		if p, ok := strings.CutPrefix(line, "--- a/"); ok {
 			path = p
 			continue
