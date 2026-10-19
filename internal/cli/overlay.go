@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
@@ -210,63 +209,4 @@ type overlayJSON struct {
 	// Timelines are the names of the overlay's timelines, in its order.
 	Timelines []string `json:"timelines"`
 	CreatedAt string   `json:"created_at"`
-}
-
-// addOverlayFlag declares --overlay, on a command whose -t reads several timelines.
-func addOverlayFlag(flags *pflag.FlagSet) {
-	flags.String("overlay", "", "Read the timelines of the overlay called `name`, instead of -t")
-}
-
-// timelineChoice is what selects a command's timelines: -t's names, or a saved overlay.
-type timelineChoice struct {
-	names   []string
-	overlay *string
-}
-
-// readTimelineChoice returns the timelines -t or --overlay names, or usage when --overlay is
-// empty (A-9) or given with -t. It runs before the store opens.
-func readTimelineChoice(flags *pflag.FlagSet) (timelineChoice, error) {
-	names, err := timelineFlags(flags)
-	overlay := changedString(flags, "overlay")
-	switch {
-	case err != nil:
-		return timelineChoice{}, err
-	case overlay != nil && *overlay == "":
-		return timelineChoice{}, &Error{Kind: KindUsage, Message: "--overlay must not be empty", Hint: "Pass --overlay with an overlay's name."}
-	case overlay != nil && len(names) > 0:
-		return timelineChoice{}, &Error{
-			Kind: KindUsage, Message: "--overlay and -t both select timelines",
-			Hint: "Pass --overlay <name>, or -t for each timeline, not both.",
-		}
-	}
-
-	return timelineChoice{names: names, overlay: overlay}, nil
-}
-
-// selectChosenTimelines returns the timelines choice selects: its overlay's, in the overlay's
-// order, or those selectTimelines selects for its names.
-func selectChosenTimelines(
-	ctx context.Context, s *store.Store, choice timelineChoice, lookupEnv func(string) (string, bool),
-) ([]timeline.Timeline, error) {
-	if choice.overlay == nil {
-		return selectTimelines(ctx, s, choice.names, lookupEnv)
-	}
-
-	o, err := s.OverlayByName(ctx, *choice.overlay)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil, &Error{
-			Kind: KindOverlayNotFound, Message: fmt.Sprintf("no overlay is named %q", *choice.overlay),
-			Hint: "Save one with 'coroner overlay create <name> -t <timeline>...'.", Err: err,
-		}
-	case err != nil:
-		return nil, err
-	case len(o.TimelineIDs) == 0:
-		return nil, &Error{
-			Kind: KindTimelineNotFound, Message: fmt.Sprintf("overlay `%s` reads no timelines: each one was deleted", o.Name),
-			Hint: "Pass -t for each timeline to read.",
-		}
-	}
-
-	return timelinesByID(ctx, s, o.TimelineIDs)
 }
