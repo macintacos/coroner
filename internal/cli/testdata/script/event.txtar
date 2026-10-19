@@ -51,6 +51,16 @@ exec coroner event add 'Checkout p99 at 4 s' --at 2026-09-11T03:14:30Z -t checko
 exec coroner event list -t mongo-outage -t checkout-latency --until 2026-09-11T03:16:00Z
 cmp stdout overlay.tsv
 
+# A bad --tz fails only the commands that read or print times, and delete fails before deleting.
+exec coroner status --tz Bogus/Zone
+exec coroner timeline create gamma --tz Bogus/Zone --dry-run
+exits 2 coroner event list --tz Bogus/Zone
+stderr 'unknown time zone "Bogus/Zone" in --tz'
+exits 2 coroner event delete 1 --tz Bogus/Zone
+stderr 'unknown time zone "Bogus/Zone" in --tz'
+exec coroner event view 1
+stdout 'Primary stepped down'
+
 -- p99.gif --
 GIF89a p99 latency panel
 -- slack.txt --
