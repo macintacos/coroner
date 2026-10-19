@@ -103,24 +103,25 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
-	cfg, z, err := resolveZone(cmd, app)
+	z, err := inv.zone()
 	if err != nil {
 		return err
 	}
+	o, cfg := inv.out, inv.cfg
 	now := app.Now()
 	filter, bounds, err := readEventFilter(cmd.Flags(), now, z)
 	if err != nil {
 		return err
 	}
-	markdown, err := readMarkdownOptions(cmd.Flags(), o.format, z)
+	zone := exportZone(inv.tz, z)
+	markdown, err := readMarkdownOptions(cmd.Flags(), o.format, zone)
 	if err != nil {
 		return err
 	}
-	zone := exportZone(cmd.Flags(), z)
 	path, err := outputPath(cmd.Flags(), o.format)
 	if err != nil {
 		return err
@@ -261,7 +262,7 @@ func notifyLargeDiagram(o output, env export.Envelope, zone *time.Location) erro
 }
 
 // readMarkdownOptions returns how --format md presents the export.
-func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.MarkdownOptions, error) {
+func readMarkdownOptions(flags *pflag.FlagSet, chosen format, zone *time.Location) (export.MarkdownOptions, error) {
 	if chosen != formatMarkdown {
 		for _, name := range []string{"group-by", "include-raw", "diagram"} {
 			if flags.Changed(name) {
@@ -274,7 +275,7 @@ func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.Ma
 		return export.MarkdownOptions{}, nil
 	}
 
-	opts := export.MarkdownOptions{Zone: exportZone(flags, z)}
+	opts := export.MarkdownOptions{Zone: zone}
 	opts.IncludeRaw, _ = flags.GetBool("include-raw")
 	opts.Diagram, _ = flags.GetBool("diagram")
 	if groupBy := changedString(flags, "group-by"); groupBy != nil {
@@ -293,8 +294,8 @@ func readMarkdownOptions(flags *pflag.FlagSet, chosen format, z zone) (export.Ma
 
 // exportZone returns the zone md, mermaid, html and svg show times in: z when --tz was given, and
 // otherwise UTC, so a shared document never depends on the zone of whoever exported it.
-func exportZone(flags *pflag.FlagSet, z zone) *time.Location {
-	if flags.Changed("tz") {
+func exportZone(tz *string, z zone) *time.Location {
+	if tz != nil {
 		return z.loc
 	}
 

@@ -141,17 +141,6 @@ func newFormSession(app App, inv invocation, forms func(color bool, images graph
 	}
 }
 
-// noInput reports whether --no-input, or CORONER_NO_INPUT when the flag is not given, turns every
-// form, picker and viewer off.
-func noInput(cmd *cobra.Command, app App) bool {
-	if cmd.Flags().Changed("no-input") {
-		flag, _ := cmd.Flags().GetBool("no-input")
-		return flag
-	}
-
-	return envTrue(app.LookupEnv, "CORONER_NO_INPUT")
-}
-
 // formGate is what formMode decides from: whether --interactive asks for the form, the command
 // line's values run without it, a machine format was asked for, and a form may take over the
 // terminal.

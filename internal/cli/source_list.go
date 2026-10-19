@@ -20,23 +20,23 @@ func newSourceListCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example:     "  $ coroner source list\n  $ coroner source list --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o, err := newOutput(cmd, app)
+			inv, err := readInvocation(cmd, app)
 			if err != nil {
 				return err
 			}
 
-			cfg, z, err := resolveZone(cmd, app)
+			z, err := inv.zone()
 			if err != nil {
 				return err
 			}
 
-			return withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
+			return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 				usages, err := s.SourceUsages(ctx)
 				if err != nil {
 					return err
 				}
 
-				return printSources(o, z, usages)
+				return printSources(inv.out, z, usages)
 			})
 		},
 	}

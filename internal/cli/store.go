@@ -12,17 +12,6 @@ import (
 	"github.com/macintacos/coroner/internal/store"
 )
 
-// withStore opens the database the configuration selects, through resolveConfig and
-// withStorePath.
-func withStore(ctx context.Context, cmd *cobra.Command, app App, fn func(*store.Store) error) error {
-	resolved, err := resolveConfig(cmd, app)
-	if err != nil {
-		return err
-	}
-
-	return withStorePath(ctx, app, resolved.DBPath, fn)
-}
-
 // withStorePath opens the database at path, creating and migrating it as needed, through
 // withStoreOpenedBy.
 func withStorePath(ctx context.Context, app App, path string, fn func(*store.Store) error) error {

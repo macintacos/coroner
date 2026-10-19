@@ -81,7 +81,7 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 func viewTimelines(
 	ctx context.Context, cmd *cobra.Command, app App, lookup func(context.Context, *store.Store) ([]timeline.Timeline, error),
 ) error {
-	o, err := newOutput(cmd, app)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
@@ -89,10 +89,11 @@ func viewTimelines(
 	if err != nil {
 		return err
 	}
-	cfg, z, err := resolveZone(cmd, app)
+	z, err := inv.zone()
 	if err != nil {
 		return err
 	}
+	o, cfg := inv.out, inv.cfg
 
 	var snapshot viewer.Snapshot
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
@@ -116,14 +117,12 @@ func viewTimelines(
 	switch {
 	case err != nil || o.format == formatJSON:
 		return err
-	case !interactive(cmd, app):
+	case !inv.interactive():
 		return writeTimelineView(o, z, snapshot)
 	}
 
-	noColor, _ := cmd.Flags().GetBool("no-color")
-	_, debug := errorStyleFor(app)
-	logger, flush := viewerDiagnostics(debug, app.Err)
-	color := colorEnabled(app.OutIsTTY, noColor, app.LookupEnv)
+	logger, flush := viewerDiagnostics(inv.debug, app.Err)
+	color := inv.outColor
 	images := graphics.None
 	if color {
 		images = graphics.Detect(app.LookupEnv)
@@ -142,11 +141,6 @@ func viewTimelines(
 	}
 
 	return err
-}
-
-// interactive is interactiveTerminal, unless --format asked for plain output (I-1).
-func interactive(cmd *cobra.Command, app App) bool {
-	return interactiveTerminal(app, noInput(cmd, app)) && !cmd.Flags().Changed("format")
 }
 
 // timelineLoader returns the viewer's Load for the timelines with timelineIDs in the database at
