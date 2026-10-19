@@ -141,19 +141,8 @@ var _ = Describe("add forms", func() {
 			return choices.options["event"]
 		}
 
-		// answers returns forms that answer each ask in turn with the next of answers, recording what
-		// each ask showed.
 		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-			return func(bool, graphics.Protocol) askFunc {
-				return func(_ context.Context, fields ...huh.Field) (bool, error) {
-					GinkgoHelper()
-					asked = append(asked, fields)
-					Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
-					answer := answers[0]
-					answers = answers[1:]
-					return answer(fields)
-				}
-			}
+			return scriptedForms(&asked, answers...)
 		}
 
 		// runForm runs args against a root holding parent, whose add command runs its form as RunE does
@@ -491,6 +480,21 @@ func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, err
 		NewID:             newID,
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
+	}
+}
+
+// scriptedForms returns forms that answer each ask in turn with the next of answers, appending
+// what each ask showed to asked.
+func scriptedForms(asked *[][]huh.Field, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+	return func(bool, graphics.Protocol) askFunc {
+		return func(_ context.Context, fields ...huh.Field) (bool, error) {
+			GinkgoHelper()
+			*asked = append(*asked, fields)
+			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
+			answer := answers[0]
+			answers = answers[1:]
+			return answer(fields)
+		}
 	}
 }
 

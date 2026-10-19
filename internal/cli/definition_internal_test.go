@@ -506,6 +506,7 @@ func fieldArg(f field, value string) string {
 // flagError runs args, with a store that fails the spec when opened, and returns the *Error it
 // fails with.
 func flagError(ctx context.Context, args []string) *Error {
+	GinkgoHelper()
 	app := App{
 		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard,
 		LookupEnv: func(key string) (string, bool) {
@@ -520,6 +521,13 @@ func flagError(ctx context.Context, args []string) *Error {
 			return nil, errors.New("unreachable")
 		},
 	}
+
+	return executeError(ctx, app, args...)
+}
+
+// executeError runs args through app's root and returns the *Error it fails with.
+func executeError(ctx context.Context, app App, args ...string) *Error {
+	GinkgoHelper()
 	root := NewRoot(ctx, app)
 	root.SetArgs(args)
 

@@ -43,17 +43,6 @@ var _ = Describe("timeline selection", func() {
 		Expect(Run(ctx, a)).To(Equal(0), strings.Join(args, " "))
 	}
 
-	// execute runs args through the root and returns the error it fails with.
-	execute := func(ctx context.Context, a App, args ...string) *Error {
-		GinkgoHelper()
-		root := NewRoot(ctx, a)
-		root.SetArgs(args)
-		_, err := root.ExecuteContextC(ctx)
-		failure, ok := errors.AsType[*Error](err)
-		Expect(ok).To(BeTrue(), "coroner %s returned %v", strings.Join(args, " "), err)
-		return failure
-	}
-
 	nameEach := func(timelines []timeline.Timeline) []string {
 		var named []string
 		for _, t := range timelines {
@@ -222,7 +211,7 @@ var _ = Describe("timeline selection", func() {
 			func(ctx SpecContext, args ...string) {
 				deleteTimelines(ctx)
 
-				failure := execute(ctx, app, append([]string{"--db", db}, args...)...)
+				failure := executeError(ctx, app, append([]string{"--db", db}, args...)...)
 
 				Expect(failure.Kind).To(Equal(KindTimelineRequired))
 				Expect(failure.Hint).To(Equal("Run 'coroner timeline create <name>' to create one."))
@@ -264,7 +253,7 @@ var _ = Describe("timeline selection", func() {
 				args = append(args, "-o", file)
 			}
 
-			failure := execute(ctx, app, append([]string{"--db", db, "-t", "alpha", "-t", "beta"}, args...)...)
+			failure := executeError(ctx, app, append([]string{"--db", db, "-t", "alpha", "-t", "beta"}, args...)...)
 
 			Expect(failure.Kind).To(Equal(KindUsage))
 			Expect(file).NotTo(BeAnExistingFile())
@@ -276,7 +265,7 @@ var _ = Describe("timeline selection", func() {
 	It("names --overlay when an overlay selects several timelines for a format that prints one", func(ctx SpecContext) {
 		file := filepath.Join(filepath.Dir(db), "x.svg")
 
-		failure := execute(ctx, app, "--db", db, "timeline", "export", "--overlay", "o", "--format", "svg", "-o", file)
+		failure := executeError(ctx, app, "--db", db, "timeline", "export", "--overlay", "o", "--format", "svg", "-o", file)
 
 		Expect(failure.Kind).To(Equal(KindUsage))
 		Expect(failure.Message).To(ContainSubstring("--overlay selects 2"))
@@ -311,7 +300,7 @@ var _ = Describe("timeline selection", func() {
 		_, err = raw.ExecContext(ctx, "DROP TABLE event")
 		Expect(err).NotTo(HaveOccurred())
 
-		failure := execute(ctx, app, "--db", db, "timeline", "export", "-t", "alpha", "-t", "beta",
+		failure := executeError(ctx, app, "--db", db, "timeline", "export", "-t", "alpha", "-t", "beta",
 			"--format", "svg", "-o", filepath.Join(filepath.Dir(db), "x.svg"))
 
 		Expect(failure.Kind).To(Equal(KindUsage))

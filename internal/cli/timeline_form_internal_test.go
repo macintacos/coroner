@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"maps"
 	"path/filepath"
@@ -50,19 +49,8 @@ var _ = Describe("timeline forms", func() {
 		return runOn(ctx, db, args...)
 	}
 
-	// answers returns forms that answer each ask in turn with the next of answers, recording what
-	// each ask showed.
 	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-		return func(bool, graphics.Protocol) askFunc {
-			return func(_ context.Context, fields ...huh.Field) (bool, error) {
-				GinkgoHelper()
-				asked = append(asked, fields)
-				Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
-				answer := answers[0]
-				answers = answers[1:]
-				return answer(fields)
-			}
-		}
+		return scriptedForms(&asked, answers...)
 	}
 
 	// runForm runs args against a root whose timeline command holds command, as RunE runs on a

@@ -51,7 +51,7 @@ var _ = Describe("newFileWriter", func() {
 
 var _ = It("attachment export refuses to write to stdout on a terminal, before opening the store", func(ctx SpecContext) {
 	args := []string{"attachment", "export", "0199a1b2"}
-	root := NewRoot(ctx, App{
+	app := App{
 		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard, OutIsTTY: true,
 		LookupEnv: func(key string) (string, bool) {
 			value, ok := map[string]string{"HOME": "/nonexistent", "CORONER_DB": "/nonexistent/coroner.db"}[key]
@@ -64,12 +64,9 @@ var _ = It("attachment export refuses to write to stdout on a terminal, before o
 			Fail("attachment export opened the store")
 			return nil, errors.New("unreachable")
 		},
-	})
-	root.SetArgs(args)
+	}
 
-	_, err := root.ExecuteContextC(ctx)
-
-	Expect(err).To(HaveField("Kind", KindUsage))
+	Expect(executeError(ctx, app, args...)).To(HaveField("Kind", KindUsage))
 })
 
 var errDiskFull = errors.New("disk full")
