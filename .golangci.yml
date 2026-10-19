@@ -78,6 +78,17 @@ linters:
               desc: take I/O as parameters
             - pkg: database/sql
               desc: storage lives in internal/store
+        timetext-pure:
+          list-mode: strict
+          files:
+            - "${base-path}/internal/timetext/**"
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/macintacos/coroner/internal/timeline
+          deny:
+            - pkg: os
+              desc: take I/O as parameters
         graphics-pure:
           list-mode: strict
           files:

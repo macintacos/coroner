@@ -86,6 +86,19 @@ the offset written out. Exports are for other people in other zones, so the Mark
 Mermaid, HTML and SVG exports show times in UTC unless `--tz` names a zone, and say which
 zone they show. JSON is always UTC.
 
+A coarse time's window does not always line up in the zone it is shown in. An hour
+recorded at `+05:30` starts at half past the hour in UTC, so writing it as `04:--` there
+would claim a window it was never given. Such a time is shown in the offset it was
+recorded in instead, with its dashes kept: `10:-- +05:30`. The Markdown and SVG exports
+and the terminal viewer still file it under the day its instant falls on in the shown
+zone, so days stay in order, and they write its date beside it when that differs from the
+day's heading: `2026-09-12 02:-- +05:30` under 2026-09-11 in UTC. An interval's end is
+read where its start is, so a day recorded in UTC and shown in New York reads
+`2026-09-11, until 2026-09-12` under 2026-09-10. The HTML export still shows such a time
+in the shown zone, as `04:30`. Text output reads only a day-precision event in its own
+offset: `event list --tz America/New_York` prints a day recorded in UTC as
+`2026-09-11T00:00:00Z`.
+
 ## Clock skew is never corrected silently
 
 Sources disagree about time: a server's clock drifts, a chat client shows when a message

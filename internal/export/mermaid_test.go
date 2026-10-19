@@ -96,6 +96,24 @@ var _ = Describe("WriteMermaid", func() {
 		Expect(diagram).To(ContainSubstring("    Failover window :2026-11-01T01:50:00, 1200s\n"))
 	})
 
+	It("names the zone at export in the title of a timeline of day-precision events only", func() {
+		env := envelope(export.Timeline{ID: "t1", Name: "winter", Title: "Outage", Refs: []string{}}, []export.Event{{
+			ID: "e1", Seq: new(int64(1)), OccurredAt: utc("2026-01-15T05:00:00Z"), OccurredOffset: new(-18000),
+			Precision: timeline.PrecisionDay, Tags: []string{}, Text: "Snow day",
+		}}, nil)
+
+		Expect(mermaid(env, newYork())).To(ContainSubstring("  title winter Outage (EDT)\n"))
+	})
+
+	It("names the abbreviation its bars are drawn in when an event reads in its own offset", func() {
+		env := envelope(export.Timeline{ID: "t1", Name: "winter", Title: "Outage", Refs: []string{}}, []export.Event{{
+			ID: "e1", Seq: new(int64(1)), OccurredAt: utc("2026-01-15T04:30:00Z"), OccurredOffset: new(19800),
+			Precision: timeline.PrecisionHour, Tags: []string{}, Text: "Paged",
+		}}, nil)
+
+		Expect(mermaid(env, newYork())).To(ContainSubstring("  title winter Outage (EST)\n"))
+	})
+
 	It("overlays several timelines: a section per timeline and source in order of first appearance, the title naming each timeline", func() {
 		matchGoldenFile(mermaidGoldenDir, "overlay", ".mmd", mermaid(overlay(), time.UTC))
 	})

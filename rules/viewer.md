@@ -15,7 +15,9 @@
    flags. Never filter or sort events in memory. The picker's `/` narrows its timeline
    rows in memory, which filters no events.
 3. **Order and gaps come from the domain:** events arrive in `timeline.CompareEvents`
-   order, and gap rows come from `timeline.Gaps`. Never compute either in the view.
+   order, and gap rows come from `timeline.Gaps`. Never compute either in the view. Day
+   headings come from `timetext`'s `Reading.Day`, the day an event's instant falls on, so
+   they follow domain order.
 4. **Color never carries meaning alone:** evidence and comments, gaps, day breaks, the
    current timeline, an overlay's timelines and the cursor each have a glyph or word as
    well, so `NO_COLOR` and `--no-color` lose nothing. Use the 16 ANSI colors, which the

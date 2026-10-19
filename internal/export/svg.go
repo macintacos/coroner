@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/macintacos/coroner/internal/timeline"
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 //go:embed svg/timeline.svg.tmpl
@@ -109,10 +110,9 @@ func newSVGPicture(env Envelope, v view, zone *time.Location) svgPicture {
 	if refs := v.Timelines[0].Refs; len(refs) > 0 {
 		header = append(header, flatten(strings.Join(refs, ", ")))
 	}
-	exported := time.Time(env.ExportedAt).In(zone)
 	header = append(header,
 		"Times in "+pageZoneName(zone),
-		"Exported "+exported.Format("2006-01-02 15:04")+" "+zoneName(exported)+" by coroner "+flatten(env.CoronerVersion),
+		"Exported "+timetext.Stamp(time.Time(env.ExportedAt), zone)+" by coroner "+flatten(env.CoronerVersion),
 	)
 
 	picture := svgPicture{
@@ -221,13 +221,16 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	axis := svgAxis{window: window}
 	layout := svgLayout{Height: svgAxisHeight, Ticks: axis.ticks(zone)}
 	palette := sourcePalette()
+	byID := readings(v.Events, zone)
+	daySpansOffsets := daysSpanningOffsets(byID)
 	for _, g := range groupEvents(v.Events, sourceOf) {
 		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: svgMuted, Y: layout.Height}
 		if g.key != "" {
 			lane.Label, lane.Title, lane.Color = truncate(g.key, svgLaneLabelRunes), g.key, palette[v.slot(g.key)].Light
 		}
 		for row, e := range g.events {
-			lane.Marks = append(lane.Marks, axis.mark(e, zone, lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
+			r := byID[e.ID]
+			lane.Marks = append(lane.Marks, axis.mark(e, svgWhen(r, daySpansOffsets[r.Day]), lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
 		}
 		lane.LabelY = lane.Marks[0].Y
 		lane.Bottom = lane.Y + float64(len(g.events))*svgRowHeight + 2*svgLanePadding
@@ -236,6 +239,21 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	}
 
 	return layout
+}
+
+// daysSpanningOffsets reports, by Day, whether the readings filed under it span more than one
+// offset.
+func daysSpanningOffsets(byID map[string]timetext.Reading) map[string]bool {
+	days := map[string][]timetext.Reading{}
+	for _, r := range byID {
+		days[r.Day] = append(days[r.Day], r)
+	}
+	spans := make(map[string]bool, len(days))
+	for day, readings := range days {
+		_, spans[day] = timetext.DayZone(readings, "")
+	}
+
+	return spans
 }
 
 // exportWindow returns the time an export covers: from its query's since or its first event,
@@ -294,8 +312,8 @@ func (axis svgAxis) x(t time.Time) float64 {
 	return svgGutter + svgPlotWidth*float64(t.Sub(axis.window.From))/float64(axis.window.To.Sub(axis.window.From))
 }
 
-// mark returns e's mark in the row at y, labelled with its time in zone.
-func (axis svgAxis) mark(e Event, zone *time.Location, y float64) svgMark {
+// mark returns e's mark in the row at y, labelled with when, its time.
+func (axis svgAxis) mark(e Event, when string, y float64) svgMark {
 	start := time.Time(e.OccurredAt)
 	end := start.Add(precisionWindow(e.Precision))
 	shape := svgBand
@@ -306,7 +324,7 @@ func (axis svgAxis) mark(e Event, zone *time.Location, y float64) svgMark {
 		shape = svgPoint
 	}
 
-	text := svgWhen(e, zone) + " " + flatten(e.Text)
+	text := when + " " + flatten(e.Text)
 	m := svgMark{
 		X: axis.x(start), Y: y, Shape: shape, Inexact: e.Approximate || precisionWindow(e.Precision) > 0,
 		Label: truncate(text, svgLabelRunes), Title: text,
@@ -335,24 +353,21 @@ func labelPlace(from, to float64) (float64, string) {
 	return from + svgLabelGap, "start"
 }
 
-// svgWhen returns e's time in zone at its precision, a day-precision event's as the date in
-// its own offset, then its interval's end, dated when it is day precision or falls on another
-// day in zone, and ~ first when it is approximate.
-func svgWhen(e Event, zone *time.Location) string {
-	start := time.Time(e.OccurredAt).In(zone)
-	when := clock(start, e.Precision, false)
-	if e.Precision == timeline.PrecisionDay {
-		when = time.Time(e.OccurredAt).In(time.FixedZone("", deref(e.OccurredOffset))).Format(time.DateOnly)
-	}
-	if e.EndedAt != nil {
-		end := time.Time(*e.EndedAt).In(zone)
-		endText := clock(end, e.Precision, false)
-		if e.Precision == timeline.PrecisionDay || end.Format(time.DateOnly) != start.Format(time.DateOnly) {
-			endText = strings.TrimSpace(end.Format(time.DateOnly) + " " + endText)
+// svgWhen returns r's start, then its interval's end, and ~ first when it is approximate. A
+// day-precision event shows the date of each end; a timed part reads as partWhen's, with its
+// offset when its day spans offsets.
+func svgWhen(r timetext.Reading, showOffset bool) string {
+	part := func(p timetext.Part, after string) string {
+		if r.Precision == timeline.PrecisionDay {
+			return p.Date
 		}
-		when += "–" + endText
+		return partWhen(p, after, showOffset)
 	}
-	if e.Approximate {
+	when := part(r.Start, r.Day)
+	if r.End != nil {
+		when += "–" + part(*r.End, r.Start.Date)
+	}
+	if r.Approximate {
 		when = "~" + when
 	}
 

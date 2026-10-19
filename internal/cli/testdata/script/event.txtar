@@ -61,6 +61,12 @@ stderr 'unknown time zone "Bogus/Zone" in --tz'
 exec coroner event view 1
 stdout 'Primary stepped down'
 
+# A day-precision event shows its own date, in the offset it was recorded in.
+exec coroner timeline create release-day
+exec coroner event add 'Release cut' --at 2026-09-11 --tz UTC -t release-day
+exec coroner event list -t release-day --tz America/New_York
+stdout '^#1\t2026-09-11T00:00:00Z\t'
+
 -- p99.gif --
 GIF89a p99 latency panel
 -- slack.txt --

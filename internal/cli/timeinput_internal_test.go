@@ -124,6 +124,24 @@ var _ = Describe("time input", func() {
 			"~2026-09-11T03:14:07Z (-03:00 local: 00:14:07)"),
 	)
 
+	DescribeTable("occurredText dates a day-precision event in its own offset, and any other in the zone",
+		func(occurred string, precision timeline.Precision, offset int, want string) {
+			at, err := time.Parse(time.RFC3339, occurred)
+			Expect(err).NotTo(HaveOccurred())
+			e := timeline.Event{OccurredAt: at, Precision: precision, OccurredOffset: &offset}
+			newYork, err := time.LoadLocation("America/New_York")
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(occurredText(e, zone{loc: newYork, label: "America/New_York"})).To(Equal(want))
+		},
+		Entry("a day recorded in UTC", "2026-09-11T00:00:00Z", timeline.PrecisionDay, 0,
+			"2026-09-11T00:00:00Z"),
+		Entry("a day recorded at -05:00", "2026-09-11T00:00:00-05:00", timeline.PrecisionDay, -5*3600,
+			"2026-09-11T00:00:00-05:00"),
+		Entry("a second, in the zone", "2026-09-11T03:14:07Z", timeline.PrecisionSecond, 0,
+			"2026-09-10T23:14:07-04:00"),
+	)
+
 	DescribeTable("event add's time previews show what a time resolves to in the zone, or why its check rejects it",
 		func(name, input string, want types.GomegaMatcher) {
 			z, err := timeZone(new("America/New_York"), "local", local)
