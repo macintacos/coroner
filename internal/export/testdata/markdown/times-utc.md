@@ -1,6 +1,6 @@
 # times
 
-- **Window:** 2026-09-11 00:00:00 → 2026-11-01 06:45:00 UTC
+- **Window:** 2026-09-11 → 2026-11-01 06:45 UTC
 - **Events:** 16
 - **Exported:** 2026-09-13 01:40 UTC by coroner (devel)
 

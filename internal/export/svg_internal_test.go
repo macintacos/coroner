@@ -100,7 +100,7 @@ var _ = Describe("layoutSVG", func() {
 		Expect(layout.Lanes).To(HaveExactElements(
 			And(HaveField("Label", "mongod"), HaveField("Color", sourcePalette()[0].Light), HaveField("Marks", HaveLen(2))),
 			And(HaveField("Label", "slack"), HaveField("Color", sourcePalette()[1].Light), HaveField("Marks", HaveLen(1))),
-			And(HaveField("Label", "(no source)"), HaveField("Color", svgMuted), HaveField("Marks", HaveLen(1))),
+			And(HaveField("Label", "(no source)"), HaveField("Color", newSVGColors().Muted), HaveField("Marks", HaveLen(1))),
 		))
 		Expect(layout.Lanes[0].Marks[1].Title).To(ContainSubstring("event at 2026-09-11T03:04:00Z"))
 		var previous svgLane
@@ -142,7 +142,7 @@ var _ = Describe("layoutSVG", func() {
 		Entry("a zero-length interval as a bar wide enough to see",
 			interval("2026-09-11T03:15:00Z", "2026-09-11T03:15:00Z", ""), svgBar, 2.0, false, "03:15:00–03:15:00 event"),
 		Entry("a millisecond interval as a bar wide enough to see",
-			interval("2026-09-11T03:15:00Z", "2026-09-11T03:15:00.001Z", ""), svgBar, 2.0, false, "03:15:00–03:15:00 event"),
+			interval("2026-09-11T03:15:00Z", "2026-09-11T03:15:00.001Z", ""), svgBar, 2.0, false, "03:15:00–03:15:00.001 event"),
 	)
 
 	It("starts a day-precision band where its day starts in its own offset, labelled with that date", func() {
@@ -174,6 +174,17 @@ var _ = Describe("layoutSVG", func() {
 		e.Text = "first\r\nsecond\n"
 
 		Expect(marks(layoutSVG(viewOf(e), threeToFour(), time.UTC))[0].Label).To(Equal("03:15:00 first second"))
+	})
+
+	It("places a mark in proportion to its time on a window wider than 292 years", func() {
+		window := svgWindow{From: at("1626-01-01T00:00:00Z"), To: at("2026-01-01T00:00:00Z")}
+		middle := at("1826-01-01T00:00:00Z")
+		share := float64(middle.Unix()-window.From.Unix()) / float64(window.To.Unix()-window.From.Unix())
+
+		layout := layoutSVG(viewOf(instant("1826-01-01T00:00:00Z", timeline.PrecisionSecond, "")), window, time.UTC)
+
+		Expect(marks(layout)[0].X).To(BeNumerically("~", 200+976*share, 0.01))
+		Expect(layout.Ticks).To(HaveLen(8))
 	})
 
 	DescribeTable("ticks the axis at round times on the zone's wall clock, dating the first tick and each new day",

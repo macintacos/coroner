@@ -397,6 +397,20 @@ func (p *headingPath) visit(h *ast.Heading, text string) string {
 }
 
 // listItems returns the items of the last list directly inside parent.
+// linksAndImages counts the links and images in n that are not autolinks.
+func linksAndImages(n ast.Node) int {
+	count := 0
+	_ = ast.Walk(n, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if entering && (n.Kind() == ast.KindLink || n.Kind() == ast.KindImage) {
+			count++
+		}
+
+		return ast.WalkContinue, nil
+	})
+
+	return count
+}
+
 func listItems(parent ast.Node) []ast.Node {
 	GinkgoHelper()
 	var list ast.Node
@@ -519,16 +533,19 @@ var _ = Describe("WriteMarkdown", func() {
 				},
 			)
 			source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
-			doc := parseGFM(source)
-
-			event := listItems(doc)[0]
-			Expect(visibleText(event, source)).To(Equal("03:14:07 · "+input), string(source))
-			annotations := listItems(event)
-			Expect(annotations).To(HaveLen(2), string(source))
-			Expect(visibleText(annotations[0], source)).To(Equal("comment (julian): "+input), string(source))
-			Expect(strings.TrimPrefix(visibleText(annotations[1], source), "evidence (julian):")).
-				To(Or(Equal(" "+input), Equal(input+"\n")), string(source))
+			for _, doc := range []ast.Node{parseMarkdown(source), parseGFM(source)} {
+				Expect(linksAndImages(doc)).To(BeZero(), string(source))
+				event := listItems(doc)[0]
+				Expect(visibleText(event, source)).To(Equal("03:14:07 · "+input), string(source))
+				annotations := listItems(event)
+				Expect(annotations).To(HaveLen(2), string(source))
+				Expect(visibleText(annotations[0], source)).To(Equal("comment (julian): "+input), string(source))
+				Expect(strings.TrimPrefix(visibleText(annotations[1], source), "evidence (julian):")).
+					To(Or(Equal(" "+input), Equal(input+"\n")), string(source))
+			}
 		},
+		Entry("a URL holding link and image syntax", "see https://a.example/![x](https://evil.example/p.png) and https://b.example/[Grafana](https://evil.example/login)"),
+		Entry("a URL holding a backslash", `https://x.example/a\*b*`),
 		Entry("backticks", "run `rs.status()` then ``` and ``"),
 		Entry("backticks at both ends", "`quoted`"),
 		Entry("emphasis markers", "*bold*, _under_ and **strong**"),
@@ -615,6 +632,31 @@ var _ = Describe("WriteMarkdown", func() {
 			shownLink{true, "p99 latency.png", file("p99 latency.png")},
 			shownLink{false, "trace.pdf", file("trace.pdf")},
 			shownLink{true, "rs-status.png", file("rs-status.png")},
+		), string(source))
+	})
+
+	It("reads the window's times as the events' own lines read them, to the end of the last one's precision", func() {
+		env := envelope(
+			export.Timeline{ID: "t1", Name: "window", Refs: []string{}},
+			[]export.Event{{
+				ID: "e1", Seq: new(int64(1)), OccurredAt: utc("2026-09-11T04:30:00Z"), OccurredOffset: new(19800),
+				Precision: timeline.PrecisionHour, Tags: []string{}, Text: "Primary stepped down",
+			}},
+			[]export.Annotation{},
+		)
+
+		Expect(markdown(env, export.MarkdownOptions{Zone: time.UTC})).
+			To(ContainSubstring("- **Window:** 2026-09-11 10:-- +05:30 → 05:30 UTC\n"))
+	})
+
+	It("links an SVG attachment, which a browser could run, rather than showing it as an image", func() {
+		env := checkoutSpike()
+		env.Attachments = env.Attachments[:1]
+		env.Attachments[0].Filename, env.Attachments[0].MIME = "graph.svg", "image/svg+xml"
+		source := []byte(markdown(env, export.MarkdownOptions{Zone: time.UTC}))
+
+		Expect(shownLinks(parseGFM(source), source)).To(HaveExactElements(
+			shownLink{false, "graph.svg", "attachments/" + env.Attachments[0].SHA256 + ".txt"},
 		), string(source))
 	})
 

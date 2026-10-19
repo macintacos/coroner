@@ -1,21 +1,33 @@
 package export
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // AttachmentPath returns the path, relative to an export's directory, that a's content is
 // written to beside the export: attachments/<sha256><extension>, with the extension of a's
 // media type, or .bin for a type it has none for. a.SHA256 must be 64 lowercase hex digits,
 // as Decode and the store ensure; then no text a person typed reaches the path.
 func AttachmentPath(a Attachment) string {
+	return "attachments/" + a.SHA256 + extension(mediaType(a))
+}
+
+func mediaType(a Attachment) string {
 	mediaType, _, _ := strings.Cut(a.MIME, ";")
 
-	return "attachments/" + a.SHA256 + extension(strings.TrimSpace(mediaType))
+	return strings.TrimSpace(mediaType)
+}
+
+// rasterImage reports whether a is an image a reader can show inline without running it.
+func rasterImage(a Attachment) bool {
+	return slices.Contains([]string{".bmp", ".gif", ".jpg", ".png", ".webp", ".ico"}, extension(mediaType(a)))
 }
 
 // extension is fixed, rather than mime.ExtensionsByType, which reads the host's mime.types
 // files and would name the same attachment differently on another machine. It covers what
-// http.DetectContentType and store.DetectMIME report. HTML and XML are .txt so a host serving
-// the export does not run them as pages.
+// http.DetectContentType and store.DetectMIME report. HTML, XML and SVG are .txt so a host
+// serving the export does not run them as pages.
 func extension(mediaType string) string {
 	switch mediaType {
 	case "application/json":
@@ -68,8 +80,6 @@ func extension(mediaType string) string {
 		return ".jpg"
 	case "image/png":
 		return ".png"
-	case "image/svg+xml":
-		return ".svg"
 	case "image/webp":
 		return ".webp"
 	case "image/x-icon":
@@ -78,7 +88,7 @@ func extension(mediaType string) string {
 		return ".csv"
 	case "text/markdown":
 		return ".md"
-	case "text/plain", "text/html", "text/xml":
+	case "text/plain", "text/html", "text/xml", "image/svg+xml":
 		return ".txt"
 	case "video/avi":
 		return ".avi"

@@ -76,6 +76,12 @@ var _ = Describe("DifferingKeys", func() {
 				SHA256: strings.Repeat("ab", 32), Size: 2048, CreatedAt: instant(4, 0),
 			})
 		}),
+		Entry("a link", func() ([]string, []string) {
+			return fromZero(export.Link{
+				ID: linkID, FromEventID: eventID2, ToEventID: eventID, Kind: timeline.LinkCopiedFrom, CreatedAt: instant(5, 0),
+				Author: new("julian"),
+			})
+		}),
 	)
 
 	It("lists nothing for two equal records", func() {

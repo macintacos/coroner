@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 // view is an export made ready to show: checked once, in display order, with its lookups.
@@ -52,15 +55,19 @@ func prepare(env Envelope) (view, error) {
 		return view{}, err
 	}
 	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
-	onTimeline, byEvent, err := splitAnnotations(env.Annotations, events)
+	exported := map[string]bool{}
+	for _, e := range events {
+		exported[e.ID] = true
+	}
+	onTimeline, byEvent, err := splitAnnotations(env.Annotations, exported)
 	if err != nil {
 		return view{}, err
 	}
-	attachments, err := groupAttachments(env)
+	attachments, err := groupAttachments(env, exported)
 	if err != nil {
 		return view{}, err
 	}
-	links, err := sortedLinks(env)
+	links, err := sortedLinks(env.Links, exported)
 	if err != nil {
 		return view{}, err
 	}
@@ -104,13 +111,8 @@ func timelineNames(env Envelope) (map[string]string, error) {
 }
 
 // splitAnnotations returns annotations by created at then id, split into those on no event
-// and those on each event, and fails naming one whose event is not in events.
-func splitAnnotations(annotations []Annotation, events []Event) ([]Annotation, map[string][]Annotation, error) {
-	exported := map[string]bool{}
-	for _, e := range events {
-		exported[e.ID] = true
-	}
-
+// and those on each event, and fails naming one whose event is not exported.
+func splitAnnotations(annotations []Annotation, exported map[string]bool) ([]Annotation, map[string][]Annotation, error) {
 	var onTimeline []Annotation
 	byEvent := map[string][]Annotation{}
 	for _, a := range slices.SortedFunc(slices.Values(annotations), compareAnnotations) {
@@ -128,18 +130,20 @@ func splitAnnotations(annotations []Annotation, events []Event) ([]Annotation, m
 }
 
 // groupAttachments returns env's attachments by created at then id, keyed by the id of the
-// event or annotation that keeps each, and fails naming the first whose owner is not in env.
-func groupAttachments(env Envelope) (map[string][]Attachment, error) {
-	events, annotations := map[string]bool{}, map[string]bool{}
-	for _, e := range env.Events {
-		events[e.ID] = true
-	}
+// event or annotation that keeps each, and fails naming the first whose owner is not in env or
+// whose event is not exported.
+func groupAttachments(env Envelope, events map[string]bool) (map[string][]Attachment, error) {
+	annotations := map[string]bool{}
 	for _, a := range env.Annotations {
 		annotations[a.ID] = true
 	}
 
 	byOwner := map[string][]Attachment{}
 	for _, f := range slices.SortedFunc(slices.Values(env.Attachments), compareAttachments) {
+		err := f.Domain().Owner.Validate()
+		if err != nil {
+			return nil, fmt.Errorf("attachment %s: %w", f.ID, err)
+		}
 		switch {
 		case f.EventID != nil && !events[*f.EventID]:
 			return nil, fmt.Errorf("attachment %s: its event %s is not in the export", f.ID, *f.EventID)
@@ -153,18 +157,13 @@ func groupAttachments(env Envelope) (map[string][]Attachment, error) {
 	return byOwner, nil
 }
 
-// sortedLinks returns env's links by created at then id, and fails naming the first whose event
-// is not in env.
-func sortedLinks(env Envelope) ([]Link, error) {
-	events := map[string]bool{}
-	for _, e := range env.Events {
-		events[e.ID] = true
-	}
-
-	links := slices.SortedFunc(slices.Values(env.Links), compareLinks)
+// sortedLinks returns links by created at then id, and fails naming the first whose event is not
+// exported.
+func sortedLinks(links []Link, exported map[string]bool) ([]Link, error) {
+	links = slices.SortedFunc(slices.Values(links), compareLinks)
 	for _, l := range links {
 		for _, id := range []string{l.FromEventID, l.ToEventID} {
-			if !events[id] {
+			if !exported[id] {
 				return nil, fmt.Errorf("link %s: its event %s is not in the export", l.ID, id)
 			}
 		}
@@ -184,4 +183,80 @@ func (v view) title() (string, string) {
 	}
 
 	return "", strings.Join(names, " + ")
+}
+
+// eventGroup is the events that share a key, such as a source; the group whose events have
+// none has the key "".
+type eventGroup struct {
+	key    string
+	events []Event
+}
+
+// groupEvents returns events under each key keys gives them, in order of first appearance,
+// then the events keys gives none.
+func groupEvents(events []Event, keys func(Event) []string) []eventGroup {
+	var groups []eventGroup
+	var keyless []Event
+	index := map[string]int{}
+	for _, e := range events {
+		if len(keys(e)) == 0 {
+			keyless = append(keyless, e)
+		}
+		for _, key := range keys(e) {
+			i, ok := index[key]
+			if !ok {
+				i = len(groups)
+				index[key] = i
+				groups = append(groups, eventGroup{key: key})
+			}
+			groups[i].events = append(groups[i].events, e)
+		}
+	}
+	if len(keyless) > 0 {
+		groups = append(groups, eventGroup{events: keyless})
+	}
+
+	return groups
+}
+
+func sourceOf(e Event) []string {
+	if e.Source == nil {
+		return nil
+	}
+
+	return []string{*e.Source}
+}
+
+// lines returns s split at its line breaks, of any convention, without trailing blank lines.
+func lines(s string) []string {
+	split := strings.Split(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s), "\n")
+	last := len(split) - 1
+	for last > 0 && strings.TrimSpace(split[last]) == "" {
+		last--
+	}
+
+	return split[:last+1]
+}
+
+func eventInstants(e Event) []time.Time {
+	if e.EndedAt == nil {
+		return []time.Time{time.Time(e.OccurredAt)}
+	}
+
+	return []time.Time{time.Time(e.OccurredAt), time.Time(*e.EndedAt)}
+}
+
+// readings returns each event's time as it reads in zone, by event id.
+func readings(events []Event, zone *time.Location) map[string]timetext.Reading {
+	byID := make(map[string]timetext.Reading, len(events))
+	for _, e := range events {
+		byID[e.ID] = timetext.Read(e.Domain(), zone)
+	}
+
+	return byID
+}
+
+func zoneName(t time.Time) string {
+	name, _ := t.Zone()
+	return name
 }

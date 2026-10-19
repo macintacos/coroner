@@ -17,7 +17,7 @@ var _ = DescribeTable("AttachmentPath names the file by its hash under attachmen
 	},
 	Entry("a PNG", "image/png", ".png"),
 	Entry("a JPEG", "image/jpeg", ".jpg"),
-	Entry("an SVG", "image/svg+xml", ".svg"),
+	Entry("an SVG, as text a browser will not run", "image/svg+xml", ".txt"),
 	Entry("a PDF", "application/pdf", ".pdf"),
 	Entry("HTML, as text a browser will not run", "text/html; charset=utf-8", ".txt"),
 	Entry("XML, as text a browser will not run", "text/xml; charset=utf-8", ".txt"),

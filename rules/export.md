@@ -63,22 +63,28 @@
    events. Its layout is not a contract (`AGENTS.md` Rule 3), so it changes without a
    version bump, but always within the limits that keep it pasting cleanly into chat and
    wikis: plain CommonMark with no tables, front matter or raw HTML, lists at most two
-   levels deep, and URL tokens left unescaped so autolinks keep them whole. An
-   attachment's image or link destination is built only from its hash, by
-   `export.AttachmentPath` or the caller's `AttachmentLink`, never from its filename. The
-   filename is only the text, and goes through the escaper, not `escape`, whose unescaped
-   URLs could hold a `]`. An event's attachments are list items beside its annotations,
-   and an annotation's attachments follow its text on its line, so neither nests a third
-   level. An overlay of several timelines lists each under a `Timelines` metadata bullet
-   and labels every event, and every annotation on a whole timeline, with its timeline's
-   name as a code span; an export of one timeline carries no label. Specs parse every
-   golden in `internal/export/testdata/markdown/` with goldmark to check there is no raw
-   HTML, lists are at most two levels deep and no heading repeats under one parent, and
-   run `rumdl check` on them with MD013 off. Its MD057 needs every relative link to
-   resolve, so `attachments/` there holds an empty file for each attachment hash the
-   goldens link, as an `-o` directory export would. `rumdl fmt` skips that directory, so a
-   golden changes only through `go test ./internal/export -update`, with its diff read
-   before committing.
+   levels deep, and URL tokens left unescaped so autolinks keep them whole. A URL token
+   ends at `[`, `]` and `\`, and one holding `*`, `~`, an entity or a `_` not between
+   letters or digits is escaped like text, so it forms no link, image, emphasis or entity
+   where no autolink swallows it, as in plain CommonMark; specs parse with both plain
+   CommonMark and GFM, and a rapid property holds any event text visibly intact under
+   both. The `Window` bullet's times come from `timetext.ReadWindow`. Only a raster image
+   attachment is an image; any other, SVG included, is a link. An attachment's image or
+   link destination is built only from its hash, by `export.AttachmentPath` or the
+   caller's `AttachmentLink`, never from its filename. The filename is only the text, and
+   goes through the escaper, not `escape`, whose unescaped URLs could hold a `]`. An
+   event's attachments are list items beside its annotations, and an annotation's
+   attachments follow its text on its line, so neither nests a third level. An overlay of
+   several timelines lists each under a `Timelines` metadata bullet and labels every
+   event, and every annotation on a whole timeline, with its timeline's name as a code
+   span; an export of one timeline carries no label. Specs parse every golden in
+   `internal/export/testdata/markdown/` with goldmark to check there is no raw HTML, lists
+   are at most two levels deep and no heading repeats under one parent, and run
+   `rumdl check` on them with MD013 off. Its MD057 needs every relative link to resolve,
+   so `attachments/` there holds an empty file for each attachment hash the goldens link,
+   as an `-o` directory export would. `rumdl fmt` skips that directory, so a golden
+   changes only through `go test ./internal/export -update`, with its diff read before
+   committing.
 9. **The Mermaid export has one writer:** render it only through `export.WriteMermaid`, or
    `export.WriteMarkdown` with `Diagram`, from the same `Envelope`, so the diagram shows
    the events every other format exports. Its layout is not a contract (`AGENTS.md` Rule
@@ -149,11 +155,13 @@
     `internal/export/theme_internal_test.go` fail when a token or source colour is not a
     lowercase `#rrggbb`, when a text token is under WCAG AA contrast (4.5:1) on a
     background token, or a source colour under 3:1 on one, in either theme; line tokens
-    have no contrast floor. A spec in `internal/export/html_test.go` fails when
-    `viewer.css` gives a paint declaration, one whose property names a colour, background,
-    border, outline, shadow, fill, stroke or source, custom properties included, anything
-    but `var(--…)` references, numbers, lengths, commas, `solid`, `dashed`, `dotted`,
-    `none`, `transparent` or `inherit`.
+    have no contrast floor. The SVG export paints with the light `ink`, `muted` and `rule`
+    tokens on white, and labels each lane in its source colour, so a spec also fails when
+    a source colour's light value is under 4.5:1 on that white. A spec in
+    `internal/export/html_test.go` fails when `viewer.css` gives a paint declaration, one
+    whose property names a colour, background, border, outline, shadow, fill, stroke or
+    source, custom properties included, anything but `var(--…)` references, numbers,
+    lengths, commas, `solid`, `dashed`, `dotted`, `none`, `transparent` or `inherit`.
 12. **A cluster never hides a gap:** `clusterCriteria` in `viewer.js` keeps a cluster to
     points spanning less than 5 minutes, with no range in its row whose midpoint falls
     within that span, ends included. The 5 minutes are the terminal viewer's

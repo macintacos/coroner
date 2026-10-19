@@ -340,11 +340,12 @@ its first `.` is the attachment's `sha256`: an importer, such as `coroner import
 reads `attachments/` beside the JSONL file it imports, finds the file by that name and
 checks the content against the hash. The rest of the name is an extension following
 `mime`, such as `.png` for `image/png`, or `.bin`, so the same content attached with two
-media types can be two files with one hash. `text/html` and `text/xml` get `.txt`, so a
-host serving the directory never runs an attached page. The extension is only a hint for
-viewers: it is not part of the contract and may change. Exporting again into the same
-directory writes the same files. The `attachments/` directory and the `sha256` name follow
-the [evolution rules](#evolution-rules) like the rest of the format.
+media types can be two files with one hash. `text/html`, `text/xml` and `image/svg+xml`
+get `.txt`, so a host serving the directory never runs an attached page or picture. The
+extension is only a hint for viewers: it is not part of the contract and may change.
+Exporting again into the same directory writes the same files. The `attachments/`
+directory and the `sha256` name follow the [evolution rules](#evolution-rules) like the
+rest of the format.
 
 ## Encoding rules
 

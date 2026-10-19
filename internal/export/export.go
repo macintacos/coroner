@@ -1,7 +1,9 @@
 // Package export is coroner's public machine representation: the canonical JSON object for
 // each timeline, source, event, annotation, attachment and link, the versioned export
 // envelope and JSONL record stream that carry them, and the one encoder and decoder for
-// both. It also renders the same envelope as Markdown for people, through WriteMarkdown.
+// both. It also renders the same envelope for people: as Markdown through WriteMarkdown, a
+// Mermaid gantt through WriteMermaid, an HTML page through WriteHTML and an SVG picture through
+// WriteSVG.
 // Every key is always present, so no field here uses omitempty or omitzero; a value that
 // may be absent is a pointer, which encodes as null.
 package export
