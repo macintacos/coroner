@@ -69,7 +69,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	records, err := readImportRecords(path, app.ReadFile, app.In, app.InIsTTY)
+	records, err := readImportRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	var plan importPlan
 	err = withStoreOpenedBy(ctx, open, inv.cfg.DBPath, func(s *store.Store) error {
 		plan, err = planStoredImport(ctx, s, in, inv.timelines)
-		if err != nil || dryRun || plan.blocked != nil {
+		if err != nil || dryRun || !plan.canWrite() {
 			return err
 		}
 
@@ -104,14 +104,70 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
+	if len(plan.problems) > 0 {
+		return invalidImportError(plan.problems, invalidImportHint)
+	}
+	if plan.takenName != "" {
+		return timelineNameTakenError(plan.takenName)
+	}
 
 	plan.result.DryRun = dryRun
-	err = renderImport(inv.out, plan, dryRun || plan.blocked != nil)
-	if err != nil || plan.blocked == nil {
+	err = renderImport(inv.out, plan, dryRun || !plan.canWrite())
+	if err != nil {
 		return err
 	}
 
-	return plan.blocked
+	return importBlockedError(plan)
+}
+
+// invalidImportError returns problems as one invalid_input error: a count, the first few, and
+// how many more there are, with hint.
+func invalidImportError(problems []string, hint string) *Error {
+	header := fmt.Sprintf("%d records cannot be imported:", len(problems))
+	if len(problems) == 1 {
+		header = "1 record cannot be imported:"
+	}
+	lines := append([]string{header}, problems[:min(len(problems), shownImportProblems)]...)
+	if more := len(problems) - shownImportProblems; more > 0 {
+		lines = append(lines, fmt.Sprintf("and %d more", more))
+	}
+
+	return &Error{Kind: KindInvalidInput, Message: strings.Join(lines, "\n"), Hint: hint}
+}
+
+const invalidImportHint = "Nothing was imported. Fix those records, or export the file again."
+
+// timelineNameTakenError returns timeline_exists for an incoming timeline named name, which a
+// stored timeline with another id holds.
+func timelineNameTakenError(name string) *Error {
+	return &Error{
+		Kind:    KindTimelineExists,
+		Message: fmt.Sprintf("timeline `%s` already exists here as another timeline, so nothing was imported", name),
+		Hint:    fmt.Sprintf("Rename it with 'coroner timeline edit %s --name <new-name>', then import again.", name),
+	}
+}
+
+// importBlockedError returns the id_conflict that stops plan from writing, or nil when nothing
+// blocks it.
+func importBlockedError(plan importPlan) error {
+	switch plan.blocked {
+	case blockConflicts:
+		return &Error{
+			Kind:    KindIDConflict,
+			Message: recordCount(len(plan.result.Conflicts)) + " conflict with what is stored, so nothing was imported",
+			Hint:    "Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's.",
+		}
+	case blockUnreplaceable:
+		return &Error{
+			Kind: KindIDConflict,
+			Message: recordCount(len(plan.unreplaceable)) +
+				" cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
+			Hint: "Pass --on-conflict skip to keep what is stored.",
+		}
+	case blockNone:
+	}
+
+	return nil
 }
 
 // planStoredImport plans in against what s holds, within the timeline guard names when it names
@@ -174,19 +230,26 @@ func readConflictPolicy(flags *pflag.FlagSet) (conflictPolicy, error) {
 	}
 }
 
-// readImportRecords reads and decodes the export at path, or on stdin when path is -. It never
-// reads a terminal stdin.
-func readImportRecords(
-	path string, readFile func(string) ([]byte, error), stdin io.Reader, stdinIsTTY bool,
-) ([]export.Record, error) {
+// jsonlSource is where JSONL records come from: the file at path, or stdin when path is -.
+type jsonlSource struct {
+	path       string
+	readFile   func(string) ([]byte, error)
+	stdin      io.Reader
+	stdinIsTTY bool
+}
+
+// readImportRecords reads and decodes the export src names, putting hint on a decode error. It
+// never reads a terminal stdin.
+func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
+	path, stdin := src.path, src.stdin
 	switch {
-	case path == "-" && stdinIsTTY:
+	case path == "-" && src.stdinIsTTY:
 		return nil, &Error{
 			Kind: KindUsage, Message: "- reads the export from stdin, which is a terminal",
 			Hint: "Pipe an export in, as in: cat inc-4821.jsonl | coroner import -",
 		}
 	case path != "-":
-		data, err := readFile(path)
+		data, err := src.readFile(path)
 		if err != nil {
 			return nil, &Error{
 				Kind: KindUsage, Message: "cannot read " + path, Err: err,
@@ -198,7 +261,7 @@ func readImportRecords(
 
 	records, err := export.Decode(stdin)
 	if invalid, ok := errors.AsType[*export.DecodeError](err); ok {
-		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: invalidImportHint, Err: err}
+		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: hint, Err: err}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read the export: %w", err)

@@ -63,10 +63,33 @@ type importInput struct {
 type importPlan struct {
 	write  store.ImportRecords
 	result importResultJSON
-	// blocked is the id_conflict that stops the import from writing anything, or nil.
-	blocked error
+	// problems are why the input cannot be imported; when there are any, nothing else is planned.
+	problems []string
+	// takenName is an incoming timeline's name that a stored timeline with another id holds, or "".
+	takenName string
+	blocked   blockReason
+	// unreplaceable are the conflicts --on-conflict replace cannot overwrite.
+	unreplaceable []importConflict
+	// identical are the stored events the input holds unchanged.
+	identical []timeline.Event
 	// timelineNames are the sorted names of the timelines the import writes to, or would.
 	timelineNames []string
+}
+
+// blockReason is why a plan whose input is valid writes nothing.
+type blockReason int
+
+const (
+	blockNone blockReason = iota
+	// blockConflicts is a conflict under --on-conflict fail.
+	blockConflicts
+	// blockUnreplaceable is a conflict --on-conflict replace cannot overwrite.
+	blockUnreplaceable
+)
+
+// canWrite reports whether the plan may be written: no problems, no taken name and no block.
+func (p importPlan) canWrite() bool {
+	return len(p.problems) == 0 && p.takenName == "" && p.blocked == blockNone
 }
 
 // importResultJSON is import's result object: every key always present.
@@ -114,19 +137,19 @@ type incomingRecords struct {
 }
 
 // planImport decides what importing in.records writes: new records, replacements under
-// --on-conflict replace, and nothing for records stored unchanged. It returns invalid_input when
-// the input cannot be imported, and timeline_exists when a timeline's name belongs to a stored
-// timeline with another id. A conflict the policy does not resolve sets the plan's blocked.
+// --on-conflict replace, and nothing for records stored unchanged. A plan holding only problems
+// means the input cannot be imported, and one holding only a takenName means a timeline's name
+// belongs to a stored timeline with another id. A conflict the policy does not resolve sets the
+// plan's blocked.
 func planImport(in importInput) (importPlan, error) {
 	incoming, problems := collectRecords(in.records)
 	refs := newRecordIndex(incoming, in.stored)
 	problems = append(problems, checkRecords(incoming, refs, in)...)
 	if len(problems) > 0 {
-		return importPlan{}, invalidImportError(problems)
+		return importPlan{problems: problems}, nil
 	}
-	err := checkTimelineNames(incoming.timelines, in.stored.timelines)
-	if err != nil {
-		return importPlan{}, err
+	if name := takenTimelineName(incoming.timelines, in.stored.timelines); name != "" {
+		return importPlan{takenName: name}, nil
 	}
 
 	p := planner{in: in, refs: refs, sources: newSourceIndex(in.stored.sources), timelineIDs: map[string]bool{}}
@@ -137,12 +160,15 @@ func planImport(in importInput) (importPlan, error) {
 	p.planAttachments(incoming.attachments)
 	p.planLinks(incoming.links)
 	p.planUnrecordedSources(uses)
-	err = p.assignSourceIDs()
+	err := p.assignSourceIDs()
 	if err != nil {
 		return importPlan{}, err
 	}
 
-	return importPlan{write: p.write, result: p.result, blocked: p.blocked(), timelineNames: p.timelineNames()}, nil
+	return importPlan{
+		write: p.write, result: p.result, blocked: p.blocked(), unreplaceable: p.unreplaceable,
+		identical: p.identical, timelineNames: p.timelineNames(),
+	}, nil
 }
 
 // The export keys the planner and event add --id treat specially.
@@ -399,39 +425,18 @@ func checkSidecar(a export.Attachment, sidecars map[string][]byte) error {
 	return nil
 }
 
-// invalidImportError returns problems as one invalid_input error: a count, the first few, and
-// how many more there are.
-func invalidImportError(problems []string) *Error {
-	header := fmt.Sprintf("%d records cannot be imported:", len(problems))
-	if len(problems) == 1 {
-		header = "1 record cannot be imported:"
-	}
-	lines := append([]string{header}, problems[:min(len(problems), shownImportProblems)]...)
-	if more := len(problems) - shownImportProblems; more > 0 {
-		lines = append(lines, fmt.Sprintf("and %d more", more))
-	}
-
-	return &Error{Kind: KindInvalidInput, Message: strings.Join(lines, "\n"), Hint: invalidImportHint}
-}
-
-const invalidImportHint = "Nothing was imported. Fix those records, or export the file again."
-
-// checkTimelineNames returns timeline_exists for the first incoming timeline whose name a stored
-// timeline with another id holds.
-func checkTimelineNames(incoming []export.Timeline, stored map[string]timeline.Timeline) error {
+// takenTimelineName returns the name of the first incoming timeline that a stored timeline with
+// another id holds, or "".
+func takenTimelineName(incoming []export.Timeline, stored map[string]timeline.Timeline) string {
 	for _, t := range incoming {
 		for _, existing := range stored {
 			if existing.Name == t.Name && existing.ID != t.ID {
-				return &Error{
-					Kind:    KindTimelineExists,
-					Message: fmt.Sprintf("timeline `%s` already exists here as another timeline, so nothing was imported", t.Name),
-					Hint:    fmt.Sprintf("Rename it with 'coroner timeline edit %s --name <new-name>', then import again.", t.Name),
-				}
+				return t.Name
 			}
 		}
 	}
 
-	return nil
+	return ""
 }
 
 // planner accumulates an import's writes and result.
@@ -442,7 +447,9 @@ type planner struct {
 	result importResultJSON
 	// unreplaceable are the conflicts --on-conflict replace cannot overwrite.
 	unreplaceable []importConflict
-	sources       sourceIndex
+	// identical are the stored events the input holds unchanged.
+	identical []timeline.Event
+	sources   sourceIndex
 	// timelineIDs are the timelines the import writes to.
 	timelineIDs map[string]bool
 }
@@ -512,6 +519,9 @@ func (p *planner) planEvents(events []export.Event) []sourceUse {
 	for _, e := range events {
 		if stored, ok := p.in.stored.events[e.ID]; ok {
 			fields := eventDiff(stored, e.Domain())
+			if len(fields) == 0 {
+				p.identical = append(p.identical, stored)
+			}
 			if !p.resolve(&p.result.Events, importConflict{Type: "event", ID: e.ID, Fields: fields}, !slices.Contains(fields, keyTimelineID)) {
 				continue
 			}
@@ -624,25 +634,16 @@ func (p *planner) addSource(s timeline.Source) {
 	p.sources.add(s)
 }
 
-// blocked returns the id_conflict that stops the import, or nil when it may write.
-func (p *planner) blocked() error {
+// blocked returns what stops the import, or blockNone when it may write.
+func (p *planner) blocked() blockReason {
 	switch {
 	case len(p.result.Conflicts) > 0 && p.in.onConflict == onConflictFail:
-		return &Error{
-			Kind:    KindIDConflict,
-			Message: recordCount(len(p.result.Conflicts)) + " conflict with what is stored, so nothing was imported",
-			Hint:    "Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's.",
-		}
+		return blockConflicts
 	case len(p.unreplaceable) > 0:
-		return &Error{
-			Kind: KindIDConflict,
-			Message: recordCount(len(p.unreplaceable)) +
-				" cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
-			Hint: "Pass --on-conflict skip to keep what is stored.",
-		}
+		return blockUnreplaceable
 	}
 
-	return nil
+	return blockNone
 }
 
 // timelineNames returns the sorted names the timelines the import writes to have once it has.

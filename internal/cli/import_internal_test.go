@@ -21,12 +21,28 @@ var _ = DescribeTable("importWriteError",
 	Entry("gives id_conflict when another write deleted a record the import replaces", fmt.Errorf("replace: %w", store.ErrNotFound)),
 )
 
+var _ = DescribeTable("importBlockedError",
+	func(plan importPlan, wantMessage, wantHint string) {
+		Expect(importBlockedError(plan)).To(And(
+			HaveField("Kind", KindIDConflict), HaveField("Message", wantMessage), HaveField("Hint", wantHint),
+		))
+	},
+	Entry("names the conflicts under --on-conflict fail",
+		importPlan{blocked: blockConflicts, result: importResultJSON{Conflicts: make([]importConflict, 2)}},
+		"2 records conflict with what is stored, so nothing was imported",
+		"Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's."),
+	Entry("names the records --on-conflict replace cannot overwrite",
+		importPlan{blocked: blockUnreplaceable, unreplaceable: make([]importConflict, 1)},
+		"1 record cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
+		"Pass --on-conflict skip to keep what is stored."),
+)
+
 var _ = Describe("readImportRecords", func() {
 	It("exits 2 usage for - when stdin is a terminal, without reading it", func() {
 		const line = `{"type":"event"}`
 		stdin := strings.NewReader(line)
 
-		_, err := readImportRecords("-", nil, stdin, true)
+		_, err := readImportRecords(jsonlSource{path: "-", stdin: stdin, stdinIsTTY: true}, invalidImportHint)
 
 		Expect(err).To(HaveField("Kind", KindUsage))
 		Expect(KindUsage.ExitCode()).To(Equal(2))

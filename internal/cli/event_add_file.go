@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 	"strings"
 
@@ -31,7 +30,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 		return err
 	}
 	path, _ := cmd.Flags().GetString("from-file")
-	events, err := readEventRecords(path, app.ReadFile, app.In, app.InIsTTY)
+	events, err := readEventRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY})
 	if err != nil {
 		return err
 	}
@@ -53,10 +52,12 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 			return err
 		}
 		plan, err := planImport(input)
-		if err != nil {
-			return withFromFileHint(err)
-		}
-		if plan.blocked != nil {
+		switch {
+		case err != nil:
+			return err
+		case len(plan.problems) > 0:
+			return invalidImportError(plan.problems, fromFileInvalidHint)
+		case plan.blocked != blockNone:
 			return conflictingEventsError(plan.result.Conflicts)
 		}
 
@@ -67,7 +68,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 				return err
 			}
 		}
-		added = newEventsAdded(events, input.stored.events, inserted)
+		added = newEventsAdded(events, plan.identical, inserted)
 		added.timeline, added.dryRun, added.dbPath = t, dryRun, inv.cfg.DBPath
 		added.attached, err = eventsAttachments(ctx, s, added.identical)
 		return err
@@ -106,26 +107,24 @@ func checkFromFileAlone(in fieldValues, interactive bool) error {
 	}
 }
 
-// readEventRecords returns the event records in the file at path, or on stdin for -, rejecting
-// any other record type and a file with none.
-func readEventRecords(
-	path string, readFile func(string) ([]byte, error), stdin io.Reader, stdinIsTTY bool,
-) ([]export.Event, error) {
-	if path == "" {
+// readEventRecords returns the event records src names, rejecting any other record type and a
+// file with none.
+func readEventRecords(src jsonlSource) ([]export.Event, error) {
+	if src.path == "" {
 		return nil, &Error{Kind: KindUsage, Message: "--from-file needs a file", Hint: "Pass a JSONL file of event records, or - to read them from stdin."}
 	}
-	records, err := readImportRecords(path, readFile, stdin, stdinIsTTY)
+	records, err := readImportRecords(src, fromFileInvalidHint)
 	if err != nil {
-		return nil, withFromFileHint(err)
+		return nil, err
 	}
 	events, problems := eventRecords(records)
 	switch {
 	case len(problems) > 0:
-		return nil, withFromFileHint(invalidImportError(problems))
-	case len(events) == 0 && path == "-":
+		return nil, invalidImportError(problems, fromFileInvalidHint)
+	case len(events) == 0 && src.path == "-":
 		return nil, &Error{Kind: KindInvalidInput, Message: "stdin holds no event records", Hint: fromFileHint}
 	case len(events) == 0:
-		return nil, &Error{Kind: KindInvalidInput, Message: path + " holds no event records", Hint: fromFileHint}
+		return nil, &Error{Kind: KindInvalidInput, Message: src.path + " holds no event records", Hint: fromFileHint}
 	}
 
 	return events, nil
@@ -164,18 +163,7 @@ func eventRecords(records []export.Record) ([]export.Event, []string) {
 
 const fromFileHint = "Nothing was added. Pass a JSONL file of event records, one per line, as 'coroner timeline export --format jsonl' writes them."
 
-// withFromFileHint gives an invalid_input error from import's reader or planner event add's hint,
-// and returns any other error as it is.
-func withFromFileHint(err error) error {
-	typed, ok := errors.AsType[*Error](err)
-	if !ok || typed.Kind != KindInvalidInput {
-		return err
-	}
-	hinted := *typed
-	hinted.Hint = "Nothing was added. Fix those records and run the command again."
-
-	return &hinted
-}
+const fromFileInvalidHint = "Nothing was added. Fix those records and run the command again."
 
 // conflictingEventsError returns id_conflict listing the first few conflicts and how many more
 // there are.
@@ -248,9 +236,9 @@ type eventsAdded struct {
 	dbPath string
 }
 
-// newEventsAdded sorts events, each id once in file order, into the identical ones stored holds
-// and the inserted ones inserted holds.
-func newEventsAdded(events []export.Event, stored map[string]timeline.Event, inserted []timeline.Event) eventsAdded {
+// newEventsAdded sorts events, each id once in file order, into the ones identical holds and the
+// ones inserted holds.
+func newEventsAdded(events []export.Event, identical, inserted []timeline.Event) eventsAdded {
 	var added eventsAdded
 	seen := make(map[string]bool, len(events))
 	for _, e := range events {
@@ -259,11 +247,11 @@ func newEventsAdded(events []export.Event, stored map[string]timeline.Event, ins
 		}
 		seen[e.ID] = true
 		added.ids = append(added.ids, e.ID)
-		if identical, ok := stored[e.ID]; ok {
-			added.identical = append(added.identical, identical)
+		byID := func(n timeline.Event) bool { return n.ID == e.ID }
+		if i := slices.IndexFunc(identical, byID); i >= 0 {
+			added.identical = append(added.identical, identical[i])
 		} else {
-			i := slices.IndexFunc(inserted, func(n timeline.Event) bool { return n.ID == e.ID })
-			added.inserted = append(added.inserted, inserted[i])
+			added.inserted = append(added.inserted, inserted[slices.IndexFunc(inserted, byID)])
 		}
 	}
 

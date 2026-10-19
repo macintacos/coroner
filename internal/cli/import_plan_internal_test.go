@@ -51,7 +51,7 @@ var _ = Describe("planImport", func() {
 		plan, err := planImport(in)
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(plan.blocked).NotTo(HaveOccurred())
+		Expect(plan.blocked).To(Equal(blockNone))
 		Expect(plan.result.Timelines).To(Equal(importCounts{Inserted: 1}))
 		Expect(plan.result.Sources).To(Equal(importCounts{Inserted: 1}))
 		Expect(plan.result.Events).To(Equal(importCounts{Inserted: 1}))
@@ -68,7 +68,7 @@ var _ = Describe("planImport", func() {
 		plan, err := planImport(planInput(all(), storedFrom(tl, mongod, stepdown, evidence, screenshot)))
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(plan.blocked).NotTo(HaveOccurred())
+		Expect(plan.blocked).To(Equal(blockNone))
 		Expect(plan.result.Events).To(Equal(importCounts{Identical: 1}))
 		Expect(plan.result.Attachments).To(Equal(importCounts{Identical: 1}))
 		Expect(plan.result.Conflicts).To(BeEmpty())
@@ -139,11 +139,11 @@ var _ = Describe("planImport", func() {
 			edited.Tags = []string{"election"}
 		})
 
-		It("blocks the import as id_conflict under fail, naming the keys that differ", func() {
+		It("blocks the import on its conflicts under fail, naming the keys that differ", func() {
 			plan, err := planImport(planInput([]export.Record{tl, edited}, storedFrom(tl, stepdown)))
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(plan.blocked).To(HaveField("Kind", KindIDConflict))
+			Expect(plan.blocked).To(Equal(blockConflicts))
 			Expect(plan.result.Events).To(Equal(importCounts{Conflicting: 1}))
 			Expect(plan.result.Conflicts).To(Equal([]importConflict{{Type: "event", ID: stepdown.ID, Fields: []string{"tags", "text"}}}))
 		})
@@ -155,7 +155,7 @@ var _ = Describe("planImport", func() {
 			plan, err := planImport(in)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(plan.blocked).NotTo(HaveOccurred())
+			Expect(plan.blocked).To(Equal(blockNone))
 			Expect(plan.result.Conflicts).To(HaveLen(1))
 			Expect(plan.write).To(Equal(store.ImportRecords{}))
 		})
@@ -167,7 +167,7 @@ var _ = Describe("planImport", func() {
 			plan, err := planImport(in)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(plan.blocked).NotTo(HaveOccurred())
+			Expect(plan.blocked).To(Equal(blockNone))
 			Expect(plan.write.EventReplacements).To(Equal([]timeline.Event{edited.Domain()}))
 			Expect(plan.write.Events).To(BeEmpty())
 		})
@@ -181,7 +181,7 @@ var _ = Describe("planImport", func() {
 			plan, err := planImport(in)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(plan.blocked).NotTo(HaveOccurred())
+			Expect(plan.blocked).To(Equal(blockNone))
 			Expect(plan.result.Conflicts).To(Equal([]importConflict{{Type: "annotation", ID: evidence.ID, Fields: []string{"body"}}}))
 			Expect(plan.write.AnnotationReplacements).To(Equal([]timeline.Annotation{reworded.Domain()}))
 		})
@@ -208,12 +208,12 @@ var _ = Describe("planImport", func() {
 				plan, err := planImport(in)
 
 				Expect(err).NotTo(HaveOccurred())
-				Expect(plan.blocked).To(HaveField("Kind", KindIDConflict))
+				Expect(plan.blocked).To(Equal(blockUnreplaceable))
 
 				in.onConflict = onConflictSkip
 				plan, err = planImport(in)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(plan.blocked).NotTo(HaveOccurred())
+				Expect(plan.blocked).To(Equal(blockNone))
 			},
 			Entry("an event moved to another timeline",
 				func() []export.Record { return []export.Record{tl, planTimeline(6, "other"), stepdown} },
@@ -246,22 +246,25 @@ var _ = Describe("planImport", func() {
 		)
 	})
 
-	It("rejects a timeline whose name a stored timeline with another id holds, as timeline_exists", func() {
-		_, err := planImport(planInput([]export.Record{tl}, storedFrom(planTimeline(6, tl.Name))))
+	It("plans nothing but the taken name for a timeline whose name a stored timeline with another id holds", func() {
+		plan, err := planImport(planInput([]export.Record{tl}, storedFrom(planTimeline(6, tl.Name))))
 
-		Expect(err).To(HaveField("Kind", KindTimelineExists))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plan).To(Equal(importPlan{takenName: tl.Name}))
 	})
 
-	DescribeTable("rejects input it cannot import as invalid_input, naming the record",
+	DescribeTable("plans only problems for input it cannot import, naming the record",
 		func(records func() []export.Record, prepare func(*importInput), wantInMessage string) {
 			in := planInput(records(), storedRecords{})
 			if prepare != nil {
 				prepare(&in)
 			}
 
-			_, err := planImport(in)
+			plan, err := planImport(in)
 
-			Expect(err).To(And(HaveField("Kind", KindInvalidInput), MatchError(ContainSubstring(wantInMessage))))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.problems).To(ContainElement(ContainSubstring(wantInMessage)))
+			Expect(plan.canWrite()).To(BeFalse())
 		},
 		Entry("an event whose timeline is neither in the input nor stored",
 			func() []export.Record { return []export.Record{stepdown} }, nil, planID(3)),
@@ -402,9 +405,10 @@ var _ = Describe("planImport", func() {
 			records = append(records, planEvent(10+n, tl.ID, "orphan"))
 		}
 
-		_, err := planImport(planInput(records, storedRecords{}))
+		plan, err := planImport(planInput(records, storedRecords{}))
 
-		Expect(err).To(MatchError(And(HavePrefix("7 records cannot be imported:\n"), HaveSuffix("\nand 2 more"))))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(invalidImportError(plan.problems, invalidImportHint)).To(MatchError(And(HavePrefix("7 records cannot be imported:\n"), HaveSuffix("\nand 2 more"))))
 	})
 
 	Describe("sources", func() {
@@ -457,7 +461,7 @@ var _ = Describe("planImport", func() {
 			plan, err := planImport(planInput(records(), storedRecords{}))
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(plan.blocked).NotTo(HaveOccurred())
+			Expect(plan.blocked).To(Equal(blockNone))
 			Expect(plan.write.Attachments).To(BeEmpty())
 			Expect(plan.result.Attachments).To(Equal(importCounts{}))
 			Expect(plan.result.MissingAttachments).To(Equal([]missingAttachment{{ID: screenshot.ID, SHA256: screenshot.SHA256}}))
