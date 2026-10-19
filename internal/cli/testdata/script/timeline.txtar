@@ -54,6 +54,13 @@ stdout '^mongo-failover\t#1\t'
 stdout '^checkout-latency\t#2\t'
 ! stdout 'grafana'
 
+# A dry run opens the database as its write would: it creates and migrates a missing file.
+! exists $WORK/fresh.db
+exits 0 coroner --db $WORK/fresh.db timeline create x --dry-run --json
+exists $WORK/fresh.db
+exits 0 coroner --db $WORK/fresh.db timeline list --json
+stdout '"timelines":\[\]'
+
 -- overlay-view.txt --
 mongo-failover
 ID:          01a09862-b1c0-7000-8000-000000000003

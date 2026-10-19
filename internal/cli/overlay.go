@@ -109,31 +109,30 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 	ifNotExists, _ := in.boolean("if-not-exists")
 	dryRun, _ := in.boolean("dry-run")
 
-	created := overlayCreated{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		created.timelines, err = sel.all(ctx, s)
-		if err != nil {
-			return err
-		}
-		created.overlay = timeline.Overlay{ID: id.String(), Name: *name, TimelineIDs: timelineIDs(created.timelines), CreatedAt: app.Now()}
+	now := app.Now()
 
-		if dryRun {
-			err = overlayNameFree(ctx, s, *name)
-		} else {
-			err = s.CreateOverlay(ctx, created.overlay)
+	var created overlayCreated
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		created = overlayCreated{dryRun: dryRun}
+		sel, err := selectTimelines(ctx, tx, timelines, app.LookupEnv)
+		if err != nil {
+			return err
 		}
+		created.timelines, err = sel.all(ctx, tx)
+		if err != nil {
+			return err
+		}
+		created.overlay = timeline.Overlay{ID: id.String(), Name: *name, TimelineIDs: timelineIDs(created.timelines), CreatedAt: now}
+
+		err = tx.CreateOverlay(ctx, created.overlay)
 		switch {
 		case errors.Is(err, store.ErrConflict) && ifNotExists:
-			created.overlay, err = s.OverlayByName(ctx, *name)
+			created.overlay, err = tx.OverlayByName(ctx, *name)
 			if err != nil {
 				return err
 			}
 			created.existed = true
-			created.timelines, err = timelinesByID(ctx, s, created.overlay.TimelineIDs)
+			created.timelines, err = timelinesByID(ctx, tx, created.overlay.TimelineIDs)
 			return err
 		case errors.Is(err, store.ErrConflict):
 			return overlayExistsError(*name, err)
@@ -142,20 +141,6 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 	})
 
 	return created, err
-}
-
-// overlayNameFree returns an error wrapping store.ErrConflict when an overlay is called name,
-// as CreateOverlay would.
-func overlayNameFree(ctx context.Context, s *store.Store, name string) error {
-	_, err := s.OverlayByName(ctx, name)
-	switch {
-	case err == nil:
-		return store.ErrConflict
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	}
-
-	return err
 }
 
 func overlayExistsError(name string, err error) *Error {

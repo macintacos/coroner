@@ -84,6 +84,27 @@ var _ = Describe("a write racing another", func() {
 		}
 	})
 
+	It("gives overlay create racing timeline delete exit 0 or timeline_not_found, never 1", func(ctx SpecContext) {
+		for range rounds {
+			run := realRunner(ctx)
+			seeded := run("timeline", "create", "outage")
+			Expect(seeded.code).To(Equal(0), seeded.errOut)
+			created := run("timeline", "create", "latency", "-q")
+			Expect(created.code).To(Equal(0), created.errOut)
+			id := strings.TrimSpace(created.out)
+
+			overlaid, deleted := atOnce(run,
+				[]string{"overlay", "create", "o", "-t", "outage", "-t", "latency", "--json"},
+				[]string{"timeline", "delete", id, "--yes", "--json"})
+
+			Expect(deleted.code).To(Equal(0), deleted.errOut)
+			if overlaid.code != 0 {
+				Expect(overlaid.code).To(Equal(3), overlaid.errOut)
+				Expect(overlaid.kind()).To(Equal(KindTimelineNotFound))
+			}
+		}
+	})
+
 	It("lets one of two renames of a source win, and gives the other source_not_found", func(ctx SpecContext) {
 		for range rounds {
 			run := realRunner(ctx)

@@ -185,16 +185,13 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	ifNotExists, _ := in.boolean("if-not-exists")
 	dryRun, _ := in.boolean("dry-run")
 
-	created := timelineCreated{timeline: t, dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		if dryRun {
-			err = timelineNameFree(ctx, s, t.Name)
-		} else {
-			err = s.CreateTimeline(ctx, t)
-		}
+	var created timelineCreated
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		created = timelineCreated{timeline: t, dryRun: dryRun}
+		err := tx.CreateTimeline(ctx, t)
 		switch {
 		case errors.Is(err, store.ErrConflict) && ifNotExists:
-			created.timeline, err = s.TimelineByName(ctx, t.Name)
+			created.timeline, err = tx.TimelineByName(ctx, t.Name)
 			created.existed = true
 			return err
 		case errors.Is(err, store.ErrConflict):
@@ -205,19 +202,6 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	})
 
 	return created, err
-}
-
-// timelineNameFree returns store.ErrConflict when a timeline is called name.
-func timelineNameFree(ctx context.Context, s *store.Store, name string) error {
-	_, err := s.TimelineByName(ctx, name)
-	switch {
-	case err == nil:
-		return store.ErrConflict
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	}
-
-	return err
 }
 
 func (c timelineCreated) render(o output) error {

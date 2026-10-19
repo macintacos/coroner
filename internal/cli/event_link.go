@@ -131,13 +131,15 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 		return linkChange{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
-	change := linkChange{
+	draft := linkChange{
 		link:   timeline.Link{ID: id.String(), Kind: kind, CreatedAt: app.Now(), Author: author},
 		dryRun: dryRun, verb: "link", done: "Linked", preposition: "to",
 	}
 
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
+	var change linkChange
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		change = draft
+		ends, err := findLinkEnds(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -147,11 +149,8 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 		if err != nil {
 			return err
 		}
-		if dryRun {
-			return refuseExistingLink(ctx, s, ends, kind)
-		}
 
-		err = s.AddLink(ctx, change.link)
+		err = tx.AddLink(ctx, change.link)
 		if errors.Is(err, store.ErrConflict) {
 			return linkExistsError(ends, kind, err)
 		}
@@ -168,10 +167,10 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 		return linkChange{}, err
 	}
 	dryRun, _ := in.boolean("dry-run")
-	change := linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from"}
-
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
+	var change linkChange
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		change = linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from"}
+		ends, err := findLinkEnds(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -180,9 +179,9 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 		if err != nil {
 			return err
 		}
-		change.link, err = s.LinkBetween(ctx, ends.events[0].ID, ends.events[1].ID, kind)
-		if err == nil && !dryRun {
-			err = s.DeleteLink(ctx, change.link.ID)
+		change.link, err = tx.LinkBetween(ctx, ends.events[0].ID, ends.events[1].ID, kind)
+		if err == nil {
+			err = tx.DeleteLink(ctx, change.link.ID)
 		}
 		if errors.Is(err, store.ErrNotFound) {
 			return linkNotFoundError(ends, kind, err)
@@ -246,19 +245,6 @@ func checkLink(l timeline.Link, ends linkEnds) error {
 	}
 
 	return recordError(err, "")
-}
-
-// refuseExistingLink returns link_exists when a link of kind already joins ends.
-func refuseExistingLink(ctx context.Context, s *store.Store, ends linkEnds, kind timeline.LinkKind) error {
-	_, err := s.LinkBetween(ctx, ends.events[0].ID, ends.events[1].ID, kind)
-	switch {
-	case err == nil:
-		return linkExistsError(ends, kind, nil)
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	}
-
-	return err
 }
 
 func linkExistsError(ends linkEnds, kind timeline.LinkKind, err error) *Error {
