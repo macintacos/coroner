@@ -44,7 +44,7 @@ func timelineEditForm(ctx context.Context, app App) formCommand {
 	def := timelineEditDefinition()
 	return formCommand{
 		def:   def,
-		ready: func(in fieldValues) bool { return slices.ContainsFunc(timelineChanges(), in.given) },
+		ready: def.changed,
 		// Not writeRunE: render needs the --tz zone, which def omits as --tz changes nothing edit stores.
 		flagsOnly: withOneArg(func(cmd *cobra.Command, args []string) error {
 			o, err := newOutput(cmd, app)
@@ -71,11 +71,6 @@ func timelineEditForm(ctx context.Context, app App) formCommand {
 			return askTimelineEdit(ctx, s, z, in)
 		},
 	}
-}
-
-// timelineChanges are the fields of timeline edit that change a timeline.
-func timelineChanges() []string {
-	return []string{"name", "title", "add-ref", "remove-ref"}
 }
 
 // timelineToEdit is the timeline an edit form opens on, as its echoed command names it, and the
@@ -196,7 +191,7 @@ func timelineEditValues(t timeline.Timeline, nameOrID string, submitted fieldVal
 // to after a rename, and the equivalent command; when values change nothing, it says so and writes
 // nothing.
 func editTyped(ctx context.Context, s formSession, z zone, oldName string, values fieldValues) error {
-	if !slices.ContainsFunc(timelineChanges(), values.given) {
+	if !timelineEditDefinition().changed(values) {
 		return s.o.notify("Nothing to change.")
 	}
 
@@ -218,10 +213,10 @@ func editTyped(ctx context.Context, s formSession, z zone, oldName string, value
 func timelineEditDefinition() definition {
 	return definition{fields: []field{
 		{name: "timeline", arg: true, usage: "Timeline to edit, as a `name|id`"},
-		{name: "name", usage: "New `name`", check: withoutEnv(checkName), suggest: suggestName},
-		{name: "title", usage: "New `title`; an empty one clears it"},
-		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef)},
-		{name: "remove-ref", typ: stringsField, usage: "Remove a ref; repeat for more"},
+		{name: "name", usage: "New `name`", check: withoutEnv(checkName), suggest: suggestName, changes: true},
+		{name: "title", usage: "New `title`; an empty one clears it", changes: true},
+		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef), changes: true},
+		{name: "remove-ref", typ: stringsField, usage: "Remove a ref; repeat for more", changes: true},
 		{name: "dry-run", typ: boolField, usage: "Show the edited timeline, and change nothing"},
 	}}
 }
@@ -303,12 +298,9 @@ type timelineEdit struct {
 
 // readTimelineEdit returns the edit in asks for.
 func readTimelineEdit(in fieldValues) (timelineEdit, error) {
-	if !slices.ContainsFunc(timelineChanges(), in.given) {
-		return timelineEdit{}, &Error{
-			Kind:    KindUsage,
-			Message: "nothing to edit",
-			Hint:    "Pass --name, --title, --add-ref or --remove-ref.",
-		}
+	err := timelineEditDefinition().requireChange(in)
+	if err != nil {
+		return timelineEdit{}, err
 	}
 
 	return timelineEdit{

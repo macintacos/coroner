@@ -45,16 +45,16 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 func annotationAddDefinition() definition {
 	return definition{fields: []field{
 		timelineField(),
-		{name: "body", arg: true, required: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
+		{name: "body", arg: true, required: true, perEntry: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
 		{
 			name: "event", shorthand: "e", check: withoutEnv(checkEventRef),
 			usage: "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)",
 		},
 		{name: "kind", required: true, usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "url", usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
+		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
-		attachField(),
+		perEntry(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
 	}}
 }

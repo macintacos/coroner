@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -36,6 +38,10 @@ type field struct {
 	// required marks an input the command cannot run without. Only a form reads it; each run
 	// function reports its own missing value.
 	required bool
+	// changes marks a field that changes the record; an edit needs at least one.
+	changes bool
+	// perEntry marks a field another add form entry opens without; only an add form reads it.
+	perEntry bool
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
 	preview func(value string, env checkEnv) string
 	// list makes a repeatable field's form field take its values one at a time instead of one per line.
@@ -107,6 +113,30 @@ func (d definition) check(values fieldValues, env checkEnv) error {
 	return nil
 }
 
+// changed reports whether in gives a field that changes the record.
+func (d definition) changed(in fieldValues) bool {
+	return slices.ContainsFunc(d.fields, func(f field) bool { return f.changes && in.given(f.name) })
+}
+
+// requireChange returns usage naming d's changing flags, in field order, when in gives none of them.
+func (d definition) requireChange(in fieldValues) error {
+	if d.changed(in) {
+		return nil
+	}
+	var flags []string
+	for _, f := range d.fields {
+		if f.changes {
+			flags = append(flags, "--"+f.name)
+		}
+	}
+	hint := strings.Join(flags, ", ")
+	if i := strings.LastIndex(hint, ", "); i >= 0 {
+		hint = hint[:i] + " or " + hint[i+2:]
+	}
+
+	return &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass " + hint + "."}
+}
+
 // missingValue returns usage for a run function given no value for a field its command requires.
 func missingValue(command, what string) *Error {
 	return &Error{Kind: KindUsage, Message: command + " needs " + what, Hint: "Run 'coroner " + command + " --help' for what it takes."}
@@ -115,6 +145,18 @@ func missingValue(command, what string) *Error {
 // inherited returns f registered by a parent command rather than the command itself.
 func inherited(f field) field {
 	f.inherited = true
+	return f
+}
+
+// changing returns f marked as a field that changes the record.
+func changing(f field) field {
+	f.changes = true
+	return f
+}
+
+// perEntry returns f marked as a field another form entry opens without.
+func perEntry(f field) field {
+	f.perEntry = true
 	return f
 }
 

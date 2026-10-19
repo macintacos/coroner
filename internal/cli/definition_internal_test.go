@@ -42,6 +42,8 @@ func writeDefinitions() map[string]definition {
 		"attachment delete": attachmentDeleteDefinition(),
 
 		"overlay create": overlayCreateDefinition(),
+
+		"source edit": sourceEditDefinition(),
 	}
 }
 
@@ -59,7 +61,25 @@ func commandFormExemptFlags() map[string][]string {
 	return map[string][]string{"event add": {"from-file"}}
 }
 
+// definitionExempt are the write commands that declare no definition, by path, with the reason.
+func definitionExempt() map[string]string {
+	return map[string]string{"import": "reads a file of records, so it declares plain flags and no definition"}
+}
+
 var _ = Describe("write command definitions", func() {
+	It("give every command a write verb names a definition, or an exemption with its reason", func(ctx SpecContext) {
+		var missing []string
+		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
+			path := strings.TrimPrefix(cmd.CommandPath(), "coroner ")
+			_, defined := writeDefinitions()[path]
+			if slices.Contains(writeVerbs(), cmd.Name()) && !defined && definitionExempt()[path] == "" {
+				missing = append(missing, cmd.CommandPath())
+			}
+		})
+
+		Expect(missing).To(BeEmpty())
+	})
+
 	It("give every flag a form field with its help and default, and every form field a flag", func(ctx SpecContext) {
 		root := NewRoot(ctx, App{})
 
@@ -142,6 +162,22 @@ var _ = Describe("write command definitions", func() {
 
 		Expect(missing).To(BeEmpty())
 	})
+
+	It("mark every field of an edit command that is not its argument, an inherited flag or --dry-run as a change", func() {
+		var unmarked []string
+		for path, def := range writeDefinitions() {
+			if !strings.HasSuffix(path, " edit") {
+				continue
+			}
+			for _, f := range def.fields {
+				if !f.arg && !f.inherited && f.name != "dry-run" && !f.changes {
+					unmarked = append(unmarked, "coroner "+path+" --"+f.name)
+				}
+			}
+		}
+
+		Expect(unmarked).To(BeEmpty())
+	})
 })
 
 var _ = Describe("definition", func() {
@@ -186,21 +222,39 @@ var _ = Describe("definition", func() {
 		Expect(formError(tags, "tag", "election\nBad Tag")).To(MatchError("bad tag"))
 		Expect(formError(tags, "tag", "")).To(Succeed())
 	})
+
+	edit := definition{fields: []field{
+		{name: "id", arg: true},
+		{name: "body", changes: true},
+		{name: "author"},
+		{name: "kind", changes: true},
+		{name: "url", changes: true},
+	}}
+
+	It("refuses no change, naming the changing flags in field order", func() {
+		in := fieldValues{"id": {"0199a1b2"}, "author": {"priya"}}
+
+		Expect(edit.changed(in)).To(BeFalse())
+		failure, ok := errors.AsType[*Error](edit.requireChange(in))
+		Expect(ok).To(BeTrue())
+		Expect(failure).To(SatisfyAll(
+			HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", "Pass --body, --kind or --url.")))
+	})
+
+	It("accepts any one change", func() {
+		for _, name := range []string{"body", "kind", "url"} {
+			in := fieldValues{"id": {"0199a1b2"}, name: {"x"}}
+
+			Expect(edit.changed(in)).To(BeTrue(), name)
+			Expect(edit.requireChange(in)).To(Succeed(), name)
+		}
+	})
 })
 
 var _ = Describe("write run functions", func() {
 	DescribeTable("return usage, not a panic, when given no value for the positional argument their command requires",
 		func(ctx SpecContext, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) {
-			app := App{
-				In: strings.NewReader(""), Now: testNow,
-				NewID: func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-				OpenStore: func(context.Context, string) (*store.Store, error) {
-					Fail("opened the store before rejecting its input")
-					return nil, errors.New("unreachable")
-				},
-			}
-
-			err := run(ctx, app, config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
+			err := runWithoutStore(ctx, run, in)
 
 			failure, ok := errors.AsType[*Error](err)
 			Expect(ok).To(BeTrue(), "returned %v", err)
@@ -218,8 +272,41 @@ var _ = Describe("write run functions", func() {
 		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
 		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
 		Entry("overlay create", errorOf(createOverlay), fieldValues{"timeline": {"mongo-failover"}}),
+		Entry("source edit", errorOf(editSource), fieldValues{"name": {"mongodb"}}),
+	)
+
+	DescribeTable("return nothing to edit, naming every changing flag, when an edit is given no change",
+		func(ctx SpecContext, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues, hint string) {
+			err := runWithoutStore(ctx, run, in)
+
+			failure, ok := errors.AsType[*Error](err)
+			Expect(ok).To(BeTrue(), "returned %v", err)
+			Expect(failure).To(SatisfyAll(
+				HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", hint)))
+		},
+		Entry("event edit", errorOf(editEvent), fieldValues{"event": {"12"}},
+			"Pass --text, --at, --ended, --approximate, --source, --add-tag, --remove-tag, --url, --author or --attach."),
+		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"id": {"0199a1b2"}},
+			"Pass --body, --kind, --source, --url or --attach."),
+		Entry("timeline edit", errorOf(editTimeline), fieldValues{"timeline": {"mongo-outage"}},
+			"Pass --name, --title, --add-ref or --remove-ref."),
+		Entry("source edit", errorOf(editSource), fieldValues{"source": {"mongo"}}, "Pass --name."),
 	)
 })
+
+// runWithoutStore calls run with an App whose store fails the spec when opened.
+func runWithoutStore(ctx context.Context, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) error {
+	app := App{
+		In: strings.NewReader(""), Now: testNow,
+		NewID: func() (uuid.UUID, error) { return uuid.UUID{}, nil },
+		OpenStore: func(context.Context, string) (*store.Store, error) {
+			Fail("opened the store before rejecting its input")
+			return nil, errors.New("unreachable")
+		},
+	}
+
+	return run(ctx, app, config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
+}
 
 // errorOf returns run with its result dropped.
 func errorOf[R any](
@@ -380,6 +467,7 @@ func badValues() []badValue {
 		{"annotation delete", "ids", "Bad Ref!", nil},
 		{"attachment delete", "ids", "Bad Ref!", nil},
 		{"overlay create", "name", "Checkout Incident", []string{"-t", "mongo-failover"}},
+		{"source edit", "name", "Mongo DB", []string{"mongo"}},
 	}
 }
 

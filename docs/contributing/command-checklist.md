@@ -221,6 +221,11 @@ Every new command reuses one of these verbs.
 | `link` | Connect one object to another with a directed, typed link |
 | `unlink` | Remove a link `link` made |
 
+A command named by `create`, `add`, `edit`, `delete`, `use`, `link`, `unlink` or `import`
+adds its definition to `writeDefinitions` in
+[`definition_internal_test.go`](https://github.com/macintacos/coroner/blob/main/internal/cli/definition_internal_test.go),
+or an exemption with its reason to `definitionExempt` there.
+
 Rejected synonyms: `show`, `get`, `describe`, and `inspect` (use `view`); `rm` and
 `remove` (use `delete`); `update` (use `edit`). S-3 forbids `show` next to `view`, so
 "show a timeline" is `timeline view`.

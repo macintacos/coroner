@@ -8,11 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
-	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newSourceEditCommand(ctx context.Context, app App) *cobra.Command {
+	def := sourceEditDefinition()
 	cmd := &cobra.Command{
 		Use:   "edit <name> --name <new-name>",
 		Short: "Rename a source",
@@ -24,29 +25,48 @@ func newSourceEditCommand(ctx context.Context, app App) *cobra.Command {
 		Annotations:       map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner source edit mongo --name mongodb --dry-run\n" +
 			"  $ coroner source edit mongo --name db-2/mongod",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return editSource(ctx, cmd, app, args[0])
-		},
+		RunE: writeRunE(ctx, app, def, editSource),
 	}
 
-	cmd.Flags().String("name", "", "Rename it to `new-name`")
-	cmd.Flags().Bool("dry-run", false, "Show how many events and annotations the rename touches, and change nothing")
+	def.addFlags(cmd.Flags())
 
 	return cmd
 }
 
-func editSource(ctx context.Context, cmd *cobra.Command, app App, oldName string) error {
-	newName, err := readSourceName(cmd)
-	if err != nil {
-		return err
-	}
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	o, err := newOutput(cmd, app)
-	if err != nil {
-		return err
-	}
+func sourceEditDefinition() definition {
+	return definition{fields: []field{
+		{name: "source", arg: true, usage: "Source to rename, as its `name`"},
+		{name: "name", usage: "Rename it to `new-name`", check: withoutEnv(checkSource), changes: true},
+		{name: "dry-run", typ: boolField, usage: "Show how many events and annotations the rename touches, and change nothing"},
+	}}
+}
 
-	return withStore(ctx, cmd, app, func(s *store.Store) error {
+// sourceEdited is the source as edit renamed it or, with --dry-run, would rename it, and the name it had.
+type sourceEdited struct {
+	source  store.SourceUsage
+	oldName string
+	dryRun  bool
+}
+
+func editSource(ctx context.Context, app App, cfg config.Config, in fieldValues) (sourceEdited, error) {
+	def := sourceEditDefinition()
+	err := def.check(in, checkEnv{})
+	if err != nil {
+		return sourceEdited{}, err
+	}
+	oldName := in.value("source")
+	if oldName == nil {
+		return sourceEdited{}, missingValue("source edit", "the source's name")
+	}
+	err = def.requireChange(in)
+	if err != nil {
+		return sourceEdited{}, err
+	}
+	newName := *in.value("name")
+	dryRun, _ := in.boolean("dry-run")
+
+	edited := sourceEdited{oldName: *oldName, dryRun: dryRun}
+	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: reads every source's usage to find one; query by name if sources grow large.
 		// ponytail: the read and rename are separate transactions, so a concurrent edit is
 		// overwritten; rename inside one store write if that matters.
@@ -54,41 +74,50 @@ func editSource(ctx context.Context, cmd *cobra.Command, app App, oldName string
 		if err != nil {
 			return err
 		}
-		source, err := findSource(usages, oldName)
+		source, err := findSource(usages, *oldName)
 		if err != nil {
 			return err
 		}
-		renamed := source
-		renamed.Name = newName
+		edited.source = source
+		edited.source.Name = newName
 
 		if dryRun {
-			return previewSourceEdit(o, usages, renamed, oldName)
+			return checkSourceNameFree(usages, edited.source)
 		}
 
 		err = s.RenameSource(ctx, source.ID, newName)
 		if errors.Is(err, store.ErrConflict) {
 			return sourceExistsError(newName, err)
 		}
-		if err != nil {
-			return err
-		}
-		err = printSource(o, renamed)
-		if err != nil {
-			return err
-		}
 
-		return o.notify("Renamed source `%s` to `%s`.", oldName, newName)
+		return err
 	})
+
+	return edited, err
 }
 
-// readSourceName returns --name, rejecting a missing or invalid one before the store opens.
-func readSourceName(cmd *cobra.Command) (string, error) {
-	newName := changedString(cmd.Flags(), "name")
-	if newName == nil {
-		return "", &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass --name with the source's new name."}
+func (e sourceEdited) render(o output) error {
+	if e.dryRun {
+		return previewSourceEdit(o, e.source, e.oldName)
+	}
+	err := printSource(o, e.source)
+	if err != nil {
+		return err
 	}
 
-	return *newName, checkSlug(*newName, timeline.ValidateSourceName)
+	return o.notify("Renamed source `%s` to `%s`.", e.oldName, e.source.Name)
+}
+
+// checkSourceNameFree fails as the rename would when a source other than renamed has its new name.
+func checkSourceNameFree(usages []store.SourceUsage, renamed store.SourceUsage) error {
+	taken := slices.ContainsFunc(usages, func(u store.SourceUsage) bool {
+		return u.Name == renamed.Name && u.ID != renamed.ID
+	})
+	if taken {
+		return sourceExistsError(renamed.Name, nil)
+	}
+
+	return nil
 }
 
 // findSource returns the usage of the source called name, or source_not_found.
@@ -105,15 +134,8 @@ func findSource(usages []store.SourceUsage, name string) (store.SourceUsage, err
 	return usages[i], nil
 }
 
-// previewSourceEdit prints what renaming the source called oldName to renamed would touch,
-// failing as the rename would when another source has the new name.
-func previewSourceEdit(o output, usages []store.SourceUsage, renamed store.SourceUsage, oldName string) error {
-	taken := slices.ContainsFunc(usages, func(u store.SourceUsage) bool {
-		return u.Name == renamed.Name && u.ID != renamed.ID
-	})
-	if taken {
-		return sourceExistsError(renamed.Name, nil)
-	}
+// previewSourceEdit prints what renaming the source called oldName to renamed would touch.
+func previewSourceEdit(o output, renamed store.SourceUsage, oldName string) error {
 	if o.format == formatJSON {
 		return o.json(newListedSourceJSON(renamed))
 	}

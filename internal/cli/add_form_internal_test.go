@@ -130,7 +130,7 @@ var _ = Describe("add forms", func() {
 			"author": {"sre"}, "tz": {"UTC"},
 		}
 
-		Expect(carryForward(values, eventAddForm().cleared)).To(Equal(fieldValues{
+		Expect(carryForward(values, eventAddDefinition())).To(Equal(fieldValues{
 			"timeline": {"mongo-outage"}, "source": {"mongod"}, "tag": {"election"}, "author": {"sre"}, "tz": {"UTC"},
 		}))
 		Expect(values).To(HaveKey("text"))

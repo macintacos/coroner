@@ -148,14 +148,18 @@ digraph coroner_rules_router {
   [`deprecation.txtar`](internal/cli/testdata/script/deprecation.txtar) runs a throwaway
   deprecated flag to prove its notice stays off stdout.
 - Write commands (`timeline create|edit|delete|use`, `event add|edit|delete|link|unlink`,
-  `annotation add|edit|delete`, `attachment delete`, `overlay create`): each declares its
-  flags, positional argument and their checks once, in a `definition`
+  `annotation add|edit|delete`, `attachment delete`, `overlay create`, `source edit`):
+  each declares its flags, positional argument and their checks once, in a `definition`
   ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
-  and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). `RunE` reads the
-  definition's values, calls a plain run function that returns a result, and renders it. A
-  spec in [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fails
+  and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). A field also
+  marks, with `changes`, whether it changes the record, which an edit needs at least one
+  of, and, with `perEntry`, whether another form entry opens without it. `RunE` reads the
+  definition's values, calls a plain run function that returns a result, and renders it.
+  Specs in [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fail
   when a flag has no form field, a form field has no flag, or the two reject a bad value
-  differently, and one in
+  differently; when a command a write verb names has neither a definition nor a
+  `definitionExempt` entry; and when an edit command's field is neither its argument,
+  inherited, `--dry-run` nor marked `changes`. One in
   [`write_commands_internal_test.go`](internal/cli/write_commands_internal_test.go) fails
   when a command named by a write verb from the verb glossary lacks `--dry-run` or
   `--json`. A create prints only its new id under `-q` through `output.printID`

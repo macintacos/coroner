@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -38,11 +37,11 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 func annotationEditDefinition() definition {
 	return definition{fields: []field{
 		{name: "id", arg: true, usage: "Annotation to edit, as an `id` or unique id prefix", check: withoutEnv(checkAnnotationRef)},
-		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
-		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
-		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "url", usage: "New permalink, as a `url`", check: notBlank("--url")},
-		attachField(),
+		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin), changes: true},
+		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName), changes: true},
+		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource), changes: true},
+		{name: "url", usage: "New permalink, as a `url`", check: notBlank("--url"), changes: true},
+		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
 	}}
 }
@@ -159,8 +158,9 @@ type annotationEdit struct {
 // readAnnotationEdit returns the edit in asks for. It reads stdin last, so a bad field never
 // waits on it.
 func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
-	if !slices.ContainsFunc([]string{"body", "kind", "source", "url", "attach"}, in.given) {
-		return annotationEdit{}, &Error{Kind: KindUsage, Message: "nothing to edit", Hint: "Pass --body, --kind, --source, --url or --attach."}
+	err := annotationEditDefinition().requireChange(in)
+	if err != nil {
+		return annotationEdit{}, err
 	}
 
 	edit := annotationEdit{fields: readAnnotationFields(in)}
