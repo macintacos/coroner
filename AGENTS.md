@@ -28,8 +28,9 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
   `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing on any
   warning, such as a broken link between pages, copies the export schema in, and fails
   when a page links a file under `/coroner/schema/` that is not in `site/`.
-- `mise run preflight` runs lint, test, build and docs:build. It is the gate before
-  declaring work done (Rule 6).
+- `mise run preflight` runs lint, test, build and docs:build, starting docs:build only
+  once lint and test finish, since both walk the tree and fail when it rebuilds `site/`
+  under them. It is the gate before declaring work done (Rule 6).
 - `mise run release:check` validates [`.goreleaser.yaml`](.goreleaser.yaml), and
   `mise run release:snapshot` builds every release artifact into `dist/` without
   publishing. `/release-coroner` runs `release:check` and `release:snapshot` as release

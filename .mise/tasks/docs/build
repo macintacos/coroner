@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 #MISE description="Build the docs site into site/, failing on any warning"
+#MISE wait_for=["lint", "test"]
 
 set -euo pipefail
+
+# The wait matters under preflight: lint and test walk the tree through ./..., and fail when
+# --clean deletes a directory under site/ mid-walk.
 
 uv run --locked zensical build --clean --strict
 
