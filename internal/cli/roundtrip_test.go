@@ -67,6 +67,195 @@ func TestExportImportRoundTrip(t *testing.T) {
 	}
 }
 
+// importCounts mirrors one record type's counts in import's result object.
+type importCounts struct {
+	Inserted    int `json:"inserted"`
+	Conflicting int `json:"conflicting"`
+}
+
+// importResult mirrors the counts in import's result object.
+type importResult struct {
+	Timelines   importCounts `json:"timelines"`
+	Sources     importCounts `json:"sources"`
+	Events      importCounts `json:"events"`
+	Annotations importCounts `json:"annotations"`
+	Attachments importCounts `json:"attachments"`
+	Links       importCounts `json:"links"`
+}
+
+func TestImportTwiceChangesNothing(t *testing.T) {
+	runs := t.TempDir()
+
+	rapid.Check(t, func(t *rapid.T) {
+		dir, err := os.MkdirTemp(runs, "run")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = checkImportTwice(t.Context(), dir, roundTripModel().Draw(t, "model"))
+		if err != nil {
+			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
+		}
+		err = os.RemoveAll(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// checkImportTwice round-trips m, imports the export into dir/b.db again, and returns an error
+// unless that second import inserted nothing, found no conflict and left b.db's export unchanged.
+func checkImportTwice(ctx context.Context, dir string, m model) error {
+	_, err := checkRoundTrip(ctx, dir, m)
+	if err != nil {
+		return err
+	}
+	c := coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
+	jsonl, err := filepath.Glob(filepath.Join(dir, "a", "*.jsonl"))
+	if err != nil {
+		return err
+	}
+	out, err := c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", jsonl[0], "--json")
+	if err != nil {
+		return err
+	}
+	var result importResult
+	err = json.Unmarshal([]byte(out), &result)
+	if err != nil {
+		return err
+	}
+	if result != (importResult{}) {
+		return fmt.Errorf("importing the export again inserted or conflicted: %+v", result)
+	}
+	_, err = c.run(ctx, exportArgs(filepath.Join(dir, "b.db"), m.names(), filepath.Join(dir, "b2")+string(filepath.Separator))...)
+	if err != nil {
+		return err
+	}
+	differences, err := dirDiff(filepath.Join(dir, "b"), filepath.Join(dir, "b2"))
+	if err != nil {
+		return err
+	}
+	if differences != "" {
+		return fmt.Errorf("importing the export again changed its export:\n%s", differences)
+	}
+
+	return nil
+}
+
+func TestReplaceThenExportEqualsReplacingFile(t *testing.T) {
+	runs := t.TempDir()
+
+	rapid.Check(t, func(t *rapid.T) {
+		dir, err := os.MkdirTemp(runs, "run")
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := roundTripModel().Draw(t, "model")
+		err = seedStore(t.Context(), filepath.Join(dir, "a.db"), m)
+		if err == nil {
+			err = checkReplace(t, dir, m.names())
+		}
+		if err != nil {
+			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
+		}
+		err = os.RemoveAll(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// checkReplace exports dir/a.db into dir/a/, writes it with redrawn titles and texts as
+// dir/b.jsonl, imports a/ and then b.jsonl with --on-conflict replace into an empty dir/c.db, and
+// returns an error unless c.db's export holds b.jsonl's records.
+func checkReplace(t *rapid.T, dir string, names []string) error {
+	ctx := t.Context()
+	c := coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
+	_, err := c.run(ctx, exportArgs(filepath.Join(dir, "a.db"), names, filepath.Join(dir, "a")+string(filepath.Separator))...)
+	if err != nil {
+		return err
+	}
+	jsonl, err := filepath.Glob(filepath.Join(dir, "a", "*.jsonl"))
+	if err != nil {
+		return err
+	}
+	records, err := decodeFile(jsonl[0])
+	if err != nil {
+		return err
+	}
+	redrawn := rapid.StringMatching("[a-z]{1,12}")
+	for i, record := range records {
+		switch r := record.(type) {
+		case export.Timeline:
+			r.Title = redrawn.Draw(t, "title")
+			records[i] = r
+		case export.Event:
+			r.Text = redrawn.Draw(t, "text")
+			records[i] = r
+		case export.Annotation:
+			r.Body = redrawn.Draw(t, "body")
+			records[i] = r
+		}
+	}
+	var b bytes.Buffer
+	err = export.WriteRecords(&b, records)
+	if err != nil {
+		return err
+	}
+	bFile := filepath.Join(dir, "b.jsonl")
+	err = os.WriteFile(bFile, b.Bytes(), 0o600)
+	if err != nil {
+		return err
+	}
+
+	cDB := filepath.Join(dir, "c.db")
+	_, err = c.run(ctx, "--db", cDB, "import", jsonl[0])
+	if err != nil {
+		return err
+	}
+	_, err = c.run(ctx, "--db", cDB, "import", bFile, "--on-conflict", "replace")
+	if err != nil {
+		return err
+	}
+	_, err = c.run(ctx, exportArgs(cDB, names, filepath.Join(dir, "c")+string(filepath.Separator))...)
+	if err != nil {
+		return err
+	}
+	cJSONL, err := filepath.Glob(filepath.Join(dir, "c", "*.jsonl"))
+	if err != nil {
+		return err
+	}
+	got, err := decodeFile(cJSONL[0])
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(withoutHeaders(got), withoutHeaders(records)) {
+		return fmt.Errorf("c.db's export differs from b.jsonl:\n%s", diff.Diff("b.jsonl", b.Bytes(), "c", mustRead(cJSONL[0])))
+	}
+
+	return nil
+}
+
+func decodeFile(path string) ([]export.Record, error) {
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return nil, err
+	}
+
+	return export.Decode(bytes.NewReader(data))
+}
+
+func mustRead(path string) []byte {
+	data, _ := os.ReadFile(filepath.Clean(path))
+	return data
+}
+
+func withoutHeaders(records []export.Record) []export.Record {
+	return slices.DeleteFunc(slices.Clone(records), func(r export.Record) bool {
+		_, ok := r.(export.Header)
+		return ok
+	})
+}
+
 // enoughChecksToCover reports whether rapid drew enough cases for a property to require that every
 // case kind it generates was seen. With fewer checks than rapid's default 100, as when debugging,
 // or under -short, which runs a fifth of them, too few are drawn.
