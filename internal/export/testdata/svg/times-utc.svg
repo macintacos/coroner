@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1224.00" height="526.00" viewBox="0 0 1224.00 526.00" font-family="system-ui, sans-serif" font-size="12" role="img">
+<title>times</title>
+<rect width="1224.00" height="526.00" fill="#ffffff"/>
+<text x="24.00" y="34.00" font-size="18" font-weight="600" fill="#1b1f22">times</text>
+<text x="24.00" y="58.00" fill="#545c63">Times in UTC</text>
+<text x="24.00" y="76.00" fill="#545c63">Exported 2026-09-13 01:40 UTC by coroner (devel)</text>
+<g transform="translate(0 98.00)">
+<line x1="200.00" y1="40.00" x2="200.00" y2="404.00" stroke="#d3d8d6"/>
+<text x="200.00" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-11</text>
+<line x1="333.23" y1="40.00" x2="333.23" y2="404.00" stroke="#d3d8d6"/>
+<text x="333.23" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-18</text>
+<line x1="466.45" y1="40.00" x2="466.45" y2="404.00" stroke="#d3d8d6"/>
+<text x="466.45" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-09-25</text>
+<line x1="599.68" y1="40.00" x2="599.68" y2="404.00" stroke="#d3d8d6"/>
+<text x="599.68" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-10-02</text>
+<line x1="732.90" y1="40.00" x2="732.90" y2="404.00" stroke="#d3d8d6"/>
+<text x="732.90" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-10-09</text>
+<line x1="866.13" y1="40.00" x2="866.13" y2="404.00" stroke="#d3d8d6"/>
+<text x="866.13" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-10-16</text>
+<line x1="999.36" y1="40.00" x2="999.36" y2="404.00" stroke="#d3d8d6"/>
+<text x="999.36" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-10-23</text>
+<line x1="1132.58" y1="40.00" x2="1132.58" y2="404.00" stroke="#d3d8d6"/>
+<text x="1132.58" y="14.00" text-anchor="middle" font-size="11" fill="#545c63">2026-10-30</text>
+<line x1="0" y1="40.00" x2="1224.00" y2="40.00" stroke="#d3d8d6"/>
+<g>
+<title>(no source)</title>
+<text x="24.00" y="61.00" font-weight="600" fill="#545c63">(no source)</text>
+</g>
+<g>
+<title>2026-09-11–2026-09-12 E2</title>
+<rect x="200.00" y="52.00" width="19.03" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.12" stroke-dasharray="3 2"/>
+<text x="227.03" y="61.00" text-anchor="start" font-size="11" fill="#1b1f22">2026-09-11–2026-09-12 E2</text>
+</g>
+<g>
+<title>03:-- E4</title>
+<rect x="202.38" y="72.00" width="0.79" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="202.38" cy="79.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="211.17" y="83.00" text-anchor="start" font-size="11" fill="#1b1f22">03:-- E4</text>
+</g>
+<g>
+<title>~03:14 E5</title>
+<rect x="202.56" y="94.00" width="0.01" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="202.56" cy="101.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="210.58" y="105.00" text-anchor="start" font-size="11" fill="#1b1f22">~03:14 E5</text>
+</g>
+<g>
+<title>03:14:07 E6</title>
+<circle cx="202.57" cy="123.00" r="4" fill="#545c63"/>
+<text x="210.57" y="127.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07 E6</text>
+</g>
+<g>
+<title>03:14:07.180 E7</title>
+<circle cx="202.57" cy="145.00" r="4" fill="#545c63"/>
+<text x="210.57" y="149.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07.180 E7</text>
+</g>
+<g>
+<title>03:14:07.180342 E8</title>
+<circle cx="202.57" cy="167.00" r="4" fill="#545c63"/>
+<text x="210.57" y="171.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07.180342 E8</text>
+</g>
+<g>
+<title>03:14:07.180342917 E9</title>
+<circle cx="202.57" cy="189.00" r="4" fill="#545c63"/>
+<text x="210.57" y="193.00" text-anchor="start" font-size="11" fill="#1b1f22">03:14:07.180342917 E9</text>
+</g>
+<g>
+<title>03:15:00–03:16:30 E10</title>
+<rect x="202.58" y="206.00" width="2.00" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.35"/>
+<text x="212.58" y="215.00" text-anchor="start" font-size="11" fill="#1b1f22">03:15:00–03:16:30 E10</text>
+</g>
+<g>
+<title>04:30 E3</title>
+<rect x="203.57" y="226.00" width="0.79" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="203.57" cy="233.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="212.36" y="237.00" text-anchor="start" font-size="11" fill="#1b1f22">04:30 E3</text>
+</g>
+<g>
+<title>2026-09-11 E1</title>
+<rect x="203.97" y="248.00" width="19.03" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="203.97" cy="255.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="231.00" y="259.00" text-anchor="start" font-size="11" fill="#1b1f22">2026-09-11 E1</text>
+</g>
+<g>
+<title>20:30 E13</title>
+<rect x="216.26" y="270.00" width="0.79" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="216.26" cy="277.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="225.05" y="281.00" text-anchor="start" font-size="11" fill="#1b1f22">20:30 E13</text>
+</g>
+<g>
+<title>~20:30–22:30 E14</title>
+<rect x="216.26" y="294.00" width="2.00" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.12" stroke-dasharray="3 2"/>
+<text x="226.26" y="303.00" text-anchor="start" font-size="11" fill="#1b1f22">~20:30–22:30 E14</text>
+</g>
+<g>
+<title>23:50–2026-09-12 00:20 E11</title>
+<rect x="218.90" y="316.00" width="2.00" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.12" stroke-dasharray="3 2"/>
+<text x="228.90" y="325.00" text-anchor="start" font-size="11" fill="#1b1f22">23:50–2026-09-12 00:20 E11</text>
+</g>
+<g>
+<title>~2026-09-12 E12</title>
+<rect x="219.03" y="336.00" width="19.03" height="14" fill="#545c63" fill-opacity="0.15"/>
+<circle cx="219.03" cy="343.00" r="4" fill="#ffffff" stroke="#545c63" stroke-width="1.5" stroke-dasharray="2 1.5"/>
+<text x="246.06" y="347.00" text-anchor="start" font-size="11" fill="#1b1f22">~2026-09-12 E12</text>
+</g>
+<g>
+<title>05:30:00 E15</title>
+<circle cx="1175.01" cy="365.00" r="4" fill="#545c63"/>
+<text x="1167.01" y="369.00" text-anchor="end" font-size="11" fill="#1b1f22">05:30:00 E15</text>
+</g>
+<g>
+<title>06:30:00–06:45:00 E16</title>
+<rect x="1175.80" y="382.00" width="2.00" height="10" rx="2" fill="#545c63" stroke="#545c63" fill-opacity="0.35"/>
+<text x="1167.80" y="391.00" text-anchor="end" font-size="11" fill="#1b1f22">06:30:00–06:45:00 E16</text>
+</g>
+<line x1="0" y1="404.00" x2="1224.00" y2="404.00" stroke="#d3d8d6"/>
+</g>
+</svg>

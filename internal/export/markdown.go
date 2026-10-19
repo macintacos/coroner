@@ -604,35 +604,6 @@ func blockMarker(line string) int {
 	return -1
 }
 
-// clock returns t's wall clock to precision, and its offset when offset is set; a day has none.
-// An hour shows its minutes when the zone puts its start off the hour.
-func clock(t time.Time, precision timeline.Precision, offset bool) string {
-	layout := "15:04:05.000000000"
-	switch precision {
-	case timeline.PrecisionDay:
-		return ""
-	case timeline.PrecisionHour:
-		layout = "15:--"
-		if t.Minute() != 0 {
-			layout = "15:04"
-		}
-	case timeline.PrecisionMinute:
-		layout = "15:04"
-	case timeline.PrecisionSecond:
-		layout = time.TimeOnly
-	case timeline.PrecisionMillisecond:
-		layout = "15:04:05.000"
-	case timeline.PrecisionMicrosecond:
-		layout = "15:04:05.000000"
-	case timeline.PrecisionNanosecond:
-	}
-	if offset {
-		layout += " -07:00"
-	}
-
-	return t.Format(layout)
-}
-
 // codeSpans returns each name, after prefix, as a code span, joined by sep.
 func codeSpans(names []string, prefix, sep string) string {
 	spans := make([]string, 0, len(names))

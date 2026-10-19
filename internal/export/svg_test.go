@@ -111,6 +111,14 @@ var _ = Describe("WriteSVG", func() {
 		matchSVGGolden("new-york", picture)
 	})
 
+	DescribeTable("labels the time fixture's events in a zone",
+		func(golden string, zone func() *time.Location) {
+			matchSVGGolden(golden, svg(times(), zone()))
+		},
+		Entry("in UTC", "times-utc", func() *time.Location { return time.UTC }),
+		Entry("in New York", "times-new-york", newYork),
+	)
+
 	It("draws a timeline with no events as its header and a note", func() {
 		matchSVGGolden("empty", svg(envelope(export.Timeline{ID: "t1", Name: "quiet", Refs: []string{}}, nil, nil), time.UTC))
 	})
