@@ -145,9 +145,11 @@ func planImport(in importInput) (importPlan, error) {
 	return importPlan{write: p.write, result: p.result, blocked: p.blocked(), timelineNames: p.timelineNames()}, nil
 }
 
-// The export keys the planner treats specially.
+// The export keys the planner and event add --id treat specially.
 const (
 	keySeq        = "seq"
+	keyCreatedAt  = "created_at"
+	keyUpdatedAt  = "updated_at"
 	keyTimelineID = "timeline_id"
 	keyEventID    = "event_id"
 )
@@ -202,6 +204,19 @@ func sortedUnique(tags []string) []string {
 	slices.Sort(sorted)
 
 	return slices.Compact(sorted)
+}
+
+// eventDiff returns the export keys in which incoming differs from stored, comparing tags sorted
+// and once each, and leaving out seq and every key in ignore.
+func eventDiff(stored, incoming timeline.Event, ignore ...string) []string {
+	compared := func(e timeline.Event) export.Event {
+		e.Tags = sortedUnique(e.Tags)
+		return export.NewEvent(e)
+	}
+
+	return slices.DeleteFunc(export.DifferingKeys(compared(stored), compared(incoming)), func(k string) bool {
+		return k == keySeq || slices.Contains(ignore, k)
+	})
 }
 
 // firstOccurrences returns refs with each ref once, where it first appears, without changing refs.
@@ -496,7 +511,7 @@ func (p *planner) planEvents(events []export.Event) []sourceUse {
 	var uses []sourceUse
 	for _, e := range events {
 		if stored, ok := p.in.stored.events[e.ID]; ok {
-			fields := withoutKey(export.DifferingKeys(export.NewEvent(stored), e), keySeq)
+			fields := eventDiff(stored, e.Domain())
 			if !p.resolve(&p.result.Events, importConflict{Type: "event", ID: e.ID, Fields: fields}, !slices.Contains(fields, keyTimelineID)) {
 				continue
 			}

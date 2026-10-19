@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
-	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -223,7 +222,7 @@ func storedSameEvent(ctx context.Context, s records, e timeline.Event, files []a
 		return e, false, err
 	}
 
-	keys := changedEventKeys(stored, e)
+	keys := eventDiff(stored, e, keyCreatedAt, keyUpdatedAt)
 	if !slices.Equal(sortedSHA256s(attachments), fileSHA256s(files)) {
 		keys = append(keys, "attachments")
 	}
@@ -232,18 +231,6 @@ func storedSameEvent(ctx context.Context, s records, e timeline.Event, files []a
 	}
 
 	return stored, true, nil
-}
-
-// changedEventKeys returns the export keys in which draft differs from stored, the event under
-// the same id, leaving out the seq and times the store sets and the order of tags.
-func changedEventKeys(stored, draft timeline.Event) []string {
-	compared := func(e timeline.Event) export.Event {
-		e.Seq, e.CreatedAt, e.UpdatedAt = 0, time.Time{}, time.Time{}
-		e.Tags = sortedUnique(e.Tags)
-		return export.NewEvent(e)
-	}
-
-	return export.DifferingKeys(compared(stored), compared(draft))
 }
 
 func sortedSHA256s(attachments []timeline.Attachment) []string {
