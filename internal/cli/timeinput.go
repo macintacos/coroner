@@ -8,6 +8,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 const zoneHint = "Use an IANA time zone, such as America/New_York, or local."
@@ -154,6 +155,10 @@ func formatResolved(r timeparse.Resolved, z zone) string {
 
 // occurredText renders e's occurred at in z to its precision, marked ~ when approximate.
 func occurredText(e timeline.Event, z zone) string {
+	if e.Precision == timeline.PrecisionDay {
+		z = zone{loc: timetext.Location(e, z.loc), label: z.label}
+	}
+
 	if e.Approximate {
 		return "~" + displayTime(e.OccurredAt, e.Precision, z)
 	}
