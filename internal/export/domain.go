@@ -8,7 +8,7 @@ import (
 
 // NewTimeline returns t as its canonical object.
 func NewTimeline(t timeline.Timeline) Timeline {
-	return Timeline{ID: t.ID, Name: t.Name, Title: t.Title, Refs: t.Refs, CreatedAt: Instant(t.CreatedAt)}
+	return Timeline{ID: t.ID, Name: t.Name, Title: t.Title, Refs: append([]string{}, t.Refs...), CreatedAt: Instant(t.CreatedAt)}
 }
 
 // Domain returns t as its domain value, updated when it was created.
@@ -40,7 +40,7 @@ func NewEvent(e timeline.Event) Event {
 		OccurredRaw:    e.OccurredRaw,
 		EndedAt:        (*Instant)(e.EndedAt),
 		Source:         e.Source,
-		Tags:           e.Tags,
+		Tags:           append([]string{}, e.Tags...),
 		Text:           e.Text,
 		URL:            e.URL,
 		Author:         e.Author,

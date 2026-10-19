@@ -79,3 +79,10 @@ var _ = Describe("Timeline.Domain", func() {
 		Expect(t.UpdatedAt).To(Equal(at(1, 0)))
 	})
 })
+
+var _ = Describe("NewEvent and NewTimeline", func() {
+	It("turn nil tags and refs into empty slices, which encoding/json v1 writes as []", func() {
+		Expect(export.NewEvent(timeline.Event{}).Tags).To(Equal([]string{}))
+		Expect(export.NewTimeline(timeline.Timeline{}).Refs).To(Equal([]string{}))
+	})
+})
