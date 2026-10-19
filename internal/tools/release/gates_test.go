@@ -11,7 +11,7 @@ const (
 	fetchCmd     = "git fetch origin main"
 	originCmd    = "git rev-parse --verify origin/main^{commit}"
 	authCmd      = "gh auth status --hostname github.com --active"
-	repoNamesCmd = "gh secret list -R macintacos/coroner --json name"
+	repoNamesCmd = "gh secret list -R macintacos/coroner --env release --json name"
 	ciCmd        = "gh run list -R macintacos/coroner --workflow ci.yml --commit " + headSHA + " --json status,conclusion --limit 1"
 )
 

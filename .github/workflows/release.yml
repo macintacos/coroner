@@ -3,13 +3,17 @@ on:
   push:
     tags: ['v*']
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Holds HOMEBREW_TAP_GITHUB_TOKEN, and only v* tags deploy to it.
+    environment: release
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -23,6 +27,8 @@ jobs:
           # mise.lock pins every tool but mise itself.
           # Keep in sync with ci.yml and docs.yml.
           version: 2026.9.6
+          # A publishing job never restores a cache that a CI run could have written.
+          cache: false
       - name: Release notes
         env:
           TAG: ${{ github.ref_name }}

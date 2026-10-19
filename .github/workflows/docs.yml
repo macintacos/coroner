@@ -30,6 +30,8 @@ jobs:
           # mise.lock pins every tool but mise itself.
           # Keep in sync with ci.yml and release.yml.
           version: 2026.9.6
+          # A publishing job never restores a cache that a CI run could have written.
+          cache: false
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Docs build

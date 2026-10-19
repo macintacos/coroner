@@ -95,12 +95,12 @@ func githubGates(ctx context.Context, sys system, sha string) error {
 		return &toolError{Code: "gh_unauthenticated", Message: err.Error()}
 	}
 
-	secrets, err := ghJSON[[]secret](ctx, sys, "secrets", "secret", "list", "-R", repo, "--json", "name")
+	secrets, err := ghJSON[[]secret](ctx, sys, "secrets", "secret", "list", "-R", repo, "--env", "release", "--json", "name")
 	if err != nil {
 		return err
 	}
 	if !slices.Contains(secrets, secret{Name: "HOMEBREW_TAP_GITHUB_TOKEN"}) {
-		return &toolError{Code: "tap_secret_missing", Message: "HOMEBREW_TAP_GITHUB_TOKEN is not set on " + repo}
+		return &toolError{Code: "tap_secret_missing", Message: "HOMEBREW_TAP_GITHUB_TOKEN is not set on " + repo + "'s release environment"}
 	}
 
 	runs, err := ghJSON[[]ciRun](ctx, sys, "CI runs", "run", "list", "-R", repo, "--workflow", "ci.yml", "--commit", sha, "--json", "status,conclusion", "--limit", "1")
