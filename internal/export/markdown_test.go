@@ -45,6 +45,16 @@ func markdown(env export.Envelope, opts export.MarkdownOptions) string {
 func envelope(t export.Timeline, events []export.Event, annotations []export.Annotation) export.Envelope {
 	env := export.NewEnvelope("0.1.0", time.Date(2026, time.September, 12, 21, 40, 5, 0, time.UTC))
 	env.Timelines = []export.Timeline{t}
+	for i := range events {
+		if events[i].TimelineID == "" {
+			events[i].TimelineID = t.ID
+		}
+	}
+	for i := range annotations {
+		if annotations[i].TimelineID == "" {
+			annotations[i].TimelineID = t.ID
+		}
+	}
 	env.Events = events
 	env.Annotations = annotations
 
