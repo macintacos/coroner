@@ -16,9 +16,13 @@ the published release.
 1. Create the public repository `macintacos/homebrew-tap`. goreleaser writes
    `Casks/coroner.rb` into it.
 2. Create a fine-grained GitHub token with read and write access to the contents of
-   `macintacos/homebrew-tap` only, and add it to `macintacos/coroner` as the Actions
-   secret `HOMEBREW_TAP_GITHUB_TOKEN`. The workflow's own token cannot push to another
-   repository. Never commit the token or paste it anywhere else.
+   `macintacos/homebrew-tap` only, and add it to `macintacos/coroner` as the secret
+   `HOMEBREW_TAP_GITHUB_TOKEN` of the `release` environment, with
+   `gh secret set HOMEBREW_TAP_GITHUB_TOKEN --env release -R macintacos/coroner`. The
+   workflow's own token cannot push to another repository. The environment deploys only
+   from `v*` tags, and the `Protect release tags` ruleset lets only admins push one, so no
+   branch's workflow can read the token. Never commit the token, store it as a repository
+   secret, or paste it anywhere else.
 3. Decide how macOS binaries are signed, and update the install page's
    [macOS signing and notarization](../how-to/install.md#macos-signing-and-notarization)
    section to match. This does not block a release: until the decision, releases ship
@@ -41,9 +45,9 @@ The skill drives `go run ./internal/tools/release`, which does each step and pri
 JSON object:
 
 1. **`gates`** checks that you are on `main` with a clean tree level with `origin/main`,
-   that `gh` is logged in, that `HOMEBREW_TAP_GITHUB_TOKEN` is set, and that CI passed on
-   `HEAD`. Then it runs `mise run preflight`, `mise run release:check` and
-   `mise run release:snapshot`.
+   that `gh` is logged in, that the `release` environment has `HOMEBREW_TAP_GITHUB_TOKEN`,
+   and that CI passed on `HEAD`. Then it runs `mise run preflight`,
+   `mise run release:check` and `mise run release:snapshot`.
 2. **`compute`** works out the tag and gathers the pull requests and commits since the
    latest final tag, each PR's `stability:` line, and any change to the contract scripts,
    the export schema or a deprecation call.
