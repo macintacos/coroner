@@ -1,10 +1,6 @@
 package timeline
 
-import (
-	"errors"
-	"fmt"
-	"time"
-)
+import "time"
 
 // LinkKind says how the event a link leaves relates to the event it reaches.
 type LinkKind string
@@ -19,7 +15,8 @@ const (
 	LinkCopiedFrom LinkKind = "copied_from"
 )
 
-func (k LinkKind) valid() bool {
+// Valid reports whether k is a known link kind.
+func (k LinkKind) Valid() bool {
 	switch k {
 	case LinkLedTo, LinkSameAs, LinkCopiedFrom:
 		return true
@@ -43,12 +40,12 @@ type Link struct {
 // Validate reports every way l breaks the domain rules, or nil.
 func (l Link) Validate() error {
 	var errs []error
-	if !l.Kind.valid() {
-		errs = append(errs, fmt.Errorf("link kind %q: must be %q, %q or %q", l.Kind, LinkLedTo, LinkSameAs, LinkCopiedFrom))
+	if !l.Kind.Valid() {
+		errs = append(errs, problem("kind", RuleUnknown, "link kind %q: must be %q, %q or %q", l.Kind, LinkLedTo, LinkSameAs, LinkCopiedFrom))
 	}
 	if l.FromEventID == l.ToEventID {
-		errs = append(errs, errors.New("link: an event cannot link to itself"))
+		errs = append(errs, problem("to_event_id", RuleSelfLink, "link: an event cannot link to itself"))
 	}
 
-	return errors.Join(errs...)
+	return join(errs...)
 }

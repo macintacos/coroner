@@ -1,7 +1,9 @@
 package timeline_test
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -223,4 +225,76 @@ var _ = Describe("CompareEvents", func() {
 		slices.SortFunc(events, timeline.CompareEvents)
 		Expect(seqs(events)).To(Equal([]int64{2, 1}))
 	})
+})
+
+// fieldRules returns each problem err reports as its field and rule, without its message.
+func fieldRules(err error) []timeline.Problem {
+	verr, ok := errors.AsType[*timeline.ValidationError](err)
+	Expect(ok).To(BeTrue(), "want a *timeline.ValidationError, got %v", err)
+	out := make([]timeline.Problem, 0, len(verr.Problems))
+	for _, p := range verr.Problems {
+		out = append(out, timeline.Problem{Field: p.Field, Rule: p.Rule})
+	}
+	return out
+}
+
+var _ = Describe("ValidationError", func() {
+	event := func() timeline.Event {
+		return timeline.Event{OccurredAt: quarterPast(), Precision: timeline.PrecisionMinute, Text: "Pager fires"}
+	}
+
+	It("reports each problem's field and rule, in the order Validate checks them", func() {
+		e := event()
+		e.Text = ""
+		e.EndedAt = new(quarterPast().Add(-time.Minute))
+		Expect(fieldRules(e.Validate())).To(Equal([]timeline.Problem{
+			{Field: "text", Rule: timeline.RuleBlank},
+			{Field: "ended_at", Rule: timeline.RuleEndedBeforeOccurred},
+		}))
+	})
+
+	It("joins messages as errors.Join did", func() {
+		e := event()
+		e.Text = ""
+		e.EndedAt = new(quarterPast().Add(-time.Minute))
+		Expect(e.Validate()).To(MatchError("text: must not be blank\n" +
+			"ended at 2026-09-12T10:14:00.000000000Z: must not be before occurred at 2026-09-12T10:15:00.000000000Z"))
+	})
+
+	DescribeTable("names the field and rule of",
+		func(err error, want timeline.Problem) {
+			Expect(fieldRules(err)).To(Equal([]timeline.Problem{want}))
+		},
+		Entry("a self link", timeline.Link{FromEventID: "a", ToEventID: "a", Kind: timeline.LinkLedTo}.Validate(),
+			timeline.Problem{Field: "to_event_id", Rule: timeline.RuleSelfLink}),
+		Entry("an unknown link kind", timeline.Link{FromEventID: "a", ToEventID: "b", Kind: "after"}.Validate(),
+			timeline.Problem{Field: "kind", Rule: timeline.RuleUnknown}),
+		Entry("an unknown precision", func() error { e := event(); e.Precision = "fortnight"; return e.Validate() }(),
+			timeline.Problem{Field: "precision", Rule: timeline.RuleUnknown}),
+		Entry("a blank ref", timeline.Timeline{Name: "inc-465", Refs: []string{" "}}.Validate(),
+			timeline.Problem{Field: "refs", Rule: timeline.RuleBlank}),
+		Entry("the source none", timeline.Source{Name: "none"}.Validate(),
+			timeline.Problem{Field: "name", Rule: timeline.RuleReserved}),
+		Entry("the source none on an event", func() error { e := event(); e.Source = new("none"); return e.Validate() }(),
+			timeline.Problem{Field: "source", Rule: timeline.RuleReserved}),
+		Entry("a bad tag", func() error { e := event(); e.Tags = []string{"Phase"}; return e.Validate() }(),
+			timeline.Problem{Field: "tags", Rule: timeline.RuleGrammar}),
+		Entry("an out-of-range offset", func() error { e := event(); e.OccurredOffset = new(88200); return e.Validate() }(),
+			timeline.Problem{Field: "occurred_offset", Rule: timeline.RuleOffsetRange}),
+		Entry("a negative size", timeline.Attachment{
+			Owner: timeline.AttachmentOwner{EventID: new("a")}, SHA256: strings.Repeat("ab", 32), Size: -1,
+		}.Validate(), timeline.Problem{Field: "size", Rule: timeline.RuleNegativeSize}),
+		Entry("a bad owner", timeline.AttachmentOwner{}.Validate(),
+			timeline.Problem{Field: "event_id", Rule: timeline.RuleOwner}),
+	)
+
+	DescribeTable("Valid reports enum membership",
+		func(valid, want bool) { Expect(valid).To(Equal(want)) },
+		Entry("a precision", timeline.PrecisionHour.Valid(), true),
+		Entry("an unknown precision", timeline.Precision("fortnight").Valid(), false),
+		Entry("an annotation kind", timeline.AnnotationComment.Valid(), true),
+		Entry("an unknown annotation kind", timeline.AnnotationKind("note").Valid(), false),
+		Entry("a link kind", timeline.LinkSameAs.Valid(), true),
+		Entry("an unknown link kind", timeline.LinkKind("after").Valid(), false),
+	)
 })

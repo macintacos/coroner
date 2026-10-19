@@ -308,6 +308,54 @@ var _ = Describe("Schema", func() {
 		},
 	)
 
+	expectEnumAgrees := func(err error, valid bool) {
+		GinkgoHelper()
+		if valid {
+			Expect(err).NotTo(HaveOccurred())
+			return
+		}
+		Expect(err).To(MatchError(checkFailed))
+	}
+
+	DescribeTable("checks a precision exactly as timeline.Precision.Valid does",
+		func(ctx SpecContext, precision timeline.Precision) {
+			params := eventParams(10, 2)
+			params.OccurredAt = timeline.FormatInstant(time.Date(2026, 9, 12, 0, 0, 0, 0, time.UTC))
+			params.OccurredPrecision = string(precision)
+			_, err := queries.CreateEvent(ctx, params)
+			expectEnumAgrees(err, precision.Valid())
+		},
+		Entry("day", timeline.PrecisionDay), Entry("hour", timeline.PrecisionHour),
+		Entry("minute", timeline.PrecisionMinute), Entry("second", timeline.PrecisionSecond),
+		Entry("millisecond", timeline.PrecisionMillisecond), Entry("microsecond", timeline.PrecisionMicrosecond),
+		Entry("nanosecond", timeline.PrecisionNanosecond),
+		Entry("fortnight", timeline.Precision("fortnight")), Entry("Day", timeline.Precision("Day")),
+		Entry("empty", timeline.Precision("")),
+	)
+
+	DescribeTable("checks an annotation kind exactly as timeline.AnnotationKind.Valid does",
+		func(ctx SpecContext, kind timeline.AnnotationKind) {
+			params := annotationParams(10, incident.ID, &pager.ID)
+			params.Kind = string(kind)
+			_, err := queries.CreateAnnotation(ctx, params)
+			expectEnumAgrees(err, kind.Valid())
+		},
+		Entry("evidence", timeline.AnnotationEvidence), Entry("comment", timeline.AnnotationComment),
+		Entry("note", timeline.AnnotationKind("note")), Entry("empty", timeline.AnnotationKind("")),
+	)
+
+	DescribeTable("checks a link kind exactly as timeline.LinkKind.Valid does",
+		func(ctx SpecContext, kind timeline.LinkKind) {
+			params := linkParams(10, secondEvent(ctx))
+			params.Kind = string(kind)
+			_, err := queries.CreateLink(ctx, params)
+			expectEnumAgrees(err, kind.Valid())
+		},
+		Entry("led_to", timeline.LinkLedTo), Entry("same_as", timeline.LinkSameAs),
+		Entry("copied_from", timeline.LinkCopiedFrom),
+		Entry("after", timeline.LinkKind("after")), Entry("empty", timeline.LinkKind("")),
+	)
+
 	It("accepts an annotation on an event in its own timeline", func(ctx SpecContext) {
 		Expect(queries.CreateAnnotation(ctx, annotationParams(10, incident.ID, &pager.ID))).
 			To(HaveField("EventID", HaveValue(Equal(pager.ID))))
