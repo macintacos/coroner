@@ -352,12 +352,7 @@ func checkTimeline(t timeline.Timeline) error {
 		return err
 	}
 
-	err = t.Validate()
-	if err != nil {
-		return &Error{Kind: KindUsage, Message: err.Error(), Hint: "A ref is a ticket key or URL.", Err: err}
-	}
-
-	return nil
+	return recordError(t.Validate(), "A ref is a ticket key or URL.")
 }
 
 // checkName returns invalid_name, with a suggested name, unless name is a valid timeline name.

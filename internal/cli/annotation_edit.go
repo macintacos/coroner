@@ -94,7 +94,10 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		if err != nil {
 			return err
 		}
-		a = edit.apply(a, now)
+		a, err = edit.apply(a, now)
+		if err != nil {
+			return err
+		}
 		edited.annotation, edited.timeline = a, t
 		if !req.dryRun {
 			err = updateAnnotation(ctx, s, app, a, req.toAdd...)
@@ -165,10 +168,7 @@ func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
 
 	edit := annotationEdit{fields: readAnnotationFields(in)}
 	if kind := in.value("kind"); kind != nil {
-		k, err := checkAnnotationKind(*kind)
-		if err != nil {
-			return edit, err
-		}
+		k := timeline.AnnotationKind(*kind)
 		edit.kind = &k
 	}
 	if body := in.value("body"); body != nil {
@@ -182,8 +182,9 @@ func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
 	return edit, nil
 }
 
-// apply returns a with the edit made and updated at set to now.
-func (e annotationEdit) apply(a timeline.Annotation, now time.Time) timeline.Annotation {
+// apply returns a with the edit made and updated at set to now, or the first rule the edited
+// annotation breaks as the kind its rule names.
+func (e annotationEdit) apply(a timeline.Annotation, now time.Time) (timeline.Annotation, error) {
 	if e.kind != nil {
 		a.Kind = *e.kind
 	}
@@ -198,5 +199,5 @@ func (e annotationEdit) apply(a timeline.Annotation, now time.Time) timeline.Ann
 	}
 	a.UpdatedAt = now
 
-	return a
+	return a, recordError(a.Validate(), "Run 'coroner annotation edit --help' for what each flag takes.")
 }

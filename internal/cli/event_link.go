@@ -88,8 +88,7 @@ func linkKindField() field {
 }
 
 func checkLinkKind(kind string) error {
-	switch timeline.LinkKind(kind) {
-	case timeline.LinkLedTo, timeline.LinkSameAs, timeline.LinkCopiedFrom:
+	if timeline.LinkKind(kind).Valid() {
 		return nil
 	}
 
@@ -139,6 +138,10 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 		}
 		change.ends = ends
 		change.link.FromEventID, change.link.ToEventID = ends.events[0].ID, ends.events[1].ID
+		err = checkLink(change.link, ends)
+		if err != nil {
+			return err
+		}
 		if dryRun {
 			return refuseExistingLink(ctx, s, ends, kind)
 		}
@@ -168,6 +171,10 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 			return err
 		}
 		change.ends = ends
+		err = checkLink(timeline.Link{FromEventID: ends.events[0].ID, ToEventID: ends.events[1].ID, Kind: kind}, ends)
+		if err != nil {
+			return err
+		}
 		change.link, err = s.LinkBetween(ctx, ends.events[0].ID, ends.events[1].ID, kind)
 		if err == nil && !dryRun {
 			err = s.DeleteLink(ctx, change.link.ID)
@@ -207,7 +214,7 @@ func readLinkRequest(command string, def definition, in fieldValues) ([2]eventRe
 	return refs, timeline.LinkKind(*kind), nil
 }
 
-// findLinkEnds finds the events refs name, and returns usage when they are one event.
+// findLinkEnds finds the events refs name.
 func findLinkEnds(ctx context.Context, s *store.Store, refs [2]eventRef, selection timelineSelection) (linkEnds, error) {
 	var ends linkEnds
 	for i, ref := range refs {
@@ -217,13 +224,21 @@ func findLinkEnds(ctx context.Context, s *store.Store, refs [2]eventRef, selecti
 			return ends, err
 		}
 	}
-	if ends.events[0].ID == ends.events[1].ID {
-		return ends, &Error{
-			Kind: KindUsage, Message: fmt.Sprintf("`%s` cannot link to itself", ends.ref(0)), Hint: "Pass two different events.",
+
+	return ends, nil
+}
+
+// checkLink returns a self link between ends as usage naming the event, and any other rule l
+// breaks as the kind its rule names.
+func checkLink(l timeline.Link, ends linkEnds) error {
+	err := l.Validate()
+	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleSelfLink {
+		return &Error{
+			Kind: KindUsage, Message: fmt.Sprintf("`%s` cannot link to itself", ends.ref(0)), Hint: "Pass two different events.", Err: err,
 		}
 	}
 
-	return ends, nil
+	return recordError(err, "")
 }
 
 // refuseExistingLink returns link_exists when a link of kind already joins ends.

@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -34,13 +35,18 @@ func TestDryRunMeansWrite(t *testing.T) {
 				{Event: dryRunEvent(seededEventID, "Primary stepped down", created), newSourceID: seededSourceID},
 				{Event: dryRunEvent(seededEventID2, "Election timeout", created.Add(time.Minute)), newSourceID: seededSourceID2},
 			},
+			annotations: []annotationDraft{{
+				ID: seededAnnotationID, TimelineID: seededTimelineID, Kind: timeline.AnnotationComment,
+				Body: "Step-down follows the burst", CreatedAt: created, UpdatedAt: created,
+			}},
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		args := append([]string{"--db", db, "-t", "outage", "--no-input"}, eventWrite().Draw(t, "command")...)
-		err = checkDryRunMeansWrite(t, coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)}, args)
+		write := rapid.OneOf(eventWrite(), annotationWrite(), linkWrite()).Draw(t, "write")
+		write.args = append([]string{"--db", db, "-t", "outage", "--no-input"}, write.args...)
+		err = checkDryRunMeansWrite(t, coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)}, write)
 		if err != nil {
 			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
 		}
@@ -58,7 +64,18 @@ const (
 	seededEventID2   = "0199a1b2-0000-7000-8000-000000000003"
 	seededSourceID   = "0199a1b2-0000-7000-8000-000000000004"
 	seededSourceID2  = "0199a1b2-0000-7000-8000-000000000005"
+
+	seededAnnotationID = "0199a1b2-0000-7000-8000-000000000006"
 )
+
+// dryRunWrite is a write command's arguments, and how to read back the record it stores.
+type dryRunWrite struct {
+	args []string
+	// readBack returns the command that shows the record want previews, and picks the record
+	// from its JSON output.
+	readBack func(db string, want map[string]any) []string
+	pick     func(out string, want map[string]any) (map[string]any, error)
+}
 
 func dryRunEvent(id, text string, at time.Time) timeline.Event {
 	return timeline.Event{
@@ -67,9 +84,10 @@ func dryRunEvent(id, text string, at time.Time) timeline.Event {
 	}
 }
 
-// checkDryRunMeansWrite runs args with --dry-run --json and, when that exits 0, without --dry-run,
-// returning an error unless the write exits 0 and stores the event the dry run previewed.
-func checkDryRunMeansWrite(t *rapid.T, c coroner, args []string) error {
+// checkDryRunMeansWrite runs w with --dry-run --json and, when that exits 0, without --dry-run,
+// returning an error unless the write exits 0 and stores the record the dry run previewed.
+func checkDryRunMeansWrite(t *rapid.T, c coroner, w dryRunWrite) error {
+	args := w.args
 	line := "coroner " + strings.Join(args, " ")
 	preview, dryErr, dryCode := c.exec(t.Context(), append(args, "--dry-run", "--json")...)
 	if dryCode != 0 {
@@ -80,59 +98,136 @@ func checkDryRunMeansWrite(t *rapid.T, c coroner, args []string) error {
 		return fmt.Errorf("%s: the dry run exited 0 and the write exited %d\ndry run stderr:\n%s\nwrite stderr:\n%s", line, writeCode, dryErr, writeErr)
 	}
 
-	want, err := comparableEvent(preview)
+	var want map[string]any
+	err := json.Unmarshal([]byte(preview), &want)
 	if err != nil {
 		return fmt.Errorf("%s: reading the preview: %w", line, err)
 	}
-	stored, viewErr, viewCode := c.exec(t.Context(), "--db", args[1], "event", "view", fmt.Sprint(want["id"]), "--json")
+	readBack := w.readBack(args[1], want)
+	stored, viewErr, viewCode := c.exec(t.Context(), readBack...)
 	if viewCode != 0 {
-		return fmt.Errorf("%s: event view exited %d:\n%s", line, viewCode, viewErr)
+		return fmt.Errorf("%s: %s exited %d:\n%s", line, strings.Join(readBack[2:], " "), viewCode, viewErr)
 	}
-	got, err := comparableEvent(stored)
+	got, err := w.pick(stored, want)
 	if err != nil {
-		return fmt.Errorf("%s: reading the stored event: %w", line, err)
+		return fmt.Errorf("%s: reading the stored record: %w", line, err)
 	}
+	want, got = comparableRecord(want), comparableRecord(got)
 	if !reflect.DeepEqual(got, want) {
-		return fmt.Errorf("%s: the stored event differs from the preview\npreview: %v\nstored:  %v", line, want, got)
+		return fmt.Errorf("%s: the stored record differs from the preview\npreview: %v\nstored:  %v", line, want, got)
 	}
 
 	return nil
 }
 
-// comparableEvent reads an event object, without what a dry run cannot know or a view adds.
-func comparableEvent(out string) (map[string]any, error) {
-	var event map[string]any
-	err := json.Unmarshal([]byte(out), &event)
-	maps.DeleteFunc(event, func(key string, _ any) bool {
+// comparableRecord returns record without what a dry run cannot know or a read adds.
+func comparableRecord(record map[string]any) map[string]any {
+	maps.DeleteFunc(record, func(key string, _ any) bool {
 		return key == "seq" || key == "created_at" || key == "updated_at" || key == "attachments" || key == "links"
 	})
 
-	return event, err
+	return record
+}
+
+// pickListed returns the annotation or link in out whose id is want's.
+func pickListed(out string, want map[string]any) (map[string]any, error) {
+	var listed struct {
+		Annotations []map[string]any `json:"annotations"`
+		Links       []map[string]any `json:"links"`
+	}
+	err := json.Unmarshal([]byte(out), &listed)
+	for _, record := range append(listed.Annotations, listed.Links...) {
+		if record["id"] == want["id"] {
+			return record, err
+		}
+	}
+
+	return nil, errors.Join(err, fmt.Errorf("no record has id %v in:\n%s", want["id"], out))
 }
 
 // eventWrite draws event add or event edit with flag values that mix valid ones with edge cases.
-func eventWrite() *rapid.Generator[[]string] {
-	return rapid.Custom(func(t *rapid.T) []string {
-		args := []string{"event", "add", rapid.SampledFrom(dryRunText()).Draw(t, "text")}
-		if rapid.Bool().Draw(t, "edit") {
-			args = []string{"event", "edit", rapid.SampledFrom([]string{"1", "2", seededEventID}).Draw(t, "ref")}
-			args = optionalFlag(t, args, "--text", dryRunText())
-			args = optionalFlag(t, args, "--add-tag", dryRunTags())
-			args = optionalFlag(t, args, "--remove-tag", dryRunTags())
-		} else {
-			args = optionalFlag(t, args, "--tag", dryRunTags())
+func eventWrite() *rapid.Generator[dryRunWrite] {
+	return rapid.Custom(func(t *rapid.T) dryRunWrite {
+		return dryRunWrite{
+			args: eventArgs(t),
+			readBack: func(db string, want map[string]any) []string {
+				return []string{"--db", db, "event", "view", fmt.Sprint(want["id"]), "--json"}
+			},
+			pick: func(out string, _ map[string]any) (map[string]any, error) {
+				var event map[string]any
+				return event, json.Unmarshal([]byte(out), &event)
+			},
 		}
-		args = optionalFlag(t, args, "--at", dryRunTimes())
-		args = optionalFlag(t, args, "--ended", append(dryRunTimes(), "none"))
-		args = optionalFlag(t, args, "--source", []string{"mongod", "slack", "Mongo D", "-bad", "none", ""})
-		args = optionalFlag(t, args, "--url", dryRunText())
-		args = optionalFlag(t, args, "--author", dryRunText())
-		if rapid.Bool().Draw(t, "approximate") {
-			args = append(args, "--approximate")
-		}
-
-		return args
 	})
+}
+
+// annotationWrite draws annotation add or annotation edit of the seeded annotation.
+func annotationWrite() *rapid.Generator[dryRunWrite] {
+	return rapid.Custom(func(t *rapid.T) dryRunWrite {
+		args := []string{"annotation", "add", rapid.SampledFrom(dryRunText()).Draw(t, "body")}
+		args = optionalFlag(t, args, "--kind", dryRunAnnotationKinds())
+		args = optionalFlag(t, args, "-e", []string{"1", "2", seededEventID})
+		args = optionalFlag(t, args, "--author", dryRunText())
+		if rapid.Bool().Draw(t, "edit") {
+			args = []string{"annotation", "edit", seededAnnotationID}
+			args = optionalFlag(t, args, "--body", dryRunText())
+			args = optionalFlag(t, args, "--kind", dryRunAnnotationKinds())
+		}
+		args = optionalFlag(t, args, "--source", []string{"mongod", "Mongo D", "-bad", "none", ""})
+		args = optionalFlag(t, args, "--url", dryRunText())
+
+		return dryRunWrite{
+			args: args,
+			readBack: func(db string, _ map[string]any) []string {
+				return []string{"--db", db, "-t", "outage", "annotation", "list", "--json"}
+			},
+			pick: pickListed,
+		}
+	})
+}
+
+// linkWrite draws event link between the seeded events, a self link among them.
+func linkWrite() *rapid.Generator[dryRunWrite] {
+	return rapid.Custom(func(t *rapid.T) dryRunWrite {
+		ends := []string{"1", "2", seededEventID}
+		args := []string{"event", "link", rapid.SampledFrom(ends).Draw(t, "from"), rapid.SampledFrom(ends).Draw(t, "to")}
+		args = optionalFlag(t, args, "--kind", []string{"led_to", "same_as", "copied_from", "LED_TO", "caused", ""})
+		args = optionalFlag(t, args, "--author", dryRunText())
+
+		return dryRunWrite{
+			args: args,
+			readBack: func(db string, want map[string]any) []string {
+				return []string{"--db", db, "event", "view", fmt.Sprint(want["from_event_id"]), "--json"}
+			},
+			pick: pickListed,
+		}
+	})
+}
+
+func dryRunAnnotationKinds() []string {
+	return []string{"evidence", "comment", "Comment", "note", ""}
+}
+
+func eventArgs(t *rapid.T) []string {
+	args := []string{"event", "add", rapid.SampledFrom(dryRunText()).Draw(t, "text")}
+	if rapid.Bool().Draw(t, "edit") {
+		args = []string{"event", "edit", rapid.SampledFrom([]string{"1", "2", seededEventID}).Draw(t, "ref")}
+		args = optionalFlag(t, args, "--text", dryRunText())
+		args = optionalFlag(t, args, "--add-tag", dryRunTags())
+		args = optionalFlag(t, args, "--remove-tag", dryRunTags())
+	} else {
+		args = optionalFlag(t, args, "--tag", dryRunTags())
+	}
+	args = optionalFlag(t, args, "--at", dryRunTimes())
+	args = optionalFlag(t, args, "--ended", append(dryRunTimes(), "none"))
+	args = optionalFlag(t, args, "--source", []string{"mongod", "slack", "Mongo D", "-bad", "none", ""})
+	args = optionalFlag(t, args, "--url", dryRunText())
+	args = optionalFlag(t, args, "--author", dryRunText())
+	if rapid.Bool().Draw(t, "approximate") {
+		args = append(args, "--approximate")
+	}
+
+	return args
 }
 
 func optionalFlag(t *rapid.T, args []string, flag string, pool []string) []string {
