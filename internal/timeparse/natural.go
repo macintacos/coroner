@@ -5,8 +5,8 @@ import (
 	"time"
 	"unicode"
 
-	dateparser "github.com/markusmobius/go-dateparser"
-	"github.com/markusmobius/go-dateparser/date"
+	dateparser "github.com/macintacos/go-dateparser"
+	"github.com/macintacos/go-dateparser/date"
 
 	"github.com/macintacos/coroner/internal/timeline"
 )
