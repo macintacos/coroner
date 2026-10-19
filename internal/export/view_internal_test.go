@@ -144,6 +144,26 @@ var _ = Describe("prepare", func() {
 		Expect([]string{title, name}).To(Equal([]string{"", "checkout + payments"}))
 	})
 
+	It("orders sources by first appearance, with no source last, and gives each a palette slot that wraps", func() {
+		env := consistent()
+		env.Annotations, env.Attachments, env.Links = nil, nil, nil
+		env.Events = nil
+		for i := range len(sourcePalette()) + 1 {
+			e := event("s"+string(rune('a'+i)), "t1", "2026-09-11T03:00:00Z", int64(i))
+			e.Source = new(string(rune('a' + i)))
+			env.Events = append(env.Events, e)
+		}
+		env.Events = append(env.Events, event("none", "t1", "2026-09-11T02:00:00Z", 0))
+
+		v, err := prepare(env)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(v.Sources).To(HaveLen(len(sourcePalette()) + 2))
+		Expect(v.Sources[0]).To(Equal("a"))
+		Expect(v.Sources[len(v.Sources)-1]).To(BeEmpty())
+		Expect(v.slot("b")).To(Equal(1))
+		Expect(v.slot(v.Sources[len(sourcePalette())])).To(Equal(v.slot("a")))
+	})
+
 	DescribeTable("every writer fails, writing nothing, on an inconsistent export",
 		func(write func(Envelope) (int, error)) {
 			env := consistent()
@@ -166,6 +186,11 @@ var _ = Describe("prepare", func() {
 		Entry("HTML", func(env Envelope) (int, error) {
 			var b bytes.Buffer
 			err := WriteHTML(&b, env, time.UTC)
+			return b.Len(), err
+		}),
+		Entry("SVG", func(env Envelope) (int, error) {
+			var b bytes.Buffer
+			err := WriteSVG(&b, env, time.UTC)
 			return b.Len(), err
 		}),
 	)

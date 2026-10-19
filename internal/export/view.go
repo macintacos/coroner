@@ -26,6 +26,15 @@ type view struct {
 	Attachments map[string][]Attachment
 	// Links are in compareLinks order.
 	Links []Link
+	// Sources are the events' sources in order of first appearance, then "" when an event
+	// has none.
+	Sources []string
+}
+
+// slot returns the palette index source takes: its index in Sources, wrapped by
+// len(sourcePalette()).
+func (v view) slot(source string) int {
+	return slices.Index(v.Sources, source) % len(sourcePalette())
 }
 
 // prepare returns env as a view, failing naming the first record that refers to a timeline,
@@ -57,9 +66,15 @@ func prepare(env Envelope) (view, error) {
 		names = map[string]string{}
 	}
 
+	var sources []string
+	for _, g := range groupEvents(events, sourceOf) {
+		sources = append(sources, g.key)
+	}
+
 	return view{
 		Timelines: env.Timelines, Overlay: overlay, Names: names, Events: events,
 		OnTimeline: onTimeline, ByEvent: byEvent, Attachments: attachments, Links: links,
+		Sources: sources,
 	}, nil
 }
 

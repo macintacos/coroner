@@ -41,6 +41,20 @@ func threeToFour() svgWindow {
 	return svgWindow{From: start, To: start.Add(time.Hour)}
 }
 
+// viewOf returns the prepared view of a one-timeline export of events.
+func viewOf(events ...Event) view {
+	env := NewEnvelope("0.1.0", at("2026-09-12T21:40:05Z"))
+	env.Timelines = []Timeline{{ID: "t1", Name: "checkout"}}
+	for _, e := range events {
+		e.TimelineID = "t1"
+		env.Events = append(env.Events, e)
+	}
+	v, err := prepare(env)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
+	return v
+}
+
 func marks(layout svgLayout) []svgMark {
 	var all []svgMark
 	for _, lane := range layout.Lanes {
@@ -53,11 +67,11 @@ func marks(layout svgLayout) []svgMark {
 var _ = Describe("layoutSVG", func() {
 	// The plot spans x 200 to 1176: 976 wide.
 	It("places times proportionally across the window, and labels on the side with room", func() {
-		layout := layoutSVG([]Event{
+		layout := layoutSVG(viewOf(
 			instant("2026-09-11T03:15:00Z", timeline.PrecisionSecond, "a"),
 			interval("2026-09-11T03:20:00Z", "2026-09-11T03:40:00Z", "a"),
 			interval("2026-09-11T03:30:00Z", "2026-09-11T04:00:00Z", "a"),
-		}, threeToFour(), time.UTC)
+		), threeToFour(), time.UTC)
 
 		got := marks(layout)
 		Expect(got).To(HaveLen(3))
@@ -76,12 +90,12 @@ var _ = Describe("layoutSVG", func() {
 	})
 
 	It("gives each source a lane in order of first appearance, then (no source), with a row per event", func() {
-		layout := layoutSVG([]Event{
+		layout := layoutSVG(viewOf(
 			instant("2026-09-11T03:01:00Z", timeline.PrecisionSecond, "mongod"),
 			instant("2026-09-11T03:02:00Z", timeline.PrecisionSecond, "slack"),
 			instant("2026-09-11T03:03:00Z", timeline.PrecisionSecond, ""),
 			instant("2026-09-11T03:04:00Z", timeline.PrecisionSecond, "mongod"),
-		}, threeToFour(), time.UTC)
+		), threeToFour(), time.UTC)
 
 		Expect(layout.Lanes).To(HaveExactElements(
 			And(HaveField("Label", "mongod"), HaveField("Color", sourcePalette()[0].Light), HaveField("Marks", HaveLen(2))),
@@ -103,22 +117,9 @@ var _ = Describe("layoutSVG", func() {
 		Expect(layout.Height).To(BeNumerically("~", previous.Bottom, 0.001))
 	})
 
-	It("wraps the palette when there are more sources than colours", func() {
-		var events []Event
-		for i := range len(sourcePalette()) + 1 {
-			e := instant("2026-09-11T03:00:00Z", timeline.PrecisionSecond, string(rune('a'+i)))
-			e.OccurredAt = Instant(at("2026-09-11T03:00:00Z").Add(time.Duration(i) * time.Minute))
-			events = append(events, e)
-		}
-
-		layout := layoutSVG(events, threeToFour(), time.UTC)
-
-		Expect(layout.Lanes[len(sourcePalette())].Color).To(Equal(layout.Lanes[0].Color))
-	})
-
 	DescribeTable("draws a time as exact as its precision, and a guessed or coarse one as inexact, labelled on the zone's clock",
 		func(e Event, shape svgShape, width float64, inexact bool, labelPrefix string) {
-			got := marks(layoutSVG([]Event{e}, threeToFour(), time.UTC))
+			got := marks(layoutSVG(viewOf(e), threeToFour(), time.UTC))
 
 			Expect(got).To(HaveLen(1))
 			Expect(got[0].Shape).To(Equal(shape))
@@ -149,7 +150,7 @@ var _ = Describe("layoutSVG", func() {
 		e.OccurredOffset = new(-5 * 60 * 60)
 		window := svgWindow{From: at("2026-09-11T00:00:00Z"), To: at("2026-09-13T00:00:00Z")}
 
-		got := marks(layoutSVG([]Event{e}, window, time.UTC))
+		got := marks(layoutSVG(viewOf(e), window, time.UTC))
 
 		Expect(got[0].X).To(BeNumerically("~", 200+976.0*5/48, 0.001))
 		Expect(got[0].Width).To(BeNumerically("~", 976.0/2, 0.001))
@@ -160,7 +161,7 @@ var _ = Describe("layoutSVG", func() {
 		e := instant("2026-09-11T03:15:00Z", timeline.PrecisionSecond, "")
 		e.Text = strings.Repeat("é", 200)
 
-		got := marks(layoutSVG([]Event{e}, threeToFour(), time.UTC))[0]
+		got := marks(layoutSVG(viewOf(e), threeToFour(), time.UTC))[0]
 
 		Expect(utf8.ValidString(got.Label)).To(BeTrue())
 		Expect(utf8.RuneCountInString(got.Label)).To(Equal(svgLabelRunes))
@@ -172,7 +173,7 @@ var _ = Describe("layoutSVG", func() {
 		e := instant("2026-09-11T03:15:00Z", timeline.PrecisionSecond, "")
 		e.Text = "first\r\nsecond\n"
 
-		Expect(marks(layoutSVG([]Event{e}, threeToFour(), time.UTC))[0].Label).To(Equal("03:15:00 first second"))
+		Expect(marks(layoutSVG(viewOf(e), threeToFour(), time.UTC))[0].Label).To(Equal("03:15:00 first second"))
 	})
 
 	DescribeTable("ticks the axis at round times on the zone's wall clock, dating the first tick and each new day",
@@ -181,7 +182,7 @@ var _ = Describe("layoutSVG", func() {
 			Expect(err).NotTo(HaveOccurred())
 			window := svgWindow{From: at(from), To: at(to)}
 
-			layout := layoutSVG([]Event{instant(from, timeline.PrecisionSecond, "")}, window, loc)
+			layout := layoutSVG(viewOf(instant(from, timeline.PrecisionSecond, "")), window, loc)
 
 			Expect(layout.Ticks).To(HaveLen(len(want)))
 			for i, tick := range layout.Ticks {
@@ -239,7 +240,7 @@ var _ = Describe("layoutSVG", func() {
 	)
 
 	It("lays out nothing for no events", func() {
-		Expect(layoutSVG(nil, svgWindow{}, time.UTC)).To(Equal(svgLayout{}))
+		Expect(layoutSVG(viewOf(), svgWindow{}, time.UTC)).To(Equal(svgLayout{}))
 	})
 })
 

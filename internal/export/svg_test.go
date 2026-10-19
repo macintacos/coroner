@@ -88,7 +88,7 @@ func hostileSVG() export.Envelope {
 	env.Timelines[0].Refs = []string{hostile}
 	env.Events[0].Source = new(hostile)
 	env.Events = append(env.Events, export.Event{
-		ID: "ez", Seq: new(int64(99)), OccurredAt: utc("2026-09-11T03:15:00Z"), Precision: timeline.PrecisionSecond, Tags: []string{},
+		ID: "ez", TimelineID: env.Timelines[0].ID, Seq: new(int64(99)), OccurredAt: utc("2026-09-11T03:15:00Z"), Precision: timeline.PrecisionSecond, Tags: []string{},
 		Text: `<script>alert(1)</script> "double" 'single' ]]> bell` + "\x01 escape\x1b",
 	})
 
