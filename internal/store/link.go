@@ -10,6 +10,10 @@ import (
 // AddLink adds l. It returns an error wrapping ErrConflict when a link of l's kind already
 // leads from l's from event to its to event.
 func (s *Store) AddLink(ctx context.Context, l timeline.Link) error {
+	err := l.Validate()
+	if err != nil {
+		return err
+	}
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		return createLink(ctx, q, l)
 	})

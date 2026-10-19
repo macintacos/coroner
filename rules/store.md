@@ -17,8 +17,10 @@
    events. Change the Go and the SQL in the same change. `timeline.MaxOccurredOffset`
    mirrors the table's ±86400-second `occurred_offset` bound; only its checks that `id` is
    36 characters, `seq > 0` and `approximate` is 0 or 1 stay unmirrored, and `import`
-   checks a `seq` headroom bound on JSONL input before writing. SQLite cannot alter a
-   CHECK, so changing one, even to add a precision or an annotation kind, needs a
+   checks a `seq` headroom bound on JSONL input before writing. Every store write method
+   runs its record's `Validate` (`RenameSource` runs `timeline.ValidateSourceName`) before
+   staging a blob or opening a transaction, and returns its error unwrapped. SQLite cannot
+   alter a CHECK, so changing one, even to add a precision or an annotation kind, needs a
    migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
    another table references (`timeline`, `event`, `annotation`, `source`, `overlay`) is

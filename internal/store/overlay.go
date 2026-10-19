@@ -10,6 +10,10 @@ import (
 // CreateOverlay saves o with its timelines, kept in the order given. It returns an error
 // wrapping ErrConflict when another overlay has o's name.
 func (s *Store) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
+	err := o.Validate()
+	if err != nil {
+		return err
+	}
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		_, err := q.CreateOverlay(ctx, sqlcgen.CreateOverlayParams{
 			ID: o.ID, Name: o.Name, CreatedAt: timeline.FormatInstant(o.CreatedAt),
