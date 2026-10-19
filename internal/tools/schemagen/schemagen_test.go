@@ -103,19 +103,22 @@ func allowsNull(prop object) bool {
 	})
 }
 
+// pkgDir is the test's working directory, from the module root. The test never changes into the
+// root: go test caches on the stat of a directory a test changes into, and the docs task
+// rewrites the root's site directory.
+const pkgDir = "internal/tools/schemagen"
+
 var _ = Describe("schemagen", func() {
 	var schema []byte
 
 	BeforeEach(func() {
-		GinkgoT().Chdir(filepath.Join("..", "..", ".."))
-
 		var err error
-		schema, err = generate()
+		schema, err = generate(pkgDir)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("generates the same bytes every time", func() {
-		Expect(generate()).To(Equal(schema))
+		Expect(generate(pkgDir)).To(Equal(schema))
 	})
 
 	It("is a draft 2020-12 schema of the envelope, identified by its published URL", func() {
@@ -193,7 +196,7 @@ var _ = Describe("schemagen", func() {
 	})
 
 	It("lists each object's keys in the export format reference, in field order", func() {
-		doc, err := os.ReadFile("docs/reference/export-format.md")
+		doc, err := os.ReadFile("../../../docs/reference/export-format.md")
 		Expect(err).NotTo(HaveOccurred())
 		headings := map[reflect.Type]string{
 			reflect.TypeFor[export.Envelope](): "## The envelope", reflect.TypeFor[export.Query](): "### query",

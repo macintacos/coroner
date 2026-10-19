@@ -40,7 +40,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	schema, err := generate()
+	schema, err := generate(".")
 	if err == nil {
 		if *checkOnly {
 			err = check(schema, outPath, os.Stderr)
@@ -56,11 +56,18 @@ func main() {
 }
 
 // generate returns the export schema, describing each object and field with its Go doc
-// comment. The working directory must be the module root.
-func generate() ([]byte, error) {
+// comment. wd is the working directory's path from the module root.
+func generate(wd string) ([]byte, error) {
 	reflector := &jsonschema.Reflector{AllowAdditionalProperties: true, ExpandedStruct: true, Mapper: instantSchema}
 
-	err := reflector.AddGoComments(modulePath, exportDir, jsonschema.WithFullComment())
+	source, err := filepath.Rel(wd, exportDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// invopop keys a comment by base joined with the directory it walks, so walking from wd
+	// takes wd's import path as base.
+	err = reflector.AddGoComments(modulePath+"/"+filepath.ToSlash(wd), source, jsonschema.WithFullComment())
 	if err != nil {
 		return nil, err
 	}
