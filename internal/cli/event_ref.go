@@ -73,14 +73,15 @@ func parseSeq(s string) (int64, bool) {
 	return seq, err == nil
 }
 
-// findEvent returns the event ref names and its timeline. A bare seq is in the timeline in
-// selects, and a <timeline>#<seq> in the timeline it names; an id prefix searches every
-// timeline. -t applies to a bare seq only: with any other ref it is usage.
+// findEvent returns the event ref names and its timeline. A bare seq is in the timeline -t,
+// CORONER_TIMELINE or the current timeline selects, and a <timeline>#<seq> in the timeline it
+// names; an id prefix searches every timeline. -t applies to a bare seq only: with any other
+// ref it is usage.
 func findEvent(
-	ctx context.Context, s *store.Store, ref eventRef, in timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s *store.Store, ref eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (timeline.Event, timeline.Timeline, error) {
 	if ref.idPrefix != "" || ref.timeline != "" {
-		if len(in.names) > 0 {
+		if len(timelines.names) > 0 {
 			return timeline.Event{}, timeline.Timeline{}, &Error{
 				Kind: KindUsage, Message: "-t selects the timeline of a bare seq only", Hint: eventRefHelp,
 			}
@@ -89,7 +90,7 @@ func findEvent(
 		return findNamedEvent(ctx, s, ref)
 	}
 
-	t, err := selectOne(ctx, s, in, lookupEnv)
+	t, err := selectOne(ctx, s, timelines, lookupEnv)
 	if err != nil {
 		return timeline.Event{}, t, err
 	}

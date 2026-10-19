@@ -80,10 +80,10 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 	return writeStatus(inv.out, report)
 }
 
-// readStatus reads the schema version of the database s, and the timeline in, CORONER_TIMELINE
-// or the current timeline selects.
+// readStatus reads the schema version of the database s, and the timeline -t,
+// CORONER_TIMELINE or the current timeline selects.
 func readStatus(
-	ctx context.Context, s *store.Store, in timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s *store.Store, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (statusJSON, error) {
 	schema, err := s.Schema(ctx)
 	if err != nil {
@@ -95,7 +95,7 @@ func readStatus(
 		return report, nil
 	}
 
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	sel, err := selectTimelines(ctx, s, timelines, lookupEnv)
 	if err != nil || sel.by == "" {
 		return report, err
 	}
