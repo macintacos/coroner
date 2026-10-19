@@ -32,7 +32,12 @@ func Write(ctx context.Context, path string) error {
 		return err
 	}
 
-	return errors.Join(Fill(ctx, s), s.Close())
+	err = errors.Join(Fill(ctx, s), s.Close())
+	if err != nil {
+		return errors.Join(err, os.Remove(path))
+	}
+
+	return nil
 }
 
 // Fill writes the fixture's records into s, which must hold none of them yet.

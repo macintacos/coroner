@@ -67,7 +67,7 @@ func verify(ctx context.Context, sys system, args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = checkRelease(ctx, sys, *name, rel)
+	err = checkRelease(ctx, sys, *name, v.isRC, rel)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func verify(ctx context.Context, sys system, args []string) (any, error) {
 		return nil, err
 	}
 
-	if v.rc < 0 {
+	if !v.isRC {
 		err = checkCask(ctx, sys, *name, sums)
 		if err != nil {
 			return nil, err
@@ -102,7 +102,7 @@ func viewRelease(ctx context.Context, sys system, name string) (release, error) 
 
 // checkRelease checks the release's assets, its prerelease flag and that its body is the
 // tag's message.
-func checkRelease(ctx context.Context, sys system, name string, rel release) error {
+func checkRelease(ctx context.Context, sys system, name string, isRC bool, rel release) error {
 	want := []string{"checksums.txt"}
 	for _, t := range targets() {
 		archive := archiveFor(name, t)
@@ -114,7 +114,7 @@ func checkRelease(ctx context.Context, sys system, name string, rel release) err
 		}
 	}
 
-	if rel.IsPrerelease != strings.Contains(name, "-rc.") {
+	if rel.IsPrerelease != isRC {
 		return &toolError{Code: "prerelease_mismatch", Message: fmt.Sprintf("%s is marked prerelease: %t", name, rel.IsPrerelease)}
 	}
 
@@ -137,9 +137,20 @@ func checkBinary(ctx context.Context, sys system, name, archive string) (string,
 	if err != nil {
 		return "", nil, &toolError{Code: "internal", Message: err.Error()}
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	reported, sums, err := checkBinaryIn(ctx, sys, dir, name, archive)
+	removeErr := os.RemoveAll(dir)
+	if err != nil {
+		return "", nil, err
+	}
+	if removeErr != nil {
+		return "", nil, &toolError{Code: "internal", Message: "removing " + dir + ": " + removeErr.Error()}
+	}
 
-	_, err = gh(ctx, sys, "release", "download", name, "-R", repo, "-D", dir, "-p", "checksums.txt", "-p", archive)
+	return reported, sums, nil
+}
+
+func checkBinaryIn(ctx context.Context, sys system, dir, name, archive string) (string, map[string]string, error) {
+	_, err := gh(ctx, sys, "release", "download", name, "-R", repo, "-D", dir, "-p", "checksums.txt", "-p", archive)
 	if err != nil {
 		return "", nil, err
 	}
@@ -221,6 +232,9 @@ func extractBinary(archive, out string) error {
 			return err
 		}
 		if header.Name == "coroner" {
+			if header.Size > maxBinarySize {
+				return fmt.Errorf("coroner is %d bytes, which exceeds the %d-byte cap", header.Size, maxBinarySize)
+			}
 			return writeExecutable(out, tr)
 		}
 	}

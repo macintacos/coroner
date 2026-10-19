@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,6 +16,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -32,6 +34,7 @@ type verifyRelease struct {
 	body       string
 	assets     []string
 	binary     string // the extracted coroner prints this, so it doubles as `coroner version --json`
+	entry      string // the archive's name for the binary; coroner when empty
 	checksums  map[string]string
 	cask       string
 	downloadTo string
@@ -131,7 +134,7 @@ func (r *verifyRelease) download(dir string) {
 	}
 	Expect(os.WriteFile(filepath.Join(dir, "checksums.txt"), []byte(lines.String()), 0o600)).To(Succeed())
 	archive := archiveName(r.tag, "darwin", "arm64")
-	Expect(os.WriteFile(filepath.Join(dir, archive), tarGz("coroner", r.binary), 0o600)).To(Succeed())
+	Expect(os.WriteFile(filepath.Join(dir, archive), tarGz(cmp.Or(r.entry, "coroner"), r.binary), 0o600)).To(Succeed())
 }
 
 func usedCask(f *fakeSystem) bool { return slices.Contains(f.calls, caskCmd) }
@@ -197,6 +200,56 @@ var _ = Describe("verify", func() {
 		Entry("a cask without the version", finalTag, func(r *verifyRelease, f *fakeSystem) {
 			f.answers[caskCmd] = strings.ReplaceAll(r.cask, "0.1.0", "0.0.9")
 		}, "cask_mismatch"),
+		Entry("a cask with a stale SHA-256", finalTag, func(r *verifyRelease, f *fakeSystem) {
+			f.answers[caskCmd] = strings.ReplaceAll(r.cask, r.checksums[archiveName(finalTag, "darwin", "amd64")], sum([]byte("stale")))
+		}, "cask_mismatch"),
+		Entry("checksums.txt without another target's line", rcTag, func(r *verifyRelease, _ *fakeSystem) {
+			delete(r.checksums, archiveName(rcTag, "linux", "arm64"))
+		}, "checksum_mismatch"),
+		Entry("an archive without a top-level coroner", rcTag, func(r *verifyRelease, _ *fakeSystem) {
+			r.entry = "bin/coroner"
+			r.checksums[archiveName(rcTag, "darwin", "arm64")] = sum(tarGz(r.entry, r.binary))
+		}, "internal"),
 		Entry("a platform outside the release targets", rcTag, func(_ *verifyRelease, f *fakeSystem) { f.goos = "windows" }, "unsupported_platform"),
 	)
+})
+
+var _ = Describe("extractBinary", func() {
+	It("refuses an entry larger than the cap rather than truncating it", func() {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gz)
+		Expect(tw.WriteHeader(&tar.Header{Name: "coroner", Mode: 0o755, Size: maxBinarySize + 1})).To(Succeed())
+		Expect(gz.Close()).To(Succeed())
+		dir := GinkgoT().TempDir()
+		archive := filepath.Join(dir, "a.tar.gz")
+		Expect(os.WriteFile(archive, buf.Bytes(), 0o600)).To(Succeed())
+
+		err := extractBinary(archive, filepath.Join(dir, "coroner"))
+
+		Expect(err).To(MatchError(ContainSubstring("exceeds")))
+	})
+})
+
+var _ = Describe("targets", func() {
+	It("are .goreleaser.yaml's builds", func() {
+		raw, err := os.ReadFile("../../../.goreleaser.yaml")
+		Expect(err).NotTo(HaveOccurred())
+		var config struct {
+			Builds []struct {
+				Goos   []string `yaml:"goos"`
+				Goarch []string `yaml:"goarch"`
+			} `yaml:"builds"`
+		}
+		Expect(yaml.Unmarshal(raw, &config)).To(Succeed())
+		Expect(config.Builds).To(HaveLen(1))
+
+		var want []target
+		for _, goos := range config.Builds[0].Goos {
+			for _, goarch := range config.Builds[0].Goarch {
+				want = append(want, target{goos, goarch})
+			}
+		}
+		Expect(targets()).To(ConsistOf(want))
+	})
 })

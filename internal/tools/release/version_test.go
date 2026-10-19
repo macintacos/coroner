@@ -8,7 +8,9 @@ import (
 var _ = Describe("nextTag", func() {
 	DescribeTable("bumps the latest final tag",
 		func(tags []string, bump string, rc bool, want string) {
-			Expect(nextTag(tags, bump, rc)).To(Equal(want))
+			next, err := parseBump(bump)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(nextTag(tags, next, rc)).To(Equal(want))
 		},
 		Entry("no tags, minor rc", nil, "minor", true, "v0.1.0-rc.0"),
 		Entry("no tags, patch", nil, "patch", false, "v0.0.1"),
@@ -23,8 +25,18 @@ var _ = Describe("nextTag", func() {
 		Entry("ignores malformed tags", []string{"v1.2", "v1.2.3-beta.1", "v0.3.0"}, "patch", false, "v0.3.1"),
 	)
 
+	DescribeTable("parseTag rejects a number with a leading zero",
+		func(tag string) {
+			_, ok := parseTag(tag)
+			Expect(ok).To(BeFalse())
+		},
+		Entry("major", "v01.2.3"),
+		Entry("patch", "v1.2.03"),
+		Entry("rc", "v1.2.3-rc.01"),
+	)
+
 	It("rejects an unknown bump", func() {
-		_, err := nextTag(nil, "bogus", false)
+		_, err := parseBump("bogus")
 		Expect(err).To(HaveOccurred())
 	})
 })

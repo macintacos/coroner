@@ -85,6 +85,16 @@ var _ = Describe("tag", func() {
 		Expect(f.calls).NotTo(ContainElement(ContainSubstring("--delete")))
 	})
 
+	It("names a failed local delete in push_failed", func() {
+		f, notes := tagFake("notes\n")
+		delete(f.answers, pushCmd)
+		delete(f.answers, "git tag -d "+rcTag)
+
+		got, _ := runJSON(f, "tag", "--tag", rcTag, "--sha", "HEAD", "--notes-file", notes)
+
+		Expect(got).To(HaveKeyWithValue("error", HaveKeyWithValue("message", ContainSubstring("git tag -d "+rcTag))))
+	})
+
 	DescribeTable("refuses to tag",
 		func(tag, notes string, prepare func(*fakeSystem), want string) {
 			f, path := tagFake(notes)
