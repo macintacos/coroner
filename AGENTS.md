@@ -172,8 +172,8 @@ digraph coroner_rules_router {
   definition's values, calls a plain run function that returns a result, and renders it.
   The run function does its find, apply and write in one `withChange`
   ([`store.go`](internal/cli/store.go)), and `--dry-run` is that change rolled back;
-  `import` and `--from-file` instead plan from reads taken before, and outside, the
-  write's transaction. Specs in
+  `import` and `--from-file` instead merge through `merge`, which plans and writes in one
+  `Change` and plans a dry run in one `Read`. Specs in
   [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fail when a
   flag has no form field, a form field has no flag, or the two reject a bad value
   differently; when a command a write verb names has neither a definition nor a
@@ -197,16 +197,18 @@ digraph coroner_rules_router {
   it lists by name, has no run there; a new command that opens a viewer or picker joins
   that list.
 - `import` ([`internal/cli/import.go`](internal/cli/import.go)), a top-level verb since it
-  ingests every record type (S-2's glossary lists `import`), reads JSONL only through
-  `export.Decode`, and decides what to insert, skip or replace in `planImport`
-  ([`import_plan.go`](internal/cli/import_plan.go)), which does no I/O; `Store.Import`
-  ([`internal/store/import.go`](internal/store/import.go)) writes that plan in one
-  transaction. It takes a file rather than typed values, so it declares plain flags and no
-  `definition`, and opens no form. `event add --from-file`
-  ([`event_add_file.go`](internal/cli/event_add_file.go)) is its insert-only subset: event
-  records through the same `export.Decode`, `planImport` and `Store.Import`, never a
-  second reader or validator. It is `event add`'s one flag outside its definition,
-  exempted by name in the form parity spec.
+  ingests every record type (S-2's glossary lists `import`), and `--from-file` read JSONL
+  only through `export.Decode`, and merge through `merge`
+  ([`merge.go`](internal/cli/merge.go)). `merge` decides what to insert, skip or replace
+  in `planImport` ([`import_plan.go`](internal/cli/import_plan.go)), which reads the
+  database only through the lookup it is handed and does no other I/O, and writes the plan
+  with `Tx.Import` in the same `Change`; a dry run plans in one `Read`. `import` takes a
+  file rather than typed values, so it declares plain flags and no `definition`, and opens
+  no form. `event add --from-file` ([`event_add_file.go`](internal/cli/event_add_file.go))
+  is its insert-only subset: event records through the same `export.Decode`, `merge` and
+  `planImport`, never a second reader or validator. It is `event add`'s one flag outside
+  its definition, exempted by name in the form parity spec. `event add --id` shares the
+  "same event" rule through `eventDiff`.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
   the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract

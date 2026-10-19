@@ -91,15 +91,17 @@
    temporary file in the blob directory before its transaction begins; `fn` names the
    owner with `Tx.Attach`, and only under `Commit`, after `fn` writes the owner's row,
    does `Change` rename each file to its SHA-256 and insert its row, so the owner and its
-   attachments commit together and a failed owner write names no blob. `Import` stages its
-   own content the same way. `GarbageCollectBlobs` is never called inside a `Change`: it
-   runs after a delete commits, in its own write transaction, so the write lock keeps it
-   from deleting a blob between an add's rename and its insert. A crash leaves at most an
-   unreferenced blob or a staged `.tmp-*` file, which garbage collection leaves, never a
-   row without its blob. Nothing else deletes a blob, not `Open`, a delete or a migration.
-   A `<db>.pre-v<N>.bak` backup copies the database file only: restored to the database's
-   own path, it finds its blobs until `GarbageCollectBlobs` deletes those whose rows were
-   removed.
+   attachments commit together and a failed owner write names no blob. `Change` also
+   stages each `ChangeOptions.Blobs` content, with no owner, before its transaction
+   begins; `Tx.Import` names those whose SHA-256 an attachment it inserts carries, only
+   under `Commit`, after `fn`, does `Change` rename them, and the rest are discarded.
+   `GarbageCollectBlobs` is never called inside a `Change`: it runs after a delete
+   commits, in its own write transaction, so the write lock keeps it from deleting a blob
+   between an add's rename and its insert. A crash leaves at most an unreferenced blob or
+   a staged `.tmp-*` file, which garbage collection leaves, never a row without its blob.
+   Nothing else deletes a blob, not `Open`, a delete or a migration. A `<db>.pre-v<N>.bak`
+   backup copies the database file only: restored to the database's own path, it finds its
+   blobs until `GarbageCollectBlobs` deletes those whose rows were removed.
 10. **The blob directory comes from `config.BlobDir`, and a filename is never a path:**
     `Open` and `OpenReadOnly` derive the directory from the database path, so two
     databases never share one and one's garbage collection never deletes another's blobs.
