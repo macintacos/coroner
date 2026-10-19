@@ -79,27 +79,12 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return err
 	}
 
-	in := importInput{
+	in := mergeInput{
 		records: records, sidecars: sidecars, localBlobs: localBlobs(inv.cfg.DBPath, records, app.Stat),
 		onConflict: policy, newID: app.NewID, now: app.Now(),
+		timelines: inv.timelines, lookupEnv: app.LookupEnv,
 	}
-	open := app.OpenStore
-	if dryRun {
-		open = app.OpenStoreReadOnly
-	}
-	var plan importPlan
-	err = withStoreOpenedBy(ctx, open, inv.cfg.DBPath, func(s *store.Store) error {
-		plan, err = planStoredImport(ctx, s, in, inv.timelines)
-		if err != nil || dryRun || !plan.canWrite() {
-			return err
-		}
-
-		_, err = s.Import(ctx, plan.write, sidecarBlobs(in.sidecars)...)
-		return importWriteError(err)
-	})
-	if dryRun && errors.Is(err, fs.ErrNotExist) {
-		plan, err = planUnstoredImport(ctx, in, inv.timelines)
-	}
+	plan, err := mergeImport(ctx, app, inv.cfg.DBPath, in, dryRun)
 	if err != nil {
 		return err
 	}
@@ -169,44 +154,28 @@ func importBlockedError(plan importPlan) error {
 	return nil
 }
 
-// planStoredImport plans in against what s holds, within the timeline guard names when it names
-// one.
-// ponytail: the plan reads outside the write transaction, so a writer in between can fail the
-// import; plan inside the import's Change if concurrent imports matter.
-func planStoredImport(ctx context.Context, s *store.Store, in importInput, guard timelineInput) (importPlan, error) {
-	sel, err := selectTimelines(ctx, s, guard, nil)
-	if err != nil {
-		return importPlan{}, err
+// mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens
+// the database read-only and plans against an empty one when it does not exist yet.
+func mergeImport(ctx context.Context, app App, dbPath string, in mergeInput, dryRun bool) (importPlan, error) {
+	open, mode := app.OpenStore, mergeWrite
+	if dryRun {
+		open, mode = app.OpenStoreReadOnly, mergePlanOnly
 	}
-	if len(sel.timelines) > 0 {
-		in.guard = &sel.timelines[0]
-	}
-
-	return planImport(ctx, in, s)
-}
-
-// planUnstoredImport plans in against a database that does not exist yet, which holds no timeline
-// for guard to name.
-func planUnstoredImport(ctx context.Context, in importInput, guard timelineInput) (importPlan, error) {
-	err := guard.withoutStore()
-	if err != nil {
-		return importPlan{}, err
-	}
-
-	return planImport(ctx, in, storedRecords{})
-}
-
-// importWriteError returns id_conflict when another write added or deleted a record the import
-// holds, and any other error as it is.
-func importWriteError(err error) error {
-	if !errors.Is(err, store.ErrConflict) && !errors.Is(err, store.ErrNotFound) {
+	var out mergeOutcome
+	err := withStoreOpenedBy(ctx, open, dbPath, func(s *store.Store) error {
+		var err error
+		out, err = merge(ctx, s, in, mode)
 		return err
+	})
+	if !dryRun || !errors.Is(err, fs.ErrNotExist) {
+		return out.plan, err
+	}
+	err = in.timelines.withoutStore()
+	if err != nil {
+		return importPlan{}, err
 	}
 
-	return &Error{
-		Kind: KindIDConflict, Message: "the database changed during the import, so nothing was imported",
-		Hint: "Another write changed the database; import again.", Err: err,
-	}
+	return planImport(ctx, in.importInput, storedRecords{})
 }
 
 // readConflictPolicy returns the policy --on-conflict names.
@@ -324,6 +293,7 @@ func unreadableSidecar(path string, err error) error {
 
 // localBlobs reports, by sha256, whether each attachment in records has its blob beside the
 // database at dbPath.
+// ponytail: read before merge's Change, so a garbage collection in between can delete a blob an attachment relies on, which Tx.Import reports as not found; stat inside the Change if that race matters.
 func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.FileInfo, error)) map[string]bool {
 	blobs := map[string]bool{}
 	for _, r := range records {

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"io/fs"
 	"strings"
 	"testing/fstest"
@@ -10,15 +9,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/export"
-	"github.com/macintacos/coroner/internal/store"
-)
-
-var _ = DescribeTable("importWriteError",
-	func(err error) {
-		Expect(importWriteError(err)).To(HaveField("Kind", KindIDConflict))
-	},
-	Entry("gives id_conflict when another write added a record the import holds", fmt.Errorf("insert: %w", store.ErrConflict)),
-	Entry("gives id_conflict when another write deleted a record the import replaces", fmt.Errorf("replace: %w", store.ErrNotFound)),
 )
 
 var _ = DescribeTable("importBlockedError",

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -40,34 +39,32 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 	}
 
 	dryRun, _ := in.boolean("dry-run")
+	mode := mergeWrite
+	if dryRun {
+		mode = mergePlanOnly
+	}
+	input := mergeInput{
+		records: records, onConflict: onConflictFail, newID: app.NewID, now: app.Now(),
+		timelines: timelineInputOf(in), lookupEnv: app.LookupEnv,
+	}
 	var added eventsAdded
 	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		input := importInput{records: records, onConflict: onConflictFail, guard: &t, newID: app.NewID, now: app.Now()}
-		plan, err := planImport(ctx, input, s)
+		out, err := merge(ctx, s, input, mode)
 		switch {
 		case err != nil:
 			return err
-		case len(plan.problems) > 0:
-			return invalidImportError(plan.problems, fromFileInvalidHint)
-		case plan.blocked != blockNone:
-			return conflictingEventsError(plan.result.Conflicts)
+		case len(out.plan.problems) > 0:
+			return invalidImportError(out.plan.problems, fromFileInvalidHint)
+		case out.plan.blocked != blockNone:
+			return conflictingEventsError(out.plan.result.Conflicts)
 		}
 
-		inserted := plannedEvents(plan.write.Events)
-		if !dryRun {
-			inserted, err = writeEvents(ctx, s, plan.write)
-			if err != nil {
-				return err
-			}
-		}
-		added = newEventsAdded(events, plan.identical, inserted)
-		added.timeline, added.dryRun, added.dbPath = t, dryRun, inv.cfg.DBPath
-		added.attached, err = eventsAttachments(ctx, s, added.identical)
-		return err
+		added = newEventsAdded(events, out.plan.identical, out.inserted)
+		added.timeline, added.dryRun, added.dbPath = *out.guard, dryRun, inv.cfg.DBPath
+		return s.Read(ctx, func(tx *store.Tx) error {
+			added.attached, err = eventsAttachments(ctx, tx, added.identical)
+			return err
+		})
 	})
 	if err != nil {
 		return err
@@ -182,36 +179,9 @@ func conflictingEventsError(conflicts []importConflict) *Error {
 	}
 }
 
-// plannedEvents returns the events a dry run would insert.
-func plannedEvents(events []timeline.Event) []timeline.Event {
-	planned := slices.Clone(events)
-	for i := range planned {
-		// A dry run allocates no seq, so the preview prints null as event add --dry-run does.
-		planned[i].Seq = 0
-	}
-
-	return planned
-}
-
-// writeEvents writes records and returns its new events under the seqs the store gave them.
-func writeEvents(ctx context.Context, s *store.Store, records store.ImportRecords) ([]timeline.Event, error) {
-	events, err := s.Import(ctx, records)
-	if errors.Is(err, store.ErrConflict) {
-		return nil, &Error{
-			Kind: KindIDConflict, Message: "the database changed while the events were being added, so nothing was added",
-			Hint: "Run the command again, which skips the events already stored.", Err: err,
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return events, nil
-}
-
 // eventsAttachments returns the stored attachments of events.
 // ponytail: one read per event; read the timeline's attachments at once if large re-runs read slowly.
-func eventsAttachments(ctx context.Context, s *store.Store, events []timeline.Event) ([]timeline.Attachment, error) {
+func eventsAttachments(ctx context.Context, s records, events []timeline.Event) ([]timeline.Attachment, error) {
 	owners := make([]timeline.AttachmentOwner, 0, len(events))
 	for _, e := range events {
 		owners = append(owners, timeline.AttachmentOwner{EventID: &e.ID})
