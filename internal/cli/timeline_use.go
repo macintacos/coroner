@@ -64,25 +64,20 @@ func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues
 
 	dryRun, _ := in.boolean("dry-run")
 
-	used := timelineUsed{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		switch {
-		case clearing && dryRun:
-			return nil
-		case clearing:
-			return s.ClearCurrentTimeline(ctx)
-		}
+	used, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (timelineUsed, error) {
+			used := timelineUsed{dryRun: dryRun}
+			if clearing {
+				return used, tx.ClearCurrentTimeline(ctx)
+			}
 
-		t, err := findTimeline(ctx, s, *nameOrID)
-		if err != nil {
-			return err
-		}
-		used.timeline = &t
-		if dryRun {
-			return nil
-		}
-		return s.SetCurrentTimeline(ctx, t.ID)
-	})
+			t, err := findTimeline(ctx, tx, *nameOrID)
+			if err != nil {
+				return used, err
+			}
+			used.timeline = &t
+			return used, tx.SetCurrentTimeline(ctx, t.ID)
+		})
 
 	return used, err
 }

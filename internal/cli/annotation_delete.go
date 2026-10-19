@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -71,42 +70,40 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 	}
 	dryRun, _ := in.boolean("dry-run")
 
-	deleted := annotationsDeleted{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		annotations, err := findAnnotations(ctx, s, prefixes)
-		if err != nil {
-			return err
-		}
-		deleted.annotations = annotations
-		deleted.timelineNames, err = annotationTimelineNames(ctx, s, annotations)
-		if err != nil {
-			return err
-		}
-		ids := make([]string, 0, len(annotations))
-		owners := make([]timeline.AttachmentOwner, 0, len(annotations))
-		for _, a := range annotations {
-			ids = append(ids, a.ID)
-			owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
-		}
-		attachments, err := ownersAttachments(ctx, s, owners)
-		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
-		if err != nil || dryRun {
-			return err
-		}
+	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (annotationsDeleted, error) {
+			deleted := annotationsDeleted{dryRun: dryRun}
+			annotations, err := findAnnotations(ctx, tx, prefixes)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.annotations = annotations
+			deleted.timelineNames, err = annotationTimelineNames(ctx, tx, annotations)
+			if err != nil {
+				return deleted, err
+			}
+			ids := make([]string, 0, len(annotations))
+			owners := make([]timeline.AttachmentOwner, 0, len(annotations))
+			for _, a := range annotations {
+				ids = append(ids, a.ID)
+				owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
+			}
+			attachments, err := ownersAttachments(ctx, tx, owners)
+			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			if err != nil {
+				return deleted, err
+			}
 
-		err = s.DeleteAnnotations(ctx, ids...)
-		if errors.Is(err, store.ErrNotFound) {
-			return annotationNotFoundError("an annotation was deleted by another command first, so none were", err)
-		}
-		if err != nil {
-			return err
-		}
-		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
+			return deleted, tx.DeleteAnnotations(ctx, ids...)
+		})
+	if err != nil {
+		return deleted, err
+	}
+	if !dryRun {
+		deleted.blobsErr = collectBlobs(ctx, app, cfg.DBPath)
+	}
 
-		return nil
-	})
-
-	return deleted, err
+	return deleted, nil
 }
 
 func (d annotationsDeleted) render(o output) error {
@@ -127,7 +124,7 @@ func (d annotationsDeleted) render(o output) error {
 }
 
 // findAnnotations returns the annotation each id prefix names, in order and once each.
-func findAnnotations(ctx context.Context, s *store.Store, prefixes []string) ([]timeline.Annotation, error) {
+func findAnnotations(ctx context.Context, s records, prefixes []string) ([]timeline.Annotation, error) {
 	found := make([]timeline.Annotation, 0, len(prefixes))
 	seen := map[string]bool{}
 	for _, prefix := range prefixes {
@@ -145,7 +142,7 @@ func findAnnotations(ctx context.Context, s *store.Store, prefixes []string) ([]
 }
 
 // annotationTimelineNames returns the name of each annotation's timeline, keyed by timeline id.
-func annotationTimelineNames(ctx context.Context, s *store.Store, annotations []timeline.Annotation) (map[string]string, error) {
+func annotationTimelineNames(ctx context.Context, s records, annotations []timeline.Annotation) (map[string]string, error) {
 	names := map[string]string{}
 	for _, a := range annotations {
 		if _, ok := names[a.TimelineID]; ok {

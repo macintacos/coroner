@@ -84,8 +84,8 @@ func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {
 }
 
 // commitBlob names a staged blob by its hash and syncs blobDir so the name survives a
-// crash, or discards it when a blob with that hash already exists. Store.write may retry
-// it, so a staged file already renamed is not an error.
+// crash, or discards it when a blob with that hash already exists. change may retry it,
+// so a staged file already renamed is not an error.
 func commitBlob(blobDir string, staged stagedBlob) error {
 	final := filepath.Join(blobDir, staged.sha256)
 	_, err := os.Lstat(final)

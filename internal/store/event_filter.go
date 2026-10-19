@@ -58,11 +58,16 @@ type EventPage struct {
 	Truncated bool
 }
 
+// ListEvents is Tx.ListEvents in its own Read.
+func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error) {
+	return readIn(ctx, s, func(tx *Tx) (EventPage, error) { return tx.ListEvents(ctx, f) })
+}
+
 // ListEvents returns the events of f's timelines that f keeps, with their tags and source,
 // merged in timeline.CompareEvents order. An unknown timeline adds no events, not
 // ErrNotFound; a filter naming no timeline, or a bound outside years 0000–9999, is an
 // error.
-func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error) {
+func (tx *Tx) ListEvents(ctx context.Context, f EventFilter) (EventPage, error) {
 	if len(f.TimelineIDs) == 0 {
 		return EventPage{}, errors.New("store: EventFilter names no timeline")
 	}
@@ -72,8 +77,8 @@ func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error
 	}
 	query, args := buildEventQuery(f)
 
-	return readTx(ctx, s, func(tx sqlcgen.DBTX) (EventPage, error) {
-		events, err := queryAll(ctx, tx, query, args, scanEvent)
+	return translated(func() (EventPage, error) {
+		events, err := queryAll(ctx, tx.db, query, args, scanEvent)
 		if err != nil {
 			return EventPage{}, err
 		}
@@ -81,7 +86,7 @@ func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error
 		page := EventPage{Events: events, Total: len(events)}
 		if f.Limit > 0 && len(events) == f.Limit {
 			countQuery, countArgs := buildEventCount(f)
-			err = tx.QueryRowContext(ctx, countQuery, countArgs...).Scan(&page.Total)
+			err = tx.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&page.Total)
 			if err != nil {
 				return EventPage{}, err
 			}

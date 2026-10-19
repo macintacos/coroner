@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -82,52 +81,43 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		return annotationEdited{}, err
 	}
 
-	edited := annotationEdited{dryRun: req.dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		// ponytail: find and update are separate transactions, so a concurrent edit of this
-		// annotation is overwritten; apply the edit inside one store write if that matters.
-		a, err := findAnnotation(ctx, s, prefix)
-		if err != nil {
-			return err
-		}
-		t, err := s.Timeline(ctx, a.TimelineID)
-		if err != nil {
-			return err
-		}
-		a, err = edit.apply(a, now)
-		if err != nil {
-			return err
-		}
-		edited.annotation, edited.timeline = a, t
-		if !req.dryRun {
-			err = updateAnnotation(ctx, s, app, a, req.toAdd...)
+	ids := replayIDs{draw: app.NewID}
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) (attached[annotationEdited], error) {
+			ids.rewind()
+			b := attached[annotationEdited]{result: annotationEdited{dryRun: req.dryRun}}
+			a, err := findAnnotation(ctx, tx, prefix)
 			if err != nil {
-				return err
+				return b, err
 			}
-		}
-
-		edited.attach, err = req.result(ctx, s, timeline.AttachmentOwner{AnnotationID: &a.ID}, cfg.DBPath)
-		return err
-	})
-
-	return edited, err
-}
-
-// updateAnnotation stores a with newFiles, reporting an annotation another command deleted first
-// as annotation_not_found.
-func updateAnnotation(ctx context.Context, s *store.Store, app App, a timeline.Annotation, newFiles ...store.NewAttachment) error {
-	// UpdateAnnotation resolves a.Source by name even when --source did not change it, so it
-	// always needs a fallback id.
-	sourceID, err := newSourceID(a.Source, app.NewID)
+			t, err := tx.Timeline(ctx, a.TimelineID)
+			if err != nil {
+				return b, err
+			}
+			a, err = edit.apply(a, now)
+			if err != nil {
+				return b, err
+			}
+			b.result.annotation, b.result.timeline = a, t
+			// UpdateAnnotation resolves a.Source by name even when --source did not change it, so
+			// it always needs a fallback id.
+			sourceID, err := newSourceID(a.Source, ids.newID)
+			if err != nil {
+				return b, err
+			}
+			err = b.attachIn(ctx, tx, timeline.AttachmentOwner{AnnotationID: &a.ID})
+			if err != nil {
+				return b, err
+			}
+			return b, tx.UpdateAnnotation(ctx, a, sourceID)
+		})
+	edited := built.result
 	if err != nil {
-		return err
+		return edited, err
 	}
-	err = s.UpdateAnnotation(ctx, a, sourceID, newFiles...)
-	if errors.Is(err, store.ErrNotFound) {
-		return annotationNotFoundError("no annotation has an id starting "+a.ID, err)
-	}
+	edited.attach = built.attachResult(req, inserted, cfg.DBPath)
 
-	return err
+	return edited, nil
 }
 
 func (e annotationEdited) render(o output) error {

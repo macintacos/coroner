@@ -78,7 +78,7 @@ func parseSeq(s string) (int64, bool) {
 // names; an id prefix searches every timeline. -t applies to a bare seq only: with any other
 // ref it is usage.
 func findEvent(
-	ctx context.Context, s *store.Store, ref eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, ref eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (timeline.Event, timeline.Timeline, error) {
 	if ref.idPrefix != "" || ref.timeline != "" {
 		if len(timelines.names) > 0 {
@@ -101,7 +101,7 @@ func findEvent(
 
 // findEventIn returns the event ref names, which must be in t: an event in another timeline
 // is event_not_found.
-func findEventIn(ctx context.Context, s *store.Store, t timeline.Timeline, ref eventRef) (timeline.Event, error) {
+func findEventIn(ctx context.Context, s records, t timeline.Timeline, ref eventRef) (timeline.Event, error) {
 	if ref.idPrefix == "" && ref.timeline == "" {
 		return eventBySeq(ctx, s, t, ref.seq)
 	}
@@ -119,7 +119,7 @@ func findEventIn(ctx context.Context, s *store.Store, t timeline.Timeline, ref e
 
 // findNamedEvent returns the event an id prefix or a <timeline>#<seq> ref names, and its
 // timeline.
-func findNamedEvent(ctx context.Context, s *store.Store, ref eventRef) (timeline.Event, timeline.Timeline, error) {
+func findNamedEvent(ctx context.Context, s records, ref eventRef) (timeline.Event, timeline.Timeline, error) {
 	if ref.idPrefix != "" {
 		return findEventByID(ctx, s, ref.idPrefix)
 	}
@@ -134,7 +134,7 @@ func findNamedEvent(ctx context.Context, s *store.Store, ref eventRef) (timeline
 }
 
 // eventBySeq returns t's event #seq, or event_not_found when it has none.
-func eventBySeq(ctx context.Context, s *store.Store, t timeline.Timeline, seq int64) (timeline.Event, error) {
+func eventBySeq(ctx context.Context, s records, t timeline.Timeline, seq int64) (timeline.Event, error) {
 	e, err := s.EventBySeq(ctx, t.ID, seq)
 	if errors.Is(err, store.ErrNotFound) {
 		return e, eventNotFoundError(fmt.Sprintf("timeline `%s` has no event #%d", t.Name, seq), err)
@@ -144,7 +144,7 @@ func eventBySeq(ctx context.Context, s *store.Store, t timeline.Timeline, seq in
 }
 
 // findEventByID returns the one event whose id starts with prefix, and its timeline.
-func findEventByID(ctx context.Context, s *store.Store, prefix string) (timeline.Event, timeline.Timeline, error) {
+func findEventByID(ctx context.Context, s records, prefix string) (timeline.Event, timeline.Timeline, error) {
 	events, err := s.EventsByIDPrefix(ctx, prefix, shownCandidates+1)
 	switch {
 	case err != nil:
@@ -170,7 +170,7 @@ func eventNotFoundError(message string, err error) *Error {
 
 // ambiguousEventError returns ambiguous_id, listing the first shownCandidates of events as
 // <timeline>#<seq> and id.
-func ambiguousEventError(ctx context.Context, s *store.Store, prefix string, events []timeline.Event) error {
+func ambiguousEventError(ctx context.Context, s records, prefix string, events []timeline.Event) error {
 	lines := []string{"It matches:"}
 	for _, e := range events[:min(len(events), shownCandidates)] {
 		t, err := s.Timeline(ctx, e.TimelineID)

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -149,34 +148,31 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 		return eventEdited{}, err
 	}
 
-	edited := eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		// ponytail: find and update are separate transactions, so a concurrent edit of this
-		// event is overwritten; apply the edit inside one store write if that matters.
-		e, t, err := findEvent(ctx, s, ref, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		e, err = edit.apply(e, z)
-		if err != nil {
-			return err
-		}
-		edited.event, edited.timeline = e, t
-		if !req.dryRun {
-			err = s.UpdateEvent(ctx, e, edit.newSourceID, req.toAdd...)
-			if errors.Is(err, store.ErrNotFound) {
-				return eventNotFoundError("another coroner deleted the event first", err)
-			}
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) (attached[eventEdited], error) {
+			b := attached[eventEdited]{result: eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}}
+			e, t, err := findEvent(ctx, tx, ref, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
-				return err
+				return b, err
 			}
-		}
+			e, err = edit.apply(e, z)
+			if err != nil {
+				return b, err
+			}
+			b.result.event, b.result.timeline = e, t
+			err = b.attachIn(ctx, tx, timeline.AttachmentOwner{EventID: &e.ID})
+			if err != nil {
+				return b, err
+			}
+			return b, tx.UpdateEvent(ctx, e, edit.newSourceID)
+		})
+	edited := built.result
+	if err != nil {
+		return edited, err
+	}
+	edited.attach = built.attachResult(req, inserted, cfg.DBPath)
 
-		edited.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &e.ID}, cfg.DBPath)
-		return err
-	})
-
-	return edited, err
+	return edited, nil
 }
 
 func (e eventEdited) render(o output) error {

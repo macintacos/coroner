@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,10 +42,15 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 		return timeline.Attachment{}, err
 	}
 
-	rows, err := s.writeWithAttachments(ctx, a.Owner, []NewAttachment{
+	rows, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: []NewAttachment{
 		{ID: a.ID, Filename: a.Filename, CreatedAt: a.CreatedAt, Content: content},
-	}, func(q *sqlcgen.Queries) error {
-		return checkOwner(ctx, q, a.Owner)
+	}}, func(tx *Tx) error {
+		err := checkOwner(ctx, tx.q, a.Owner)
+		if err != nil {
+			return translate(err)
+		}
+		tx.Attach(a.Owner)
+		return nil
 	})
 	if err != nil {
 		return timeline.Attachment{}, err
@@ -53,20 +59,25 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 	return rows[0], nil
 }
 
-// ListAttachments returns the attachments of owner, oldest first.
+// ListAttachments is Tx.ListAttachments in its own Read.
 func (s *Store) ListAttachments(ctx context.Context, owner timeline.AttachmentOwner) ([]timeline.Attachment, error) {
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Attachment, error) { return tx.ListAttachments(ctx, owner) })
+}
+
+// ListAttachments returns the attachments of owner, oldest first.
+func (tx *Tx) ListAttachments(ctx context.Context, owner timeline.AttachmentOwner) ([]timeline.Attachment, error) {
 	err := owner.Validate()
 	if err != nil {
 		return nil, err
 	}
 
-	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Attachment, error) {
+	return translated(func() ([]timeline.Attachment, error) {
 		var rows []sqlcgen.Attachment
 		var err error
 		if owner.EventID != nil {
-			rows, err = q.ListEventAttachments(ctx, owner.EventID)
+			rows, err = tx.q.ListEventAttachments(ctx, owner.EventID)
 		} else {
-			rows, err = q.ListAnnotationAttachments(ctx, owner.AnnotationID)
+			rows, err = tx.q.ListAnnotationAttachments(ctx, owner.AnnotationID)
 		}
 		if err != nil {
 			return nil, err
@@ -76,10 +87,15 @@ func (s *Store) ListAttachments(ctx context.Context, owner timeline.AttachmentOw
 	})
 }
 
-// Attachment returns the attachment with id.
+// Attachment is Tx.Attachment in its own Read.
 func (s *Store) Attachment(ctx context.Context, id string) (timeline.Attachment, error) {
-	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Attachment, error) {
-		row, err := q.GetAttachment(ctx, id)
+	return readIn(ctx, s, func(tx *Tx) (timeline.Attachment, error) { return tx.Attachment(ctx, id) })
+}
+
+// Attachment returns the attachment with id.
+func (tx *Tx) Attachment(ctx context.Context, id string) (timeline.Attachment, error) {
+	return translated(func() (timeline.Attachment, error) {
+		row, err := tx.q.GetAttachment(ctx, id)
 		if err != nil {
 			return timeline.Attachment{}, err
 		}
@@ -88,29 +104,39 @@ func (s *Store) Attachment(ctx context.Context, id string) (timeline.Attachment,
 	})
 }
 
+// TimelineAttachments is Tx.TimelineAttachments in its own Read.
+func (s *Store) TimelineAttachments(ctx context.Context, timelineID string) ([]timeline.Attachment, error) {
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Attachment, error) { return tx.TimelineAttachments(ctx, timelineID) })
+}
+
 // TimelineAttachments returns the attachments on the events and annotations of the timeline
 // with timelineID, oldest first, then by id.
-func (s *Store) TimelineAttachments(ctx context.Context, timelineID string) ([]timeline.Attachment, error) {
-	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Attachment, error) {
-		rows, err := q.ListTimelineAttachments(ctx, timelineID)
+func (tx *Tx) TimelineAttachments(ctx context.Context, timelineID string) ([]timeline.Attachment, error) {
+	return translated(func() ([]timeline.Attachment, error) {
+		rows, err := tx.q.ListTimelineAttachments(ctx, timelineID)
 		if err != nil {
 			return nil, err
 		}
 
 		return loadAll(rows, loadAttachment)
 	})
+}
+
+// AttachmentsByIDPrefix is Tx.AttachmentsByIDPrefix in its own Read.
+func (s *Store) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error) {
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Attachment, error) { return tx.AttachmentsByIDPrefix(ctx, prefix, limit) })
 }
 
 // AttachmentsByIDPrefix returns up to limit attachments, in any timeline, whose id starts
 // with prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase
 // hex and dashes.
-func (s *Store) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error) {
+func (tx *Tx) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error) {
 	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
 		return nil, fmt.Errorf("attachment id prefix %q is not lowercase hex and dashes", prefix)
 	}
 
-	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Attachment, error) {
-		rows, err := q.ListAttachmentsByIDPrefix(ctx, sqlcgen.ListAttachmentsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
+	return translated(func() ([]timeline.Attachment, error) {
+		rows, err := tx.q.ListAttachmentsByIDPrefix(ctx, sqlcgen.ListAttachmentsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -119,33 +145,23 @@ func (s *Store) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit 
 	})
 }
 
+// DeleteAttachments is Tx.DeleteAttachments in its own Change.
+func (s *Store) DeleteAttachments(ctx context.Context, ids ...string) error {
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAttachments(ctx, ids...) })
+}
+
 // DeleteAttachments deletes the attachments with ids, or none of them when any does not
 // exist, leaving their blobs to GarbageCollectBlobs.
-func (s *Store) DeleteAttachments(ctx context.Context, ids ...string) error {
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		for _, id := range ids {
-			_, err := q.GetAttachment(ctx, id)
-			if err != nil {
-				return err
-			}
-		}
-		for _, id := range ids {
-			err := q.DeleteAttachment(ctx, id)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+func (tx *Tx) DeleteAttachments(ctx context.Context, ids ...string) error {
+	return tx.atomic(ctx, func() error { return deleteAll(ctx, ids, tx.q.GetAttachment, tx.q.DeleteAttachment) })
 }
 
 // GarbageCollectBlobs deletes every blob no attachment references and returns their hashes,
 // sorted. Nothing else deletes a blob.
 func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 	var deleted []string
-	err := s.write(ctx, func(q *sqlcgen.Queries) error {
-		referenced, err := q.ListAttachmentHashes(ctx)
+	err := s.change(ctx, Commit, nil, func(tx *Tx) error {
+		referenced, err := tx.q.ListAttachmentHashes(ctx)
 		if err != nil {
 			return err
 		}
@@ -160,51 +176,6 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 	return deleted, nil
 }
 
-// writeWithAttachments stages attachments as owner's outside any transaction, then, in one
-// write, runs fn and names their blobs and inserts their rows after it, so a failed fn
-// names no blob. It returns the rows it inserted. It rejects a filename that is not UTF-8
-// before staging anything.
-func (s *Store) writeWithAttachments(
-	ctx context.Context, owner timeline.AttachmentOwner, attachments []NewAttachment, fn func(*sqlcgen.Queries) error,
-) ([]timeline.Attachment, error) {
-	err := validateEach(attachments)
-	if err != nil {
-		return nil, err
-	}
-
-	staged, err := stageAttachments(s.blobDir, owner, attachments)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.writeStaged(ctx, staged, fn)
-	if err != nil {
-		return nil, err
-	}
-
-	rows := make([]timeline.Attachment, len(staged))
-	for i, a := range staged {
-		rows[i] = a.attachment
-	}
-
-	return rows, nil
-}
-
-// writeStaged runs fn, then names each staged blob and inserts its row after it, in one
-// write, so a failed fn names no blob. It removes whatever staged file it did not name.
-func (s *Store) writeStaged(ctx context.Context, staged []stagedAttachment, fn func(*sqlcgen.Queries) error) error {
-	defer discardStaged(staged)
-
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		err := fn(q)
-		if err != nil {
-			return err
-		}
-
-		return insertAttachments(ctx, q, s.blobDir, staged)
-	})
-}
-
 func discardStaged(staged []stagedAttachment) {
 	for _, a := range staged {
 		// Once insertAttachments has renamed or discarded the file, the error is expected.
@@ -212,11 +183,19 @@ func discardStaged(staged []stagedAttachment) {
 	}
 }
 
-// stageAttachments stages the content of each of attachments, owned by owner, outside any
+// owned returns staged with each row's Owner set to owner.
+func owned(staged []stagedAttachment, owner timeline.AttachmentOwner) []stagedAttachment {
+	rows := slices.Clone(staged)
+	for i := range rows {
+		rows[i].attachment.Owner = owner
+	}
+
+	return rows
+}
+
+// stageAttachments stages the content of each of attachments, with no owner yet, outside any
 // transaction, removing what it staged when one fails.
-func stageAttachments(
-	blobDir string, owner timeline.AttachmentOwner, attachments []NewAttachment,
-) ([]stagedAttachment, error) {
+func stageAttachments(blobDir string, attachments []NewAttachment) ([]stagedAttachment, error) {
 	staged := make([]stagedAttachment, 0, len(attachments))
 	for _, a := range attachments {
 		blob, err := stageBlob(blobDir, a.Content)
@@ -226,7 +205,7 @@ func stageAttachments(
 		}
 		staged = append(staged, stagedAttachment{
 			attachment: timeline.Attachment{
-				ID: a.ID, Owner: owner, Filename: a.Filename, MIME: DetectMIME(blob.head, a.Filename),
+				ID: a.ID, Filename: a.Filename, MIME: DetectMIME(blob.head, a.Filename),
 				SHA256: blob.sha256, Size: blob.size, CreatedAt: a.CreatedAt,
 			},
 			blob: blob,

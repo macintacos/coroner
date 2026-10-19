@@ -211,7 +211,7 @@ type selection struct {
 // naming a missing timeline is timeline_not_found rather than falling through to the next, so a
 // typo never acts on another timeline.
 func selectTimelines(
-	ctx context.Context, s *store.Store, in timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool),
 ) (selection, error) {
 	sel := selection{oneFormats: in.rule.oneFormats}
 	var err error
@@ -238,7 +238,7 @@ func selectTimelines(
 
 // selectOne returns the one timeline in selects, or timeline_required when none does.
 func selectOne(
-	ctx context.Context, s *store.Store, in timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool),
 ) (timeline.Timeline, error) {
 	sel, err := selectTimelines(ctx, s, in, lookupEnv)
 	if err != nil {
@@ -250,7 +250,7 @@ func selectOne(
 
 // one returns the first timeline sel selected, the only one a one-timeline command can, or
 // timeline_required when it selected none.
-func (sel selection) one(ctx context.Context, s *store.Store) (timeline.Timeline, error) {
+func (sel selection) one(ctx context.Context, s records) (timeline.Timeline, error) {
 	if len(sel.timelines) == 0 {
 		return timeline.Timeline{}, timelineRequiredError(ctx, s)
 	}
@@ -259,7 +259,7 @@ func (sel selection) one(ctx context.Context, s *store.Store) (timeline.Timeline
 }
 
 // all returns the timelines sel selected, or timeline_required when it selected none.
-func (sel selection) all(ctx context.Context, s *store.Store) ([]timeline.Timeline, error) {
+func (sel selection) all(ctx context.Context, s records) ([]timeline.Timeline, error) {
 	if len(sel.timelines) == 0 {
 		return nil, timelineRequiredError(ctx, s)
 	}
@@ -303,7 +303,7 @@ func (in timelineInput) withoutStore() error {
 }
 
 // namedTimelines returns the timeline each of names selects, each once in the order named.
-func namedTimelines(ctx context.Context, s *store.Store, names []string) ([]timeline.Timeline, error) {
+func namedTimelines(ctx context.Context, s records, names []string) ([]timeline.Timeline, error) {
 	var timelines []timeline.Timeline
 	for _, name := range names {
 		t, err := findLayerTimeline(ctx, s, fmt.Sprintf("-t %q", name), name)
@@ -322,7 +322,7 @@ func namedTimelines(ctx context.Context, s *store.Store, names []string) ([]time
 // selects, and its layer, or none and "" when neither does. It reads the current timeline only
 // when the variable is unset or empty.
 func defaultTimeline(
-	ctx context.Context, s *store.Store, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, lookupEnv func(string) (string, bool),
 ) ([]timeline.Timeline, selectedBy, error) {
 	if env := envTimeline(lookupEnv); env != "" {
 		t, err := findLayerTimeline(ctx, s, fmt.Sprintf("CORONER_TIMELINE=%q", env), env)
@@ -342,7 +342,7 @@ func defaultTimeline(
 
 // findLayerTimeline is findTimeline for nameOrID, which layer names, reworded by layerNotFound
 // when no timeline has it.
-func findLayerTimeline(ctx context.Context, s *store.Store, layer, nameOrID string) (timeline.Timeline, error) {
+func findLayerTimeline(ctx context.Context, s records, layer, nameOrID string) (timeline.Timeline, error) {
 	t, err := findTimeline(ctx, s, nameOrID)
 	notFound, ok := errors.AsType[*Error](err)
 	if ok && notFound.Kind == KindTimelineNotFound {
@@ -362,7 +362,7 @@ func layerNotFound(layer string, err error) error {
 }
 
 // overlayTimelines returns the timelines of the overlay called name, in its order.
-func overlayTimelines(ctx context.Context, s *store.Store, name string) ([]timeline.Timeline, error) {
+func overlayTimelines(ctx context.Context, s records, name string) ([]timeline.Timeline, error) {
 	o, err := s.OverlayByName(ctx, name)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -384,7 +384,7 @@ func overlayTimelines(ctx context.Context, s *store.Store, name string) ([]timel
 
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines
 // there are, or 'coroner timeline create' when there are none.
-func timelineRequiredError(ctx context.Context, s *store.Store) error {
+func timelineRequiredError(ctx context.Context, s records) error {
 	timelines, err := s.Timelines(ctx)
 	if err != nil {
 		return err

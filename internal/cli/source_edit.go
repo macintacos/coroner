@@ -65,33 +65,27 @@ func editSource(ctx context.Context, app App, cfg config.Config, in fieldValues)
 	newName := *in.value("name")
 	dryRun, _ := in.boolean("dry-run")
 
-	edited := sourceEdited{oldName: *oldName, dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		// ponytail: reads every source's usage to find one; query by name if sources grow large.
-		// ponytail: the read and rename are separate transactions, so a concurrent edit is
-		// overwritten; rename inside one store write if that matters.
-		usages, err := s.SourceUsages(ctx)
-		if err != nil {
-			return err
-		}
-		source, err := findSource(usages, *oldName)
-		if err != nil {
-			return err
-		}
-		edited.source = source
-		edited.source.Name = newName
+	edited, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (sourceEdited, error) {
+			// ponytail: reads every source's usage to find one; query by name if sources grow large.
+			usages, err := tx.SourceUsages(ctx)
+			if err != nil {
+				return sourceEdited{}, err
+			}
+			source, err := findSource(usages, *oldName)
+			if err != nil {
+				return sourceEdited{}, err
+			}
+			edited := sourceEdited{source: source, oldName: *oldName, dryRun: dryRun}
+			edited.source.Name = newName
 
-		if dryRun {
-			return checkSourceNameFree(usages, edited.source)
-		}
+			err = tx.RenameSource(ctx, source.ID, newName)
+			if errors.Is(err, store.ErrConflict) {
+				return edited, sourceExistsError(newName, err)
+			}
 
-		err = s.RenameSource(ctx, source.ID, newName)
-		if errors.Is(err, store.ErrConflict) {
-			return sourceExistsError(newName, err)
-		}
-
-		return err
-	})
+			return edited, err
+		})
 
 	return edited, err
 }
@@ -106,18 +100,6 @@ func (e sourceEdited) render(o output) error {
 	}
 
 	return o.notify("Renamed source `%s` to `%s`.", e.oldName, e.source.Name)
-}
-
-// checkSourceNameFree fails as the rename would when a source other than renamed has its new name.
-func checkSourceNameFree(usages []store.SourceUsage, renamed store.SourceUsage) error {
-	taken := slices.ContainsFunc(usages, func(u store.SourceUsage) bool {
-		return u.Name == renamed.Name && u.ID != renamed.ID
-	})
-	if taken {
-		return sourceExistsError(renamed.Name, nil)
-	}
-
-	return nil
 }
 
 // findSource returns the usage of the source called name, or source_not_found.

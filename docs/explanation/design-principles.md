@@ -42,6 +42,15 @@ script.
 missing value then exits with a usage error instead of waiting for input that will never
 come.
 
+## A dry run is the write, rolled back
+
+`--dry-run` runs the same checks and writes as the command, inside one transaction that it
+then undoes, so a dry run fails exactly where the command would. It briefly takes the
+database's write lock, so it can exit `db_busy` while another coroner writes.
+`coroner import --dry-run` and `coroner event add --from-file --dry-run` are the
+exceptions: they only plan what they would add, and `import --dry-run` never creates a
+database.
+
 ## One way to pick the timeline
 
 A command acts on the timeline named by the first of: `-t`, then `CORONER_TIMELINE`, then

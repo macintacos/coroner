@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"io"
 	"slices"
 	"strings"
@@ -72,32 +71,30 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	}
 	dryRun, _ := in.boolean("dry-run")
 
-	deleted := eventsDeleted{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		found, err := findEvents(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		deleted.found = found
-		attachments, err := ownersAttachments(ctx, s, found.owners())
-		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
-		if err != nil || dryRun {
-			return err
-		}
+	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (eventsDeleted, error) {
+			deleted := eventsDeleted{dryRun: dryRun}
+			found, err := findEvents(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.found = found
+			attachments, err := ownersAttachments(ctx, tx, found.owners())
+			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			if err != nil {
+				return deleted, err
+			}
 
-		err = s.DeleteEvents(ctx, found.ids()...)
-		if errors.Is(err, store.ErrNotFound) {
-			return eventNotFoundError("another coroner deleted one of the events first; nothing was deleted", err)
-		}
-		if err != nil {
-			return err
-		}
-		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
+			return deleted, tx.DeleteEvents(ctx, found.ids()...)
+		})
+	if err != nil {
+		return deleted, err
+	}
+	if !dryRun {
+		deleted.blobsErr = collectBlobs(ctx, app, cfg.DBPath)
+	}
 
-		return nil
-	})
-
-	return deleted, err
+	return deleted, nil
 }
 
 // render prints the events as they were, with times in z, and says what happened to them.
@@ -126,7 +123,7 @@ type foundEvents struct {
 
 // findEvents finds the event each of refs names, failing on the first that finds none.
 func findEvents(
-	ctx context.Context, s *store.Store, refs []eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, s records, refs []eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (foundEvents, error) {
 	found := foundEvents{timelines: map[string]timeline.Timeline{}}
 	for _, ref := range refs {

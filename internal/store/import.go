@@ -42,6 +42,17 @@ type ImportAttachment struct {
 // replacement names a record that is not stored, or when an attachment with nil Content has
 // no blob.
 func (s *Store) Import(ctx context.Context, records ImportRecords) error {
+	staged, err := stageImportAttachments(s.blobDir, records.Attachments)
+	if err != nil {
+		return err
+	}
+
+	return s.change(ctx, Commit, staged, func(tx *Tx) error { return tx.Import(ctx, records) })
+}
+
+// Import writes records as Store.Import does, except that it inserts no attachment that
+// carries Content: the caller stages and inserts those.
+func (tx *Tx) Import(ctx context.Context, records ImportRecords) error {
 	for _, err := range []error{
 		validateEach(records.Sources),
 		validateEach(records.Timelines),
@@ -58,13 +69,9 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 		}
 	}
 
-	staged, err := stageImportAttachments(s.blobDir, records.Attachments)
-	if err != nil {
-		return err
-	}
-
+	q := tx.q
 	events := inSeqOrder(records.Events)
-	return s.writeStaged(ctx, staged, func(q *sqlcgen.Queries) error {
+	return tx.atomic(ctx, func() error {
 		for _, step := range []func() error{
 			func() error { return writeEach(ctx, q, records.Sources, createSource) },
 			func() error { return writeEach(ctx, q, records.Timelines, createTimeline) },
@@ -73,7 +80,7 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 			func() error { return writeEach(ctx, q, records.EventReplacements, replaceEvent) },
 			func() error { return writeEach(ctx, q, records.Annotations, importAnnotation) },
 			func() error { return writeEach(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
-			func() error { return insertStoredBlobAttachments(ctx, q, s.blobDir, records.Attachments) },
+			func() error { return insertStoredBlobAttachments(ctx, q, tx.blobDir, records.Attachments) },
 			func() error { return writeEach(ctx, q, records.Links, createLink) },
 		} {
 			err := step()

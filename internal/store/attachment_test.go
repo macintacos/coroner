@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -288,13 +289,15 @@ var _ = Describe("Attachments", func() {
 			Expect(s.AddEvent(ctx, next, uuid(9))).To(HaveField("Seq", int64(2)))
 		}
 
-		DescribeTable("rejects an invalid record before writing anything",
+		DescribeTable("rejects an invalid record, leaving no record and no file in the blob directory",
 			func(ctx SpecContext, write func(context.Context) error, unchanged func(context.Context)) {
 				_, ok := errors.AsType[*timeline.ValidationError](write(ctx))
 
 				Expect(ok).To(BeTrue())
 				unchanged(ctx)
-				Expect(filepath.Glob(filepath.Join(blobDir, "*"))).To(BeEmpty())
+				files, err := os.ReadDir(blobDir)
+				Expect(err == nil || errors.Is(err, fs.ErrNotExist)).To(BeTrue(), "reading the blob directory: %v", err)
+				Expect(files).To(BeEmpty())
 			},
 			Entry("AddEvent with an attachment", func(ctx context.Context) error {
 				_, err := s.AddEvent(ctx, offsetBeyondADay(), uuid(9), newFile(21, "grafana.png", screenshot))

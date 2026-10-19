@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/export"
-	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -203,7 +202,7 @@ func checkAnnotationRef(ref string) error {
 
 // findAnnotation returns the annotation whose id is, or uniquely starts with, prefix, in any
 // timeline.
-func findAnnotation(ctx context.Context, s *store.Store, prefix string) (timeline.Annotation, error) {
+func findAnnotation(ctx context.Context, s records, prefix string) (timeline.Annotation, error) {
 	annotations, err := s.AnnotationsByIDPrefix(ctx, prefix, shownAnnotations+1)
 	switch {
 	case err != nil:

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -70,39 +69,34 @@ func deleteAttachments(ctx context.Context, app App, cfg config.Config, in field
 	}
 	dryRun, _ := in.boolean("dry-run")
 
-	deleted := attachmentsDeleted{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		attachments, err := findAttachments(ctx, s, prefixes)
-		if err != nil {
-			return err
-		}
-		deleted.attachments = attachments
-		deleted.timelineNames, err = attachmentTimelineNames(ctx, s, attachments)
-		if err != nil || dryRun {
-			return err
-		}
-
-		ids := make([]string, 0, len(attachments))
-		for _, a := range attachments {
-			ids = append(ids, a.ID)
-		}
-		err = s.DeleteAttachments(ctx, ids...)
-		if errors.Is(err, store.ErrNotFound) {
-			return &Error{
-				Kind: KindAttachmentNotFound, Message: "an attachment was deleted by another command first, so none were",
-				Hint: listAttachmentsHint, Err: err,
+	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (attachmentsDeleted, error) {
+			deleted := attachmentsDeleted{dryRun: dryRun}
+			attachments, err := findAttachments(ctx, tx, prefixes)
+			if err != nil {
+				return deleted, err
 			}
-		}
-		if err != nil {
-			return err
-		}
-		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
+			deleted.attachments = attachments
+			deleted.timelineNames, err = attachmentTimelineNames(ctx, tx, attachments)
+			if err != nil {
+				return deleted, err
+			}
 
-		return nil
-	})
+			ids := make([]string, 0, len(attachments))
+			for _, a := range attachments {
+				ids = append(ids, a.ID)
+			}
+			return deleted, tx.DeleteAttachments(ctx, ids...)
+		})
 	deleted.objects = newAttachmentJSONs(deleted.attachments, cfg.DBPath)
+	if err != nil {
+		return deleted, err
+	}
+	if !dryRun {
+		deleted.blobsErr = collectBlobs(ctx, app, cfg.DBPath)
+	}
 
-	return deleted, err
+	return deleted, nil
 }
 
 // render prints the attachments as JSON, or says for each what was, or would be, deleted, then
@@ -137,7 +131,7 @@ func (d attachmentsDeleted) write(o output) error {
 }
 
 // findAttachments returns the attachment each id prefix names, in order and once each.
-func findAttachments(ctx context.Context, s *store.Store, prefixes []string) ([]timeline.Attachment, error) {
+func findAttachments(ctx context.Context, s records, prefixes []string) ([]timeline.Attachment, error) {
 	found := make([]timeline.Attachment, 0, len(prefixes))
 	seen := map[string]bool{}
 	for _, prefix := range prefixes {
@@ -156,7 +150,7 @@ func findAttachments(ctx context.Context, s *store.Store, prefixes []string) ([]
 
 // attachmentTimelineNames returns the name of the timeline each attachment is in, keyed by
 // attachment id.
-func attachmentTimelineNames(ctx context.Context, s *store.Store, attachments []timeline.Attachment) (map[string]string, error) {
+func attachmentTimelineNames(ctx context.Context, s records, attachments []timeline.Attachment) (map[string]string, error) {
 	names := map[string]string{}
 	for _, a := range attachments {
 		timelineID, err := ownerTimelineID(ctx, s, a.Owner)
@@ -174,7 +168,7 @@ func attachmentTimelineNames(ctx context.Context, s *store.Store, attachments []
 }
 
 // ownerTimelineID returns the id of the timeline owner's event or annotation is in.
-func ownerTimelineID(ctx context.Context, s *store.Store, owner timeline.AttachmentOwner) (string, error) {
+func ownerTimelineID(ctx context.Context, s records, owner timeline.AttachmentOwner) (string, error) {
 	if owner.EventID != nil {
 		e, err := s.Event(ctx, *owner.EventID)
 		return e.TimelineID, err

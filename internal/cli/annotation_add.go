@@ -91,34 +91,37 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 		return annotationAdded{}, err
 	}
 
-	added := annotationAdded{dryRun: req.dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		a := draft.annotation
-		a.TimelineID = t.ID
-		e, err := annotatedEvent(ctx, s, t, ref)
-		if err != nil {
-			return err
-		}
-		if e != nil {
-			a.EventID = &e.ID
-		}
-		added.annotation, added.timeline, added.event = a, t, e
-		if !req.dryRun {
-			err = s.AddAnnotation(ctx, a, draft.newSourceID, req.toAdd...)
+	owner := timeline.AttachmentOwner{AnnotationID: &draft.annotation.ID}
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) (attached[annotationAdded], error) {
+			b := attached[annotationAdded]{result: annotationAdded{dryRun: req.dryRun}}
+			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
-				return err
+				return b, err
 			}
-		}
+			a := draft.annotation
+			a.TimelineID = t.ID
+			e, err := annotatedEvent(ctx, tx, t, ref)
+			if err != nil {
+				return b, err
+			}
+			if e != nil {
+				a.EventID = &e.ID
+			}
+			b.result.annotation, b.result.timeline, b.result.event = a, t, e
+			err = b.attachIn(ctx, tx, owner)
+			if err != nil {
+				return b, err
+			}
+			return b, tx.AddAnnotation(ctx, a, draft.newSourceID)
+		})
+	added := built.result
+	if err != nil {
+		return added, err
+	}
+	added.attach = built.attachResult(req, inserted, cfg.DBPath)
 
-		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{AnnotationID: &a.ID}, cfg.DBPath)
-		return err
-	})
-
-	return added, err
+	return added, nil
 }
 
 func (a annotationAdded) render(o output) error {
@@ -148,7 +151,7 @@ func (a annotationAdded) render(o output) error {
 
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.
 func annotatedEvent(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
+	ctx context.Context, s records, t timeline.Timeline, ref *eventRef,
 ) (*timeline.Event, error) {
 	var e *timeline.Event
 	if ref != nil {

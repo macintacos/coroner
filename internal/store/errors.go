@@ -27,10 +27,12 @@ var (
 )
 
 // translate wraps a driver error in the store error a caller can branch on, and returns
-// any other error as it is.
+// any other error, including one it already wrapped, as it is.
 func translate(err error) error {
 	code := resultCode(err)
 	switch {
+	case errors.Is(err, ErrNotFound) || errors.Is(err, ErrConflict) || errors.Is(err, ErrBusy):
+		return err
 	case errors.Is(err, sql.ErrNoRows):
 		return fmt.Errorf("%w: %w", ErrNotFound, err)
 	case code == sqlite3.SQLITE_CONSTRAINT_UNIQUE || code == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY:

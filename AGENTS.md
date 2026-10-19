@@ -170,8 +170,12 @@ digraph coroner_rules_router {
   marks, with `changes`, whether it changes the record, which an edit needs at least one
   of, and, with `perEntry`, whether another form entry opens without it. `RunE` reads the
   definition's values, calls a plain run function that returns a result, and renders it.
-  Specs in [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fail
-  when a flag has no form field, a form field has no flag, or the two reject a bad value
+  The run function does its find, apply and write in one `withChange`
+  ([`store.go`](internal/cli/store.go)), and `--dry-run` is that change rolled back;
+  `import` and `--from-file` instead plan from reads taken before, and outside, the
+  write's transaction. Specs in
+  [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fail when a
+  flag has no form field, a form field has no flag, or the two reject a bad value
   differently; when a command a write verb names has neither a definition nor a
   `definitionExempt` entry; and when an edit command's field is neither its argument,
   inherited, `--dry-run` nor marked `changes`. One in

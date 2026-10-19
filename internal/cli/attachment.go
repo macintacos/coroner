@@ -69,7 +69,7 @@ func checkAttachmentRef(ref string) error {
 
 // findAttachment returns the attachment whose id is, or uniquely starts with, prefix, in any
 // timeline.
-func findAttachment(ctx context.Context, s *store.Store, prefix string) (timeline.Attachment, error) {
+func findAttachment(ctx context.Context, s records, prefix string) (timeline.Attachment, error) {
 	attachments, err := s.AttachmentsByIDPrefix(ctx, prefix, shownAttachments+1)
 	switch {
 	case err != nil:
@@ -188,13 +188,6 @@ func describeAttachments(files []attachFile, owner timeline.AttachmentOwner, now
 	return described
 }
 
-// addedAttachments returns the attachments among stored that added gave the store.
-func addedAttachments(stored []timeline.Attachment, added []store.NewAttachment) []timeline.Attachment {
-	return slices.DeleteFunc(slices.Clone(stored), func(a timeline.Attachment) bool {
-		return !slices.ContainsFunc(added, func(n store.NewAttachment) bool { return n.ID == a.ID })
-	})
-}
-
 // attachRequest is what --attach asks an add or edit to attach.
 type attachRequest struct {
 	files []attachFile
@@ -226,17 +219,16 @@ func (r attachRequest) staged(newID func() (uuid.UUID, error), now time.Time) (a
 	return r, err
 }
 
-// result returns what r attached to owner, or would attach, read after the owner's write.
-func (r attachRequest) result(
-	ctx context.Context, s *store.Store, owner timeline.AttachmentOwner, dbPath string,
-) (attachResult, error) {
-	stored, err := s.ListAttachments(ctx, owner)
-	if err != nil {
-		return attachResult{}, err
-	}
-	objects := newAttachmentJSONs(stored, dbPath)
+// result returns what r attached to owner, or would attach: stored is what owner had before,
+// and added the rows the Change inserted.
+func (r attachRequest) result(stored, added []timeline.Attachment, owner timeline.AttachmentOwner, dbPath string) attachResult {
+	all := slices.Concat(stored, added)
+	slices.SortStableFunc(all, func(a, b timeline.Attachment) int {
+		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.ID, b.ID))
+	})
+	objects := newAttachmentJSONs(all, dbPath)
 	if !r.dryRun {
-		return attachResult{added: addedAttachments(stored, r.toAdd), objects: objects}, nil
+		return attachResult{added: added, objects: objects}
 	}
 
 	described := describeAttachments(r.files, owner, r.now)
@@ -244,7 +236,30 @@ func (r attachRequest) result(
 		objects = append(objects, describedAttachmentJSON(a))
 	}
 
-	return attachResult{added: described, objects: objects, dryRun: true}, nil
+	return attachResult{added: described, objects: objects, dryRun: true}
+}
+
+// attached is what an attach command's Change built: its result, the owner it attaches to and
+// what that owner held before the Change inserted.
+type attached[T any] struct {
+	result T
+	owner  timeline.AttachmentOwner
+	stored []timeline.Attachment
+}
+
+// attachResult returns what req attached to b's owner, given the rows the Change inserted.
+func (b attached[T]) attachResult(req attachRequest, inserted []timeline.Attachment, dbPath string) attachResult {
+	return req.result(b.stored, inserted, b.owner, dbPath)
+}
+
+// attachIn makes owner the Change's attachment owner and b's, and keeps in b what owner holds
+// before the Change inserts the staged content.
+func (b *attached[T]) attachIn(ctx context.Context, tx *store.Tx, owner timeline.AttachmentOwner) error {
+	tx.Attach(owner)
+	b.owner = owner
+	var err error
+	b.stored, err = tx.ListAttachments(ctx, owner)
+	return err
 }
 
 // attachResult is what an add or edit prints about attachments.
@@ -337,7 +352,7 @@ func attachmentsByOwner(attachments []timeline.Attachment, dbPath string) map[st
 }
 
 // ownersAttachments returns the attachments of each of owners, in owner order.
-func ownersAttachments(ctx context.Context, s *store.Store, owners []timeline.AttachmentOwner) ([]timeline.Attachment, error) {
+func ownersAttachments(ctx context.Context, s records, owners []timeline.AttachmentOwner) ([]timeline.Attachment, error) {
 	var attachments []timeline.Attachment
 	for _, owner := range owners {
 		owned, err := s.ListAttachments(ctx, owner)

@@ -10,12 +10,66 @@ import (
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/internal/timeline"
 )
+
+// records is what the shared lookups read: a *store.Store, or a *store.Tx inside a Change.
+type records interface {
+	Timeline(ctx context.Context, id string) (timeline.Timeline, error)
+	TimelineByName(ctx context.Context, name string) (timeline.Timeline, error)
+	CurrentTimeline(ctx context.Context) (timeline.Timeline, error)
+	Timelines(ctx context.Context) ([]timeline.Timeline, error)
+	OverlayByName(ctx context.Context, name string) (timeline.Overlay, error)
+	Event(ctx context.Context, id string) (timeline.Event, error)
+	EventBySeq(ctx context.Context, timelineID string, seq int64) (timeline.Event, error)
+	EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error)
+	Annotation(ctx context.Context, id string) (timeline.Annotation, error)
+	AnnotationsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Annotation, error)
+	AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error)
+	ListAttachments(ctx context.Context, owner timeline.AttachmentOwner) ([]timeline.Attachment, error)
+}
 
 // withStorePath opens the database at path, creating and migrating it as needed, through
 // withStoreOpenedBy.
 func withStorePath(ctx context.Context, app App, path string, fn func(*store.Store) error) error {
 	return withStoreOpenedBy(ctx, app.OpenStore, path, fn)
+}
+
+// withChange opens the database at path and runs fn in one Change, returning what fn's last run
+// produced and the attachment rows the Change inserted.
+func withChange[T any](
+	ctx context.Context, app App, path string, opts store.ChangeOptions, fn func(*store.Tx) (T, error),
+) (T, []timeline.Attachment, error) {
+	var result T
+	var inserted []timeline.Attachment
+	err := withStorePath(ctx, app, path, func(s *store.Store) error {
+		var err error
+		inserted, err = s.Change(ctx, opts, func(tx *store.Tx) error {
+			var err error
+			result, err = fn(tx)
+			return err
+		})
+		return err
+	})
+
+	return result, inserted, err
+}
+
+// collectBlobs deletes the blobs no attachment references, after a delete commits.
+func collectBlobs(ctx context.Context, app App, path string) error {
+	return withStorePath(ctx, app, path, func(s *store.Store) error {
+		_, err := s.GarbageCollectBlobs(ctx)
+		return err
+	})
+}
+
+// modeFor returns the Change mode --dry-run asks for.
+func modeFor(dryRun bool) store.Mode {
+	if dryRun {
+		return store.Rollback
+	}
+
+	return store.Commit
 }
 
 // withStoreOpenedBy opens the database at path with open, runs fn against it and closes it.

@@ -18,13 +18,13 @@
    mirrors the table's ±86400-second `occurred_offset` bound; only its checks that `id` is
    36 characters, `seq > 0` and `approximate` is 0 or 1 stay unmirrored, and `import`
    checks a `seq` headroom bound on JSONL input before writing. The Go rules `not_utf8`
-   and `precision_start` have no CHECK, since SQLite cannot express them. Every store
-   write method runs its record's `Validate` (`RenameSource` runs
-   `timeline.ValidateSourceName`; `AddAttachment` runs only its owner's `Validate` and the
-   filename check, since the SHA256 and size are unknown before staging) before staging a
-   blob or opening a transaction, and returns its error unwrapped. SQLite cannot alter a
-   CHECK, so changing one, even to add a precision or an annotation kind, needs a
-   migration that rebuilds the table
+   and `precision_start` have no CHECK, since SQLite cannot express them. Every `Tx` write
+   method runs its record's `Validate` (`RenameSource` runs `timeline.ValidateSourceName`;
+   an attachment gets only its owner's `Validate` and the filename check, since the SHA256
+   and size are unknown before staging) before it writes, and returns its error unwrapped.
+   A `Change` whose record is rejected discards its staged temporary files before it
+   returns, and names no blob. SQLite cannot alter a CHECK, so changing one, even to add a
+   precision or an annotation kind, needs a migration that rebuilds the table
    ([SQLite's procedure](https://www.sqlite.org/lang_altertable.html#otheralter)). A table
    another table references (`timeline`, `event`, `annotation`, `source`, `overlay`) is
    rebuilt in a migration marked `-- +goose NO TRANSACTION`, because inside goose's
@@ -60,17 +60,22 @@
    No exported store method takes or returns one either: they speak `internal/timeline`
    types. The `sqlcgen-private` depguard rule in [`.golangci.yml`](../.golangci.yml) fails
    any import of `sqlcgen` outside `internal/store`.
-6. **A store method's function passed to `Store.write` or `read` uses only the
-   `sqlcgen.Queries` it is given, and one passed to `readTx` only the `sqlcgen.DBTX`:**
-   calling another `Store` method from inside `write` waits on the transaction's own write
-   lock until `ErrBusy`. Hand-written reads (Rule 4) run through `readTx`, because
-   `sqlcgen.Queries` cannot run SQL it did not generate. A store method's writes share one
-   immediate transaction, which `write` retries whole while another writer holds the
-   database; `read` and `readTx` begin deferred and never take the write lock. Only `Open`
-   and `OpenReadOnly` use the pool directly, for their identity and version checks, and
-   `Open` also for its WAL pragma and backup. Never use `SetMaxOpenConns(1)` or
-   `:memory:`: a query on the pool then waits forever while a transaction holds the only
-   connection, and every pooled `:memory:` connection is a separate empty database.
+6. **A function passed to `Change` or `Read` uses only the `Tx` it is given:** calling a
+   `Store` method there waits on the transaction's own write lock until `ErrBusy`. Every
+   `Store` record method delegates to its `Tx` method. `Tx` methods translate their own
+   errors, and a `Tx` write method runs in a savepoint (`Tx.atomic`), so one that fails
+   leaves nothing behind; `fn` can branch on `ErrNotFound` or `ErrConflict` and keep
+   going. A `Tx` method runs hand-written SQL (Rule 4) on `tx.db` through `queryAll`,
+   since `sqlcgen.Queries` cannot run SQL it did not generate. A `Change` runs in one
+   immediate transaction, which it retries whole, re-running `fn`, while another writer
+   holds the database; so `fn` reads no `io.Reader`, prints nothing, and draws ids only
+   through a source that replays them on a re-run. `Read` begins deferred and takes no
+   write lock; `fn` passed to `Read` only reads. Every other transaction, garbage
+   collection included, runs through `change`. Only `Open` and `OpenReadOnly` use the pool
+   directly, for their identity and version checks, and `Open` also for its WAL pragma and
+   backup. Never use `SetMaxOpenConns(1)` or `:memory:`: a query on the pool then waits
+   forever while a transaction holds the only connection, and every pooled `:memory:`
+   connection is a separate empty database.
 7. **The store takes every ID and instant it stores from its caller:** callers pass every
    ID and instant, including the id a source gets when an event or annotation names it
    first. Only seq comes from the database.
@@ -82,22 +87,24 @@
    because goose has no SQLite locker; never delete that file, or a waiter locks a file no
    later process opens.
 9. **An attachment's blob is named before its row is written, and only garbage collection
-   deletes a blob:** `AddEvent`, `UpdateEvent`, `AddAnnotation`, `UpdateAnnotation` and
-   `Import` stream each attachment's content into a synced temporary file in the blob
-   directory outside any transaction, then, after the owner's row in its one
-   `Store.write`, rename each file to its SHA-256 and insert its row, so the owner and its
-   attachments commit together and a failed owner write names no blob. `AddAttachment`
-   follows the same order for an existing owner, checking the owner where the others write
-   its row. `writeStaged` is that order; every write that adds attachments goes through
-   it, `writeWithAttachments` included. `GarbageCollectBlobs` deletes unreferenced blobs
-   inside `Store.write` too, so the write lock keeps it from deleting a blob between an
-   add's rename and its insert. A crash leaves at most an unreferenced blob or a staged
-   `.tmp-*` file, which garbage collection leaves, never a row without its blob. Nothing
-   else deletes a blob, not `Open`, a delete or a migration. A `<db>.pre-v<N>.bak` backup
-   copies the database file only: restored to the database's own path, it finds its blobs
-   until `GarbageCollectBlobs` deletes those whose rows were removed.
+   deletes a blob:** `Change` streams each `ChangeOptions.Attach` content into a synced
+   temporary file in the blob directory before its transaction begins; `fn` names the
+   owner with `Tx.Attach`, and only under `Commit`, after `fn` writes the owner's row,
+   does `Change` rename each file to its SHA-256 and insert its row, so the owner and its
+   attachments commit together and a failed owner write names no blob. `Import` stages its
+   own content the same way. `GarbageCollectBlobs` is never called inside a `Change`: it
+   runs after a delete commits, in its own write transaction, so the write lock keeps it
+   from deleting a blob between an add's rename and its insert. A crash leaves at most an
+   unreferenced blob or a staged `.tmp-*` file, which garbage collection leaves, never a
+   row without its blob. Nothing else deletes a blob, not `Open`, a delete or a migration.
+   A `<db>.pre-v<N>.bak` backup copies the database file only: restored to the database's
+   own path, it finds its blobs until `GarbageCollectBlobs` deletes those whose rows were
+   removed.
 10. **The blob directory comes from `config.BlobDir`, and a filename is never a path:**
     `Open` and `OpenReadOnly` derive the directory from the database path, so two
     databases never share one and one's garbage collection never deletes another's blobs.
     Blobs are keyed by hash alone, created 0600 in a 0700 directory; `Attachment.Filename`
     is display text.
+11. **Rollback runs the change in full and undoes it; it names no blob:** a `Change` under
+    `Rollback` is a dry run. It finds, validates and writes exactly as under `Commit`,
+    then rolls the transaction back, so a dry run fails wherever its write would.

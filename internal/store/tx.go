@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 const (
@@ -16,13 +17,107 @@ const (
 	firstBackoff  = 20 * time.Millisecond
 )
 
-// read is readTx for sqlc's queries: fn must only use q.
-func read[T any](ctx context.Context, s *Store, fn func(*sqlcgen.Queries) (T, error)) (T, error) {
-	return readTx(ctx, s, func(tx sqlcgen.DBTX) (T, error) { return fn(sqlcgen.New(tx)) })
+// Mode says whether a Change commits or rolls back.
+type Mode int
+
+const (
+	// Commit keeps what the change wrote.
+	Commit Mode = iota
+	// Rollback runs the change in full, then undoes it: a dry run. It names no blob.
+	Rollback
+)
+
+// ChangeOptions says how a Change ends and what content it may attach.
+type ChangeOptions struct {
+	Mode Mode
+	// Attach is content staged before the transaction begins, because a reader cannot be read
+	// twice. fn attaches it to one owner with Tx.Attach; content fn never attaches is discarded.
+	Attach []NewAttachment
+}
+
+// Tx is one transaction's view of the database. Its methods translate their own errors, and a
+// write method that fails leaves nothing behind, so a caller can branch on ErrNotFound and
+// ErrConflict inside a Change and keep going. A Tx is valid only while the function it was
+// passed to runs, and is not safe for concurrent use.
+type Tx struct {
+	q       *sqlcgen.Queries
+	db      sqlcgen.DBTX // for SQL sqlc did not generate
+	blobDir string
+	owner   *timeline.AttachmentOwner // the owner Attach named; nil attaches nothing
+}
+
+func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
+	return &Tx{q: sqlcgen.New(db), db: db, blobDir: blobDir}
+}
+
+// Attach attaches the Change's staged content to owner when fn returns. Only Store.Change
+// attaches; in Read it does nothing. A second call replaces the owner.
+func (tx *Tx) Attach(owner timeline.AttachmentOwner) {
+	tx.owner = &owner
+}
+
+// Change runs fn in one immediate transaction, then names and inserts the content fn attached,
+// then commits, or rolls back under Rollback. fn may run more than once and must use only tx. It
+// returns the attachment rows it inserted (none under Rollback).
+func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) error) ([]timeline.Attachment, error) {
+	err := validateEach(opts.Attach)
+	if err != nil {
+		return nil, err
+	}
+
+	staged, err := stageAttachments(s.blobDir, opts.Attach)
+	if err != nil {
+		return nil, err
+	}
+	defer discardStaged(staged)
+
+	var inserted []stagedAttachment
+	err = s.change(ctx, opts.Mode, nil, func(tx *Tx) error {
+		inserted = nil
+		err := fn(tx)
+		if err != nil || tx.owner == nil || opts.Mode == Rollback {
+			return err
+		}
+		inserted = owned(staged, *tx.owner)
+		return insertAttachments(ctx, tx.q, tx.blobDir, inserted)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []timeline.Attachment
+	for _, a := range inserted {
+		rows = append(rows, a.attachment)
+	}
+
+	return rows, nil
+}
+
+// Read runs fn in one deferred transaction, which takes no write lock. fn must only read:
+// Read does not stop it writing. fn must use only tx.
+func (s *Store) Read(ctx context.Context, fn func(*Tx) error) error {
+	_, err := readIn(ctx, s, func(tx *Tx) (struct{}, error) { return struct{}{}, fn(tx) })
+	return err
+}
+
+// readIn runs fn in one read transaction and returns what it produced. fn must only use tx.
+func readIn[T any](ctx context.Context, s *Store, fn func(*Tx) (T, error)) (T, error) {
+	return readTx(ctx, s, func(db sqlcgen.DBTX) (T, error) { return fn(newTx(db, s.blobDir)) })
+}
+
+// translated runs fn and returns its result, or the zero value and its error translated.
+func translated[T any](fn func() (T, error)) (T, error) {
+	v, err := fn()
+	if err != nil {
+		var zero T
+		return zero, translate(err)
+	}
+
+	return v, nil
 }
 
 // readTx runs fn in a transaction modernc begins deferred, so it waits on no writer, and
-// returns what fn produced. Nothing stops fn from writing; use write for that. fn must only
+// returns what fn produced. Nothing stops fn from writing; use change for that. fn must only
 // use tx: another Store method would run outside this transaction.
 func readTx[T any](ctx context.Context, s *Store, fn func(sqlcgen.DBTX) (T, error)) (T, error) {
 	var result T
@@ -79,13 +174,55 @@ func queryAll[T any](
 	return scanned, rows.Err()
 }
 
-// write runs fn in one immediate transaction, retried whole while another writer holds the
-// database, so fn may run more than once and must only use q: calling another Store method
-// from fn waits on this transaction's own lock until ErrBusy.
-func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
-	return translate(retryBusy(ctx, writeAttempts, func() error {
-		return s.inTx(ctx, nil, func(tx sqlcgen.DBTX) error { return fn(sqlcgen.New(tx)) })
-	}))
+// atomic runs fn inside a savepoint, so a failed fn leaves nothing behind in the transaction,
+// and returns fn's error translated.
+func (tx *Tx) atomic(ctx context.Context, fn func() error) error {
+	_, err := tx.db.ExecContext(ctx, "SAVEPOINT w")
+	if err != nil {
+		return translate(err)
+	}
+
+	err = fn()
+	if err != nil {
+		_, rollbackErr := tx.db.ExecContext(ctx, "ROLLBACK TO w")
+		_, releaseErr := tx.db.ExecContext(ctx, "RELEASE w")
+		return translate(errors.Join(err, rollbackErr, releaseErr))
+	}
+
+	_, err = tx.db.ExecContext(ctx, "RELEASE w")
+	return translate(err)
+}
+
+// errRollback ends a Rollback change's transaction; change reports it as success.
+var errRollback = errors.New("rolled back")
+
+// change runs fn, then names each staged blob and inserts its row after it, in one
+// immediate transaction retried whole while another writer holds the database, so a failed
+// fn names no blob. Under Rollback it names none and undoes fn's writes. fn may run more than
+// once and must only use tx. change removes whatever staged file it did not name.
+func (s *Store) change(ctx context.Context, mode Mode, staged []stagedAttachment, fn func(*Tx) error) error {
+	defer discardStaged(staged)
+
+	err := retryBusy(ctx, writeAttempts, func() error {
+		return s.inTx(ctx, nil, func(db sqlcgen.DBTX) error {
+			tx := newTx(db, s.blobDir)
+			err := fn(tx)
+			if err != nil {
+				return err
+			}
+			if mode == Rollback {
+				return errRollback
+			}
+
+			return insertAttachments(ctx, tx.q, tx.blobDir, staged)
+		})
+	})
+	// A failed ROLLBACK joined to errRollback still committed nothing.
+	if errors.Is(err, errRollback) {
+		return nil
+	}
+
+	return translate(err)
 }
 
 func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.DBTX) error) error {

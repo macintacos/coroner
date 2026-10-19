@@ -9,10 +9,15 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// Sources returns every source, ordered by name.
+// Sources is Tx.Sources in its own Read.
 func (s *Store) Sources(ctx context.Context) ([]timeline.Source, error) {
-	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Source, error) {
-		rows, err := q.ListSources(ctx)
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Source, error) { return tx.Sources(ctx) })
+}
+
+// Sources returns every source, ordered by name.
+func (tx *Tx) Sources(ctx context.Context) ([]timeline.Source, error) {
+	return translated(func() ([]timeline.Source, error) {
+		rows, err := tx.q.ListSources(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -42,10 +47,15 @@ LEFT JOIN (SELECT source_id, COUNT(*) n
 	FROM annotation WHERE source_id IS NOT NULL GROUP BY source_id) a ON a.source_id = s.id
 ORDER BY s.name`
 
-// SourceUsages returns every source with its usage, ordered by name.
+// SourceUsages is Tx.SourceUsages in its own Read.
 func (s *Store) SourceUsages(ctx context.Context) ([]SourceUsage, error) {
-	return readTx(ctx, s, func(tx sqlcgen.DBTX) ([]SourceUsage, error) {
-		return queryAll(ctx, tx, sourceUsageQuery, nil, scanSourceUsage)
+	return readIn(ctx, s, func(tx *Tx) ([]SourceUsage, error) { return tx.SourceUsages(ctx) })
+}
+
+// SourceUsages returns every source with its usage, ordered by name.
+func (tx *Tx) SourceUsages(ctx context.Context) ([]SourceUsage, error) {
+	return translated(func() ([]SourceUsage, error) {
+		return queryAll(ctx, tx.db, sourceUsageQuery, nil, scanSourceUsage)
 	})
 }
 
@@ -69,16 +79,21 @@ func scanSourceUsage(rows *sql.Rows) (SourceUsage, error) {
 	return usage, p.err
 }
 
+// RenameSource is Tx.RenameSource in its own Change.
+func (s *Store) RenameSource(ctx context.Context, id, name string) error {
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.RenameSource(ctx, id, name) })
+}
+
 // RenameSource sets the name of the source with id. Its events and annotations name it by id,
 // so they follow.
-func (s *Store) RenameSource(ctx context.Context, id, name string) error {
+func (tx *Tx) RenameSource(ctx context.Context, id, name string) error {
 	err := timeline.ValidateSourceName(name)
 	if err != nil {
 		return err
 	}
 
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		_, err := q.UpdateSource(ctx, sqlcgen.UpdateSourceParams{Name: name, ID: id})
+	return tx.atomic(ctx, func() error {
+		_, err := tx.q.UpdateSource(ctx, sqlcgen.UpdateSourceParams{Name: name, ID: id})
 		return err
 	})
 }
