@@ -85,6 +85,10 @@ var _ = Describe("Event.Validate", func() {
 			func(e *timeline.Event) { e.OccurredAt = time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC) }),
 		Entry("an ended at year the canonical instant cannot render", "ended at",
 			func(e *timeline.Event) { e.EndedAt = new(time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)) }),
+		Entry("an occurred offset more than a day east of UTC", "occurred offset +24:30",
+			func(e *timeline.Event) { e.OccurredOffset = new(88200) }),
+		Entry("an occurred offset more than a day west of UTC", "occurred offset -24:59",
+			func(e *timeline.Event) { e.OccurredOffset = new(-89940) }),
 		Entry("a source outside the grammar", "source", func(e *timeline.Event) { e.Source = new("Slack") }),
 		Entry("a tag outside the grammar", "tag", func(e *timeline.Event) { e.Tags = []string{"Phase Detect"} }),
 	)
@@ -96,6 +100,17 @@ var _ = Describe("Event.Validate", func() {
 		e.OccurredAt = time.Date(2026, 9, 12, 4, 30, 0, 0, time.UTC)
 		Expect(e.Validate()).To(Succeed())
 	})
+
+	DescribeTable("accepts an occurred offset of exactly a day",
+		func(offset int) {
+			e := valid()
+			e.OccurredOffset = new(offset)
+			e.OccurredAt = quarterPast()
+			Expect(e.Validate()).To(Succeed())
+		},
+		Entry("east", 86400),
+		Entry("west", -86400),
+	)
 
 	It("accepts an interval that ends when it starts", func() {
 		e := valid()

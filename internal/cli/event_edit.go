@@ -301,7 +301,7 @@ func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
 	var times editTimes
 	var echoes []string
 	if raw := in.value("at"); raw != nil {
-		at, err := resolveTime("--at", raw, env.now, env.zone.loc)
+		at, err := resolveAt(raw, env.now, env.zone.loc)
 		if err != nil {
 			return times, err
 		}

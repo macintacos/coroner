@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -272,22 +271,14 @@ func checkRecords(incoming incomingRecords, refs recordIndex, in importInput) []
 	return problems
 }
 
-// maxOccurredOffset is the event table's CHECK bound on occurred_offset, in seconds either side of
-// UTC.
-const maxOccurredOffset = 86400
-
-// checkEventBounds returns an error when e's occurred_offset is beyond what the database stores,
-// or its seq is so large that its timeline's next seq could overflow.
+// checkEventBounds returns an error when e's seq is so large that its timeline's next seq could
+// overflow.
 func checkEventBounds(e export.Event) error {
-	var errs []error
-	if e.OccurredOffset != nil && (*e.OccurredOffset < -maxOccurredOffset || *e.OccurredOffset > maxOccurredOffset) {
-		errs = append(errs, fmt.Errorf("occurred_offset %d is more than %d seconds from UTC", *e.OccurredOffset, maxOccurredOffset))
-	}
 	if e.Seq != nil && *e.Seq > math.MaxInt64/2 {
-		errs = append(errs, fmt.Errorf("seq %d is larger than %d", *e.Seq, int64(math.MaxInt64/2)))
+		return fmt.Errorf("seq %d is larger than %d", *e.Seq, int64(math.MaxInt64/2))
 	}
 
-	return errors.Join(errs...)
+	return nil
 }
 
 // recordIndex finds the timeline, event or annotation a record refers to, in the input or the

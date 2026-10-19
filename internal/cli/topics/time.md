@@ -16,6 +16,9 @@ coroner reads a time in the first zone of:
 
 Relative words and times of day, as in `yesterday 14:05`, are read in that zone too.
 
+An `--at` offset more than a day from UTC, such as `+24:30`, is rejected as
+`invalid_time`.
+
 Text output, such as `coroner event list`, shows times in the zone of steps 2 to 4, with
 its offset, and an event's occurred at to its precision, as in
 `2026-09-12T10:05:03-04:00`.

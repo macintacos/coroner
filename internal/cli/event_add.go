@@ -94,7 +94,7 @@ func eventAddDefinition() definition {
 				if at == "" {
 					raw = nil
 				}
-				r, err := resolveTime("--at", raw, env.now, env.zone.loc)
+				r, err := resolveAt(raw, env.now, env.zone.loc)
 				return timePreview(r, err, env.zone)
 			},
 		},
@@ -563,7 +563,7 @@ type eventTimes struct {
 // rejecting an --ended that is approximate or before --at.
 func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
 	raw := in.value("at")
-	at, err := resolveTime("--at", raw, env.now, env.zone.loc)
+	at, err := resolveAt(raw, env.now, env.zone.loc)
 	if err != nil {
 		return eventTimes{}, err
 	}

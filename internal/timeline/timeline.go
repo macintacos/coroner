@@ -107,6 +107,7 @@ func (e Event) Validate() error {
 		validateNotBlank("text", e.Text),
 		validatePrecision(e.Precision),
 		validateOccurredAt(e.OccurredAt, e.OccurredOffset, e.Precision),
+		ValidateOccurredOffset(e.OccurredOffset),
 		validateEndedAt(e.EndedAt, e.OccurredAt),
 		validateOptional(ValidateSourceName, e.Source),
 	}
@@ -185,6 +186,27 @@ func validateOccurredAt(at time.Time, offset *int, precision Precision) error {
 	}
 
 	return nil
+}
+
+// MaxOccurredOffset is the furthest an occurred offset may be from UTC, in seconds.
+const MaxOccurredOffset = 86400
+
+// ValidateOccurredOffset reports an offset more than [MaxOccurredOffset] from UTC, or nil.
+func ValidateOccurredOffset(offset *int) error {
+	if offset == nil || (*offset >= -MaxOccurredOffset && *offset <= MaxOccurredOffset) {
+		return nil
+	}
+
+	sign, abs := '+', *offset
+	if abs < 0 {
+		sign, abs = '-', -abs
+	}
+	text := fmt.Sprintf("%c%02d:%02d", sign, abs/3600, abs%3600/60)
+	if abs%60 != 0 {
+		text += fmt.Sprintf(":%02d", abs%60)
+	}
+
+	return fmt.Errorf("occurred offset %s: must be within a day of UTC", text)
 }
 
 func validateEndedAt(ended *time.Time, occurred time.Time) error {
