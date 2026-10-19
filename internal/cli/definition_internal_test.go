@@ -42,6 +42,8 @@ func writeDefinitions() map[string]definition {
 		"attachment delete": attachmentDeleteDefinition(),
 
 		"overlay create": overlayCreateDefinition(),
+
+		"source edit": sourceEditDefinition(),
 	}
 }
 
@@ -59,7 +61,25 @@ func commandFormExemptFlags() map[string][]string {
 	return map[string][]string{"event add": {"from-file"}}
 }
 
+// definitionExempt are the write commands that declare no definition, by path, with the reason.
+func definitionExempt() map[string]string {
+	return map[string]string{"import": "reads a file of records, so it declares plain flags and no definition"}
+}
+
 var _ = Describe("write command definitions", func() {
+	It("give every command a write verb names a definition, or an exemption with its reason", func(ctx SpecContext) {
+		var missing []string
+		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
+			path := strings.TrimPrefix(cmd.CommandPath(), "coroner ")
+			_, defined := writeDefinitions()[path]
+			if slices.Contains(writeVerbs(), cmd.Name()) && !defined && definitionExempt()[path] == "" {
+				missing = append(missing, cmd.CommandPath())
+			}
+		})
+
+		Expect(missing).To(BeEmpty())
+	})
+
 	It("give every flag a form field with its help and default, and every form field a flag", func(ctx SpecContext) {
 		root := NewRoot(ctx, App{})
 
@@ -261,6 +281,7 @@ var _ = Describe("write run functions", func() {
 		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
 		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
 		Entry("overlay create", errorOf(createOverlay), fieldValues{"timeline": {"mongo-failover"}}),
+		Entry("source edit", errorOf(editSource), fieldValues{"name": {"mongodb"}}),
 	)
 })
 
@@ -423,6 +444,7 @@ func badValues() []badValue {
 		{"annotation delete", "ids", "Bad Ref!", nil},
 		{"attachment delete", "ids", "Bad Ref!", nil},
 		{"overlay create", "name", "Checkout Incident", []string{"-t", "mongo-failover"}},
+		{"source edit", "name", "Mongo DB", []string{"mongo"}},
 	}
 }
 
