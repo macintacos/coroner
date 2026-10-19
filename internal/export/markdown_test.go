@@ -3,6 +3,7 @@ package export_test
 import (
 	"bufio"
 	"bytes"
+	"encoding/json/v2"
 	stdhtml "html"
 	"os"
 	"os/exec"
@@ -264,6 +265,19 @@ func newYork() *time.Location {
 	return loc
 }
 
+// times returns testdata/times.json, one timeline of an event at each precision, approximate
+// or not, at a moment or an interval, recorded in UTC, east and west of it and across the
+// New York fall-back.
+func times() export.Envelope {
+	GinkgoHelper()
+	data, err := os.ReadFile(filepath.Join("testdata", "times.json"))
+	Expect(err).NotTo(HaveOccurred())
+	var env export.Envelope
+	Expect(json.Unmarshal(data, &env, json.RejectUnknownMembers(true))).To(Succeed())
+
+	return env
+}
+
 func parseMarkdown(source []byte) ast.Node {
 	return goldmark.New().Parser().Parse(text.NewReader(source))
 }
@@ -422,6 +436,14 @@ var _ = Describe("WriteMarkdown", func() {
 	It("shows each time at its precision, approximate times and intervals, with day-precision events first in the day they name", func() {
 		matchGolden("precisions", markdown(precisions(), export.MarkdownOptions{Zone: time.UTC}))
 	})
+
+	DescribeTable("shows the time fixture's events in a zone",
+		func(golden string, zone func() *time.Location) {
+			matchGolden(golden, markdown(times(), export.MarkdownOptions{Zone: zone()}))
+		},
+		Entry("in UTC", "times-utc", func() *time.Location { return time.UTC }),
+		Entry("in New York", "times-new-york", newYork),
+	)
 
 	It("labels each day with the zone's abbreviations and gives every time an offset on a day the offset changes", func() {
 		matchGolden("dst-new-york", markdown(acrossFallBack(), export.MarkdownOptions{Zone: newYork()}))

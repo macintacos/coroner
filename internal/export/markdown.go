@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/macintacos/coroner/internal/timeline"
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 // GroupBy is how a Markdown export sections its events.
@@ -81,6 +82,7 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		timelineNames: v.Names,
 		byEvent:       v.ByEvent,
 		attachments:   v.Attachments,
+		readings:      readings(v.Events, cmp.Or(opts.Zone, time.UTC)),
 		link:          link,
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
@@ -115,6 +117,7 @@ type markdownRenderer struct {
 	byEvent       map[string][]Annotation
 	// attachments are keyed by the id of the event or annotation that keeps them.
 	attachments map[string][]Attachment
+	readings    map[string]timetext.Reading
 	link        func(Attachment) string
 	escaper     *strings.Replacer
 	urls        *regexp.Regexp
@@ -180,9 +183,7 @@ func (md markdownRenderer) refs(refs []string) string {
 
 // exported returns the metadata bullet saying when and by which coroner the export was written.
 func (md markdownRenderer) exported(at Instant, coronerVersion string) string {
-	local := time.Time(at).In(md.zone)
-
-	return "- **Exported:** " + local.Format("2006-01-02 15:04") + " " + zoneName(local) + " by coroner " + md.oneLine(coronerVersion)
+	return "- **Exported:** " + timetext.Stamp(time.Time(at), md.zone) + " by coroner " + md.oneLine(coronerVersion)
 }
 
 // window returns the span from the first event to the last moment any event reaches, to the
@@ -355,7 +356,7 @@ func (md markdownRenderer) daySections(events []Event, level, groupTag string) [
 func (md markdownRenderer) days(events []Event) [][]Event {
 	sorted := slices.Clone(events)
 	slices.SortStableFunc(sorted, func(a, b Event) int {
-		return cmp.Or(cmp.Compare(md.date(a), md.date(b)), cmp.Compare(timed(a), timed(b)))
+		return cmp.Or(cmp.Compare(md.date(a), md.date(b)), cmp.Compare(timed(md.readings[a.ID]), timed(md.readings[b.ID])))
 	})
 
 	var days [][]Event
@@ -369,39 +370,20 @@ func (md markdownRenderer) days(events []Event) [][]Event {
 	return days
 }
 
-// date returns the day e belongs to: its date in the zone, or the date a day-precision event
-// states, read in its own offset.
+// date returns the day e is filed under.
 func (md markdownRenderer) date(e Event) string {
-	at := time.Time(e.OccurredAt)
-	if e.Precision == timeline.PrecisionDay {
-		return at.In(time.FixedZone("", deref(e.OccurredOffset))).Format(time.DateOnly)
-	}
-
-	return at.In(md.zone).Format(time.DateOnly)
+	return md.readings[e.ID].Day
 }
 
 // dayZone returns the zone abbreviations a day's times are shown in, in order, joined by /,
 // and whether they span more than one offset, so that every time on the day needs its own.
 func (md markdownRenderer) dayZone(day []Event) (string, bool) {
-	var names []string
-	offsets := map[int]bool{}
+	readings := make([]timetext.Reading, 0, len(day))
 	for _, e := range day {
-		if e.Precision == timeline.PrecisionDay {
-			continue
-		}
-		for _, t := range eventInstants(e) {
-			name, offset := t.In(md.zone).Zone()
-			if !slices.Contains(names, name) {
-				names = append(names, name)
-			}
-			offsets[offset] = true
-		}
-	}
-	if len(names) == 0 {
-		return zoneName(time.Time(day[0].OccurredAt).In(md.zone)), false
+		readings = append(readings, md.readings[e.ID])
 	}
 
-	return strings.Join(names, "/"), len(offsets) > 1
+	return timetext.DayZone(readings, zoneName(time.Time(day[0].OccurredAt).In(md.zone)))
 }
 
 // eventItem returns e's list item: its time, timeline label, source, text and tags, and under
@@ -474,40 +456,53 @@ func linkDestination(path string) string {
 	return "<" + strings.NewReplacer(`\`, `\\`, "<", `\<`, ">", `\>`).Replace(path) + ">"
 }
 
-// when returns e's time at its precision in the zone, its interval's end, and ~ when it is
-// approximate. The end carries its date when that differs from the start's. A day-precision
-// event has dayWhen's instead.
+// when returns e's time at its precision, its interval's end, and ~ when it is approximate.
+// Each part carries its date when that differs from the one before it, and its offset when
+// offset is set or it is read in its own. A day-precision event has dayWhen's instead.
 func (md markdownRenderer) when(e Event, offset bool) string {
-	if e.Precision == timeline.PrecisionDay {
-		return md.dayWhen(e)
+	r := md.readings[e.ID]
+	if r.Precision == timeline.PrecisionDay {
+		return dayWhen(r)
 	}
 
-	start := time.Time(e.OccurredAt).In(md.zone)
-	when := clock(start, e.Precision, offset)
-	if e.EndedAt != nil {
-		end := time.Time(*e.EndedAt).In(md.zone)
-		endText := clock(end, e.Precision, offset)
-		if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
-			endText = end.Format(time.DateOnly) + " " + endText
-		}
-		when += "–" + endText
+	when := partWhen(r.Start, r.Day, offset)
+	if r.End != nil {
+		when += "–" + partWhen(*r.End, r.Start.Date, offset)
 	}
-	if e.Approximate {
+	if r.Approximate {
 		when = "~" + when
 	}
 
 	return when
 }
 
-// dayWhen returns what a day-precision event's section heading leaves unsaid: approximately
-// when it is approximate, and the date in the zone its interval runs until.
-func (md markdownRenderer) dayWhen(e Event) string {
+// partWhen returns p's clock, after its date when that is not after's, and before its offset
+// when offset is set or p is read in its own.
+func partWhen(p timetext.Part, after string, offset bool) string {
+	when := p.Clock
+	if p.Date != after {
+		when = p.Date + " " + when
+	}
+	if offset || p.OwnOffset {
+		when += " " + p.Offset
+	}
+
+	return when
+}
+
+// dayWhen returns what a day-precision event's section heading leaves unsaid: its date when it
+// is filed under another day, approximately when it is approximate, and the date its interval
+// runs until.
+func dayWhen(r timetext.Reading) string {
 	var parts []string
-	if e.Approximate {
+	if r.Start.Date != r.Day {
+		parts = append(parts, r.Start.Date)
+	}
+	if r.Approximate {
 		parts = append(parts, "approximately")
 	}
-	if e.EndedAt != nil {
-		parts = append(parts, "until "+time.Time(*e.EndedAt).In(md.zone).Format(time.DateOnly))
+	if r.End != nil {
+		parts = append(parts, "until "+r.End.Date)
 	}
 
 	return strings.Join(parts, ", ")
@@ -706,9 +701,19 @@ func eventInstants(e Event) []time.Time {
 	return []time.Time{time.Time(e.OccurredAt), time.Time(*e.EndedAt)}
 }
 
-// timed orders day-precision events before timed ones.
-func timed(e Event) int {
-	if e.Precision == timeline.PrecisionDay {
+// readings returns each event's time as it reads in zone, by event id.
+func readings(events []Event, zone *time.Location) map[string]timetext.Reading {
+	byID := make(map[string]timetext.Reading, len(events))
+	for _, e := range events {
+		byID[e.ID] = timetext.Read(e.Domain(), zone)
+	}
+
+	return byID
+}
+
+// timed orders day-precision events dated the day they are filed under before timed ones.
+func timed(r timetext.Reading) int {
+	if r.Precision == timeline.PrecisionDay && r.Start.Date == r.Day {
 		return 0
 	}
 
