@@ -12,9 +12,9 @@ import (
 )
 
 var _ = Describe("invocation", func() {
-	// invocationApp is an App with stdin, stdout and stderr on terminals, env and, when config
+	// invocationApp is an App with stdin, stdout and stderr on terminals, env and, when configFile
 	// is not empty, that config file; it fails the spec if anything opens the store.
-	invocationApp := func(env map[string]string, config string) App {
+	invocationApp := func(env map[string]string, configFile string) App {
 		env = maps.Clone(env)
 		env["HOME"] = "/home/priya"
 		return App{
@@ -24,10 +24,10 @@ var _ = Describe("invocation", func() {
 				return value, ok
 			},
 			ReadFile: func(string) ([]byte, error) {
-				if config == "" {
+				if configFile == "" {
 					return nil, fs.ErrNotExist
 				}
-				return []byte(config), nil
+				return []byte(configFile), nil
 			},
 			Now: testNow,
 			OpenStore: func(context.Context, string) (*store.Store, error) {
@@ -52,8 +52,8 @@ var _ = Describe("invocation", func() {
 	}
 
 	DescribeTable("resolves the zone only when asked, from --tz, then default_timezone, then local",
-		func(ctx SpecContext, config string, args []string, want string) {
-			z, err := read(ctx, invocationApp(map[string]string{}, config), args...).zone()
+		func(ctx SpecContext, configFile string, args []string, want string) {
+			z, err := read(ctx, invocationApp(map[string]string{}, configFile), args...).zone()
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(z.label).To(Equal(want))
