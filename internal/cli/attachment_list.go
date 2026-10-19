@@ -34,10 +34,6 @@ func newAttachmentListCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	ref, err := eventFlag(cmd.Flags())
 	if err != nil {
 		return err
@@ -48,11 +44,15 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
+		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
 		if err != nil {
 			return err
 		}
-		attachments, events, err := readAttachments(ctx, s, t, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		t, err := sel.one(ctx, s)
+		if err != nil {
+			return err
+		}
+		attachments, events, err := readAttachments(ctx, s, t, ref)
 		if err != nil {
 			return err
 		}
@@ -73,14 +73,14 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 // readAttachments returns the attachments on t's events and annotations or, when ref is set, on
 // the event it names, with that event.
 func readAttachments(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef, selection timelineSelection,
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
 ) ([]timeline.Attachment, []timeline.Event, error) {
 	if ref == nil {
 		attachments, err := s.TimelineAttachments(ctx, t.ID)
 		return attachments, nil, err
 	}
 
-	e, err := findEventIn(ctx, s, t, *ref, selection)
+	e, err := findEventIn(ctx, s, t, *ref)
 	if err != nil {
 		return nil, nil, err
 	}

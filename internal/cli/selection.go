@@ -176,23 +176,18 @@ func readOverlay(flags *pflag.FlagSet, names []string) (*string, error) {
 	return overlay, nil
 }
 
-// timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
-// Commands call it at the top of RunE, before any I/O. wrapRunErrors has already refused a
-// second timeline, so the first value is the only one.
-func timelineFlag(flags *pflag.FlagSet) (*string, error) {
-	names, err := timelineFlags(flags)
-	if err != nil || len(names) == 0 {
-		return nil, err
+// timelineInputOf returns the timelines a write command's fields name under rule: the timeline
+// field is the positional name when rule is positional, else -t's values. The flags and form
+// fields have already checked them.
+func timelineInputOf(in fieldValues, rule timelineRule) timelineInput {
+	input := timelineInput{rule: rule}
+	if rule.positional {
+		input.positional = in.value("timeline")
+		return input
 	}
+	input.names = appendUnique(nil, in.values("timeline")...)
 
-	return &names[0], nil
-}
-
-// timelineFlags returns -t's values in the order given, each once, or usage when one is empty
-// (A-9).
-func timelineFlags(flags *pflag.FlagSet) ([]string, error) {
-	in, err := readTimelineInput(flags, nil, timelineRule{several: true})
-	return in.names, err
+	return input
 }
 
 func checkTimelineFlag(value string) error {

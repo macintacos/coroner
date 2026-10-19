@@ -73,48 +73,77 @@ func parseSeq(s string) (int64, bool) {
 	return seq, err == nil
 }
 
-// timelineSelection is what selects the timeline a bare seq is in: -t, then CORONER_TIMELINE,
-// then the current timeline.
-type timelineSelection struct {
-	flag      *string
-	lookupEnv func(string) (string, bool)
-}
-
-// findEvent returns the event ref names and its timeline. A bare seq is in the selected
-// timeline, and a <timeline>#<seq> in the timeline it names; an id prefix searches every
+// findEvent returns the event ref names and its timeline. A bare seq is in the timeline in
+// selects, and a <timeline>#<seq> in the timeline it names; an id prefix searches every
 // timeline. -t applies to a bare seq only: with any other ref it is usage.
 func findEvent(
-	ctx context.Context, s *store.Store, ref eventRef, selection timelineSelection,
+	ctx context.Context, s *store.Store, ref eventRef, in timelineInput, lookupEnv func(string) (string, bool),
 ) (timeline.Event, timeline.Timeline, error) {
-	if selection.flag != nil && (ref.idPrefix != "" || ref.timeline != "") {
-		return timeline.Event{}, timeline.Timeline{}, &Error{
-			Kind: KindUsage, Message: "-t selects the timeline of a bare seq only", Hint: eventRefHelp,
+	if ref.idPrefix != "" || ref.timeline != "" {
+		if len(in.names) > 0 {
+			return timeline.Event{}, timeline.Timeline{}, &Error{
+				Kind: KindUsage, Message: "-t selects the timeline of a bare seq only", Hint: eventRefHelp,
+			}
 		}
-	}
-	if ref.idPrefix != "" {
-		return findEventByID(ctx, s, ref.idPrefix)
+
+		return findNamedEvent(ctx, s, ref)
 	}
 
-	t, err := seqTimeline(ctx, s, ref.timeline, selection)
+	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	if err != nil {
+		return timeline.Event{}, timeline.Timeline{}, err
+	}
+	t, err := sel.one(ctx, s)
 	if err != nil {
 		return timeline.Event{}, t, err
 	}
-	e, err := s.EventBySeq(ctx, t.ID, ref.seq)
-	if errors.Is(err, store.ErrNotFound) {
-		return e, t, eventNotFoundError(fmt.Sprintf("timeline `%s` has no event #%d", t.Name, ref.seq), err)
-	}
+	e, err := eventBySeq(ctx, s, t, ref.seq)
 
 	return e, t, err
 }
 
-// seqTimeline returns the timeline name names, by name or id, or the selected one when name is
-// empty.
-func seqTimeline(ctx context.Context, s *store.Store, name string, selection timelineSelection) (timeline.Timeline, error) {
-	if name == "" {
-		return selectTimeline(ctx, s, selection.flag, selection.lookupEnv)
+// findEventIn returns the event ref names, which must be in t: an event in another timeline
+// is event_not_found.
+func findEventIn(ctx context.Context, s *store.Store, t timeline.Timeline, ref eventRef) (timeline.Event, error) {
+	if ref.idPrefix == "" && ref.timeline == "" {
+		return eventBySeq(ctx, s, t, ref.seq)
+	}
+	e, eventTimeline, err := findNamedEvent(ctx, s, ref)
+	if err != nil || e.TimelineID == t.ID {
+		return e, err
 	}
 
-	return findTimeline(ctx, s, name)
+	return timeline.Event{}, &Error{
+		Kind:    KindEventNotFound,
+		Message: fmt.Sprintf("event %s#%d is not in timeline `%s`", eventTimeline.Name, e.Seq, t.Name),
+		Hint:    "Pass -t " + eventTimeline.Name + " to act on its own timeline.",
+	}
+}
+
+// findNamedEvent returns the event an id prefix or a <timeline>#<seq> ref names, and its
+// timeline.
+func findNamedEvent(ctx context.Context, s *store.Store, ref eventRef) (timeline.Event, timeline.Timeline, error) {
+	if ref.idPrefix != "" {
+		return findEventByID(ctx, s, ref.idPrefix)
+	}
+
+	t, err := findTimeline(ctx, s, ref.timeline)
+	if err != nil {
+		return timeline.Event{}, t, err
+	}
+	e, err := eventBySeq(ctx, s, t, ref.seq)
+
+	return e, t, err
+}
+
+// eventBySeq returns t's event #seq, or event_not_found when it has none.
+func eventBySeq(ctx context.Context, s *store.Store, t timeline.Timeline, seq int64) (timeline.Event, error) {
+	e, err := s.EventBySeq(ctx, t.ID, seq)
+	if errors.Is(err, store.ErrNotFound) {
+		return e, eventNotFoundError(fmt.Sprintf("timeline `%s` has no event #%d", t.Name, seq), err)
+	}
+
+	return e, err
 }
 
 // findEventByID returns the one event whose id starts with prefix, and its timeline.

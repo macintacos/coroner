@@ -177,27 +177,6 @@ func optionalEventRef(value *string) (*eventRef, error) {
 	return ref, nil
 }
 
-// findEventIn returns the event ref names, which must be in t: an event in another timeline
-// is event_not_found.
-func findEventIn(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref eventRef, selection timelineSelection,
-) (timeline.Event, error) {
-	// findEvent rejects -t with any ref but a bare seq; here -t already selected t, checked below.
-	if ref.timeline != "" || ref.idPrefix != "" {
-		selection.flag = nil
-	}
-	e, eventTimeline, err := findEvent(ctx, s, ref, selection)
-	if err != nil || e.TimelineID == t.ID {
-		return e, err
-	}
-
-	return timeline.Event{}, &Error{
-		Kind:    KindEventNotFound,
-		Message: fmt.Sprintf("event %s#%d is not in timeline `%s`", eventTimeline.Name, e.Seq, t.Name),
-		Hint:    "Pass -t " + eventTimeline.Name + " to act on its own timeline.",
-	}
-}
-
 // parseAnnotationRef returns ref as an annotation id prefix, lowercased: hex digits and dashes,
 // starting with a hex digit.
 func parseAnnotationRef(ref string) (string, error) {

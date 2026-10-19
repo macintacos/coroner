@@ -74,7 +74,7 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 
 	deleted := eventsDeleted{dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		found, err := findEvents(ctx, s, refs, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
+		found, err := findEvents(ctx, s, refs, timelineInputOf(in, timelineRule{}), app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -125,10 +125,12 @@ type foundEvents struct {
 }
 
 // findEvents finds the event each of refs names, failing on the first that finds none.
-func findEvents(ctx context.Context, s *store.Store, refs []eventRef, selection timelineSelection) (foundEvents, error) {
+func findEvents(
+	ctx context.Context, s *store.Store, refs []eventRef, in timelineInput, lookupEnv func(string) (string, bool),
+) (foundEvents, error) {
 	found := foundEvents{timelines: map[string]timeline.Timeline{}}
 	for _, ref := range refs {
-		e, t, err := findEvent(ctx, s, ref, selection)
+		e, t, err := findEvent(ctx, s, ref, in, lookupEnv)
 		if err != nil {
 			return found, err
 		}

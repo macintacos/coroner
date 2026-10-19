@@ -314,4 +314,14 @@ var _ = Describe("timeline selection", func() {
 		Entry("overlay create", "overlay create", timelineRule{several: true}),
 		Entry("event view", "event view", timelineRule{}),
 	)
+
+	DescribeTable("reads a write command's timeline field",
+		func(rule timelineRule, want timelineInput) {
+			Expect(timelineInputOf(fieldValues{"timeline": {"alpha", "beta", "alpha"}}, rule)).To(Equal(want))
+		},
+		Entry("as -t's values, each once", timelineRule{several: true},
+			timelineInput{names: []string{"alpha", "beta"}, rule: timelineRule{several: true}}),
+		Entry("as the positional name", timelineRule{positional: true},
+			timelineInput{positional: new("alpha"), rule: timelineRule{positional: true}}),
+	)
 })
