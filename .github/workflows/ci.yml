@@ -24,6 +24,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Go's test cache keys each file a test reads on its size and mtime, and checkout sets every
+      # mtime to now. Derive a file's from its content, kept in the past or Go won't cache, and fix
+      # every directory's, as Go hashes the names a directory lists.
+      - name: Pin file times
+        shell: bash
+        run: |
+          git ls-files --stage -z | while IFS=$' \t' read -r -d '' _ blob _ path; do
+            touch -m -d "@$((1000000000 + 0x${blob:0:7}))" "$path"
+          done
+          find . -name .git -prune -o -type d -exec touch -m -d @1000000000 {} +
       - name: Install tools
         id: tools
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
