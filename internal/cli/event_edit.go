@@ -153,7 +153,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
 		// ponytail: find and update are separate transactions, so a concurrent edit of this
 		// event is overwritten; apply the edit inside one store write if that matters.
-		e, t, err := findEvent(ctx, s, ref, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
+		e, t, err := findEvent(ctx, s, ref, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}

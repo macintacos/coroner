@@ -40,7 +40,7 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 			"-t names a stored timeline that every record must belong to. Without -t, the export decides\n" +
 			"which timelines it imports into.",
 		Args:        cobra.ExactArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Annotations: map[string]string{formatsAnnotation: "text,json", timelinesAnnotation: "guard"},
 		Example: "  $ coroner import colleague-annotations.jsonl --dry-run --json\n" +
 			"  $ coroner import colleague-annotations.jsonl\n" +
 			"  $ cat a.jsonl b.jsonl | coroner import -\n" +
@@ -58,10 +58,6 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 func importExport(ctx context.Context, cmd *cobra.Command, app App, path string) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	policy, err := readConflictPolicy(cmd.Flags())
 	if err != nil {
 		return err
@@ -92,7 +88,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	}
 	var plan importPlan
 	err = withStoreOpenedBy(ctx, open, inv.cfg.DBPath, func(s *store.Store) error {
-		plan, err = planStoredImport(ctx, s, in, flag)
+		plan, err = planStoredImport(ctx, s, in, inv.timelines)
 		if err != nil || dryRun || plan.blocked != nil {
 			return err
 		}
@@ -100,7 +96,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return importWriteError(s.Import(ctx, plan.write))
 	})
 	if dryRun && errors.Is(err, fs.ErrNotExist) {
-		plan, err = planUnstoredImport(in, flag)
+		plan, err = planUnstoredImport(in, inv.timelines)
 	}
 	if err != nil {
 		return err
@@ -115,23 +111,19 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	return plan.blocked
 }
 
-// planStoredImport plans in against what s holds, within the timeline flag names when it is set.
+// planStoredImport plans in against what s holds, within the timeline guard names when it names
+// one.
 // ponytail: the plan reads outside the write transaction, so a writer in between can fail the
 // import; plan inside Store.write if concurrent imports matter.
-func planStoredImport(ctx context.Context, s *store.Store, in importInput, flag *string) (importPlan, error) {
-	if flag != nil {
-		guard, err := findTimeline(ctx, s, *flag)
-		notFound, ok := errors.AsType[*Error](err)
-		if ok && notFound.Kind == KindTimelineNotFound {
-			return importPlan{}, noSuchGuard(*flag, notFound.Err)
-		}
-		if err != nil {
-			return importPlan{}, err
-		}
-		in.guard = &guard
+func planStoredImport(ctx context.Context, s *store.Store, in importInput, guard timelineInput) (importPlan, error) {
+	sel, err := selectTimelines(ctx, s, guard, nil)
+	if err != nil {
+		return importPlan{}, err
+	}
+	if len(sel.timelines) > 0 {
+		in.guard = &sel.timelines[0]
 	}
 
-	var err error
 	in.stored, err = readStoredRecords(ctx, s, in.records)
 	if err != nil {
 		return importPlan{}, err
@@ -141,21 +133,14 @@ func planStoredImport(ctx context.Context, s *store.Store, in importInput, flag 
 }
 
 // planUnstoredImport plans in against a database that does not exist yet, which holds no timeline
-// for -t to name.
-func planUnstoredImport(in importInput, flag *string) (importPlan, error) {
-	if flag != nil {
-		return importPlan{}, noSuchGuard(*flag, nil)
+// for guard to name.
+func planUnstoredImport(in importInput, guard timelineInput) (importPlan, error) {
+	err := guard.withoutStore()
+	if err != nil {
+		return importPlan{}, err
 	}
 
 	return planImport(in)
-}
-
-// noSuchGuard returns the timeline_not_found error for -t naming name, wrapping err.
-func noSuchGuard(name string, err error) error {
-	return &Error{
-		Kind: KindTimelineNotFound, Message: fmt.Sprintf("-t %q: no such timeline", name),
-		Hint: "Run 'coroner timeline list' to see the timelines.", Err: err,
-	}
 }
 
 // importWriteError returns id_conflict when another write added a record the import holds, and

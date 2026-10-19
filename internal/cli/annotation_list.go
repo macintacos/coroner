@@ -38,10 +38,6 @@ func newAnnotationListCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	ref, err := eventFlag(cmd.Flags())
 	if err != nil {
 		return err
@@ -52,11 +48,11 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		t, err := selectTimeline(ctx, s, flag, app.LookupEnv)
+		t, err := selectOne(ctx, s, inv.timelines, app.LookupEnv)
 		if err != nil {
 			return err
 		}
-		annotations, events, err := readAnnotations(ctx, s, t, ref, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		annotations, events, err := readAnnotations(ctx, s, t, ref)
 		if err != nil {
 			return err
 		}
@@ -80,10 +76,10 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 // between lists its annotations last, and text shows them on event #0; read both in one store
 // call if that matters.
 func readAnnotations(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef, selection timelineSelection,
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
 ) ([]timeline.Annotation, []timeline.Event, error) {
 	if ref != nil {
-		e, err := findEventIn(ctx, s, t, *ref, selection)
+		e, err := findEventIn(ctx, s, t, *ref)
 		if err != nil {
 			return nil, nil, err
 		}

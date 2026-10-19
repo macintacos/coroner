@@ -33,10 +33,6 @@ func newEventViewCommand(ctx context.Context, app App) *cobra.Command {
 }
 
 func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	parsed, err := parseEventRef(ref)
 	if err != nil {
 		return err
@@ -51,7 +47,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		e, t, err := findEvent(ctx, s, parsed, timelineSelection{flag: flag, lookupEnv: app.LookupEnv})
+		e, t, err := findEvent(ctx, s, parsed, inv.timelines, app.LookupEnv)
 		if err != nil {
 			return err
 		}

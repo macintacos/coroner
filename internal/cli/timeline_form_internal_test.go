@@ -292,13 +292,14 @@ var _ = Describe("timeline forms", func() {
 			Expect(fieldText(asked[1], "name")).To(Equal("mongo-outage"))
 		})
 
-		It("exit as timeline_required, pointing at timeline create, when there is no timeline to edit", func(ctx SpecContext) {
+		It("exit as timeline_required, no timeline selected, pointing at timeline create, when there are no timelines", func(ctx SpecContext) {
 			db = filepath.Join(GinkgoT().TempDir(), "coroner.db")
 			command := edit(ctx, answers())
 
 			err := runForm(ctx, command, "timeline", "edit")
 
 			Expect(err).To(HaveField("Kind", KindTimelineRequired))
+			Expect(err).To(HaveField("Message", "no timeline selected"))
 			Expect(err).To(HaveField("Hint", ContainSubstring("coroner timeline create")))
 		})
 

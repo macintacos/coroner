@@ -114,6 +114,12 @@ var _ = Describe("event view, edit and delete", func() {
 			Entry("a timeline's seq", "mongo-outage#1"),
 		)
 
+		It("finds an event by id while CORONER_TIMELINE names a missing timeline", func(ctx SpecContext) {
+			env["CORONER_TIMELINE"] = "missing"
+
+			Expect(run(ctx, "event", "view", steppedDown, "--json")).To(Equal(0), errOut.String())
+		})
+
 		It("needs no selected timeline for an id, only for a bare seq", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "use", "--clear")).To(Equal(0))
 

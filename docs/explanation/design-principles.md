@@ -46,9 +46,11 @@ come.
 
 A command acts on the timeline named by the first of: `-t`, then `CORONER_TIMELINE`, then
 the current timeline `coroner timeline use` stored. With none of them, the command stops
-with an error that lists your timelines, rather than guessing one. `coroner event list`,
-`coroner timeline export` and `coroner timeline view` read several timelines at once and
-take `-t` more than once to overlay them; every other command refuses a second `-t`.
+with an error that lists your timelines, or says to create one with
+`coroner timeline create` when you have none, rather than guessing one.
+`coroner event list`, `coroner timeline export`, `coroner timeline view` and
+`coroner overlay create` read several timelines at once and take `-t` more than once to
+overlay them; every other command refuses a second `-t`.
 
 ```sh
 coroner event list -t mongo-outage

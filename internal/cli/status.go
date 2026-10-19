@@ -53,10 +53,6 @@ type selectedTimelineJSON struct {
 }
 
 func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
-	flag, err := timelineFlag(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
@@ -70,7 +66,7 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 		return storeError(err, inv.cfg.DBPath)
 	}
 
-	report, err := readStatus(ctx, s, flag, app.LookupEnv)
+	report, err := readStatus(ctx, s, inv.timelines, app.LookupEnv)
 	err = storeError(err, inv.cfg.DBPath)
 	closeErr := s.Close()
 	if closeErr != nil {
@@ -84,10 +80,10 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 	return writeStatus(inv.out, report)
 }
 
-// readStatus reads the schema version of the database s, and the timeline flag,
+// readStatus reads the schema version of the database s, and the timeline -t,
 // CORONER_TIMELINE or the current timeline selects.
 func readStatus(
-	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
+	ctx context.Context, s *store.Store, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (statusJSON, error) {
 	schema, err := s.Schema(ctx)
 	if err != nil {
@@ -99,13 +95,14 @@ func readStatus(
 		return report, nil
 	}
 
-	t, by, err := lookupTimeline(ctx, s, flag, lookupEnv)
-	if err != nil || by == "" {
+	sel, err := selectTimelines(ctx, s, timelines, lookupEnv)
+	if err != nil || sel.by == "" {
 		return report, err
 	}
 
+	t := sel.timelines[0]
 	report.Timeline = &selectedTimelineJSON{ID: t.ID, Name: t.Name}
-	report.SelectedBy = &by
+	report.SelectedBy = &sel.by
 	return report, nil
 }
 

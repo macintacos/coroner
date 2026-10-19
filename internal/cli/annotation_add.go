@@ -93,13 +93,13 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 
 	added := annotationAdded{dryRun: req.dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := selectTimeline(ctx, s, in.value("timeline"), app.LookupEnv)
+		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
 		a := draft.annotation
 		a.TimelineID = t.ID
-		e, err := annotatedEvent(ctx, s, t, ref, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
+		e, err := annotatedEvent(ctx, s, t, ref)
 		if err != nil {
 			return err
 		}
@@ -148,11 +148,11 @@ func (a annotationAdded) render(o output) error {
 
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.
 func annotatedEvent(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef, selection timelineSelection,
+	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
 ) (*timeline.Event, error) {
 	var e *timeline.Event
 	if ref != nil {
-		found, err := findEventIn(ctx, s, t, *ref, selection)
+		found, err := findEventIn(ctx, s, t, *ref)
 		if err != nil {
 			return nil, err
 		}

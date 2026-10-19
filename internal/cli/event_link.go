@@ -137,7 +137,7 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 	}
 
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		ends, err := findLinkEnds(ctx, s, refs, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
+		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -171,7 +171,7 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	change := linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from"}
 
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		ends, err := findLinkEnds(ctx, s, refs, timelineSelection{flag: in.value("timeline"), lookupEnv: app.LookupEnv})
+		ends, err := findLinkEnds(ctx, s, refs, timelineInputOf(in), app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -220,11 +220,13 @@ func readLinkRequest(command string, def definition, in fieldValues) ([2]eventRe
 }
 
 // findLinkEnds finds the events refs name.
-func findLinkEnds(ctx context.Context, s *store.Store, refs [2]eventRef, selection timelineSelection) (linkEnds, error) {
+func findLinkEnds(
+	ctx context.Context, s *store.Store, refs [2]eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+) (linkEnds, error) {
 	var ends linkEnds
 	for i, ref := range refs {
 		var err error
-		ends.events[i], ends.timelines[i], err = findEvent(ctx, s, ref, selection)
+		ends.events[i], ends.timelines[i], err = findEvent(ctx, s, ref, timelines, lookupEnv)
 		if err != nil {
 			return ends, err
 		}

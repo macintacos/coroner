@@ -54,8 +54,10 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"--overlay <name> exports the timelines an overlay saved with 'coroner overlay create' holds,\n" +
 			"in place of -t. json and jsonl carry every link between two exported events.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html,svg", overlayAnnotation: "true"},
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			formatsAnnotation: "json,jsonl,md,mermaid,html,svg", timelinesAnnotation: "several", oneTimelineFormatsAnnotation: "svg",
+		},
 		Example: "  $ coroner timeline export -t mongo-outage --format json > rca.json\n" +
 			"  $ coroner timeline export --format jsonl --since \"2026-09-11T03:00Z\" --source mongod > mongod.jsonl\n" +
 			"  $ coroner timeline export --format md --tz America/New_York > rca.md\n" +
@@ -99,10 +101,6 @@ func requireFormat(cmd *cobra.Command, _ []string) error {
 }
 
 func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
-	choice, err := readTimelineChoice(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
@@ -130,12 +128,21 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	var input exportInput
 	var page store.EventPage
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		input, page, err = readExport(ctx, s, choice, filter, app.LookupEnv)
+		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		err = sel.checkFormat(o.format)
+		if err != nil {
+			return err
+		}
+		timelines, err := sel.all(ctx, s)
+		if err != nil {
+			return err
+		}
+		input, page, err = readExport(ctx, s, timelines, filter)
 		return err
 	})
-	if err == nil {
-		err = checkOverlayFormat(len(input.timelines), o.format)
-	}
 	if err != nil {
 		return err
 	}
@@ -188,35 +195,12 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	return notifyTruncated(o, page)
 }
 
-// checkOverlayFormat returns usage when -t selects count timelines, more than one, for a format
-// that exports one.
-func checkOverlayFormat(count int, chosen format) error {
-	switch chosen {
-	case formatJSON, formatJSONL, formatMarkdown, formatMermaid, formatHTML:
-		return nil
-	case formatSVG, formatText:
-	}
-	if count <= 1 {
-		return nil
-	}
-
-	return &Error{
-		Kind:    KindUsage,
-		Message: fmt.Sprintf("--format %s exports one timeline, and -t selects %d", chosen, count),
-		Hint:    "Pass -t once, or overlay the timelines with --format json, jsonl, md, mermaid or html.",
-	}
-}
-
-// readExport reads what an export is made from: the timelines choice selects, the events filter
-// keeps in them and their page, every annotation, attachment and link from an event in those
-// timelines, and every source.
+// readExport reads what an export is made from: timelines, the events filter keeps in them and
+// their page, every annotation, attachment and link from an event in those timelines, and every
+// source.
 func readExport(
-	ctx context.Context, s *store.Store, choice timelineChoice, filter store.EventFilter, lookupEnv func(string) (string, bool),
+	ctx context.Context, s *store.Store, timelines []timeline.Timeline, filter store.EventFilter,
 ) (exportInput, store.EventPage, error) {
-	timelines, err := selectChosenTimelines(ctx, s, choice, lookupEnv)
-	if err != nil {
-		return exportInput{}, store.EventPage{}, err
-	}
 	filter.TimelineIDs = timelineIDs(timelines)
 	input := exportInput{timelines: timelines, filter: filter}
 	page, err := s.ListEvents(ctx, filter)
