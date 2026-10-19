@@ -21,11 +21,6 @@ import (
 // timeline.ValidateSourceName and the source.name CHECK, which reject it as a source.
 const clearKeyword = "none"
 
-// eventEditFlags are the flags that change a field; edit needs at least one.
-func eventEditFlags() []string {
-	return []string{"text", "at", "ended", "approximate", "source", "add-tag", "remove-tag", "url", "author", "attach"}
-}
-
 func newEventEditCommand(ctx context.Context, app App) *cobra.Command {
 	def := eventEditDefinition()
 	cmd := &cobra.Command{
@@ -54,10 +49,10 @@ func eventEditDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
 		{name: "event", arg: true, usage: "Event to edit, as a `ref`: seq, timeline#seq or id", check: withoutEnv(checkEventRef)},
-		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
-		{name: "at", usage: "When it happened, as a `time`", check: checkAt},
+		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin), changes: true},
+		{name: "at", usage: "When it happened, as a `time`", check: checkAt, changes: true},
 		{
-			name: "ended", usage: "When it ended, as a `time`, or none",
+			name: "ended", usage: "When it ended, as a `time`, or none", changes: true,
 			check: func(ended string, env checkEnv) error {
 				if ended == clearKeyword {
 					return nil
@@ -66,13 +61,13 @@ func eventEditDefinition() definition {
 				return err
 			},
 		},
-		{name: "approximate", typ: boolField, usage: "Mark the time as a guess; --approximate=false unmarks it"},
-		{name: "source", usage: "System, service or person it came from, as a `source`, or none", check: withoutEnv(checkEditedSource)},
-		{name: "add-tag", typ: stringsField, usage: "Add a `tag`; repeat for more", check: withoutEnv(checkTag)},
-		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more"},
-		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("--url")},
-		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("--author")},
-		attachField(),
+		{name: "approximate", typ: boolField, usage: "Mark the time as a guess; --approximate=false unmarks it", changes: true},
+		{name: "source", usage: "System, service or person it came from, as a `source`, or none", check: withoutEnv(checkEditedSource), changes: true},
+		{name: "add-tag", typ: stringsField, usage: "Add a `tag`; repeat for more", check: withoutEnv(checkTag), changes: true},
+		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more", changes: true},
+		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("--url"), changes: true},
+		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("--author"), changes: true},
+		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited event, and change nothing"},
 		tzField(),
 	}}
@@ -249,16 +244,12 @@ type editTimes struct {
 // readEventEdit returns the edit in asks for, with times read as of env. It reads stdin last, so
 // a bad field never waits on it.
 func readEventEdit(in fieldValues, app App, env checkEnv) (eventEdit, error) {
-	if !slices.ContainsFunc(eventEditFlags(), in.given) {
-		return eventEdit{}, &Error{
-			Kind:    KindUsage,
-			Message: "nothing to edit",
-			Hint:    "Pass --" + strings.Join(eventEditFlags(), ", --") + ".",
-		}
+	err := eventEditDefinition().requireChange(in)
+	if err != nil {
+		return eventEdit{}, err
 	}
 
 	edit := eventEdit{now: env.now, editFields: readEditFields(in)}
-	var err error
 	edit.editTimes, err = readEditTimes(in, env)
 	if err != nil {
 		return edit, err

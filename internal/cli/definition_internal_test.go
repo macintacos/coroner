@@ -142,6 +142,22 @@ var _ = Describe("write command definitions", func() {
 
 		Expect(missing).To(BeEmpty())
 	})
+
+	It("mark every field of an edit command that is not its argument, an inherited flag or --dry-run as a change", func() {
+		var unmarked []string
+		for path, def := range writeDefinitions() {
+			if !strings.HasSuffix(path, " edit") {
+				continue
+			}
+			for _, f := range def.fields {
+				if !f.arg && !f.inherited && f.name != "dry-run" && !f.changes {
+					unmarked = append(unmarked, "coroner "+path+" --"+f.name)
+				}
+			}
+		}
+
+		Expect(unmarked).To(BeEmpty())
+	})
 })
 
 var _ = Describe("definition", func() {
@@ -185,6 +201,33 @@ var _ = Describe("definition", func() {
 		Expect(tags.check(fieldValues{"tag": {"election", "Bad Tag"}}, checkEnv{})).To(MatchError("bad tag"))
 		Expect(formError(tags, "tag", "election\nBad Tag")).To(MatchError("bad tag"))
 		Expect(formError(tags, "tag", "")).To(Succeed())
+	})
+
+	edit := definition{fields: []field{
+		{name: "id", arg: true},
+		{name: "body", changes: true},
+		{name: "author"},
+		{name: "kind", changes: true},
+		{name: "url", changes: true},
+	}}
+
+	It("refuses no change, naming the changing flags in field order", func() {
+		in := fieldValues{"id": {"0199a1b2"}, "author": {"priya"}}
+
+		Expect(edit.changed(in)).To(BeFalse())
+		var err *Error
+		Expect(errors.As(edit.requireChange(in), &err)).To(BeTrue())
+		Expect(err).To(SatisfyAll(
+			HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", "Pass --body, --kind or --url.")))
+	})
+
+	It("accepts any one change", func() {
+		for _, name := range []string{"body", "kind", "url"} {
+			in := fieldValues{"id": {"0199a1b2"}, name: {"x"}}
+
+			Expect(edit.changed(in)).To(BeTrue(), name)
+			Expect(edit.requireChange(in)).To(Succeed(), name)
+		}
 	})
 })
 
