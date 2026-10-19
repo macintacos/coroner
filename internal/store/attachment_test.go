@@ -300,6 +300,12 @@ var _ = Describe("Attachments", func() {
 				_, err := s.AddEvent(ctx, offsetBeyondADay(), uuid(9), newFile(21, "grafana.png", screenshot))
 				return err
 			}, eventsUnchanged),
+			Entry("AddEvent with an attachment filename that is not UTF-8", func(ctx context.Context) error {
+				e := pager
+				e.ID, e.Seq = uuid(20), 5
+				_, err := s.AddEvent(ctx, e, uuid(9), newFile(21, "caf\xe9.png", screenshot))
+				return err
+			}, eventsUnchanged),
 			Entry("UpdateEvent with an attachment", func(ctx context.Context) error {
 				e := offsetBeyondADay()
 				e.ID, e.Seq = pager.ID, pager.Seq

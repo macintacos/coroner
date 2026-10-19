@@ -161,6 +161,13 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 func (s *Store) writeWithAttachments(
 	ctx context.Context, owner timeline.AttachmentOwner, attachments []NewAttachment, fn func(*sqlcgen.Queries) error,
 ) ([]timeline.Attachment, error) {
+	for _, a := range attachments {
+		err := timeline.ValidateUTF8("filename", a.Filename)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	staged, err := stageAttachments(s.blobDir, owner, attachments)
 	if err != nil {
 		return nil, err

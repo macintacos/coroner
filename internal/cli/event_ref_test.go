@@ -335,6 +335,16 @@ var _ = Describe("event view, edit and delete", func() {
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
 		})
+
+		It("exits 2 with kind usage on a USER author that is not UTF-8, linking nothing", func(ctx SpecContext) {
+			env["USER"] = "julian\xff"
+
+			Expect(run(ctx, "event", "link", "1", "2", "--kind", "led_to", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			Expect(out.String()).NotTo(ContainSubstring(`"type":"link"`))
+		})
 	})
 
 	It("exits 2 on event add --source none, saying why none is no source", func(ctx SpecContext) {

@@ -62,7 +62,7 @@ func eventLinkDefinition() definition {
 		inherited(timelineField()),
 		linkEventsField(),
 		linkKindField(),
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("author", "--author")},
 		{name: "dry-run", typ: boolField, usage: "Show the link as it would be added, and add nothing"},
 	}}
 }

@@ -52,8 +52,8 @@ func annotationAddDefinition() definition {
 		},
 		{name: "kind", required: true, usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("url", "--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("author", "--author")},
 		perEntry(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
 	}}

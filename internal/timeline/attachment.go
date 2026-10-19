@@ -44,6 +44,8 @@ func (a Attachment) Validate() error {
 		errs = append(errs, problem("size", RuleNegativeSize, "size %d: must not be negative", a.Size))
 	}
 
+	errs = append(errs, ValidateUTF8("filename", a.Filename), ValidateUTF8("mime", a.MIME))
+
 	return join(errs...)
 }
 

@@ -37,6 +37,18 @@ var _ = Describe("Timeline.Validate", func() {
 		Expect(t.Validate()).To(MatchError(HavePrefix("timeline name")))
 	})
 
+	It("rejects a title that is not UTF-8", func() {
+		t := valid()
+		t.Title = "caf\xe9"
+		Expect(t.Validate()).To(MatchError("title: must be UTF-8"))
+	})
+
+	It("rejects a ref that is not UTF-8", func() {
+		t := valid()
+		t.Refs = append(t.Refs, "INC-\xff")
+		Expect(t.Validate()).To(MatchError("ref 3: must be UTF-8"))
+	})
+
 	It("rejects a blank ref", func() {
 		t := valid()
 		t.Refs = append(t.Refs, " ")
@@ -93,6 +105,11 @@ var _ = Describe("Event.Validate", func() {
 			func(e *timeline.Event) { e.OccurredOffset = new(-89940) }),
 		Entry("a source outside the grammar", "source", func(e *timeline.Event) { e.Source = new("Slack") }),
 		Entry("a tag outside the grammar", "tag", func(e *timeline.Event) { e.Tags = []string{"Phase Detect"} }),
+		Entry("text that is not UTF-8", "text: must be UTF-8", func(e *timeline.Event) { e.Text = "caf\xe9" }),
+		Entry("an occurred raw that is not UTF-8", "occurred_raw: must be UTF-8",
+			func(e *timeline.Event) { e.OccurredRaw = new("10:15\xff") }),
+		Entry("a url that is not UTF-8", "url: must be UTF-8", func(e *timeline.Event) { e.URL = new("https://x/\xff") }),
+		Entry("an author that is not UTF-8", "author: must be UTF-8", func(e *timeline.Event) { e.Author = new("Ren\xe9") }),
 	)
 
 	It("accepts an hour window measured in the stated +05:30", func() {
@@ -168,6 +185,9 @@ var _ = Describe("Annotation.Validate", func() {
 		Entry("whitespace-only body", "body", func(a *timeline.Annotation) { a.Body = "  " }),
 		Entry("an unknown kind", "annotation kind", func(a *timeline.Annotation) { a.Kind = "note" }),
 		Entry("a source outside the grammar", "source", func(a *timeline.Annotation) { a.Source = new("db 2") }),
+		Entry("a body that is not UTF-8", "body: must be UTF-8", func(a *timeline.Annotation) { a.Body = "caf\xe9" }),
+		Entry("a url that is not UTF-8", "url: must be UTF-8", func(a *timeline.Annotation) { a.URL = new("https://x/\xff") }),
+		Entry("an author that is not UTF-8", "author: must be UTF-8", func(a *timeline.Annotation) { a.Author = new("Ren\xe9") }),
 	)
 })
 

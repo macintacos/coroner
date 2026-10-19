@@ -41,7 +41,7 @@ func checkAt(value string, env checkEnv) error {
 // a day from UTC, which an event cannot store, and input that is not UTF-8.
 func resolveAt(input *string, now time.Time, loc *time.Location) (timeparse.Resolved, error) {
 	if input != nil {
-		err := checkUTF8("--at", *input)
+		err := checkUTF8("occurred_raw", "--at", *input)
 		if err != nil {
 			return timeparse.Resolved{}, err
 		}

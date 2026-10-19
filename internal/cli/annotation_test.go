@@ -162,6 +162,16 @@ var _ = Describe("annotation", func() {
 			Entry(nil, "--author", "julian\xff"),
 		)
 
+		It("exits 2 with kind usage on a USER author that is not UTF-8, adding nothing", func(ctx SpecContext) {
+			env["USER"] = "julian\xff"
+
+			Expect(run(ctx, "annotation", "add", "election log", "-e", "1", "--kind", "evidence", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+		})
+
 		Describe("its body", func() {
 			It("comes from stdin given -, verbatim but for one trailing newline", func(ctx SpecContext) {
 				in = strings.NewReader("[conn42] stepping down\r\n\tretrying  \n\n")

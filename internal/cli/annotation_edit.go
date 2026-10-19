@@ -40,7 +40,7 @@ func annotationEditDefinition() definition {
 		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin), changes: true},
 		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName), changes: true},
 		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource), changes: true},
-		{name: "url", usage: "New permalink, as a `url`", check: notBlank("--url"), changes: true},
+		{name: "url", usage: "New permalink, as a `url`", check: notBlank("url", "--url"), changes: true},
 		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
 	}}

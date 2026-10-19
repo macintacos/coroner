@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -162,17 +161,17 @@ func checkBodyOrStdin(body string) error {
 }
 
 func checkBody(body string) error {
-	if strings.TrimSpace(body) == "" {
+	p, ok := firstProblem(timeline.ValidateText("body", body))
+	switch {
+	case !ok:
+		return nil
+	case p.Rule == timeline.RuleBlank:
 		return &Error{Kind: KindUsage, Message: "annotation body must not be blank", Hint: "Pass non-blank text, or - to read it from stdin."}
 	}
-	// JSON would replace invalid bytes, so an export could never match what is stored.
-	if !utf8.ValidString(body) {
-		return &Error{
-			Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
-		}
-	}
 
-	return nil
+	return &Error{
+		Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
+	}
 }
 
 // eventFlag returns the event reference -e gives, or nil when -e is not given.

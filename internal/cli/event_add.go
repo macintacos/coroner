@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -115,8 +114,8 @@ func eventAddDefinition() definition {
 		{name: "approximate", typ: boolField, perEntry: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "tag", typ: stringsField, usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
-		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("--url")},
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("--author")},
+		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("url", "--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("author", "--author")},
 		perEntry(attachField()),
 		{
 			name: "id", perEntry: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
@@ -456,17 +455,17 @@ func checkTextOrStdin(text string) error {
 }
 
 func checkText(text string) (string, error) {
-	if strings.TrimSpace(text) == "" {
+	p, ok := firstProblem(timeline.ValidateText("text", text))
+	switch {
+	case !ok:
+		return text, nil
+	case p.Rule == timeline.RuleBlank:
 		return "", &Error{Kind: KindUsage, Message: "event text must not be blank", Hint: "Pass non-blank text."}
 	}
-	// JSON would replace invalid bytes, so an export could never match what is stored.
-	if !utf8.ValidString(text) {
-		return "", &Error{
-			Kind: KindUsage, Message: "event text must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
-		}
-	}
 
-	return text, nil
+	return "", &Error{
+		Kind: KindUsage, Message: "event text must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
+	}
 }
 
 // eventFields are the source, tags, URL and author an event's fields give it.
@@ -494,9 +493,9 @@ func checkNotBlank(flag string, value *string) error {
 	return &Error{Kind: KindUsage, Message: flag + " must not be blank", Hint: "Leave " + flag + " out instead."}
 }
 
-// checkUTF8 returns usage when value of flag is not UTF-8, which an export could not carry.
-func checkUTF8(flag, value string) error {
-	if utf8.ValidString(value) {
+// checkUTF8 returns usage when value of flag, which sets the export key field, is not UTF-8.
+func checkUTF8(field, flag, value string) error {
+	if timeline.ValidateUTF8(field, value) == nil {
 		return nil
 	}
 
@@ -504,21 +503,21 @@ func checkUTF8(flag, value string) error {
 }
 
 // utf8Only returns a field check that rejects a value of flag that is not UTF-8.
-func utf8Only(flag string) func(string, checkEnv) error {
+func utf8Only(field, flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
-		return checkUTF8(flag, value)
+		return checkUTF8(field, flag, value)
 	})
 }
 
 // notBlank returns a field check that rejects a blank value of flag, or one that is not UTF-8.
-func notBlank(flag string) func(string, checkEnv) error {
+func notBlank(field, flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
 		err := checkNotBlank(flag, &value)
 		if err != nil {
 			return err
 		}
 
-		return checkUTF8(flag, value)
+		return checkUTF8(field, flag, value)
 	})
 }
 

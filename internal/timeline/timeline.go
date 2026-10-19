@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // AnnotationKind says whether an annotation is raw material or investigator commentary.
@@ -93,9 +94,10 @@ type Source struct {
 
 // Validate reports every way t breaks the domain rules, or nil.
 func (t Timeline) Validate() error {
-	errs := []error{ValidateTimelineName(t.Name)}
+	errs := []error{ValidateTimelineName(t.Name), ValidateUTF8("title", t.Title)}
 	for i, ref := range t.Refs {
-		errs = append(errs, validateNotBlank("refs", fmt.Sprintf("ref %d", i+1), ref))
+		what := fmt.Sprintf("ref %d", i+1)
+		errs = append(errs, validateNotBlank("refs", what, ref), validateUTF8("refs", what, ref))
 	}
 
 	return join(errs...)
@@ -104,16 +106,18 @@ func (t Timeline) Validate() error {
 // Validate reports every way e breaks the domain rules, or nil.
 func (e Event) Validate() error {
 	errs := []error{
-		validateNotBlank("text", "text", e.Text),
+		ValidateText("text", e.Text),
 		validatePrecision(e.Precision),
 		validateOccurredAt(e.OccurredAt, e.OccurredOffset, e.Precision),
 		ValidateOccurredOffset(e.OccurredOffset),
+		ValidateOptionalUTF8("occurred_raw", e.OccurredRaw),
 		validateEndedAt(e.EndedAt, e.OccurredAt),
 		validateOptional(ValidateSourceName, e.Source),
 	}
 	for _, tag := range e.Tags {
 		errs = append(errs, ValidateTag(tag))
 	}
+	errs = append(errs, ValidateOptionalUTF8("url", e.URL), ValidateOptionalUTF8("author", e.Author))
 
 	return join(errs...)
 }
@@ -122,8 +126,10 @@ func (e Event) Validate() error {
 func (a Annotation) Validate() error {
 	return join(
 		validateAnnotationKind(a.Kind),
-		validateNotBlank("body", "body", a.Body),
+		ValidateText("body", a.Body),
 		validateOptional(ValidateSourceName, a.Source),
+		ValidateOptionalUTF8("url", a.URL),
+		ValidateOptionalUTF8("author", a.Author),
 	)
 }
 
@@ -137,6 +143,34 @@ func (s Source) Validate() error {
 // coarse event sorts at the start of its window, so "10:15" precedes every 10:15:xx event.
 func CompareEvents(a, b Event) int {
 	return cmp.Or(a.OccurredAt.Compare(b.OccurredAt), cmp.Compare(a.TimelineID, b.TimelineID), cmp.Compare(a.Seq, b.Seq))
+}
+
+// ValidateText reports s, the value of field, when it is blank or not UTF-8, or nil.
+func ValidateText(field, s string) error {
+	return join(validateNotBlank(field, field, s), ValidateUTF8(field, s))
+}
+
+// ValidateUTF8 reports s, the value of field, when it is not UTF-8, which JSON cannot carry
+// byte for byte, or nil.
+func ValidateUTF8(field, s string) error {
+	return validateUTF8(field, field, s)
+}
+
+// ValidateOptionalUTF8 is [ValidateUTF8] for a field that may be absent.
+func ValidateOptionalUTF8(field string, s *string) error {
+	if s == nil {
+		return nil
+	}
+
+	return ValidateUTF8(field, *s)
+}
+
+func validateUTF8(field, what, s string) error {
+	if !utf8.ValidString(s) {
+		return problem(field, RuleNotUTF8, "%s: must be UTF-8", what)
+	}
+
+	return nil
 }
 
 func validateNotBlank(field, what, s string) error {

@@ -48,6 +48,8 @@ var _ = Describe("Attachment.Validate", func() {
 			a.SHA256 = "g3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 		}),
 		Entry("a negative size", "size", func(a *timeline.Attachment) { a.Size = -1 }),
+		Entry("a filename that is not UTF-8", "filename: must be UTF-8", func(a *timeline.Attachment) { a.Filename = "caf\xe9.png" }),
+		Entry("a mime that is not UTF-8", "mime: must be UTF-8", func(a *timeline.Attachment) { a.MIME = "image/\xff" }),
 	)
 
 	It("reports every broken rule at once", func() {

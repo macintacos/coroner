@@ -262,6 +262,16 @@ var _ = Describe("event add", func() {
 			Entry("--at", "--at", "2026-09-11T03:14:00Z\xff"),
 		)
 
+		It("exits 2 with kind usage on a USER author that is not UTF-8, adding nothing", func(ctx SpecContext) {
+			env["USER"] = "julian\xff"
+
+			Expect(run(ctx, "event", "add", "Failover", "--json")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(storedEvents(ctx)).To(BeEmpty())
+			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+		})
+
 		Describe("--dry-run", func() {
 			It("prints the event as it would be added, with no seq yet, and adds nothing", func(ctx SpecContext) {
 				Expect(run(ctx, "event", "add", "Deploy started", "--at", "2026-09-11T14:00:00Z", "--dry-run", "--json")).

@@ -46,6 +46,7 @@ func (l Link) Validate() error {
 	if l.FromEventID == l.ToEventID {
 		errs = append(errs, problem("to_event_id", RuleSelfLink, "link: an event cannot link to itself"))
 	}
+	errs = append(errs, ValidateOptionalUTF8("author", l.Author))
 
 	return join(errs...)
 }

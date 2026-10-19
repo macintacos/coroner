@@ -31,9 +31,9 @@ var _ = Describe("Validate's problem fields", func() {
 		func(err error, record reflect.Type) {
 			fields := problemFields(err)
 			Expect(fields).NotTo(BeEmpty())
-			Expect(jsonKeys(record)).To(ContainElements(fields))
+			Expect(fields).To(HaveEach(BeElementOf(jsonKeys(record))))
 		},
-		Entry("a timeline", export.Timeline{Name: "INC 1", Refs: []string{" "}}.Domain().Validate(),
+		Entry("a timeline", export.Timeline{Name: "INC 1", Title: "\xff", Refs: []string{" ", "\xff"}}.Domain().Validate(),
 			reflect.TypeFor[export.Timeline]()),
 		Entry("the source none", export.Source{Name: "none"}.Domain().Validate(), reflect.TypeFor[export.Source]()),
 		Entry("a source outside the grammar", export.Source{Name: "Slack"}.Domain().Validate(),
@@ -43,14 +43,20 @@ var _ = Describe("Validate's problem fields", func() {
 			Precision: timeline.PrecisionMinute, EndedAt: new(instant(1, 0)), Source: new("none"),
 			Tags: []string{"Bad Tag"}, Text: " ",
 		}.Domain().Validate(), reflect.TypeFor[export.Event]()),
+		Entry("an event with text that is not UTF-8", export.Event{
+			OccurredAt: export.Instant(at(3, 14)), Precision: timeline.PrecisionMinute, OccurredRaw: new("\xff"),
+			Text: "\xff", URL: new("\xff"), Author: new("\xff"),
+		}.Domain().Validate(), reflect.TypeFor[export.Event]()),
 		Entry("an event with an unknown precision and out-of-range years", export.Event{
 			OccurredAt: farFuture, Precision: "fortnight", EndedAt: new(farFuture), Source: new("Slack"), Text: "x",
 		}.Domain().Validate(), reflect.TypeFor[export.Event]()),
-		Entry("an annotation", export.Annotation{Kind: "note", Source: new("none")}.Domain().Validate(),
+		Entry("an annotation", export.Annotation{
+			Kind: "note", Source: new("none"), Body: "\xff", URL: new("\xff"), Author: new("\xff"),
+		}.Domain().Validate(),
 			reflect.TypeFor[export.Annotation]()),
-		Entry("a link", export.Link{FromEventID: eventID, ToEventID: eventID, Kind: "after"}.Domain().Validate(),
+		Entry("a link", export.Link{FromEventID: eventID, ToEventID: eventID, Kind: "after", Author: new("\xff")}.Domain().Validate(),
 			reflect.TypeFor[export.Link]()),
-		Entry("an attachment", export.Attachment{SHA256: "XYZ", Size: -1}.Domain().Validate(),
+		Entry("an attachment", export.Attachment{SHA256: "XYZ", Size: -1, Filename: "\xff", MIME: "\xff"}.Domain().Validate(),
 			reflect.TypeFor[export.Attachment]()),
 	)
 })

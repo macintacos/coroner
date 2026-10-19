@@ -65,8 +65,8 @@ func eventEditDefinition() definition {
 		{name: "source", usage: "System, service or person it came from, as a `source`, or none", check: withoutEnv(checkEditedSource), changes: true},
 		{name: "add-tag", typ: stringsField, usage: "Add a `tag`; repeat for more", check: withoutEnv(checkTag), changes: true},
 		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more", changes: true},
-		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("--url"), changes: true},
-		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("--author"), changes: true},
+		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("url", "--url"), changes: true},
+		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("author", "--author"), changes: true},
 		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited event, and change nothing"},
 		tzField(),
@@ -90,7 +90,7 @@ func checkEditedSource(source string) error {
 
 // clearableNotBlank returns a field check that accepts none, which clears the field, and
 // otherwise rejects a blank value of flag.
-func clearableNotBlank(flag string) func(string, checkEnv) error {
+func clearableNotBlank(field, flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
 		if value == clearKeyword {
 			return nil
@@ -101,7 +101,7 @@ func clearableNotBlank(flag string) func(string, checkEnv) error {
 			return err
 		}
 
-		return checkUTF8(flag, value)
+		return checkUTF8(field, flag, value)
 	})
 }
 
