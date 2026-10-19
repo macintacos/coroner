@@ -40,6 +40,8 @@ type field struct {
 	required bool
 	// changes marks a field that changes the record; an edit needs at least one.
 	changes bool
+	// perEntry marks a field another form entry opens without.
+	perEntry bool
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
 	preview func(value string, env checkEnv) string
 	// list makes a repeatable field's form field take its values one at a time instead of one per line.
@@ -149,6 +151,12 @@ func inherited(f field) field {
 // changing returns f marked as a field that changes the record.
 func changing(f field) field {
 	f.changes = true
+	return f
+}
+
+// perEntry returns f marked as a field another form entry opens without.
+func perEntry(f field) field {
+	f.perEntry = true
 	return f
 }
 

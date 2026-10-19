@@ -28,12 +28,9 @@ type formWrite[R renderer] struct {
 	run  func(context.Context, App, config.Config, fieldValues) (R, error)
 }
 
-// addForm is an add command's form: the command it submits to, and what each entry picks from and
-// the next one clears.
+// addForm is an add command's form: the command it submits to, and what each entry picks from.
 type addForm[R renderer] struct {
 	formWrite[R]
-	// cleared are the fields another entry opens without.
-	cleared []string
 	// choices reads what the form picks from once the timeline t is known, labelling times in z.
 	choices func(ctx context.Context, s *store.Store, t timeline.Timeline, z zone) (formChoices, error)
 }
@@ -234,7 +231,7 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 			return nil
 		}
 
-		in = carryForward(typed, f.cleared)
+		in = carryForward(typed, f.def)
 	}
 }
 
@@ -410,10 +407,14 @@ func askError(err error) error {
 	return err
 }
 
-// carryForward returns values without the fields in cleared, as the next entry opens with.
-func carryForward(values fieldValues, cleared []string) fieldValues {
+// carryForward returns values without d's perEntry fields, as the next entry opens with.
+func carryForward(values fieldValues, d definition) fieldValues {
 	next := maps.Clone(values)
-	maps.DeleteFunc(next, func(name string, _ []string) bool { return slices.Contains(cleared, name) })
+	for _, f := range d.fields {
+		if f.perEntry {
+			delete(next, f.name)
+		}
+	}
 
 	return next
 }
@@ -473,7 +474,6 @@ func filtering(formField huh.Field) bool {
 func eventAddForm() addForm[eventAdded] {
 	return addForm[eventAdded]{
 		path: "event add", def: eventAddDefinition(), run: addEvent,
-		cleared: []string{"text", "at", "ended", "approximate", "url", "attach", "id"},
 		choices: func(ctx context.Context, s *store.Store, _ timeline.Timeline, _ zone) (formChoices, error) {
 			return sourceChoices(ctx, s)
 		},
@@ -483,7 +483,6 @@ func eventAddForm() addForm[eventAdded] {
 func annotationAddForm() addForm[annotationAdded] {
 	return addForm[annotationAdded]{
 		path: "annotation add", def: annotationAddDefinition(), run: addAnnotation,
-		cleared: []string{"body", "url", "attach"},
 		choices: annotationChoices,
 	}
 }
