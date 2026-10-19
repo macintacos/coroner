@@ -40,7 +40,7 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 			"-t names a stored timeline that every record must belong to. Without -t, the export decides\n" +
 			"which timelines it imports into.",
 		Args:        cobra.ExactArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Annotations: map[string]string{formatsAnnotation: "text,json", timelinesAnnotation: "guard"},
 		Example: "  $ coroner import colleague-annotations.jsonl --dry-run --json\n" +
 			"  $ coroner import colleague-annotations.jsonl\n" +
 			"  $ cat a.jsonl b.jsonl | coroner import -\n" +

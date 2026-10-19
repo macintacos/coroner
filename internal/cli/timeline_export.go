@@ -54,8 +54,10 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 			"--overlay <name> exports the timelines an overlay saved with 'coroner overlay create' holds,\n" +
 			"in place of -t. json and jsonl carry every link between two exported events.\n\n" +
 			"--group-by is experimental and may change before 1.0.",
-		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "json,jsonl,md,mermaid,html,svg", overlayAnnotation: "true"},
+		Args: cobra.NoArgs,
+		Annotations: map[string]string{
+			formatsAnnotation: "json,jsonl,md,mermaid,html,svg", timelinesAnnotation: "several", oneTimelineFormatsAnnotation: "svg",
+		},
 		Example: "  $ coroner timeline export -t mongo-outage --format json > rca.json\n" +
 			"  $ coroner timeline export --format jsonl --since \"2026-09-11T03:00Z\" --source mongod > mongod.jsonl\n" +
 			"  $ coroner timeline export --format md --tz America/New_York > rca.md\n" +

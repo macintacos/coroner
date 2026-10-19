@@ -42,7 +42,9 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 			"with its timeline's name. --json prints one timeline object, so it takes one timeline.",
 		Args:              cobra.MaximumNArgs(1),
 		ValidArgsFunction: completeTimelineArg(ctx, app),
-		Annotations:       map[string]string{formatsAnnotation: "text,json", overlayAnnotation: "true"},
+		Annotations: map[string]string{
+			formatsAnnotation: "text,json", timelinesAnnotation: "several,positional", oneTimelineFormatsAnnotation: "json",
+		},
 		Example: "  $ coroner timeline view mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline view --tag election --source mongod\n" +
 			"  $ coroner timeline view -t mongo-failover -t checkout-latency\n" +

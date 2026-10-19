@@ -47,32 +47,127 @@ func addTimelineFlag(flags *pflag.FlagSet) {
 const timelineUsage = "Timeline `name|id` to act on"
 
 // timelineField is -t as a write command's field: a stringsField because -t is a StringArray
-// on every command; checkOneTimeline refuses a second timeline.
+// on every command; wrapRunErrors refuses a second timeline.
 func timelineField() field {
 	return field{name: "timeline", shorthand: "t", typ: stringsField, usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
 }
 
-// overlayAnnotation is the cmd.Annotations key marking a command that reads every timeline a
-// repeated -t names. Any other command's -t names one timeline.
-const overlayAnnotation = "overlay"
+// timelinesAnnotation is the cmd.Annotations key listing, comma-separated, how a command names
+// its timelines: several (a repeated -t, and --overlay where registered, overlay timelines),
+// positional (a positional name selects the timeline) and guard (-t only, no environment or
+// current timeline). A command without it acts on one timeline.
+const timelinesAnnotation = "timelines"
 
-// checkOneTimeline returns usage when -t is empty (A-9), or is given more than one value for a
-// command without overlayAnnotation. It runs before the store opens, so a timeline's name and
+// oneTimelineFormatsAnnotation is the cmd.Annotations key listing, comma-separated, the formats
+// of a several-timeline command that print one timeline.
+const oneTimelineFormatsAnnotation = "oneTimelineFormats"
+
+// timelineRule is how many timelines a command reads, and how they may be named.
+type timelineRule struct {
+	command    string
+	several    bool
+	positional bool
+	guard      bool
+	oneFormats []format
+}
+
+// timelineInput is what the command line names, read and checked before the store opens.
+type timelineInput struct {
+	names      []string
+	overlay    *string
+	positional *string
+	rule       timelineRule
+}
+
+// ruleOf returns cmd's timelineRule, read from its timelinesAnnotation and
+// oneTimelineFormatsAnnotation.
+func ruleOf(cmd *cobra.Command) timelineRule {
+	tokens := strings.Split(cmd.Annotations[timelinesAnnotation], ",")
+	rule := timelineRule{
+		command:    cmd.CommandPath(),
+		several:    slices.Contains(tokens, "several"),
+		positional: slices.Contains(tokens, "positional"),
+		guard:      slices.Contains(tokens, "guard"),
+	}
+	if formats := cmd.Annotations[oneTimelineFormatsAnnotation]; formats != "" {
+		for f := range strings.SplitSeq(formats, ",") {
+			rule.oneFormats = append(rule.oneFormats, format(f))
+		}
+	}
+
+	return rule
+}
+
+// readTimelineInput returns the timelines flags and args name under rule, or usage when -t or
+// --overlay is empty (A-9), --overlay is given with -t, a positional name is given with -t, or
+// a one-timeline command is given several -t values. It does no I/O, so a timeline's name and
 // its id are two values.
-func checkOneTimeline(cmd *cobra.Command) error {
-	if cmd.Flags().Lookup("timeline") == nil || cmd.Annotations[overlayAnnotation] == "true" {
-		return nil
-	}
-	names, err := timelineFlags(cmd.Flags())
-	if err != nil || len(names) <= 1 {
-		return err
+func readTimelineInput(flags *pflag.FlagSet, args []string, rule timelineRule) (timelineInput, error) {
+	in := timelineInput{rule: rule}
+	if flags.Lookup("timeline") == nil {
+		return in, nil
 	}
 
-	return &Error{
-		Kind:    KindUsage,
-		Message: fmt.Sprintf("-t is given %d different values, and %s acts on one timeline", len(names), cmd.CommandPath()),
-		Hint:    "Pass -t once. 'coroner event list', 'coroner timeline export' and 'coroner timeline view' read several timelines.",
+	var err error
+	in.names, err = readTimelineNames(flags)
+	if err != nil {
+		return timelineInput{}, err
 	}
+	in.overlay, err = readOverlay(flags, in.names)
+	if err != nil {
+		return timelineInput{}, err
+	}
+	if rule.positional && len(args) == 1 {
+		if len(in.names) > 0 {
+			return timelineInput{}, &Error{
+				Kind:    KindUsage,
+				Message: "pass either a timeline name or id, or -t",
+				Hint:    "Run 'coroner timeline view --help' for usage.",
+			}
+		}
+		in.positional = &args[0]
+	}
+	if !rule.several && len(in.names) > 1 {
+		return timelineInput{}, &Error{
+			Kind:    KindUsage,
+			Message: fmt.Sprintf("-t is given %d different values, and %s acts on one timeline", len(in.names), rule.command),
+			Hint: "Pass -t once. 'coroner event list', 'coroner timeline export', " +
+				"'coroner timeline view' and 'coroner overlay create' read several timelines.",
+		}
+	}
+
+	return in, nil
+}
+
+// readTimelineNames returns -t's values in the order given, each once, or usage when one is
+// empty (A-9).
+func readTimelineNames(flags *pflag.FlagSet) ([]string, error) {
+	names := appendUnique(nil, stringArray(flags, "timeline")...)
+	for _, name := range names {
+		err := checkTimelineFlag(name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return names, nil
+}
+
+// readOverlay returns --overlay, nil when it was not given, or usage when it is empty (A-9) or
+// given with names, -t's values.
+func readOverlay(flags *pflag.FlagSet, names []string) (*string, error) {
+	overlay := changedString(flags, "overlay")
+	switch {
+	case overlay != nil && *overlay == "":
+		return nil, &Error{Kind: KindUsage, Message: "--overlay must not be empty", Hint: "Pass --overlay with an overlay's name."}
+	case overlay != nil && len(names) > 0:
+		return nil, &Error{
+			Kind: KindUsage, Message: "--overlay and -t both select timelines",
+			Hint: "Pass --overlay <name>, or -t for each timeline, not both.",
+		}
+	}
+
+	return overlay, nil
 }
 
 // timelineFlag returns -t's value, nil when it was not given, or usage when it is empty (A-9).
@@ -90,15 +185,8 @@ func timelineFlag(flags *pflag.FlagSet) (*string, error) {
 // timelineFlags returns -t's values in the order given, each once, or usage when one is empty
 // (A-9).
 func timelineFlags(flags *pflag.FlagSet) ([]string, error) {
-	names := appendUnique(nil, stringArray(flags, "timeline")...)
-	for _, name := range names {
-		err := checkTimelineFlag(name)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return names, nil
+	in, err := readTimelineInput(flags, nil, timelineRule{several: true})
+	return in.names, err
 }
 
 func checkTimelineFlag(value string) error {
@@ -262,21 +350,8 @@ type timelineChoice struct {
 // readTimelineChoice returns the timelines -t or --overlay names, or usage when --overlay is
 // empty (A-9) or given with -t. It runs before the store opens.
 func readTimelineChoice(flags *pflag.FlagSet) (timelineChoice, error) {
-	names, err := timelineFlags(flags)
-	overlay := changedString(flags, "overlay")
-	switch {
-	case err != nil:
-		return timelineChoice{}, err
-	case overlay != nil && *overlay == "":
-		return timelineChoice{}, &Error{Kind: KindUsage, Message: "--overlay must not be empty", Hint: "Pass --overlay with an overlay's name."}
-	case overlay != nil && len(names) > 0:
-		return timelineChoice{}, &Error{
-			Kind: KindUsage, Message: "--overlay and -t both select timelines",
-			Hint: "Pass --overlay <name>, or -t for each timeline, not both.",
-		}
-	}
-
-	return timelineChoice{names: names, overlay: overlay}, nil
+	in, err := readTimelineInput(flags, nil, timelineRule{several: true})
+	return timelineChoice{names: in.names, overlay: in.overlay}, err
 }
 
 // selectChosenTimelines returns the timelines choice selects: its overlay's, in the overlay's

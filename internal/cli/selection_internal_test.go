@@ -256,4 +256,21 @@ var _ = Describe("timeline selection", func() {
 		Entry("timeline view --json", []string{"timeline", "view", "--json"}, false),
 		Entry("timeline export --format svg", []string{"timeline", "export", "--format", "svg"}, true),
 	)
+
+	DescribeTable("reads each command's timeline rule from its annotations",
+		func(ctx SpecContext, path string, want timelineRule) {
+			cmd, _, err := NewRoot(ctx, app).Find(strings.Fields(path))
+			Expect(err).NotTo(HaveOccurred())
+
+			want.command = "coroner " + path
+			Expect(ruleOf(cmd)).To(Equal(want))
+		},
+		Entry("event list", "event list", timelineRule{several: true}),
+		Entry("timeline export", "timeline export", timelineRule{several: true, oneFormats: []format{formatSVG}}),
+		Entry("timeline view", "timeline view",
+			timelineRule{several: true, positional: true, oneFormats: []format{formatJSON}}),
+		Entry("import", "import", timelineRule{guard: true}),
+		Entry("overlay create", "overlay create", timelineRule{several: true}),
+		Entry("event view", "event view", timelineRule{}),
+	)
 })

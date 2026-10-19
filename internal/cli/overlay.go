@@ -42,7 +42,7 @@ func newOverlayCreateCommand(ctx context.Context, app App) *cobra.Command {
 			"then selects those timelines on event list and timeline export. Deleting a timeline removes it\n" +
 			"from its overlays. --dry-run shows the overlay and saves nothing.",
 		Args:        cobra.ExactArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json", overlayAnnotation: "true"},
+		Annotations: map[string]string{formatsAnnotation: "text,json", timelinesAnnotation: "several"},
 		Example: "  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency\n" +
 			"  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency --if-not-exists --json",
 		RunE: writeRunE(ctx, app, def, createOverlay),

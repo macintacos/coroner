@@ -31,7 +31,7 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 			"in --tz, then the config file's default_timezone, then the local zone. Piped, the\n" +
 			"fields are tab-separated.",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl", overlayAnnotation: "true"},
+		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl", timelinesAnnotation: "several"},
 		Example: "  $ coroner event list --tag election --source mongod\n" +
 			"  $ coroner event list --since \"2026-09-11T03:00Z\" --until \"2026-09-11T04:00Z\" --tag election --format jsonl\n" +
 			"  $ coroner event list --contains stepdown --order desc --limit 20\n" +
