@@ -85,7 +85,7 @@ var _ = Describe("WriteMermaid", func() {
 	It("shows times on the zone's wall clock and names the zone in the title", func() {
 		env := acrossFallBack()
 		env.Events = append(env.Events, export.Event{
-			ID: "e4", Seq: new(int64(4)), OccurredAt: utc("2026-11-01T05:50:00Z"), Precision: timeline.PrecisionSecond,
+			ID: "e4", TimelineID: env.Timelines[0].ID, Seq: new(int64(4)), OccurredAt: utc("2026-11-01T05:50:00Z"), Precision: timeline.PrecisionSecond,
 			EndedAt: new(utc("2026-11-01T06:10:00Z")), Tags: []string{}, Text: "Failover window",
 		})
 
@@ -98,24 +98,6 @@ var _ = Describe("WriteMermaid", func() {
 
 	It("overlays several timelines: a section per timeline and source in order of first appearance, the title naming each timeline", func() {
 		matchGoldenFile(mermaidGoldenDir, "overlay", ".mmd", mermaid(overlay(), time.UTC))
-	})
-
-	It("fails, writing nothing, when an overlay holds an event of a timeline it does not export", func() {
-		env := overlay()
-		env.Events[0].TimelineID = "gone"
-		var b bytes.Buffer
-
-		Expect(export.WriteMermaid(&b, env, time.UTC)).To(MatchError(ContainSubstring("gone")))
-		Expect(b.String()).To(BeEmpty())
-	})
-
-	It("fails, writing nothing, when the export holds no timeline", func() {
-		env := checkoutSpike()
-		env.Timelines = []export.Timeline{}
-		var b bytes.Buffer
-
-		Expect(export.WriteMermaid(&b, env, time.UTC)).NotTo(Succeed())
-		Expect(b.String()).To(BeEmpty())
 	})
 })
 

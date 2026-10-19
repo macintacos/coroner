@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	_ "embed"
-	"errors"
 	"io"
 	"slices"
 	"text/template"
@@ -53,21 +52,13 @@ type zoneSpan struct {
 // overlay of several, showing times in zone (nil is UTC). The page embeds env as the JSON
 // Write encodes, its events by occurred at, timeline id and seq, with the viewer and its
 // library inline, so it loads nothing over the network. It fails, writing nothing, unless env
-// holds a timeline and the event of every annotation, and an overlay also the timeline of
-// every event and annotation.
+// is consistent (see prepare).
 func WriteHTML(w io.Writer, env Envelope, zone *time.Location) error {
-	if len(env.Timelines) == 0 {
-		return errors.New("want a timeline, got none")
-	}
-	_, err := overlayNames(env)
+	v, err := prepare(env)
 	if err != nil {
 		return err
 	}
-	env.Events = slices.SortedFunc(slices.Values(env.Events), compareEvents)
-	_, _, err = groupAnnotations(env.Annotations, env.Events)
-	if err != nil {
-		return err
-	}
+	env.Events = v.Events
 	zone = cmp.Or(zone, time.UTC)
 
 	var exported, zoneData bytes.Buffer

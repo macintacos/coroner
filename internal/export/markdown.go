@@ -2,7 +2,6 @@ package export
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -60,29 +59,15 @@ type MarkdownOptions struct {
 // Mermaid diagram as a mermaid code block. An event's attachments are list items under it,
 // before its annotations, and an annotation's follow its text on its line. An overlay of
 // several timelines lists each in the metadata, and labels each event and each annotation on
-// a whole timeline with its timeline's name. It fails, writing nothing, unless env holds a
-// timeline, the event of every annotation and the event or annotation of every attachment, an
-// overlay also the timeline of every event and annotation, and opts a grouping ParseGroupBy
-// knows.
+// a whole timeline with its timeline's name. It fails, writing nothing, unless env is
+// consistent (see prepare) and opts holds a grouping ParseGroupBy knows.
 func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
-	if len(env.Timelines) == 0 {
-		return errors.New("want a timeline, got none")
+	v, err := prepare(env)
+	if err != nil {
+		return err
 	}
 	if _, ok := ParseGroupBy(string(opts.GroupBy)); !ok {
 		return fmt.Errorf("unknown grouping %q", opts.GroupBy)
-	}
-	names, err := overlayNames(env)
-	if err != nil {
-		return err
-	}
-	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
-	onTimeline, byEvent, err := groupAnnotations(env.Annotations, events)
-	if err != nil {
-		return err
-	}
-	attachments, err := groupAttachments(env)
-	if err != nil {
-		return err
 	}
 	link := opts.AttachmentLink
 	if link == nil {
@@ -93,9 +78,9 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		zone:          cmp.Or(opts.Zone, time.UTC),
 		groupBy:       opts.GroupBy,
 		includeRaw:    opts.IncludeRaw,
-		timelineNames: names,
-		byEvent:       byEvent,
-		attachments:   attachments,
+		timelineNames: v.Names,
+		byEvent:       v.ByEvent,
+		attachments:   v.Attachments,
 		link:          link,
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
@@ -103,9 +88,9 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		urls:    regexp.MustCompile("https?://[^\\s<>`]+"),
 	}
 	blocks := slices.Concat(
-		md.header(env.Timelines, events, md.exported(env.ExportedAt, env.CoronerVersion)),
-		md.timelineAnnotations(onTimeline),
-		md.sections(events),
+		md.header(v, md.exported(env.ExportedAt, env.CoronerVersion)),
+		md.timelineAnnotations(v.OnTimeline),
+		md.sections(v.Events),
 	)
 	if opts.Diagram {
 		diagram, err := mermaid(env, md.zone)
@@ -118,66 +103,6 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 
 	_, err = io.WriteString(w, strings.Join(blocks, "\n\n")+"\n")
 	return err
-}
-
-// groupAnnotations returns annotations by created at then id, split into those on no event
-// and those on each event, and fails naming one whose event is not in events.
-func groupAnnotations(annotations []Annotation, events []Event) ([]Annotation, map[string][]Annotation, error) {
-	exported := map[string]bool{}
-	for _, e := range events {
-		exported[e.ID] = true
-	}
-
-	var onTimeline []Annotation
-	byEvent := map[string][]Annotation{}
-	for _, a := range slices.SortedFunc(slices.Values(annotations), compareAnnotations) {
-		switch {
-		case a.EventID == nil:
-			onTimeline = append(onTimeline, a)
-		case exported[*a.EventID]:
-			byEvent[*a.EventID] = append(byEvent[*a.EventID], a)
-		default:
-			return nil, nil, fmt.Errorf("annotation %s: its event %s is not in the export", a.ID, *a.EventID)
-		}
-	}
-
-	return onTimeline, byEvent, nil
-}
-
-// overlayNames returns each exported timeline's name by id when env overlays several
-// timelines, and an empty map for one, whose records carry no label. It fails naming an event
-// or annotation of an overlay whose timeline env does not hold.
-func overlayNames(env Envelope) (map[string]string, error) {
-	if len(env.Timelines) == 1 {
-		return map[string]string{}, nil
-	}
-
-	names := map[string]string{}
-	for _, t := range env.Timelines {
-		names[t.ID] = t.Name
-	}
-	for _, e := range env.Events {
-		if _, ok := names[e.TimelineID]; !ok {
-			return nil, fmt.Errorf("event %s: its timeline %s is not in the export", e.ID, e.TimelineID)
-		}
-	}
-	for _, a := range env.Annotations {
-		if _, ok := names[a.TimelineID]; !ok {
-			return nil, fmt.Errorf("annotation %s: its timeline %s is not in the export", a.ID, a.TimelineID)
-		}
-	}
-
-	return names, nil
-}
-
-// overlayName returns the names of timelines joined by +, naming an overlay of them.
-func overlayName(timelines []Timeline) string {
-	names := make([]string, 0, len(timelines))
-	for _, t := range timelines {
-		names = append(names, t.Name)
-	}
-
-	return strings.Join(names, " + ")
 }
 
 // markdownRenderer renders the blocks of a Markdown export. Each block is a heading, paragraph
@@ -195,30 +120,26 @@ type markdownRenderer struct {
 	urls        *regexp.Regexp
 }
 
-// header returns the title and the metadata list: the timelines, the window events span, the
-// event summary, then exported.
-func (md markdownRenderer) header(timelines []Timeline, events []Event, exported string) []string {
-	metadata := md.timelinesMetadata(timelines)
-	if len(events) > 0 {
-		metadata = append(metadata, "- **Window:** "+md.window(events))
+// header returns the title and the metadata list: the timelines, the window v's events span,
+// the event summary, then exported.
+func (md markdownRenderer) header(v view, exported string) []string {
+	metadata := md.timelinesMetadata(v.Timelines)
+	if len(v.Events) > 0 {
+		metadata = append(metadata, "- **Window:** "+md.window(v.Events))
 	}
-	metadata = append(metadata, eventSummary(events), exported)
+	metadata = append(metadata, eventSummary(v.Events), exported)
 
-	return []string{md.title(timelines), strings.Join(metadata, "\n")}
+	return []string{md.title(v.title()), strings.Join(metadata, "\n")}
 }
 
-// title returns the heading naming one timeline, by its title and name, or an overlay, by
-// its timelines' names.
-func (md markdownRenderer) title(timelines []Timeline) string {
-	if len(timelines) > 1 {
-		return "# " + md.oneLine(overlayName(timelines))
-	}
-	t := timelines[0]
-	if strings.TrimSpace(t.Title) != "" {
-		return "# " + md.oneLine(t.Title) + " (" + md.oneLine(t.Name) + ")"
+// title returns the heading naming a timeline by title and name, or by name alone when its
+// title is blank.
+func (md markdownRenderer) title(title, name string) string {
+	if strings.TrimSpace(title) != "" {
+		return "# " + md.oneLine(title) + " (" + md.oneLine(name) + ")"
 	}
 
-	return "# " + md.oneLine(t.Name)
+	return "# " + md.oneLine(name)
 }
 
 // timelinesMetadata returns the metadata bullets on the timelines: one timeline's refs, or an
