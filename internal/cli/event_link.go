@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -294,19 +295,6 @@ func (c linkChange) render(o output) error {
 	return o.notify("%s `%s` %s `%s` as %s.", did, c.ends.ref(0), c.preposition, c.ends.ref(1), c.link.Kind)
 }
 
-// linkJSON is the CLI's link object's keys, every one always present.
-type linkJSON struct {
-	ID          string  `json:"id"`
-	FromEventID string  `json:"from_event_id"`
-	ToEventID   string  `json:"to_event_id"`
-	Kind        string  `json:"kind"`
-	CreatedAt   string  `json:"created_at"`
-	Author      *string `json:"author"`
-}
-
-func newLinkJSON(l timeline.Link) linkJSON {
-	return linkJSON{
-		ID: l.ID, FromEventID: l.FromEventID, ToEventID: l.ToEventID, Kind: string(l.Kind),
-		CreatedAt: timeline.FormatInstant(l.CreatedAt), Author: l.Author,
-	}
+func newLinkJSON(l timeline.Link) export.Link {
+	return export.NewLink(l)
 }

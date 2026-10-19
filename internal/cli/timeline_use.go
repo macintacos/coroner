@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -107,7 +108,7 @@ func (u timelineUsed) render(o output) error {
 }
 
 // object returns the timeline's object, or nil, which encodes as null, for --clear.
-func (u timelineUsed) object() *timelineJSON {
+func (u timelineUsed) object() *export.Timeline {
 	if u.timeline == nil {
 		return nil
 	}

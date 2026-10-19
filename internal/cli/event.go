@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -38,24 +39,10 @@ func newEventCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// eventJSON is the canonical event object's keys, every one always present.
+// eventJSON is the export event with its output-only attachments.
 type eventJSON struct {
-	ID             string   `json:"id"`
-	TimelineID     string   `json:"timeline_id"`
-	Seq            *int64   `json:"seq"`
-	OccurredAt     string   `json:"occurred_at"`
-	OccurredOffset *int     `json:"occurred_offset"`
-	Precision      string   `json:"precision"`
-	Approximate    bool     `json:"approximate"`
-	OccurredRaw    *string  `json:"occurred_raw"`
-	EndedAt        *string  `json:"ended_at"`
-	Source         *string  `json:"source"`
-	Tags           []string `json:"tags"`
-	Text           string   `json:"text"`
-	URL            *string  `json:"url"`
-	Author         *string  `json:"author"`
-	CreatedAt      string   `json:"created_at"`
-	UpdatedAt      string   `json:"updated_at"`
+	export.Event
+
 	// Never nil, so no attachments encode as [] rather than null.
 	Attachments []attachmentJSON `json:"attachments"`
 }
@@ -63,30 +50,5 @@ type eventJSON struct {
 // newEventJSON returns e's JSON object, with attachments; seq is null until the store
 // allocates one.
 func newEventJSON(e timeline.Event, attachments []attachmentJSON) eventJSON {
-	j := eventJSON{
-		ID:             e.ID,
-		TimelineID:     e.TimelineID,
-		OccurredAt:     timeline.FormatInstant(e.OccurredAt),
-		OccurredOffset: e.OccurredOffset,
-		Precision:      string(e.Precision),
-		Approximate:    e.Approximate,
-		OccurredRaw:    e.OccurredRaw,
-		Source:         e.Source,
-		// Never nil, so no tags encodes as [] rather than null.
-		Tags:        append([]string{}, e.Tags...),
-		Text:        e.Text,
-		URL:         e.URL,
-		Author:      e.Author,
-		CreatedAt:   timeline.FormatInstant(e.CreatedAt),
-		UpdatedAt:   timeline.FormatInstant(e.UpdatedAt),
-		Attachments: append([]attachmentJSON{}, attachments...),
-	}
-	if e.Seq > 0 {
-		j.Seq = &e.Seq
-	}
-	if e.EndedAt != nil {
-		j.EndedAt = new(timeline.FormatInstant(*e.EndedAt))
-	}
-
-	return j
+	return eventJSON{Event: export.NewEvent(e), Attachments: append([]attachmentJSON{}, attachments...)}
 }

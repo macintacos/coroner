@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -51,25 +52,8 @@ func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// timelineJSON is the canonical timeline object's keys. updated_at is left out: adding a key
-// later is additive, removing one is not.
-type timelineJSON struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Title     string   `json:"title"`
-	Refs      []string `json:"refs"`
-	CreatedAt string   `json:"created_at"`
-}
-
-func newTimelineJSON(t timeline.Timeline) timelineJSON {
-	return timelineJSON{
-		ID:    t.ID,
-		Name:  t.Name,
-		Title: t.Title,
-		// Never nil, so an empty list encodes as [] rather than null.
-		Refs:      append([]string{}, t.Refs...),
-		CreatedAt: timeline.FormatInstant(t.CreatedAt),
-	}
+func newTimelineJSON(t timeline.Timeline) export.Timeline {
+	return export.NewTimeline(t)
 }
 
 // findTimeline returns the timeline called nameOrID, or else the one with that id. A name
