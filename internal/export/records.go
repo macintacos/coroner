@@ -3,7 +3,6 @@ package export
 import (
 	"bytes"
 	"cmp"
-	"fmt"
 	"io"
 	"slices"
 	"time"
@@ -73,79 +72,40 @@ func (l Link) line() any {
 // occurred at, timeline id, seq, then id, each followed by its annotations, by created at
 // then id; then the links, by created at then id. Every event and annotation is followed by
 // its attachments, by created at then id, before anything else. env's own list order does not
-// matter. It fails when an annotation's event, an attachment's event or annotation, or either
-// of a link's events is not in env.
+// matter. It fails unless env is consistent (see prepare).
 func Records(env Envelope) ([]Record, error) {
-	byOwner, err := groupAttachments(env)
-	if err != nil {
-		return nil, err
-	}
-	links, err := sortedLinks(env)
+	v, err := prepare(env)
 	if err != nil {
 		return nil, err
 	}
 
-	annotations := slices.SortedFunc(slices.Values(env.Annotations), compareAnnotations)
-	byEvent := map[string][]Annotation{}
 	records := []Record{env.header()}
 	appendWithAttachments := func(r Record, ownerID string) {
 		records = append(records, r)
-		for _, f := range byOwner[ownerID] {
+		for _, f := range v.Attachments[ownerID] {
 			records = append(records, f)
 		}
 	}
-	for _, t := range slices.SortedFunc(slices.Values(env.Timelines), compareTimelines) {
+	for _, t := range slices.SortedFunc(slices.Values(v.Timelines), compareTimelines) {
 		records = append(records, t)
 	}
-	for _, a := range annotations {
-		if a.EventID == nil {
-			appendWithAttachments(a, a.ID)
-		} else {
-			byEvent[*a.EventID] = append(byEvent[*a.EventID], a)
-		}
+	for _, a := range v.OnTimeline {
+		appendWithAttachments(a, a.ID)
 	}
 	for _, s := range slices.SortedFunc(slices.Values(env.Sources), compareSources) {
 		records = append(records, s)
 	}
-	for _, e := range slices.SortedFunc(slices.Values(env.Events), compareEvents) {
+	for _, e := range v.Events {
 		appendWithAttachments(e, e.ID)
-		for _, a := range byEvent[e.ID] {
+		for _, a := range v.ByEvent[e.ID] {
 			appendWithAttachments(a, a.ID)
 		}
-		delete(byEvent, e.ID)
 	}
-
-	// Every event's annotations were written and deleted above, so any left are orphans.
-	for _, a := range annotations {
-		if a.EventID != nil && byEvent[*a.EventID] != nil {
-			return nil, fmt.Errorf("annotation %s: its event %s is not in the export", a.ID, *a.EventID)
-		}
-	}
-	for _, l := range links {
+	for _, l := range v.Links {
 		records = append(records, l)
 	}
 
 	return records, nil
-}
-
-// sortedLinks returns env's links by created at then id, and fails naming the first whose event
-// is not in env.
-func sortedLinks(env Envelope) ([]Link, error) {
-	events := map[string]bool{}
-	for _, e := range env.Events {
-		events[e.ID] = true
-	}
-
-	links := slices.SortedFunc(slices.Values(env.Links), compareLinks)
-	for _, l := range links {
-		for _, id := range []string{l.FromEventID, l.ToEventID} {
-			if !events[id] {
-				return nil, fmt.Errorf("link %s: its event %s is not in the export", l.ID, id)
-			}
-		}
-	}
-
-	return links, nil
 }
 
 func compareLinks(a, b Link) int {
@@ -177,32 +137,6 @@ func compareSources(a, b Source) int {
 
 func compareAnnotations(a, b Annotation) int {
 	return cmp.Or(time.Time(a.CreatedAt).Compare(time.Time(b.CreatedAt)), cmp.Compare(a.ID, b.ID))
-}
-
-// groupAttachments returns env's attachments by created at then id, keyed by the id of the
-// event or annotation that keeps each, and fails naming the first whose owner is not in env.
-func groupAttachments(env Envelope) (map[string][]Attachment, error) {
-	events, annotations := map[string]bool{}, map[string]bool{}
-	for _, e := range env.Events {
-		events[e.ID] = true
-	}
-	for _, a := range env.Annotations {
-		annotations[a.ID] = true
-	}
-
-	byOwner := map[string][]Attachment{}
-	for _, f := range slices.SortedFunc(slices.Values(env.Attachments), compareAttachments) {
-		switch {
-		case f.EventID != nil && !events[*f.EventID]:
-			return nil, fmt.Errorf("attachment %s: its event %s is not in the export", f.ID, *f.EventID)
-		case f.AnnotationID != nil && !annotations[*f.AnnotationID]:
-			return nil, fmt.Errorf("attachment %s: its annotation %s is not in the export", f.ID, *f.AnnotationID)
-		}
-		ownerID := deref(cmp.Or(f.EventID, f.AnnotationID))
-		byOwner[ownerID] = append(byOwner[ownerID], f)
-	}
-
-	return byOwner, nil
 }
 
 func compareAttachments(a, b Attachment) int {

@@ -2,7 +2,6 @@ package export
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -30,8 +29,7 @@ const (
 // zone being UTC, and the title naming the zone by its abbreviations. An overlay of several
 // timelines has a section per timeline and source, <timeline>/<source> or
 // <timeline>/(no source), all in order of first appearance, and its title names each timeline.
-// It fails, writing nothing, unless env holds a timeline and, in an overlay, the timeline of
-// every event and annotation.
+// It fails, writing nothing, unless env is consistent (see prepare).
 func WriteMermaid(w io.Writer, env Envelope, zone *time.Location) error {
 	diagram, err := mermaid(env, zone)
 	if err != nil {
@@ -56,17 +54,14 @@ func MermaidSize(env Envelope, zone *time.Location) (int, error) {
 
 // mermaid returns env's diagram as WriteMermaid writes it.
 func mermaid(env Envelope, zone *time.Location) (string, error) {
-	if len(env.Timelines) == 0 {
-		return "", errors.New("want a timeline, got none")
-	}
-	names, err := overlayNames(env)
+	v, err := prepare(env)
 	if err != nil {
 		return "", err
 	}
 
 	gantt := mermaidRenderer{
 		zone:          cmp.Or(zone, time.UTC),
-		timelineNames: names,
+		timelineNames: v.Names,
 		// Mermaid decodes #<code>; entities, so a literal # is written as one. A : ends a task
 		// label, % starts a comment or directive, and Mermaid before 10.8.0 ends text at ;.
 		escaper: strings.NewReplacer("#", "#35;", ":", "#58;", "%", "#37;", ";", "#59;"),
@@ -77,8 +72,7 @@ func mermaid(env Envelope, zone *time.Location) (string, error) {
 			`\s`, `[\s\x{0B}\x{FEFF}\p{Z}]`,
 		)),
 	}
-	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
-	rows := slices.Concat(gantt.header(env.Timelines, events, env.ExportedAt), gantt.sections(events))
+	rows := slices.Concat(gantt.header(v, env.ExportedAt), gantt.sections(v.Events))
 
 	return strings.Join(rows, "\n") + "\n", nil
 }
@@ -92,23 +86,14 @@ type mermaidRenderer struct {
 }
 
 // header returns the diagram's opening lines: the title, then the zone, and the date formats.
-func (gantt mermaidRenderer) header(timelines []Timeline, events []Event, exportedAt Instant) []string {
+func (gantt mermaidRenderer) header(v view, exportedAt Instant) []string {
+	title, name := v.title()
 	return []string{
 		"gantt",
-		"  title " + gantt.title(timelines) + " (" + gantt.text(gantt.zoneNames(events, exportedAt)) + ")",
+		"  title " + gantt.text(name+" "+title) + " (" + gantt.text(gantt.zoneNames(v.Events, exportedAt)) + ")",
 		"  dateFormat " + mermaidDateFormat,
 		"  axisFormat %H:%M:%S",
 	}
-}
-
-// title returns the diagram's title text: an overlay's timelines' names, or one timeline's name
-// and title.
-func (gantt mermaidRenderer) title(timelines []Timeline) string {
-	if len(timelines) > 1 {
-		return gantt.text(overlayName(timelines))
-	}
-
-	return gantt.text(timelines[0].Name + " " + timelines[0].Title)
 }
 
 // zoneNames returns the zone abbreviations of events' instants, in order of first appearance,

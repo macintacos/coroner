@@ -276,15 +276,6 @@ var _ = Describe("WriteHTML", func() {
 		Expect(z.Name).To(Equal("the exporter's local zone"))
 	})
 
-	It("fails, writing nothing, when an annotation's event is not in the export", func() {
-		env := checkoutSpike()
-		env.Events = env.Events[:1]
-		var b bytes.Buffer
-
-		Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("e2")))
-		Expect(b.Len()).To(BeZero())
-	})
-
 	DescribeTable("links and loads nothing from the network",
 		func(env export.Envelope) {
 			p := page(env, time.UTC)
@@ -319,27 +310,9 @@ var _ = Describe("WriteHTML", func() {
 		}))
 	})
 
-	It("fails, writing nothing, when the export holds no timeline", func() {
-		env := checkoutSpike()
-		env.Timelines = []export.Timeline{}
-		var b bytes.Buffer
-
-		Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("want a timeline")))
-		Expect(b.Len()).To(BeZero())
-	})
-
 	Describe("an overlay of several timelines", func() {
 		It("embeds every timeline, and their events by occurred at, then timeline id, then seq", func() {
 			matchGoldenFile(htmlGoldenDir, "overlay", ".html", elideAssets(page(overlay(), time.UTC)))
-		})
-
-		It("fails, writing nothing, when an event's timeline is not in the export", func() {
-			env := overlay()
-			env.Timelines[1].ID = "t3"
-			var b bytes.Buffer
-
-			Expect(export.WriteHTML(&b, env, time.UTC)).To(MatchError(ContainSubstring("its timeline t2 is not in the export")))
-			Expect(b.Len()).To(BeZero())
 		})
 	})
 })

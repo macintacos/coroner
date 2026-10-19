@@ -71,10 +71,14 @@ type svgText struct {
 // its refs, the zone and when it was exported, then a time axis over the export's window with
 // ticks on zone's wall clock (nil is UTC), and a lane per source in order of first appearance,
 // then (no source), with each event in its own row. It fails, writing nothing, unless env
-// holds one timeline.
+// holds one timeline and is consistent (see prepare).
 func WriteSVG(w io.Writer, env Envelope, zone *time.Location) error {
 	if len(env.Timelines) != 1 {
 		return fmt.Errorf("want one timeline, got %d", len(env.Timelines))
+	}
+	v, err := prepare(env)
+	if err != nil {
+		return err
 	}
 
 	// text/template escapes nothing, so every string from the export goes through text.
@@ -83,7 +87,7 @@ func WriteSVG(w io.Writer, env Envelope, zone *time.Location) error {
 		return err
 	}
 	var picture bytes.Buffer
-	err = shell.Execute(&picture, newSVGPicture(env, cmp.Or(zone, time.UTC)))
+	err = shell.Execute(&picture, newSVGPicture(env, v, cmp.Or(zone, time.UTC)))
 	if err != nil {
 		return err
 	}
@@ -92,17 +96,18 @@ func WriteSVG(w io.Writer, env Envelope, zone *time.Location) error {
 	return err
 }
 
-// newSVGPicture returns what the template prints for env in zone.
-func newSVGPicture(env Envelope, zone *time.Location) svgPicture {
-	t := env.Timelines[0]
-	title := flatten(t.Name)
-	if strings.TrimSpace(t.Title) != "" {
-		title = flatten(t.Title) + " (" + flatten(t.Name) + ")"
+// newSVGPicture returns what the template prints for v in zone, stamped with env's export
+// time, version and query.
+func newSVGPicture(env Envelope, v view, zone *time.Location) svgPicture {
+	heading, name := v.title()
+	title := flatten(name)
+	if strings.TrimSpace(heading) != "" {
+		title = flatten(heading) + " (" + flatten(name) + ")"
 	}
 
 	var header []string
-	if len(t.Refs) > 0 {
-		header = append(header, flatten(strings.Join(t.Refs, ", ")))
+	if refs := v.Timelines[0].Refs; len(refs) > 0 {
+		header = append(header, flatten(strings.Join(refs, ", ")))
 	}
 	exported := time.Time(env.ExportedAt).In(zone)
 	header = append(header,
@@ -120,11 +125,10 @@ func newSVGPicture(env Envelope, zone *time.Location) svgPicture {
 		y += svgHeaderLeading
 	}
 
-	events := slices.SortedFunc(slices.Values(env.Events), compareEvents)
 	picture.PlotY, picture.NoteY = y+svgPlotGap, y+svgNoteGap
-	picture.Plot = layoutSVG(events, exportWindow(env.Query, events), zone)
+	picture.Plot = layoutSVG(v, exportWindow(env.Query, v.Events), zone)
 	picture.Height = picture.PlotY + picture.Plot.Height + svgMargin
-	if len(events) == 0 {
+	if len(v.Events) == 0 {
 		picture.Height = picture.NoteY + svgMargin
 	}
 
@@ -205,22 +209,22 @@ type svgMark struct {
 	Anchor       string
 }
 
-// layoutSVG lays out events, in occurred at and seq order, on an axis over window with
+// layoutSVG lays out v's events, in occurred at and seq order, on an axis over window with
 // ticks on zone's wall clock: a lane per source in order of first appearance, then the
-// events with none, each event in its own row. With events, window must not be empty;
+// events with none, each event in its own row. When v has events, window must not be empty;
 // exportWindow's never is.
-func layoutSVG(events []Event, window svgWindow, zone *time.Location) svgLayout {
-	if len(events) == 0 {
+func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
+	if len(v.Events) == 0 {
 		return svgLayout{}
 	}
 
 	axis := svgAxis{window: window}
 	layout := svgLayout{Height: svgAxisHeight, Ticks: axis.ticks(zone)}
 	palette := sourcePalette()
-	for i, g := range groupEvents(events, sourceOf) {
+	for _, g := range groupEvents(v.Events, sourceOf) {
 		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: svgMuted, Y: layout.Height}
 		if g.key != "" {
-			lane.Label, lane.Title, lane.Color = truncate(g.key, svgLaneLabelRunes), g.key, palette[i%len(palette)].Light
+			lane.Label, lane.Title, lane.Color = truncate(g.key, svgLaneLabelRunes), g.key, palette[v.slot(g.key)].Light
 		}
 		for row, e := range g.events {
 			lane.Marks = append(lane.Marks, axis.mark(e, zone, lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))

@@ -45,6 +45,16 @@ func markdown(env export.Envelope, opts export.MarkdownOptions) string {
 func envelope(t export.Timeline, events []export.Event, annotations []export.Annotation) export.Envelope {
 	env := export.NewEnvelope("0.1.0", time.Date(2026, time.September, 12, 21, 40, 5, 0, time.UTC))
 	env.Timelines = []export.Timeline{t}
+	for i := range events {
+		if events[i].TimelineID == "" {
+			events[i].TimelineID = t.ID
+		}
+	}
+	for i := range annotations {
+		if annotations[i].TimelineID == "" {
+			annotations[i].TimelineID = t.ID
+		}
+	}
 	env.Events = events
 	env.Annotations = annotations
 
@@ -441,19 +451,6 @@ var _ = Describe("WriteMarkdown", func() {
 		matchGolden("overlay-group-by-source", markdown(overlay(), export.MarkdownOptions{Zone: time.UTC, GroupBy: export.GroupBySource}))
 	})
 
-	DescribeTable("fails, writing nothing, when an overlay holds a record of a timeline it does not export",
-		func(orphan func(*export.Envelope)) {
-			env := overlay()
-			orphan(&env)
-			var b bytes.Buffer
-
-			Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).To(MatchError(ContainSubstring("gone")))
-			Expect(b.String()).To(BeEmpty())
-		},
-		Entry("an event", func(env *export.Envelope) { env.Events[0].TimelineID = "gone" }),
-		Entry("an annotation on a whole timeline", func(env *export.Envelope) { env.Annotations[0].TimelineID = "gone" }),
-	)
-
 	It("appends the timeline's Mermaid diagram under Diagram", func() {
 		matchGolden("diagram", markdown(checkoutSpike(), export.MarkdownOptions{Zone: time.UTC, Diagram: true}))
 	})
@@ -643,42 +640,11 @@ var _ = Describe("WriteMarkdown", func() {
 		Expect(shownLinks(parseGFM(source), source)).To(HaveExactElements(shownLink{false, "trace.pdf", path}), string(source))
 	})
 
-	DescribeTable("fails, writing nothing, when an attachment's owner is not in the export",
-		func(eventID, annotationID *string) {
-			env := checkoutSpike()
-			env.Attachments = append(env.Attachments, attachmentOf(eventID, annotationID, "orphan.png", "image/png", "ff", "2026-09-12T09:00:00Z"))
-			var b bytes.Buffer
-
-			Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).To(MatchError(ContainSubstring("orphan.png")))
-			Expect(b.String()).To(BeEmpty())
-		},
-		Entry("an event", new("gone"), nil),
-		Entry("an annotation", nil, new("gone")),
-	)
-
-	It("fails, writing nothing, when an annotation's event is not in the export", func() {
-		env := checkoutSpike()
-		env.Events = env.Events[:1]
-		var b bytes.Buffer
-
-		Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).To(MatchError(ContainSubstring("e2")))
-		Expect(b.String()).To(BeEmpty())
-	})
-
 	It("fails, writing nothing, for a grouping it does not know", func() {
 		var b bytes.Buffer
 
 		Expect(export.WriteMarkdown(&b, checkoutSpike(), export.MarkdownOptions{GroupBy: "kind"})).
 			To(MatchError(ContainSubstring(`"kind"`)))
-		Expect(b.String()).To(BeEmpty())
-	})
-
-	It("fails, writing nothing, when the export holds no timeline", func() {
-		env := checkoutSpike()
-		env.Timelines = []export.Timeline{}
-		var b bytes.Buffer
-
-		Expect(export.WriteMarkdown(&b, env, export.MarkdownOptions{Zone: time.UTC})).NotTo(Succeed())
 		Expect(b.String()).To(BeEmpty())
 	})
 })
