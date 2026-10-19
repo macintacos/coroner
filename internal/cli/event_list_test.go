@@ -32,6 +32,11 @@ var _ = Describe("event list", func() {
 		}.app(args...))
 	}
 
+	var (
+		seeded    cli.SeededHome
+		seededIDs int
+	)
+
 	type page struct {
 		Events []struct {
 			Seq  int64  `json:"seq"`
@@ -58,19 +63,24 @@ var _ = Describe("event list", func() {
 	BeforeEach(func(ctx SpecContext) {
 		home = GinkgoT().TempDir()
 		ids = 0
-		for _, args := range [][]string{
-			{"timeline", "create", "mongo-outage"},
-			{"timeline", "use", "mongo-outage"},
-			{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:00:00Z", "--source", "pagerduty", "--tag", "phase:detect"},
-			{
-				"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--source", "mongod",
-				"--tag", "election", "--tag", "phase:detect",
-			},
-			{"event", "add", "New primary elected", "--at", "2026-09-11T03:14:07Z", "--source", "mongod", "--tag", "election"},
-			{"event", "add", "Deploy rolled back", "--at", "2026-09-11T04:00:00Z", "--source", "slack"},
-		} {
-			Expect(run(ctx, args...)).To(Equal(0), errOut.String())
-		}
+		seeded.Into(home, func() {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			for _, args := range [][]string{
+				{"timeline", "create", "mongo-outage"},
+				{"timeline", "use", "mongo-outage"},
+				{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:00:00Z", "--source", "pagerduty", "--tag", "phase:detect"},
+				{
+					"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--source", "mongod",
+					"--tag", "election", "--tag", "phase:detect",
+				},
+				{"event", "add", "New primary elected", "--at", "2026-09-11T03:14:07Z", "--source", "mongod", "--tag", "election"},
+				{"event", "add", "Deploy rolled back", "--at", "2026-09-11T04:00:00Z", "--source", "slack"},
+			} {
+				Expect(run(ctx, args...)).To(Equal(0), errOut.String())
+			}
+			seededIDs = ids
+		})
+		ids = seededIDs
 	})
 
 	It("lists every event by occurred at, then seq, with no limit and nothing truncated", func(ctx SpecContext) {

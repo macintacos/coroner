@@ -214,6 +214,7 @@ var _ = Describe("timeline forms", func() {
 		}
 
 		BeforeEach(func(ctx SpecContext) {
+			writeMigratedDatabase(db)
 			seed(ctx, db)
 		})
 

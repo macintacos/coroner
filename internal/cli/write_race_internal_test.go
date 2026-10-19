@@ -36,6 +36,7 @@ func (r ran) kind() Kind {
 func realRunner(ctx context.Context) func(args ...string) ran {
 	home := GinkgoT().TempDir()
 	db := filepath.Join(home, "coroner.db")
+	writeMigratedDatabase(db)
 	return func(args ...string) ran {
 		var out, errOut bytes.Buffer
 		app := scratchApp(home, &out, &errOut, uuid.NewV7)

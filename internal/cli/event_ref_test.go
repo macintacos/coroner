@@ -49,6 +49,10 @@ var _ = Describe("event view, edit and delete", func() {
 			},
 		}.app(args...))
 	}
+	var (
+		seeded    cli.SeededHome
+		seededIDs int
+	)
 	withStore := func(ctx SpecContext) *store.Store {
 		GinkgoHelper()
 		s, err := store.Open(ctx, filepath.Join(home, "coroner.db"))
@@ -65,16 +69,21 @@ var _ = Describe("event view, edit and delete", func() {
 		newYork, err := time.LoadLocation("America/New_York")
 		Expect(err).NotTo(HaveOccurred())
 		now = time.Date(2026, time.September, 12, 21, 30, 0, 0, newYork)
-		for _, args := range [][]string{
-			{"timeline", "create", "mongo-outage"},
-			{"timeline", "use", "mongo-outage"},
-			{"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07.412Z", "--source", "mongod", "--tag", "election"},
-			{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:15:00Z"},
-			{"timeline", "create", "mongo-failover"},
-			{"event", "add", "Failover drill", "-t", "mongo-failover", "--at", "2026-09-11T05:00:00Z"},
-		} {
-			Expect(run(ctx, args...)).To(Equal(0), errOut.String())
-		}
+		seeded.Into(home, func() {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			for _, args := range [][]string{
+				{"timeline", "create", "mongo-outage"},
+				{"timeline", "use", "mongo-outage"},
+				{"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07.412Z", "--source", "mongod", "--tag", "election"},
+				{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:15:00Z"},
+				{"timeline", "create", "mongo-failover"},
+				{"event", "add", "Failover drill", "-t", "mongo-failover", "--at", "2026-09-11T05:00:00Z"},
+			} {
+				Expect(run(ctx, args...)).To(Equal(0), errOut.String())
+			}
+			seededIDs = ids
+		})
+		ids = seededIDs
 	})
 
 	Describe("view", func() {

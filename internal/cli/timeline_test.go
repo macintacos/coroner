@@ -112,6 +112,7 @@ var _ = Describe("timeline", func() {
 
 	Describe("list", func() {
 		BeforeEach(func(ctx SpecContext) {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "zeta", "--title", "oldest")).To(Equal(0), errOut.String())
 			now = now.Add(time.Minute)
 			Expect(run(ctx, "timeline", "create", "alpha")).To(Equal(0), errOut.String())
@@ -170,6 +171,7 @@ var _ = Describe("timeline", func() {
 		}
 
 		BeforeEach(func(ctx SpecContext) {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage", "--title", "Primary election storm", "--ref", "INC-4821")).
 				To(Equal(0), errOut.String())
 
@@ -399,6 +401,7 @@ var _ = Describe("timeline", func() {
 
 	Describe("use", func() {
 		BeforeEach(func(ctx SpecContext) {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})
 
@@ -430,6 +433,7 @@ var _ = Describe("timeline", func() {
 
 	Describe("selecting the timeline to act on", func() {
 		BeforeEach(func(ctx SpecContext) {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			for _, name := range []string{"a", "b", "c"} {
 				Expect(run(ctx, "timeline", "create", name)).To(Equal(0), errOut.String())
 			}
@@ -503,6 +507,7 @@ var _ = Describe("timeline", func() {
 		}
 
 		BeforeEach(func(ctx SpecContext) {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})
 

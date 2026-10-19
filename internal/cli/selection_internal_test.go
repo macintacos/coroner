@@ -70,21 +70,31 @@ var _ = Describe("timeline selection", func() {
 		}
 	}
 
+	var (
+		seeded    seededHome
+		seededIDs int
+	)
+
 	BeforeEach(func(ctx SpecContext) {
 		ids := 0
 		home := GinkgoT().TempDir()
 		db = filepath.Join(home, "coroner.db")
 		app = scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
 		app.In = strings.NewReader("")
-		for _, args := range [][]string{
-			{"timeline", "create", "alpha"},
-			{"timeline", "create", "beta"},
-			{"timeline", "create", "gamma"},
-			{"timeline", "use", "gamma"},
-			{"overlay", "create", "o", "-t", "beta", "-t", "alpha"},
-		} {
-			run(ctx, args...)
-		}
+		seeded.into(home, func() {
+			writeMigratedDatabase(db)
+			for _, args := range [][]string{
+				{"timeline", "create", "alpha"},
+				{"timeline", "create", "beta"},
+				{"timeline", "create", "gamma"},
+				{"timeline", "use", "gamma"},
+				{"overlay", "create", "o", "-t", "beta", "-t", "alpha"},
+			} {
+				run(ctx, args...)
+			}
+			seededIDs = ids
+		})
+		ids = seededIDs
 
 		var err error
 		s, err = store.Open(ctx, db)

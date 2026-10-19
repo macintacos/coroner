@@ -65,6 +65,11 @@ var _ = Describe("timelineLoader", func() {
 		return m
 	}
 
+	var (
+		seeded    seededHome
+		seededIDs int
+	)
+
 	shownSeqs := func(m tea.Model) []int64 {
 		GinkgoHelper()
 		var seqs []int64
@@ -98,19 +103,24 @@ var _ = Describe("timelineLoader", func() {
 		db = filepath.Join(home, "coroner.db")
 		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 
-		for _, args := range [][]string{
-			{"timeline", "create", "mongo-outage"},
-			{"timeline", "use", "mongo-outage"},
-			{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:00:00Z", "--source", "pagerduty", "--tag", "phase:detect"},
-			{
-				"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--source", "mongod",
-				"--tag", "election", "--tag", "phase:detect",
-			},
-			{"event", "add", "New primary elected", "--at", "2026-09-11T03:14:07Z", "--source", "mongod", "--tag", "election"},
-			{"event", "add", "Deploy rolled back", "--at", "2026-09-11T04:00:00Z", "--source", "slack"},
-		} {
-			Expect(run(ctx, args...)).To(Equal(0), errOut.String())
-		}
+		seeded.into(home, func() {
+			writeMigratedDatabase(db)
+			for _, args := range [][]string{
+				{"timeline", "create", "mongo-outage"},
+				{"timeline", "use", "mongo-outage"},
+				{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:00:00Z", "--source", "pagerduty", "--tag", "phase:detect"},
+				{
+					"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--source", "mongod",
+					"--tag", "election", "--tag", "phase:detect",
+				},
+				{"event", "add", "New primary elected", "--at", "2026-09-11T03:14:07Z", "--source", "mongod", "--tag", "election"},
+				{"event", "add", "Deploy rolled back", "--at", "2026-09-11T04:00:00Z", "--source", "slack"},
+			} {
+				Expect(run(ctx, args...)).To(Equal(0), errOut.String())
+			}
+			seededIDs = ids
+		})
+		ids = seededIDs
 	})
 
 	DescribeTable("keeps the events event list keeps with the equivalent flags",

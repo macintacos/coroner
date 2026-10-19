@@ -187,6 +187,7 @@ var _ = Describe("add forms", func() {
 			db = filepath.Join(home, "coroner.db")
 			app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 			app.InIsTTY, app.OutIsTTY = true, true
+			writeMigratedDatabase(db)
 
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})

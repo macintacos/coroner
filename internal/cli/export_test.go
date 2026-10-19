@@ -8,6 +8,13 @@ import (
 
 func CommandTopics() []HelpTopic { return commandTopics() }
 
+func WriteMigratedDatabase(path string) { writeMigratedDatabase(path) }
+
+// SeededHome is seededHome for the external specs.
+type SeededHome struct{ home seededHome }
+
+func (h *SeededHome) Into(home string, seed func()) { h.home.into(home, seed) }
+
 func CheckCommandLine(cmd *cobra.Command, args []string) error { return checkCommandLine(cmd, args) }
 
 // RunWithThrowawayDeprecation is Run with one more global flag, --throwaway, deprecated in

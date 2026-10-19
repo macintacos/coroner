@@ -29,6 +29,7 @@ var _ = Describe("source list", func() {
 	BeforeEach(func(ctx SpecContext) {
 		home = GinkgoT().TempDir()
 		created := time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC)
+		cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 		s, err := store.Open(ctx, filepath.Join(home, "coroner.db"))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)

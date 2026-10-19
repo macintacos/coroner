@@ -40,6 +40,11 @@ var _ = Describe("timeline export", func() {
 			newID: countedIDs(&ids),
 		}.app(args...))
 	}
+	var (
+		seeded    cli.SeededHome
+		seededIDs int
+		seededNow time.Time
+	)
 	exportAs := func(ctx SpecContext, format string) string {
 		GinkgoHelper()
 		Expect(run(ctx, "timeline", "export", "--format", format)).To(Equal(0), errOut.String())
@@ -53,15 +58,20 @@ var _ = Describe("timeline export", func() {
 		tick = 0
 		outTTY = false
 		configFile = ""
-		for _, args := range [][]string{
-			{"timeline", "create", "mongo-outage"},
-			{"timeline", "use", "mongo-outage"},
-			{"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--source", "mongod", "--author", "julian"},
-			{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:15:00Z", "--source", "pagerduty", "--author", "julian"},
-			{"annotation", "add", "rs.status() showed no primary", "-e", "1", "--kind", "evidence", "--author", "julian"},
-		} {
-			Expect(run(ctx, args...)).To(Equal(0), errOut.String())
-		}
+		seeded.Into(home, func() {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			for _, args := range [][]string{
+				{"timeline", "create", "mongo-outage"},
+				{"timeline", "use", "mongo-outage"},
+				{"event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--source", "mongod", "--author", "julian"},
+				{"event", "add", "Pager fires for db-2", "--at", "2026-09-11T03:15:00Z", "--source", "pagerduty", "--author", "julian"},
+				{"annotation", "add", "rs.status() showed no primary", "-e", "1", "--kind", "evidence", "--author", "julian"},
+			} {
+				Expect(run(ctx, args...)).To(Equal(0), errOut.String())
+			}
+			seededIDs, seededNow = ids, now
+		})
+		ids, now = seededIDs, seededNow
 	})
 
 	DescribeTable("writes an unchanged timeline to the same bytes but for when it was exported",
@@ -307,15 +317,25 @@ var _ = Describe("timeline export", func() {
 			return found
 		}
 
+		var (
+			attached    cli.SeededHome
+			attachedIDs int
+			attachedNow time.Time
+		)
+
 		BeforeEach(func(ctx SpecContext) {
-			Expect(os.WriteFile(filepath.Join(home, "p99.png"), png, 0o600)).To(Succeed())
-			Expect(os.WriteFile(filepath.Join(home, "stepdown.log"), log, 0o600)).To(Succeed())
-			for _, args := range [][]string{
-				{"event", "edit", "1", "--attach", filepath.Join(home, "p99.png")},
-				{"annotation", "add", "The step-down, as mongod logged it", "-e", "2", "--kind", "evidence", "--attach", filepath.Join(home, "stepdown.log")},
-			} {
-				Expect(run(ctx, args...)).To(Equal(0), errOut.String())
-			}
+			attached.Into(home, func() {
+				Expect(os.WriteFile(filepath.Join(home, "p99.png"), png, 0o600)).To(Succeed())
+				Expect(os.WriteFile(filepath.Join(home, "stepdown.log"), log, 0o600)).To(Succeed())
+				for _, args := range [][]string{
+					{"event", "edit", "1", "--attach", filepath.Join(home, "p99.png")},
+					{"annotation", "add", "The step-down, as mongod logged it", "-e", "2", "--kind", "evidence", "--attach", filepath.Join(home, "stepdown.log")},
+				} {
+					Expect(run(ctx, args...)).To(Equal(0), errOut.String())
+				}
+				attachedIDs, attachedNow = ids, now
+			})
+			ids, now = attachedIDs, attachedNow
 		})
 
 		DescribeTable("writes the export, and each attachment's content under attachments/, into the directory -o names",

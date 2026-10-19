@@ -44,6 +44,10 @@ var _ = Describe("annotation", func() {
 		}.app(args...))
 	}
 
+	var (
+		seeded    cli.SeededHome
+		seededIDs int
+	)
 	storedAnnotations := func(ctx SpecContext, timelineID string) []timeline.Annotation {
 		GinkgoHelper()
 		s, err := store.Open(ctx, filepath.Join(home, "coroner.db"))
@@ -63,9 +67,14 @@ var _ = Describe("annotation", func() {
 		env = map[string]string{"HOME": home, "USER": "julian"}
 		configFile = ""
 
-		Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
-		Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0))
-		Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0))
+		seeded.Into(home, func() {
+			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
+			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0))
+			Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0))
+			seededIDs = ids
+		})
+		ids = seededIDs
 	})
 
 	Describe("add", func() {

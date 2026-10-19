@@ -64,9 +64,19 @@ var _ = Describe("event add", func() {
 	})
 
 	When("a timeline is current", func() {
+		var (
+			seeded    cli.SeededHome
+			seededIDs int
+		)
+
 		BeforeEach(func(ctx SpecContext) {
-			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
-			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0))
+			seeded.Into(home, func() {
+				cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+				Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
+				Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0))
+				seededIDs = ids
+			})
+			ids = seededIDs
 		})
 
 		It("adds the event and prints it as JSON, with no offset for a Z time", func(ctx SpecContext) {

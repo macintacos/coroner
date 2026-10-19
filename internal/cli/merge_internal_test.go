@@ -30,6 +30,7 @@ var _ = Describe("merge", func() {
 
 	BeforeEach(func(ctx SpecContext) {
 		dbPath = filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		writeMigratedDatabase(dbPath)
 		var err error
 		s, err = store.Open(ctx, dbPath)
 		Expect(err).NotTo(HaveOccurred())
