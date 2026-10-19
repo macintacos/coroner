@@ -133,10 +133,12 @@
     `WriteHTML` writes the tokens into the page as custom properties with their light,
     dark and print values, so the SVG export can take the same source palette. Sources
     take palette colours by first appearance among the exported events, and a source's
-    name always shows beside its colour. `viewer.css` names no colour and reads spacing,
-    type sizes and radii from its own `:root` tokens; line-heights stay raw numbers. Specs
-    in `internal/export/theme_internal_test.go` fail when a token or source colour is not
-    a lowercase `#rrggbb`, when a text token is under WCAG AA contrast (4.5:1) on a
+    name always shows beside its colour. `view.Sources` and `view.slot` in
+    `internal/export/view.go` are the one Go implementation of that order, and `viewer.js`
+    the page's. `viewer.css` names no colour and reads spacing, type sizes and radii from
+    its own `:root` tokens; line-heights stay raw numbers. Specs in
+    `internal/export/theme_internal_test.go` fail when a token or source colour is not a
+    lowercase `#rrggbb`, when a text token is under WCAG AA contrast (4.5:1) on a
     background token, or a source colour under 3:1 on one, in either theme; line tokens
     have no contrast floor. A spec in `internal/export/html_test.go` fails when
     `viewer.css` gives a paint declaration, one whose property names a colour, background,
@@ -162,3 +164,8 @@
     only timestamp is the export's. The picture's layout is not a contract (`AGENTS.md`
     Rule 3); its goldens in `internal/export/testdata/svg/` change only through
     `go test ./internal/export -update`, with the diff read before committing.
+14. **Every writer reads the envelope through `prepare`:** `WriteMarkdown`,
+    `WriteMermaid`, `WriteHTML`, `WriteSVG` and `Records` check an `Envelope` and put it
+    in display order only through `prepare` in `internal/export/view.go`, so they fail on
+    the same inconsistencies; a writer adds only its own preconditions, such as SVG's one
+    timeline or Markdown's grouping.
