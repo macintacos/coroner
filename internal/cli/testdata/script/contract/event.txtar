@@ -38,6 +38,14 @@ exits 2 coroner event add 'Failover' --at 2026-09-11T03:20:00Z --ended 2026-09-1
 ! stdout .
 stderr '^\{"error":\{"kind":"invalid_time","message":"[^\n]+","hint":"[^\n]+"\}\}\n\z'
 
+# An --at offset beyond a day exits 2, kind invalid_time, with or without --dry-run.
+exits 2 coroner event add 'Failover' --at 2026-09-11T03:20:00+24:30 --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_time",[^\n]+\}\}\n\z'
+exits 2 coroner event add 'Failover' --at 2026-09-11T03:20:00+24:30 --dry-run --json
+! stdout .
+stderr '^\{"error":\{"kind":"invalid_time",[^\n]+\}\}\n\z'
+
 # With no timeline current, add exits 2, kind timeline_required.
 exits 0 coroner timeline use --clear
 exits 2 coroner event add 'Pager fires' --json

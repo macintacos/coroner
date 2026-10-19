@@ -224,6 +224,44 @@ var _ = Describe("event add", func() {
 			Expect(errOut.String()).To(ContainSubstring("0000 to 9999"))
 		})
 
+		DescribeTable("exits 2 with kind invalid_time on an --at offset beyond a day, with or without --dry-run, adding nothing",
+			func(ctx SpecContext, at string, dryRun bool) {
+				args := []string{"event", "add", "Failover", "--at", at, "--json"}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+
+				Expect(run(ctx, args...)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
+				Expect(storedEvents(ctx)).To(BeEmpty())
+			},
+			Entry(nil, "2026-09-11T03:14:00+24:30", false),
+			Entry(nil, "2026-09-11T03:14:00+24:30", true),
+			Entry(nil, "2026-09-11T03:14:00-24:59", false),
+			Entry(nil, "2026-09-11T03:14:00-24:59", true),
+		)
+
+		It("accepts an --at offset of exactly a day", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "add", "Failover", "--at", "2026-09-11T03:14:00+24:00", "--json")).
+				To(Equal(0), errOut.String())
+
+			Expect(out.String()).To(ContainSubstring(`"occurred_offset":86400`))
+		})
+
+		DescribeTable("exits 2 with kind usage on a flag that is not UTF-8, adding nothing",
+			func(ctx SpecContext, args ...string) {
+				Expect(run(ctx, append([]string{"event", "add", "Failover", "--json"}, args...)...)).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+				Expect(storedEvents(ctx)).To(BeEmpty())
+				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			},
+			Entry("--url", "--url", "https://logs.example.com/\xff"),
+			Entry("--author", "--author", "julian\xff"),
+			Entry("--at", "--at", "2026-09-11T03:14:00Z\xff"),
+		)
+
 		Describe("--dry-run", func() {
 			It("prints the event as it would be added, with no seq yet, and adds nothing", func(ctx SpecContext) {
 				Expect(run(ctx, "event", "add", "Deploy started", "--at", "2026-09-11T14:00:00Z", "--dry-run", "--json")).
