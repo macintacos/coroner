@@ -75,6 +75,7 @@ digraph coroner_rules_router {
     "Load rules/timeline.md" [shape=box];
     "Load rules/store.md" [shape=box];
     "Load rules/timeparse.md" [shape=box];
+    "Load rules/timetext.md" [shape=box];
     "Load rules/export.md" [shape=box];
     "Load rules/viewer.md" [shape=box];
     "Load rules/skills.md" [shape=box];
@@ -91,6 +92,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load rules/timeline.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load rules/store.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
     "What does the change touch?" -> "Load rules/timeparse.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
+    "What does the change touch?" -> "Load rules/timetext.md" [label="internal/timetext, or code that shows an event's time to people"];
     "What does the change touch?" -> "Load rules/export.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
     "What does the change touch?" -> "Load rules/viewer.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
     "What does the change touch?" -> "Load rules/skills.md" [label="skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json"];
@@ -101,8 +103,9 @@ digraph coroner_rules_router {
 ## Where things live and what to call them
 
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
-  Typed time input: `internal/timeparse`. Config file, XDG paths and precedence, and the
-  attachment blob directory beside the database: `internal/config`, whose spec fails when
+  Typed time input: `internal/timeparse`. How an event's time reads to people:
+  `internal/timetext`. Config file, XDG paths and precedence, and the attachment blob
+  directory beside the database: `internal/config`, whose spec fails when
   [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a key the
   config file accepts. JSON export types, envelope, encoder and JSONL decoder, and the
   Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`, the JSON
