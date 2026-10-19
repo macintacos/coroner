@@ -215,25 +215,22 @@ func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValue
 	}
 	dryRun, _ := in.boolean("dry-run")
 
+	now := app.Now()
 	edited := timelineEdited{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		// ponytail: find and update are separate transactions, so a concurrent edit of this
-		// timeline is overwritten; apply the edit inside one store write if that matters.
-		t, err := findTimeline(ctx, s, *nameOrID)
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		edited.timeline = timeline.Timeline{}
+		t, err := findTimeline(ctx, tx, *nameOrID)
 		if err != nil {
 			return err
 		}
-		t = edit.apply(t, app.Now())
+		t = edit.apply(t, now)
 		err = checkTimeline(t)
 		if err != nil {
 			return err
 		}
 		edited.timeline = t
-		if dryRun {
-			return checkNameFree(ctx, s, t)
-		}
 
-		err = s.UpdateTimeline(ctx, t)
+		err = tx.UpdateTimeline(ctx, t)
 		if errors.Is(err, store.ErrConflict) {
 			return timelineExistsError(t.Name, "Pick another --name.", err)
 		}
@@ -305,17 +302,4 @@ func (e timelineEdit) apply(t timeline.Timeline, now time.Time) timeline.Timelin
 	t.UpdatedAt = now
 
 	return t
-}
-
-// checkNameFree fails as the update would when a timeline other than t has t's name.
-func checkNameFree(ctx context.Context, s *store.Store, t timeline.Timeline) error {
-	holder, err := s.TimelineByName(ctx, t.Name)
-	switch {
-	case err == nil && holder.ID != t.ID:
-		return timelineExistsError(t.Name, "Pick another --name.", nil)
-	case err != nil && !errors.Is(err, store.ErrNotFound):
-		return err
-	}
-
-	return nil
 }

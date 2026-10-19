@@ -1,10 +1,6 @@
 package cli
 
 import (
-	"bytes"
-	"io/fs"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,34 +8,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
 var _ = Describe("event add --id", func() {
-	type ran struct {
-		code        int
-		out, errOut string
-	}
-
 	It("exits 0 and prints the id for every copy of one command run at once", func(ctx SpecContext) {
-		home := GinkgoT().TempDir()
-		db := filepath.Join(home, "coroner.db")
-		run := func(args ...string) ran {
-			var out, errOut bytes.Buffer
-			code := Run(ctx, App{
-				Args: append([]string{"--db", db}, args...), In: strings.NewReader(""), Out: &out, Err: &errOut,
-				LookupEnv: func(key string) (string, bool) {
-					value, ok := map[string]string{"HOME": home}[key]
-					return value, ok
-				},
-				ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-				Now:       func() time.Time { return time.Date(2026, 9, 13, 1, 30, 0, 0, time.UTC) },
-				NewID:     uuid.NewV7,
-				OpenStore: store.Open,
-			})
-			return ran{code: code, out: out.String(), errOut: errOut.String()}
-		}
+		run := realRunner(ctx)
 		created := run("timeline", "create", "mongo-outage")
 		Expect(created.code).To(Equal(0), created.errOut)
 
