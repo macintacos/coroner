@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"math"
 	"time"
 
@@ -62,9 +61,7 @@ var _ = Describe("planImport", func() {
 		Expect(plan.write.Sources).To(Equal([]timeline.Source{mongod.Domain()}))
 		Expect(plan.write.Events).To(Equal([]timeline.Event{stepdown.Domain()}))
 		Expect(plan.write.Annotations).To(Equal([]timeline.Annotation{evidence.Domain()}))
-		Expect(plan.write.Attachments).To(HaveLen(1))
-		Expect(plan.write.Attachments[0].Attachment).To(Equal(screenshot.Domain()))
-		Expect(io.ReadAll(plan.write.Attachments[0].Content)).To(Equal(content))
+		Expect(plan.write.Attachments).To(Equal([]timeline.Attachment{screenshot.Domain()}))
 	})
 
 	It("skips every record the database already holds unchanged, and writes nothing", func() {
@@ -453,7 +450,7 @@ var _ = Describe("planImport", func() {
 			plan, err := planImport(in)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(plan.write.Attachments).To(ConsistOf(HaveField("Content", BeNil())))
+			Expect(plan.write.Attachments).To(Equal([]timeline.Attachment{screenshot.Domain()}))
 		})
 
 		It("skips one whose file is neither beside the input nor in the database, and lists it", func() {

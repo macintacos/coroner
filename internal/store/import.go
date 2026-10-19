@@ -3,7 +3,6 @@ package store
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,36 +22,36 @@ type ImportRecords struct {
 	Timelines, TimelineReplacements     []timeline.Timeline
 	Events, EventReplacements           []timeline.Event
 	Annotations, AnnotationReplacements []timeline.Annotation
-	Attachments                         []ImportAttachment
+	Attachments                         []timeline.Attachment
 	Links                               []timeline.Link
 }
 
-// ImportAttachment is an attachment row to insert, with its content, or nil Content when the
-// blob directory already holds its SHA256.
-type ImportAttachment struct {
-	timeline.Attachment
-	Content io.Reader
-}
-
-// Import writes records in one transaction, or nothing when any write fails. It keeps each
-// new event's Seq when that seq is at or past its timeline's next seq, taking a timeline's
-// new events in ascending seq, and moves next seq past it. Otherwise it gives the event the
-// timeline's next seq. Every event and annotation names its source by name, and that source
-// must already be stored or be in Sources. It returns an error wrapping ErrNotFound when a
-// replacement names a record that is not stored, or when an attachment with nil Content has
-// no blob.
-func (s *Store) Import(ctx context.Context, records ImportRecords) error {
-	staged, err := stageImportAttachments(s.blobDir, records.Attachments)
-	if err != nil {
+// Import writes records in one transaction, or nothing when any write fails, and returns its
+// new events, each with the seq it was written under. It keeps each new event's Seq when that
+// seq is at or past its timeline's next seq, taking a timeline's new events in ascending seq,
+// and moves next seq past it. Otherwise it gives the event the timeline's next seq. Every
+// event and annotation names its source by name, and that source must already be stored or be
+// in Sources. An attachment's blob is one of blobs with its SHA256, or one already stored. It
+// returns an error wrapping ErrNotFound when a replacement names a record that is not stored,
+// or when an attachment has no blob.
+func (s *Store) Import(ctx context.Context, records ImportRecords, blobs ...io.Reader) ([]timeline.Event, error) {
+	var inserted []timeline.Event
+	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Blobs: blobs}, func(tx *Tx) error {
+		var err error
+		inserted, err = tx.Import(ctx, records)
 		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	return s.change(ctx, Commit, staged, func(tx *Tx) error { return tx.Import(ctx, records) })
+	return inserted, nil
 }
 
-// Import writes records as Store.Import does, except that it inserts no attachment that
-// carries Content: the caller stages and inserts those.
-func (tx *Tx) Import(ctx context.Context, records ImportRecords) error {
+// Import writes records as Store.Import does and returns its new events, each with the seq it
+// was written under. An attachment's blob is the Change's staged blob with its SHA256, or one
+// already stored; otherwise Import returns an error wrapping ErrNotFound.
+func (tx *Tx) Import(ctx context.Context, records ImportRecords) ([]timeline.Event, error) {
 	for _, err := range []error{
 		validateEach(records.Sources),
 		validateEach(records.Timelines),
@@ -65,22 +64,23 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) error {
 		validateEach(records.Links),
 	} {
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	q := tx.q
 	events := inSeqOrder(records.Events)
-	return tx.atomic(ctx, func() error {
+	named := len(tx.named)
+	err := tx.atomic(ctx, func() error {
 		for _, step := range []func() error{
 			func() error { return writeEach(ctx, q, records.Sources, createSource) },
 			func() error { return writeEach(ctx, q, records.Timelines, createTimeline) },
 			func() error { return writeEach(ctx, q, records.TimelineReplacements, replaceTimeline) },
-			func() error { return writeEach(ctx, q, events, importEvent) },
+			func() error { return importEvents(ctx, q, events) },
 			func() error { return writeEach(ctx, q, records.EventReplacements, replaceEvent) },
 			func() error { return writeEach(ctx, q, records.Annotations, importAnnotation) },
 			func() error { return writeEach(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
-			func() error { return insertStoredBlobAttachments(ctx, q, tx.blobDir, records.Attachments) },
+			func() error { return tx.importAttachments(ctx, records.Attachments) },
 			func() error { return writeEach(ctx, q, records.Links, createLink) },
 		} {
 			err := step()
@@ -91,6 +91,25 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) error {
 
 		return nil
 	})
+	if err != nil {
+		tx.named = tx.named[:named]
+		return nil, err
+	}
+
+	return events, nil
+}
+
+// importEvents writes each of events, setting its Seq to the seq it was written under.
+func importEvents(ctx context.Context, q *sqlcgen.Queries, events []timeline.Event) error {
+	for i, e := range events {
+		written, err := importEvent(ctx, q, e)
+		if err != nil {
+			return err
+		}
+		events[i] = written
+	}
+
+	return nil
 }
 
 // validateEach returns the first of records' Validate errors.
@@ -117,42 +136,6 @@ func writeEach[T any](
 	}
 
 	return nil
-}
-
-// stageImportAttachments stages the content of each attachment that has it, outside any
-// transaction, removing what it staged when one fails.
-func stageImportAttachments(blobDir string, attachments []ImportAttachment) ([]stagedAttachment, error) {
-	staged := make([]stagedAttachment, 0, len(attachments))
-	for _, a := range attachments {
-		if a.Content == nil {
-			continue
-		}
-		blob, err := stageMatchingBlob(blobDir, a)
-		if err != nil {
-			discardStaged(staged)
-			return nil, err
-		}
-		staged = append(staged, stagedAttachment{attachment: a.Attachment, blob: blob})
-	}
-
-	return staged, nil
-}
-
-// stageMatchingBlob stages a's content, removing it again when its hash or size is not a's.
-func stageMatchingBlob(blobDir string, a ImportAttachment) (stagedBlob, error) {
-	blob, err := stageBlob(blobDir, a.Content)
-	if err != nil {
-		return stagedBlob{}, err
-	}
-	if blob.sha256 != a.SHA256 || blob.size != a.Size {
-		return stagedBlob{}, errors.Join(
-			fmt.Errorf("attachment %s: content has sha256 %s and size %d, want %s and %d",
-				a.ID, blob.sha256, blob.size, a.SHA256, a.Size),
-			os.Remove(blob.tempPath),
-		)
-	}
-
-	return blob, nil
 }
 
 // inSeqOrder returns a copy of events sorted by timeline, then seq, with no seq (zero) last
@@ -183,17 +166,18 @@ func replaceTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timelin
 	return overwriteTimeline(ctx, q, t, new(timeline.FormatInstant(t.CreatedAt)))
 }
 
-func importEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event) error {
+// importEvent writes e and returns it with the seq importSeq gave it.
+func importEvent(ctx context.Context, q *sqlcgen.Queries, e timeline.Event) (timeline.Event, error) {
 	source, err := storedSourceID(ctx, q, e.Source)
 	if err != nil {
-		return err
+		return timeline.Event{}, err
 	}
-	seq, err := importSeq(ctx, q, e)
+	e.Seq, err = importSeq(ctx, q, e)
 	if err != nil {
-		return err
+		return timeline.Event{}, err
 	}
 
-	return createEvent(ctx, q, e, seq, source)
+	return e, createEvent(ctx, q, e, e.Seq, source)
 }
 
 // importSeq returns e.Seq, moving its timeline's next seq past it, unless the timeline has
@@ -251,25 +235,39 @@ func storedSourceID(ctx context.Context, q *sqlcgen.Queries, name *string) (*str
 	return &source.ID, nil
 }
 
-// insertStoredBlobAttachments inserts the row of each of attachments with nil Content,
-// returning an error wrapping ErrNotFound when its blob is not in blobDir.
-func insertStoredBlobAttachments(
-	ctx context.Context, q *sqlcgen.Queries, blobDir string, attachments []ImportAttachment,
-) error {
+// importAttachments inserts the row of each of attachments, naming the Change's staged blob
+// with its SHA256, or else requiring that blob already stored.
+func (tx *Tx) importAttachments(ctx context.Context, attachments []timeline.Attachment) error {
 	for _, a := range attachments {
-		if a.Content != nil {
-			continue
-		}
-		_, err := os.Lstat(filepath.Join(blobDir, a.SHA256))
+		err := tx.nameBlob(a)
 		if err != nil {
-			return fmt.Errorf("attachment %s: no blob %s: %w", a.ID, a.SHA256, ErrNotFound)
+			return err
 		}
 
-		err = createAttachment(ctx, q, a.Attachment)
+		err = createAttachment(ctx, tx.q, a)
 		if err != nil {
 			return err
 		}
 	}
+
+	return nil
+}
+
+// nameBlob appends the staged blob a carries to tx.named, or checks that blob is stored.
+func (tx *Tx) nameBlob(a timeline.Attachment) error {
+	blob, ok := tx.blobs[a.SHA256]
+	if !ok {
+		_, err := os.Lstat(filepath.Join(tx.blobDir, a.SHA256))
+		if err != nil {
+			return fmt.Errorf("attachment %s: no blob %s: %w", a.ID, a.SHA256, ErrNotFound)
+		}
+		return nil
+	}
+	if blob.size != a.Size {
+		return fmt.Errorf("attachment %s: content has sha256 %s and size %d, want %s and %d",
+			a.ID, blob.sha256, blob.size, a.SHA256, a.Size)
+	}
+	tx.named = append(tx.named, blob)
 
 	return nil
 }

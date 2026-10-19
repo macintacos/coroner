@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -61,7 +62,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 
 		inserted := plannedEvents(plan.write.Events)
 		if !dryRun {
-			inserted, err = writeEvents(ctx, s, plan.write, t.ID)
+			inserted, err = writeEvents(ctx, s, plan.write)
 			if err != nil {
 				return err
 			}
@@ -197,22 +198,20 @@ func conflictingEventsError(conflicts []importConflict) *Error {
 	}
 }
 
-// plannedEvents returns the events a dry run would insert, by id.
-func plannedEvents(events []timeline.Event) map[string]timeline.Event {
-	planned := make(map[string]timeline.Event, len(events))
-	for _, e := range events {
+// plannedEvents returns the events a dry run would insert.
+func plannedEvents(events []timeline.Event) []timeline.Event {
+	planned := slices.Clone(events)
+	for i := range planned {
 		// A dry run allocates no seq, so the preview prints null as event add --dry-run does.
-		e.Seq = 0
-		planned[e.ID] = e
+		planned[i].Seq = 0
 	}
 
 	return planned
 }
 
-// writeEvents writes records and returns the events of the timeline with timelineID by id, which
-// now hold records' under the seqs the store gave them.
-func writeEvents(ctx context.Context, s *store.Store, records store.ImportRecords, timelineID string) (map[string]timeline.Event, error) {
-	err := s.Import(ctx, records)
+// writeEvents writes records and returns its new events under the seqs the store gave them.
+func writeEvents(ctx context.Context, s *store.Store, records store.ImportRecords) ([]timeline.Event, error) {
+	events, err := s.Import(ctx, records)
 	if errors.Is(err, store.ErrConflict) {
 		return nil, &Error{
 			Kind: KindIDConflict, Message: "the database changed while the events were being added, so nothing was added",
@@ -222,16 +221,8 @@ func writeEvents(ctx context.Context, s *store.Store, records store.ImportRecord
 	if err != nil {
 		return nil, err
 	}
-	events, err := s.Events(ctx, timelineID)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]timeline.Event, len(events))
-	for _, e := range events {
-		byID[e.ID] = e
-	}
 
-	return byID, nil
+	return events, nil
 }
 
 // eventsAttachments returns the stored attachments of events.
@@ -259,7 +250,7 @@ type eventsAdded struct {
 
 // newEventsAdded sorts events, each id once in file order, into the identical ones stored holds
 // and the inserted ones inserted holds.
-func newEventsAdded(events []export.Event, stored, inserted map[string]timeline.Event) eventsAdded {
+func newEventsAdded(events []export.Event, stored map[string]timeline.Event, inserted []timeline.Event) eventsAdded {
 	var added eventsAdded
 	seen := make(map[string]bool, len(events))
 	for _, e := range events {
@@ -271,7 +262,8 @@ func newEventsAdded(events []export.Event, stored, inserted map[string]timeline.
 		if identical, ok := stored[e.ID]; ok {
 			added.identical = append(added.identical, identical)
 		} else {
-			added.inserted = append(added.inserted, inserted[e.ID])
+			i := slices.IndexFunc(inserted, func(n timeline.Event) bool { return n.ID == e.ID })
+			added.inserted = append(added.inserted, inserted[i])
 		}
 	}
 

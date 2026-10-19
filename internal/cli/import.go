@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -93,7 +95,8 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 			return err
 		}
 
-		return importWriteError(s.Import(ctx, plan.write))
+		_, err = s.Import(ctx, plan.write, sidecarBlobs(in.sidecars)...)
+		return importWriteError(err)
 	})
 	if dryRun && errors.Is(err, fs.ErrNotExist) {
 		plan, err = planUnstoredImport(in, inv.timelines)
@@ -202,6 +205,16 @@ func readImportRecords(
 	}
 
 	return records, nil
+}
+
+// sidecarBlobs returns the contents of sidecars in sha256 order.
+func sidecarBlobs(sidecars map[string][]byte) []io.Reader {
+	blobs := make([]io.Reader, 0, len(sidecars))
+	for _, sha := range slices.Sorted(maps.Keys(sidecars)) {
+		blobs = append(blobs, bytes.NewReader(sidecars[sha]))
+	}
+
+	return blobs
 }
 
 // readSidecars returns the content of the attachments' files in the attachments/ directory beside

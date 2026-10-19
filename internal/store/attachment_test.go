@@ -317,10 +317,11 @@ var _ = Describe("Attachments", func() {
 			Entry("Import with an attachment", func(ctx context.Context) error {
 				e := offsetBeyondADay()
 				a := described(21, timeline.AttachmentOwner{EventID: new(e.ID)}, "grafana.png", "image/png", screenshot)
-				return s.Import(ctx, store.ImportRecords{
+				_, err := s.Import(ctx, store.ImportRecords{
 					Events:      []timeline.Event{e},
-					Attachments: []store.ImportAttachment{{Attachment: a, Content: bytes.NewReader(screenshot)}},
-				})
+					Attachments: []timeline.Attachment{a},
+				}, bytes.NewReader(screenshot))
+				return err
 			}, eventsUnchanged),
 			Entry("AddAnnotation with an attachment", func(ctx context.Context) error {
 				blank := evidence

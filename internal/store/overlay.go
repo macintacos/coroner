@@ -9,7 +9,7 @@ import (
 
 // CreateOverlay is Tx.CreateOverlay in its own Change.
 func (s *Store) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.CreateOverlay(ctx, o) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.CreateOverlay(ctx, o) })
 }
 
 // CreateOverlay saves o with its timelines, kept in the order given. It returns an error

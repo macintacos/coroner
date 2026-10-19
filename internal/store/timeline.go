@@ -9,7 +9,7 @@ import (
 
 // CreateTimeline is Tx.CreateTimeline in its own Change.
 func (s *Store) CreateTimeline(ctx context.Context, t timeline.Timeline) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.CreateTimeline(ctx, t) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.CreateTimeline(ctx, t) })
 }
 
 // CreateTimeline adds t with its refs, kept in the order given.
@@ -97,7 +97,7 @@ func (tx *Tx) Timelines(ctx context.Context) ([]timeline.Timeline, error) {
 
 // UpdateTimeline is Tx.UpdateTimeline in its own Change.
 func (s *Store) UpdateTimeline(ctx context.Context, t timeline.Timeline) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.UpdateTimeline(ctx, t) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.UpdateTimeline(ctx, t) })
 }
 
 // UpdateTimeline stores t's name, title and updated at, and replaces its refs with t.Refs
@@ -130,7 +130,7 @@ func overwriteTimeline(ctx context.Context, q *sqlcgen.Queries, t timeline.Timel
 
 // DeleteTimeline is Tx.DeleteTimeline in its own Change.
 func (s *Store) DeleteTimeline(ctx context.Context, id string) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteTimeline(ctx, id) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.DeleteTimeline(ctx, id) })
 }
 
 // DeleteTimeline deletes the timeline with id and everything in it.
@@ -147,7 +147,7 @@ func (tx *Tx) DeleteTimeline(ctx context.Context, id string) error {
 
 // SetCurrentTimeline is Tx.SetCurrentTimeline in its own Change.
 func (s *Store) SetCurrentTimeline(ctx context.Context, id string) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.SetCurrentTimeline(ctx, id) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.SetCurrentTimeline(ctx, id) })
 }
 
 // SetCurrentTimeline makes the timeline with id the current timeline.
@@ -164,7 +164,7 @@ func (tx *Tx) SetCurrentTimeline(ctx context.Context, id string) error {
 
 // ClearCurrentTimeline is Tx.ClearCurrentTimeline in its own Change.
 func (s *Store) ClearCurrentTimeline(ctx context.Context) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.ClearCurrentTimeline(ctx) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.ClearCurrentTimeline(ctx) })
 }
 
 // ClearCurrentTimeline leaves no timeline current.

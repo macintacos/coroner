@@ -79,7 +79,7 @@ func TestEventWritesReadBack(t *testing.T) {
 		}
 		replaced := fullEvent(storedSources).Draw(t, "replaced")
 		replaced.ID, replaced.TimelineID, replaced.Seq = id, tl.ID, added.Seq
-		err = s.Import(ctx, store.ImportRecords{EventReplacements: []timeline.Event{replaced}})
+		_, err = s.Import(ctx, store.ImportRecords{EventReplacements: []timeline.Event{replaced}})
 		if err != nil {
 			t.Fatal(err)
 		}

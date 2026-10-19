@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -545,17 +544,13 @@ func (p *planner) planAttachments(attachments []export.Attachment) {
 			continue
 		}
 
-		imported := store.ImportAttachment{Attachment: a.Domain()}
-		content, hasSidecar := p.in.sidecars[a.SHA256]
-		switch {
-		case hasSidecar:
-			imported.Content = bytes.NewReader(content)
-		case !p.in.localBlobs[a.SHA256]:
+		_, hasSidecar := p.in.sidecars[a.SHA256]
+		if !hasSidecar && !p.in.localBlobs[a.SHA256] {
 			p.result.MissingAttachments = append(p.result.MissingAttachments, missingAttachment{ID: a.ID, SHA256: a.SHA256})
 			continue
 		}
 		p.result.Attachments.Inserted++
-		p.write.Attachments = append(p.write.Attachments, imported)
+		p.write.Attachments = append(p.write.Attachments, a.Domain())
 		// checkRecords has already rejected an attachment whose owner is unknown.
 		ownerTimeline, _ := p.refs.ownerTimeline(a)
 		p.timelineIDs[ownerTimeline] = true

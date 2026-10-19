@@ -81,7 +81,7 @@ func scanSourceUsage(rows *sql.Rows) (SourceUsage, error) {
 
 // RenameSource is Tx.RenameSource in its own Change.
 func (s *Store) RenameSource(ctx context.Context, id, name string) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.RenameSource(ctx, id, name) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.RenameSource(ctx, id, name) })
 }
 
 // RenameSource sets the name of the source with id. Its events and annotations name it by id,
