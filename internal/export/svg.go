@@ -211,7 +211,7 @@ type svgMark struct {
 
 // layoutSVG lays out v's events, in occurred at and seq order, on an axis over window with
 // ticks on zone's wall clock: a lane per source in order of first appearance, then the
-// events with none, each event in its own row. With events, window must not be empty;
+// events with none, each event in its own row. When v has events, window must not be empty;
 // exportWindow's never is.
 func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	if len(v.Events) == 0 {

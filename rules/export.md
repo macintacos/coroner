@@ -164,8 +164,11 @@
     only timestamp is the export's. The picture's layout is not a contract (`AGENTS.md`
     Rule 3); its goldens in `internal/export/testdata/svg/` change only through
     `go test ./internal/export -update`, with the diff read before committing.
-14. **Every writer reads the envelope through `prepare`:** `WriteMarkdown`,
-    `WriteMermaid`, `WriteHTML`, `WriteSVG` and `Records` check an `Envelope` and put it
-    in display order only through `prepare` in `internal/export/view.go`, so they fail on
-    the same inconsistencies; a writer adds only its own preconditions, such as SVG's one
-    timeline or Markdown's grouping.
+14. **Every record writer checks the envelope through `prepare`:** a function that reads
+    an `Envelope`'s records to render them (`WriteMarkdown`, `WriteMermaid`,
+    `MermaidSize`, `WriteHTML`, `WriteSVG`, `Records`) checks it only through `prepare` in
+    `internal/export/view.go`, and reads events, annotations, attachments and links in the
+    view's order, so they fail on the same inconsistencies. A writer adds only its own
+    preconditions, such as SVG's one timeline or Markdown's grouping, and orders only what
+    the view leaves as exported, as `Records` orders timelines and sources by name.
+    `export.Write` encodes an envelope as it is.

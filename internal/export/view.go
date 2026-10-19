@@ -27,19 +27,22 @@ type view struct {
 	Attachments map[string][]Attachment
 	// Links are in compareLinks order.
 	Links []Link
-	// Sources are the events' sources in order of first appearance, then "" when an event
-	// has none.
+	// Sources are the names of the events' sources, in order of first appearance, then ""
+	// when an event has none; unlike Envelope.Sources, they leave out a source only an
+	// annotation names.
 	Sources []string
 }
 
-// slot returns the palette index source takes: its index in Sources, wrapped by
-// len(sourcePalette()).
+// slot returns the palette index of source, a name in Sources other than "": its index
+// there, wrapped by len(sourcePalette()).
 func (v view) slot(source string) int {
 	return slices.Index(v.Sources, source) % len(sourcePalette())
 }
 
-// prepare returns env as a view, failing naming the first record that refers to a timeline,
-// event or annotation env does not hold, or when env holds no timeline.
+// prepare returns env as a view, or fails naming a record that leaves env inconsistent. env
+// is consistent when it holds a timeline, and holds the timeline of every event and
+// annotation, the event of every annotation, the event or annotation of every attachment,
+// and both events of every link.
 func prepare(env Envelope) (view, error) {
 	if len(env.Timelines) == 0 {
 		return view{}, errors.New("want a timeline, got none")

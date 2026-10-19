@@ -132,8 +132,8 @@ func (md markdownRenderer) header(v view, exported string) []string {
 	return []string{md.title(v.title()), strings.Join(metadata, "\n")}
 }
 
-// title returns the heading naming a timeline by title and name, or by name alone when its
-// title is blank.
+// title returns the heading: title (name), or name alone when title is blank, as an
+// overlay's is.
 func (md markdownRenderer) title(title, name string) string {
 	if strings.TrimSpace(title) != "" {
 		return "# " + md.oneLine(title) + " (" + md.oneLine(name) + ")"
