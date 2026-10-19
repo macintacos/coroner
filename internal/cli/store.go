@@ -10,6 +10,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 // withStorePath opens the database at path, creating and migrating it as needed, through
@@ -83,6 +84,8 @@ func storeError(err error, path string) error {
 	case errors.Is(err, store.ErrBackupExists):
 		// The store's text names the backup and how to clear it.
 		return &Error{Kind: KindDBUnreadable, Message: err.Error(), Err: err}
+	case errors.As(err, new(*timeline.ValidationError)):
+		return recordError(err, "")
 	case errors.Is(err, fs.ErrPermission):
 		return &Error{
 			Kind: KindDBUnreadable, Message: "permission denied opening the database at " + path,

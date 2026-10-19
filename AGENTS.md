@@ -136,17 +136,19 @@ digraph coroner_rules_router {
   it, so a malformed config file cannot break them.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
-  is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the
-  output formats it supports in its `formats` annotation, and any other `--format` or
-  `--json` exits 2 as `usage`. `-t` names one timeline, and naming more exits 2 as
-  `usage`, unless the command reads several as an overlay and says so in its `overlay`
-  annotation, as `event list`, `timeline export`, `timeline view` and `overlay create` do.
-  `event list` and `timeline export` also take `--overlay`, a saved overlay's name, in
-  place of `-t`, read both through `readTimelineChoice`
-  ([`overlay.go`](internal/cli/overlay.go)), select their timelines through
-  `selectChosenTimelines` and read their events through `store.EventFilter.TimelineIDs`.
-  `cli.Run` prints every error once, adding the JSON error envelope under
-  `--format json|jsonl`.
+  is the table. A domain validation problem becomes an exit kind in one table, `kindOf` in
+  [`internal/cli/validation.go`](internal/cli/validation.go), and `storeError` routes a
+  store-side `*timeline.ValidationError` through it. Any other error, or a panic, exits 1
+  as `internal`. A command declares the output formats it supports in its `formats`
+  annotation, and any other `--format` or `--json` exits 2 as `usage`. `-t` names one
+  timeline, and naming more exits 2 as `usage`, unless the command reads several as an
+  overlay and says so in its `overlay` annotation, as `event list`, `timeline export`,
+  `timeline view` and `overlay create` do. `event list` and `timeline export` also take
+  `--overlay`, a saved overlay's name, in place of `-t`, read both through
+  `readTimelineChoice` ([`overlay.go`](internal/cli/overlay.go)), select their timelines
+  through `selectChosenTimelines` and read their events through
+  `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the JSON
+  error envelope under `--format json|jsonl`.
 - Deprecating a command or flag: `deprecateCommand` and `deprecateFlag` in
   [`internal/cli/deprecation.go`](internal/cli/deprecation.go), under the process in
   [`STABILITY.md`](STABILITY.md#deprecation).

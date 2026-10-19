@@ -332,8 +332,8 @@ type eventDraft struct {
 }
 
 // draftEvent returns the event in describes, with times read as of env, and gives it new ids,
-// keeping --id's event id when given, rejecting anything the store would. It reads stdin last,
-// so a bad field never waits on it.
+// keeping --id's event id when given, rejecting anything the store would. It reads stdin after
+// every field check, so a bad field never waits on it, and draws ids only for a valid event.
 func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (eventDraft, error) {
 	fields := readEventFields(in, cfg.Author, app.LookupEnv)
 	times, err := resolveEventTimes(in, env)
@@ -344,17 +344,8 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	if err != nil {
 		return eventDraft{}, err
 	}
-	eventID, err := newEventID(in.value("id"), app.NewID)
-	if err != nil {
-		return eventDraft{}, err
-	}
-	sourceID, err := newSourceID(fields.source, app.NewID)
-	if err != nil {
-		return eventDraft{}, err
-	}
 
 	e := timeline.Event{
-		ID:             eventID,
 		OccurredAt:     times.at.Instant,
 		OccurredOffset: times.at.Offset,
 		Precision:      times.at.Precision,
@@ -370,13 +361,32 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 		UpdatedAt:      env.now,
 	}
 	err = e.Validate()
-	if err != nil {
+	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {
 		return eventDraft{}, &Error{
-			Kind: KindUsage, Message: err.Error(), Hint: "Run 'coroner event add --help' for what each flag takes.", Err: err,
+			Kind:    KindInvalidTime,
+			Message: fmt.Sprintf("--ended %s is before --at %s", times.endedWhen, times.when),
+			Hint:    "Pass an --ended time no earlier than --at.",
+			Err:     err,
 		}
 	}
+	if err != nil {
+		return eventDraft{}, recordError(err, "Run 'coroner event add --help' for what each flag takes.")
+	}
+	e.ID, err = newEventID(in.value("id"), app.NewID)
+	if err != nil {
+		return eventDraft{}, err
+	}
+	sourceID, err := newSourceID(fields.source, app.NewID)
+	if err != nil {
+		return eventDraft{}, err
+	}
 
-	return eventDraft{event: e, newSourceID: sourceID, when: times.when}, nil
+	when := times.when
+	if times.ended != nil {
+		when += ", ended " + times.endedWhen
+	}
+
+	return eventDraft{event: e, newSourceID: sourceID, when: when}, nil
 }
 
 // newEventID returns id when it was given, and a new id otherwise.
@@ -576,12 +586,12 @@ type eventTimes struct {
 	// raw is --at as given, or nil when it was not.
 	raw   *string
 	ended *time.Time
-	// when is at, and ended when given, as the command prints them.
-	when string
+	// when and endedWhen are at and ended as the command prints them.
+	when, endedWhen string
 }
 
 // resolveEventTimes resolves --at (marked approximate by --approximate) and --ended as of env,
-// rejecting an --ended that is approximate or before --at.
+// rejecting an --ended that is approximate.
 func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
 	raw := in.value("at")
 	at, err := resolveAt(raw, env.now, env.zone.loc)
@@ -600,16 +610,8 @@ func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
 	if err != nil {
 		return eventTimes{}, err
 	}
-	if ended.Instant.Before(at.Instant) {
-		return eventTimes{}, &Error{
-			Kind:    KindInvalidTime,
-			Message: fmt.Sprintf("--ended %s is before --at %s", formatResolved(ended, env.zone), times.when),
-			Hint:    "Pass an --ended time no earlier than --at.",
-		}
-	}
-
 	times.ended = &ended.Instant
-	times.when += ", ended " + formatResolved(ended, env.zone)
+	times.endedWhen = formatResolved(ended, env.zone)
 
 	return times, nil
 }

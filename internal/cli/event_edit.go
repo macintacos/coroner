@@ -362,23 +362,20 @@ func (e eventEdit) apply(ev timeline.Event, z zone) (timeline.Event, error) {
 }
 
 // checkEditedEvent returns an ended at before occurred at as invalid_time, naming both in z, and
-// any other rule ev breaks as usage.
+// any other rule ev breaks as the kind its rule names.
 func checkEditedEvent(ev timeline.Event, z zone) error {
-	if ev.EndedAt != nil && ev.EndedAt.Before(ev.OccurredAt) {
+	err := ev.Validate()
+	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {
 		return &Error{
 			Kind: KindInvalidTime,
 			Message: fmt.Sprintf("the event would end at %s, before it occurred at %s",
 				ev.EndedAt.In(z.loc).Format(time.RFC3339Nano), occurredText(ev, z)),
 			Hint: "Pass an --ended time no earlier than its occurred at, or --ended none.",
+			Err:  err,
 		}
 	}
 
-	err := ev.Validate()
-	if err != nil {
-		return &Error{Kind: KindUsage, Message: err.Error(), Hint: "Run 'coroner event edit --help' for what each flag takes.", Err: err}
-	}
-
-	return nil
+	return recordError(err, "Run 'coroner event edit --help' for what each flag takes.")
 }
 
 // previewEventEdit prints ev as the edit would store it: its JSON object with attachments, or
