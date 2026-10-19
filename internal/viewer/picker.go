@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/macintacos/coroner/internal/timeline"
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 // TimelineRow is one timeline the picker lists.
@@ -184,7 +185,7 @@ func pickerFields(row TimelineRow, loc *time.Location) pickerColumns {
 		c.refs = oneLine(strings.Join(t.Refs, ", "))
 	}
 	if row.Last != nil {
-		c.last = "last " + wall(*row.Last, loc).Format(time.DateOnly) + " " + strings.TrimSpace(eventTime(*row.Last, loc))
+		c.last = "last " + timetext.Read(*row.Last, loc).Day + " " + strings.TrimSpace(eventTime(*row.Last, loc))
 	}
 
 	return c

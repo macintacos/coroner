@@ -2,6 +2,7 @@ package viewer_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -15,6 +16,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/timeline"
+	"github.com/macintacos/coroner/internal/timetext"
 	"github.com/macintacos/coroner/internal/viewer"
 )
 
@@ -62,6 +64,21 @@ func fixture() viewer.Snapshot {
 			{EventID: &stepdown, Kind: timeline.AnnotationComment, Body: "The heartbeat timeout looks too tight", Author: new("julian")},
 			{Kind: timeline.AnnotationComment, Body: "On the whole timeline, so never under an event"},
 		},
+	}
+}
+
+// ownOffsetEvents are E2, E3, E13 and E11 of timetext's fixture in domain order: a UTC day, an
+// hour at +05:30 that New York files under the previous day, one whose own date is the next day,
+// and a minute interval crossing midnight UTC.
+func ownOffsetEvents() []timeline.Event {
+	ist, zero := 5*60*60+30*60, 0
+	end := utc(12, 0, 0, 0)
+	crossEnd := utc(12, 0, 20, 0)
+	return []timeline.Event{
+		{ID: "e2", Seq: 2, OccurredAt: utc(11, 0, 0, 0), OccurredOffset: &zero, Precision: timeline.PrecisionDay, EndedAt: &end, Text: "E2"},
+		{ID: "e3", Seq: 3, OccurredAt: utc(11, 4, 30, 0), OccurredOffset: &ist, Precision: timeline.PrecisionHour, Text: "E3"},
+		{ID: "e13", Seq: 13, OccurredAt: utc(11, 20, 30, 0), OccurredOffset: &ist, Precision: timeline.PrecisionHour, Text: "E13"},
+		{ID: "e11", Seq: 11, OccurredAt: utc(11, 23, 50, 0), OccurredOffset: &zero, Precision: timeline.PrecisionMinute, EndedAt: &crossEnd, Text: "E11"},
 	}
 }
 
@@ -264,10 +281,44 @@ var _ = Describe("the viewer", func() {
 			}
 			got := screen(open(coarse, viewer.Match{}, l))
 
-			Expect(got).To(ContainSubstring("── Sat 2026-09-12"))
-			Expect(got).NotTo(ContainSubstring("2026-09-11"))
-			Expect(got).To(MatchRegexp(`#1\s+--:-- \+09:00\s.*Recorded in Tokyo`))
+			Expect(got).To(MatchRegexp(`#1\s+Sep 12 --:-- \+09:00\s.*Recorded in Tokyo`))
 			Expect(got).To(MatchRegexp(`#2\s+10:-- \+05:30\s.*Recorded in India`))
+		})
+
+		It("never repeats a day heading, even for coarse times recorded in another offset", func() {
+			mixed := fixture()
+			mixed.Events, mixed.Annotations = ownOffsetEvents(), nil
+			got := screen(open(mixed, viewer.Match{}, l))
+
+			Expect(regexp.MustCompile(`── (\w{3} \d{4}-\d{2}-\d{2})`).FindAllStringSubmatch(got, -1)).To(HaveExactElements(
+				HaveExactElements(ContainSubstring("Thu 2026-09-10"), "Thu 2026-09-10"),
+				HaveExactElements(ContainSubstring("Fri 2026-09-11"), "Fri 2026-09-11"),
+			))
+			Expect(got).To(MatchRegexp(`#13\s+Sep 12 02:-- \+05:30\s.*E13`))
+			matchGolden("own-offset", got)
+		})
+
+		It("shows the day, clock, offset and end date timetext reads, as the picker does", func() {
+			for _, e := range ownOffsetEvents()[:3] {
+				r := timetext.Read(e, newYork())
+				one := fixture()
+				one.Events, one.Annotations = []timeline.Event{e}, nil
+				got := screen(open(one, viewer.Match{}, l))
+				last := viewer.PickerFields(viewer.TimelineRow{Last: &e}, newYork()).Last
+
+				day, err := time.Parse(time.DateOnly, r.Day)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(got).To(ContainSubstring("── " + day.Format("Mon 2006-01-02")))
+				Expect(last).To(HavePrefix("last " + r.Day + " "))
+				for _, text := range []string{got, last} {
+					Expect(text).To(ContainSubstring(cmp.Or(r.Start.Clock, "--:--") + " " + r.Start.Offset))
+					if r.End != nil {
+						end, err := time.Parse(time.DateOnly, r.End.Date)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(text).To(ContainSubstring("–" + end.Format("Jan 02 ")))
+					}
+				}
+			}
 		})
 
 		It("says nothing matches when a filter keeps no event", func() {

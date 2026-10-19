@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"cmp"
 	"fmt"
 	"image/color"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/timeline"
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 const (
@@ -158,9 +160,9 @@ func (m Model) bodyLines() ([]string, []block) {
 		if d, ok := gaps[i]; ok {
 			lines = append(lines, m.rule(formatGap(d), m.styles.gap))
 		}
-		if date := wall(e, m.opts.Location).Format("Mon 2006-01-02"); date != day {
-			lines = append(lines, m.rule(date, m.styles.day))
-			day = date
+		if d := timetext.Read(e, m.opts.Location).Day; d != day {
+			lines = append(lines, m.rule(date(d).Format("Mon 2006-01-02"), m.styles.day))
+			day = d
 		}
 		row := len(lines)
 		lines = append(lines, m.row(e, i == m.cursor))
@@ -424,68 +426,42 @@ func tagsText(e timeline.Event) string {
 	return strings.Join(e.Tags, ",")
 }
 
-// wall is e's occurred at in loc, or in its own offset when its precision window does not line up
-// in loc, so a coarse window is never re-cut in another zone.
-func wall(e timeline.Event, loc *time.Location) time.Time {
-	t := e.OccurredAt.In(loc)
-	if e.Precision.Truncate(t).Equal(e.OccurredAt) {
-		return t
-	}
-
-	offset := 0 // a nil offset means the window was cut in UTC
-	if e.OccurredOffset != nil {
-		offset = *e.OccurredOffset
-	}
-
-	return e.OccurredAt.In(time.FixedZone("", offset))
-}
-
-// eventTime is e's wall time to its precision, ~ when approximate, then its ended at when it has
-// one, then the zone's abbreviation, or the offset when e's window does not line up in loc. A
-// space stands in for ~ so times align.
+// eventTime is e's time as timetext reads it in loc: ~ when approximate, its start's date when it is
+// not the day e is filed under, its clock, then its end, dated when it ends another day, then the
+// zone's abbreviation, or the offset when e reads in its own. A space stands in for ~ so times
+// align.
 func eventTime(e timeline.Event, loc *time.Location) string {
-	start := wall(e, loc)
-	text := " " + clock(start, e.Precision)
-	if e.Approximate {
-		text = "~" + clock(start, e.Precision)
+	r := timetext.Read(e, loc)
+	text := " "
+	if r.Approximate {
+		text = "~"
+	}
+	text += partTime(r.Start, r.Day)
+	if r.End != nil {
+		text += "–" + partTime(*r.End, r.Start.Date)
 	}
 
-	if e.EndedAt != nil {
-		end := e.EndedAt.In(start.Location())
-		if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
-			text += "–" + end.Format("Jan 02 ") + clock(end, e.Precision)
-		} else {
-			text += "–" + clock(end, e.Precision)
-		}
+	if r.Start.OwnOffset {
+		return text + " " + r.Start.Offset
 	}
 
-	if start.Location() != loc {
-		return text + " " + start.Format("-07:00")
-	}
-
-	return text + " " + start.Format("MST")
+	return text + " " + r.Start.Abbreviation
 }
 
-// clock is t's wall clock to precision, with dashes for the digits it does not know.
-func clock(t time.Time, precision timeline.Precision) string {
-	switch precision {
-	case timeline.PrecisionDay:
-		return "--:--"
-	case timeline.PrecisionHour:
-		return t.Format("15") + ":--"
-	case timeline.PrecisionMinute:
-		return t.Format("15:04")
-	case timeline.PrecisionSecond:
-		return t.Format(time.TimeOnly)
-	case timeline.PrecisionMillisecond:
-		return t.Format("15:04:05.000")
-	case timeline.PrecisionMicrosecond:
-		return t.Format("15:04:05.000000")
-	case timeline.PrecisionNanosecond:
-		return t.Format("15:04:05.000000000")
+// partTime is p's clock, dashes for a day, after its date when that is not after.
+func partTime(p timetext.Part, after string) string {
+	text := cmp.Or(p.Clock, "--:--")
+	if p.Date != after {
+		return date(p.Date).Format("Jan 02 ") + text
 	}
 
-	return t.Format(time.TimeOnly)
+	return text
+}
+
+// date is a 2006-01-02 date timetext wrote, so it always parses.
+func date(day string) time.Time {
+	t, _ := time.Parse(time.DateOnly, day)
+	return t
 }
 
 // formatGap renders d to the minute, as in 47m, 1h05m or 2d03h.
