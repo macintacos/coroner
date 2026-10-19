@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json/v2"
 	"fmt"
 	"io/fs"
@@ -114,6 +115,19 @@ var _ = Describe("timeline export", func() {
 		Expect(export.WriteRecords(&b, records)).To(Succeed())
 
 		Expect(b.String()).To(Equal(jsonl))
+	})
+
+	It("fails naming the event when a stored string is not UTF-8", func(ctx SpecContext) {
+		db, err := sql.Open("sqlite", filepath.Join(home, "coroner.db"))
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(db.Close)
+		var id string
+		Expect(db.QueryRowContext(ctx, "UPDATE event SET url = ? WHERE seq = 1 RETURNING id", "a\xffb").Scan(&id)).To(Succeed())
+		Expect(db.Close()).To(Succeed())
+
+		Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(1))
+
+		Expect(errOut.String()).To(ContainSubstring("event " + id))
 	})
 
 	It("resolves a relative bound against the instant it records as exported at", func(ctx SpecContext) {

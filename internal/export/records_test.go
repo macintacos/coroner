@@ -242,4 +242,13 @@ var _ = Describe("WriteRecords", func() {
 		Expect(err).To(MatchError(ContainSubstring("invalid UTF-8")))
 		Expect(b.String()).To(BeEmpty())
 	})
+
+	It("names the record it cannot encode", func() {
+		var b bytes.Buffer
+
+		err := export.WriteRecords(&b, []export.Record{export.Source{Name: "mongod"}, export.Event{ID: "e1", URL: new("a\xffb")}})
+
+		Expect(err).To(MatchError(HavePrefix("event e1: ")))
+		Expect(b.String()).To(BeEmpty())
+	})
 })
