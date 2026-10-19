@@ -42,7 +42,8 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull r
 push to `main`: [`.github/scripts/docs-gate-test`](.github/scripts/docs-gate-test), which
 checks the docs gate's cases, `mise run lint`, `mise run test`, `mise run docs:build`,
 then `mise run format` failing on any diff, so a commit made with `--no-verify` still gets
-a red check. The docs gate
+a red check. It restores the Go module, build and golangci-lint caches from the newest
+green push to `main`, and only such a push saves them. The docs gate
 ([`.github/workflows/docs-gate.yml`](.github/workflows/docs-gate.yml)) fails a pull
 request that changes a file under `internal/cli/` other than a test, testdata or help
 topic without changing a page under `docs/` outside `docs/reference/cli/`, unless it has

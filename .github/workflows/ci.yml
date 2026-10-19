@@ -13,6 +13,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Restore and save must name the same paths: they are part of the cache's version.
+      GO_CACHE_PATHS: |
+        ~/go/pkg/mod
+        ~/.cache/go-build
+        ~/.cache/golangci-lint
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,6 +31,12 @@ jobs:
           # mise.lock pins every tool but mise itself.
           # Keep in sync with docs.yml and release.yml.
           version: 2026.9.6
+      - name: Restore Go caches
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_CACHE_PATHS }}
+          key: go-${{ runner.os }}-${{ github.sha }}
+          restore-keys: go-${{ runner.os }}-
       # Each check runs even when an earlier one failed, but not after a failed tool install.
       # `!= 'failure'` fails closed: a mistyped step id runs the check instead of skipping it.
       - name: Docs gate cases
@@ -48,3 +60,10 @@ jobs:
           mise run format
           git add --intent-to-add --ignore-removal .
           git diff --exit-code || { echo "::error::mise run format changed files; run it locally and commit the result"; exit 1; }
+      # Only a green main run saves, so a pull request restores the newest main cache and writes none.
+      - name: Save Go caches
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.GO_CACHE_PATHS }}
+          key: go-${{ runner.os }}-${{ github.sha }}
