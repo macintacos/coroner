@@ -66,4 +66,16 @@ var _ = Describe("validation", func() {
 			Expect(timeErr.Hint).To(BeEmpty())
 		})
 	})
+
+	It("storeError returns a store-side validation error as its first rule's kind", func() {
+		offsetOnly := &timeline.ValidationError{Problems: []timeline.Problem{
+			{Field: "occurred_offset", Rule: timeline.RuleOffsetRange, Message: "out of range"},
+		}}
+
+		err, ok := errors.AsType[*Error](storeError(offsetOnly, "coroner.db"))
+
+		Expect(ok).To(BeTrue())
+		Expect(err.Kind).To(Equal(KindInvalidTime))
+		Expect(err.Message).To(Equal("out of range"))
+	})
 })

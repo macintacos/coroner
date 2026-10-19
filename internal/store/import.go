@@ -41,6 +41,22 @@ type ImportAttachment struct {
 // must already be stored or be in Sources. It returns an error wrapping ErrNotFound when an
 // attachment with nil Content has no blob.
 func (s *Store) Import(ctx context.Context, records ImportRecords) error {
+	for _, err := range []error{
+		validateEach(records.Sources),
+		validateEach(records.Timelines),
+		validateEach(records.TimelineReplacements),
+		validateEach(records.Events),
+		validateEach(records.EventReplacements),
+		validateEach(records.Annotations),
+		validateEach(records.AnnotationReplacements),
+		validateEach(records.Attachments),
+		validateEach(records.Links),
+	} {
+		if err != nil {
+			return err
+		}
+	}
+
 	staged, err := stageImportAttachments(s.blobDir, records.Attachments)
 	if err != nil {
 		return err
@@ -67,6 +83,18 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 
 		return nil
 	})
+}
+
+// validateEach returns the first of records' Validate errors.
+func validateEach[T interface{ Validate() error }](records []T) error {
+	for _, r := range records {
+		err := r.Validate()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // writeEach writes every one of records with write, stopping at the first error.

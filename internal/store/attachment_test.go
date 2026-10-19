@@ -275,6 +275,38 @@ var _ = Describe("Attachments", func() {
 			Expect(os.ReadDir(blobDir)).To(BeEmpty())
 		})
 
+		DescribeTable("rejects an invalid record before writing anything",
+			func(ctx SpecContext, write func(context.Context, timeline.Event) error) {
+				invalid := pager
+				invalid.ID, invalid.Seq, invalid.OccurredOffset = uuid(20), 5, new(timeline.MaxOccurredOffset+1)
+
+				_, ok := errors.AsType[*timeline.ValidationError](write(ctx, invalid))
+
+				Expect(ok).To(BeTrue())
+				Expect(s.Event(ctx, invalid.ID)).Error().To(MatchError(store.ErrNotFound))
+				Expect(s.Event(ctx, pager.ID)).To(HaveField("OccurredOffset", BeNil()))
+				Expect(filepath.Glob(filepath.Join(blobDir, "*"))).To(BeEmpty())
+				next := pager
+				next.ID = uuid(40)
+				Expect(s.AddEvent(ctx, next, uuid(9))).To(HaveField("Seq", int64(2)))
+			},
+			Entry("AddEvent with an attachment", func(ctx context.Context, e timeline.Event) error {
+				_, err := s.AddEvent(ctx, e, uuid(9), newFile(21, "grafana.png", screenshot))
+				return err
+			}),
+			Entry("UpdateEvent with an attachment", func(ctx context.Context, e timeline.Event) error {
+				e.ID, e.Seq = pager.ID, pager.Seq
+				return s.UpdateEvent(ctx, e, uuid(9), newFile(21, "grafana.png", screenshot))
+			}),
+			Entry("Import with an attachment", func(ctx context.Context, e timeline.Event) error {
+				a := described(21, timeline.AttachmentOwner{EventID: new(e.ID)}, "grafana.png", "image/png", screenshot)
+				return s.Import(ctx, store.ImportRecords{
+					Events:      []timeline.Event{e},
+					Attachments: []store.ImportAttachment{{Attachment: a, Content: bytes.NewReader(screenshot)}},
+				})
+			}),
+		)
+
 		It("adds no event when an attachment's content cannot be read", func(ctx SpecContext) {
 			boom := errors.New("boom")
 			stepDown := pager
