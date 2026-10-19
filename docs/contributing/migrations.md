@@ -75,7 +75,8 @@ because older ones do not.
 
 ### Adding a release's fixture
 
-[The release checklist](releasing.md) runs these steps once the release is tagged:
+Run these steps after each release, as
+[the releasing guide's After the release](releasing.md#after-the-release) section says:
 
 1. From a checkout of the new tag, such as one made by
    `git worktree add /tmp/coroner-v<X.Y.Z> v<X.Y.Z>`, run

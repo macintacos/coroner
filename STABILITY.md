@@ -150,9 +150,10 @@ removing it outright.
    ([`internal/cli/examples_test.go`](internal/cli/examples_test.go)) rejects an example
    that invokes a deprecated command or flag, and move every example, help topic and docs
    page that uses the element to its replacement.
-5. **Announce it in the release notes.** git-cliff writes them from the commit history, so
-   the commit that deprecates an element names it in its subject. Deprecating is not a
-   break, since the element keeps working, so that commit is not marked breaking.
+5. **Announce it in the release notes.** Name the deprecated element and its replacement
+   in the pull request's body; the release notes list it under **Deprecated**. Deprecating
+   is not a break, since the element keeps working, so it is never listed under
+   **Breaking**.
 6. **Remove it only once its window has passed.** Before 1.0, removing it is a break
    ([§ Before 1.0](#before-10)). After 1.0 a stable element is never removed within v1: it
    stays as a hidden alias that keeps working and keeps warning, until a major version
@@ -172,10 +173,9 @@ rules 5a, 5c and 6, with a shorter window.
   binding, and a change to its behaviour ships opt-in first ([§ Versioning](#versioning)).
   An experimental element may change freely ([§ Tiers](#tiers)).
 - Every break, such as removing a candidate-stable element once its window has passed, is
-  listed under the **Breaking** heading of the changelog. git-cliff puts a commit there
-  when it is marked breaking (`feat!:` or a `BREAKING CHANGE:` footer), which needs the
-  maintainer's approval ([AGENTS.md](AGENTS.md) Rule 5). A change to an experimental
-  element is not a break, so it is not marked breaking.
+  listed under the **Breaking** heading of the release notes, and its pull request's
+  `stability:` line says `breaking`. A change to an experimental element is not a break,
+  so it is not listed there.
 
 ## Classifying a contract change
 
@@ -185,7 +185,8 @@ its stability in the pull request template, taking the first label that fits the
 diff:
 
 - **breaking**: it makes any change on [§ What is breaking](#what-is-breaking) to a stable
-  or candidate-stable element. Its commit is marked breaking ([§ Before 1.0](#before-10)).
+  or candidate-stable element. The release notes list it under **Breaking**
+  ([§ Before 1.0](#before-10)).
 - **additive**: otherwise, it adds something from
   [§ What is not breaking](#what-is-not-breaking), such as a new key, record type, enum
   value, command, flag, exit code or error kind, whatever else it changes in experimental
