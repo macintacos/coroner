@@ -111,11 +111,13 @@ func documentedExitCodes(body string) exitCodeTable {
 	return table
 }
 
-// envKeysRead returns the environment variable names that non-test Go files under root pass
-// to a call whose function, or another argument, is named like env: lookupEnv("TERM"),
-// xdgHome(env, "XDG_DATA_HOME", …).
+// envKeysRead returns the environment variable names that non-test Go files in root's
+// main.go, internal and skills pass to a call whose function, or another argument, is named
+// like env: lookupEnv("TERM"), xdgHome(env, "XDG_DATA_HOME", …).
+// It never lists root: go test caches on every entry of a directory a test lists, and the
+// build, lint and docs tasks rewrite root's bin, site and tool caches.
 // ponytail: a name read through a constant escapes the scan; resolve identifiers to their
-// constants if one ever is.
+// constants if one ever is. So does a Go file outside those three paths.
 func envKeysRead(root string) []string {
 	GinkgoHelper()
 	keyPattern := regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
@@ -123,11 +125,11 @@ func envKeysRead(root string) []string {
 	keys := map[string]bool{}
 	fset := token.NewFileSet()
 
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+	scan := func(path string, entry fs.DirEntry, err error) error {
 		switch {
 		case err != nil:
 			return err
-		case entry.IsDir() && path != root && unscanned(root, path):
+		case entry.IsDir() && unscanned(root, path):
 			return fs.SkipDir
 		case entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go"):
 			return nil
@@ -161,8 +163,10 @@ func envKeysRead(root string) []string {
 		})
 
 		return nil
-	})
-	Expect(err).NotTo(HaveOccurred())
+	}
+	for _, source := range []string{"main.go", "internal", "skills"} {
+		Expect(filepath.WalkDir(filepath.Join(root, source), scan)).To(Succeed())
+	}
 
 	return slices.Sorted(maps.Keys(keys))
 }
