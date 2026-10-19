@@ -21,7 +21,7 @@ import (
 // Races and --id conflicts are excluded: each check runs alone against its own database.
 func TestDryRunMeansWrite(t *testing.T) {
 	runs := t.TempDir()
-	written := map[string]bool{}
+	readBackCompared := map[string]bool{}
 
 	rapid.Check(t, func(t *rapid.T) {
 		dir, err := os.MkdirTemp(runs, "run")
@@ -48,7 +48,7 @@ func TestDryRunMeansWrite(t *testing.T) {
 		write := rapid.OneOf(eventWrite(), annotationWrite(), linkWrite()).Draw(t, "write")
 		compared, err := checkDryRunMeansWrite(t, coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)}, db, write)
 		command := strings.Join(write.args[:2], " ")
-		written[command] = written[command] || compared
+		readBackCompared[command] = readBackCompared[command] || compared
 		if err != nil {
 			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
 		}
@@ -60,7 +60,7 @@ func TestDryRunMeansWrite(t *testing.T) {
 
 	var missing []string
 	for _, command := range []string{"event add", "event edit", "annotation add", "annotation edit", "event link"} {
-		if !written[command] {
+		if !readBackCompared[command] {
 			missing = append(missing, command)
 		}
 	}

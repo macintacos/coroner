@@ -50,9 +50,9 @@ func resolveAt(input *string, now time.Time, loc *time.Location) (timeparse.Reso
 	if err != nil {
 		return r, err
 	}
-	bound := timeline.ValidateOccurredOffset(r.Offset)
-	if bound != nil {
-		return r, &Error{Kind: kindOf(timeline.RuleOffsetRange), Message: "--at: " + bound.Error(), Hint: "Use an offset from -24:00 to +24:00."}
+	offsetErr := timeline.ValidateOccurredOffset(r.Offset)
+	if offsetErr != nil {
+		return r, &Error{Kind: kindOf(timeline.RuleOffsetRange), Message: "--at: " + offsetErr.Error(), Hint: "Use an offset from -24:00 to +24:00."}
 	}
 
 	return r, nil
