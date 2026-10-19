@@ -24,10 +24,10 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
   unchanged (`go test -count=1 ./...` reruns everything); a package pattern narrows it,
   and `--focus <regexp>` narrows Ginkgo specs only, so plain `Test*` functions such as
   `TestScripts` still run.
-- `mise run docs:serve` serves the docs site locally and rebuilds it on change.
-  `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing on any
-  warning, such as a broken link between pages, copies the export schema in, and fails
-  when a page links a file under `/coroner/schema/` that is not in `site/`.
+- `mise run docs:serve` serves the docs site at `http://localhost:2676` and rebuilds it on
+  change. `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing
+  on any warning, such as a broken link between pages, copies the export schema in, and
+  fails when a page links a file under `/coroner/schema/` that is not in `site/`.
 - `mise run preflight` runs lint, test, build and docs:build, starting docs:build only
   once lint and test finish, since both walk the tree and fail when it rebuilds `site/`
   under them. It is the gate before declaring work done (Rule 6).

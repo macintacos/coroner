@@ -3,4 +3,5 @@
 
 set -euo pipefail
 
-uv run --locked zensical serve
+# Zensical's default, 8000, is often taken; 2676 spells CORO on a phone keypad.
+uv run --locked zensical serve --dev-addr localhost:2676
