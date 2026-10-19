@@ -43,25 +43,9 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 func timelineEditForm(ctx context.Context, app App) formCommand {
 	def := timelineEditDefinition()
 	return formCommand{
-		def:   def,
-		ready: def.changed,
-		// Not writeRunE: render needs the --tz zone, which def omits as --tz changes nothing edit stores.
-		flagsOnly: withOneArg(func(cmd *cobra.Command, args []string) error {
-			o, err := newOutput(cmd, app)
-			if err != nil {
-				return err
-			}
-			cfg, z, err := resolveZone(cmd, app)
-			if err != nil {
-				return err
-			}
-			edited, err := editTimeline(ctx, app, cfg, def.read(cmd.Flags(), args))
-			if err != nil {
-				return err
-			}
-
-			return edited.render(o, z)
-		}),
+		def:       def,
+		ready:     def.changed,
+		flagsOnly: withOneArg(writeRunEInZone(ctx, app, def, editTimeline)),
 		session: func(cmd *cobra.Command, s formSession, in fieldValues) error {
 			z, err := timeZone(changedString(cmd.Flags(), "tz"), s.cfg.DefaultTimezone, s.app.Now().Location())
 			if err != nil {
