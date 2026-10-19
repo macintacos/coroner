@@ -48,26 +48,26 @@ func watch(ctx context.Context, sys system, args []string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	id, err := findReleaseRun(ctx, sys, *name, sha)
+	runID, err := findReleaseRun(ctx, sys, *name, sha)
 	if err != nil {
 		return nil, err
 	}
 
 	watchCtx, cancel := context.WithTimeout(ctx, watchDeadline)
 	defer cancel()
-	watchErr := sys.run(watchCtx, "gh", "run", "watch", id, "-R", repo, "--exit-status", "--interval", strconv.Itoa(int(findInterval.Seconds())))
+	watchErr := sys.run(watchCtx, "gh", "run", "watch", runID, "-R", repo, "--exit-status", "--interval", strconv.Itoa(int(findInterval.Seconds())))
 	if watchCtx.Err() != nil {
-		return nil, &toolError{Code: "workflow_timeout", Message: "release.yml run " + id + " did not finish within " + watchDeadline.String()}
+		return nil, &toolError{Code: "workflow_timeout", Message: "release.yml run " + runID + " did not finish within " + watchDeadline.String()}
 	}
 
 	// A failed watch is judged by the run's status and conclusion below: gh run watch also
 	// exits 1 on a network error while the run goes on.
-	outcome, err := ghJSON[runOutcome](ctx, sys, "the run", "run", "view", id, "-R", repo, "--json", "status,conclusion,url")
+	outcome, err := ghJSON[runOutcome](ctx, sys, "the run", "run", "view", runID, "-R", repo, "--json", "status,conclusion,url")
 	if err != nil {
 		return nil, err
 	}
 	if watchErr != nil && outcome.Status != "completed" {
-		return nil, &toolError{Code: "watch_interrupted", Message: "the watch stopped before release.yml run " + id + " finished: " + watchErr.Error()}
+		return nil, &toolError{Code: "watch_interrupted", Message: "the watch stopped before release.yml run " + runID + " finished: " + watchErr.Error()}
 	}
 	if outcome.Conclusion != "success" {
 		return nil, &toolError{Code: "workflow_failed", Message: "release.yml concluded " + outcome.Conclusion + ": " + outcome.URL}

@@ -90,17 +90,17 @@ func compute(ctx context.Context, sys system, args []string) (any, error) {
 		return nil, err
 	}
 	tags := parseLsRemote(lsRemote)
-	names := slices.Collect(maps.Keys(tags))
+	tagNames := slices.Collect(maps.Keys(tags))
 
-	result.Tag, err = nextTag(names, result.Bump, result.RC)
+	result.Tag, err = nextTag(tagNames, result.Bump, result.RC)
 	if err != nil {
 		return nil, usageError("%s", err)
 	}
 
 	var base string
 	logRange := sha
-	if prev, ok := latestFinal(names); ok {
-		previous := prev.String()
+	if latest, ok := latestFinal(tagNames); ok {
+		previous := latest.String()
 		compareURL := "https://github.com/" + repo + "/compare/" + previous + "..." + result.Tag
 		result.PreviousTag, result.CompareURL = &previous, &compareURL
 		base = tags[previous]
@@ -138,23 +138,23 @@ func resolveSHA(ctx context.Context, sys system, rev string) (string, error) {
 func pullRequests(ctx context.Context, sys system, commits []commit) ([]pullRequest, []commit, error) {
 	var prs []pullRequest
 	var orphans []commit
-	index := map[int]int{}
+	positionByNumber := map[int]int{}
 	for _, c := range commits {
-		m := prNumber.FindStringSubmatch(c.Subject)
-		if m == nil {
+		match := prNumber.FindStringSubmatch(c.Subject)
+		if match == nil {
 			orphans = append(orphans, c)
 			continue
 		}
 
-		n, _ := strconv.Atoi(m[1])
-		i, seen := index[n]
+		number, _ := strconv.Atoi(match[1])
+		i, seen := positionByNumber[number]
 		if !seen {
-			pr, err := fetchPullRequest(ctx, sys, m[1])
+			pr, err := fetchPullRequest(ctx, sys, match[1])
 			if err != nil {
 				return nil, nil, err
 			}
 			i = len(prs)
-			index[n] = i
+			positionByNumber[number] = i
 			prs = append(prs, pr)
 		}
 		prs[i].Commits = append(prs[i].Commits, c)
@@ -236,8 +236,8 @@ func stability(body string) string {
 			continue
 		}
 
-		if word := strings.Fields(after); len(word) > 0 && slices.Contains([]string{"breaking", "additive", "experimental"}, word[0]) {
-			return word[0]
+		if words := strings.Fields(after); len(words) > 0 && slices.Contains([]string{"breaking", "additive", "experimental"}, words[0]) {
+			return words[0]
 		}
 		if strings.Contains(lower, "[x]") {
 			return "none"
@@ -267,7 +267,7 @@ func parseNameStatus(out string) []contractFile {
 // parseDeprecations finds the deprecateCommand and deprecateFlag calls a git diff -U0 adds or
 // removes. A call spans lines, so only its opening line is kept.
 func parseDeprecations(diff string) []deprecation {
-	var found []deprecation
+	var deprecations []deprecation
 	path := ""
 	for line := range strings.Lines(diff) {
 		line = strings.TrimRight(line, "\n")
@@ -292,9 +292,9 @@ func parseDeprecations(diff string) []deprecation {
 		}
 		text = strings.TrimSpace(text)
 		if ok && deprecationCall.MatchString(text) && !strings.HasPrefix(text, "func deprecate") {
-			found = append(found, deprecation{Change: change, Path: path, Line: text})
+			deprecations = append(deprecations, deprecation{Change: change, Path: path, Line: text})
 		}
 	}
 
-	return found
+	return deprecations
 }

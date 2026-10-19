@@ -171,12 +171,12 @@ func checkBinary(ctx context.Context, sys system, name, archive string) (string,
 // checkChecksums requires a checksums.txt line for every target's archive, and the
 // downloaded archive's SHA-256 to match its line, and returns the sums it lists.
 func checkChecksums(dir, name, archive string) (map[string]string, error) {
-	list, err := os.ReadFile(filepath.Join(dir, "checksums.txt")) //nolint:gosec // G304: a file the tool just downloaded
+	checksums, err := os.ReadFile(filepath.Join(dir, "checksums.txt")) //nolint:gosec // G304: a file the tool just downloaded
 	if err != nil {
 		return nil, &toolError{Code: "internal", Message: err.Error()}
 	}
 	sums := map[string]string{}
-	for line := range strings.Lines(string(list)) {
+	for line := range strings.Lines(string(checksums)) {
 		if sum, file, ok := strings.Cut(strings.TrimSpace(line), "  "); ok {
 			sums[file] = sum
 		}
@@ -187,12 +187,12 @@ func checkChecksums(dir, name, archive string) (map[string]string, error) {
 		}
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, archive)) //nolint:gosec // G304: a file the tool just downloaded
+	downloaded, err := os.ReadFile(filepath.Join(dir, archive)) //nolint:gosec // G304: a file the tool just downloaded
 	if err != nil {
 		return nil, &toolError{Code: "internal", Message: err.Error()}
 	}
-	got := sha256.Sum256(data)
-	if hex.EncodeToString(got[:]) != sums[archive] {
+	archiveSum := sha256.Sum256(downloaded)
+	if hex.EncodeToString(archiveSum[:]) != sums[archive] {
 		return nil, &toolError{Code: "checksum_mismatch", Message: archive + "'s SHA-256 is not checksums.txt's"}
 	}
 

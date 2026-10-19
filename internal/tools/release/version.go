@@ -64,16 +64,16 @@ func latestFinal(tags []string) (version, bool) {
 // nextTag bumps the latest final tag among tags, or v0.0.0 when there is none; with rc it
 // appends -rc.N, one past the highest existing rc of that version.
 func nextTag(tags []string, bump string, rc bool) (string, error) {
-	base, _ := latestFinal(tags)
+	latest, _ := latestFinal(tags)
 
 	var next version
 	switch bump {
 	case "major":
-		next = version{base.major + 1, 0, 0, -1}
+		next = version{latest.major + 1, 0, 0, -1}
 	case "minor":
-		next = version{base.major, base.minor + 1, 0, -1}
+		next = version{latest.major, latest.minor + 1, 0, -1}
 	case "patch":
-		next = version{base.major, base.minor, base.patch + 1, -1}
+		next = version{latest.major, latest.minor, latest.patch + 1, -1}
 	default:
 		return "", fmt.Errorf("unknown bump %q", bump)
 	}

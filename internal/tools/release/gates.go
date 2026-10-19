@@ -77,12 +77,12 @@ func levelWithOrigin(ctx context.Context, sys system) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	origin, err := resolveSHA(ctx, sys, "origin/main")
+	originSHA, err := resolveSHA(ctx, sys, "origin/main")
 	if err != nil {
 		return "", err
 	}
-	if sha != origin {
-		return "", &toolError{Code: "not_level_with_origin", Message: "HEAD is " + sha + " but origin/main is " + origin}
+	if sha != originSHA {
+		return "", &toolError{Code: "not_level_with_origin", Message: "HEAD is " + sha + " but origin/main is " + originSHA}
 	}
 
 	return sha, nil
