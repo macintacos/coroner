@@ -94,14 +94,7 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 		var chosen bool
 		var err error
 		in, chosen, err = chooseTimeline(ctx, s, timelineEditDefinition(), in)
-		rejected, _ := errors.AsType[*Error](err)
-		switch {
-		// Reached only with no timeline at all; the usual hint names -t, which edit lacks.
-		case rejected != nil && rejected.Kind == KindTimelineRequired:
-			return timelineToEdit{}, false, &Error{
-				Kind: KindTimelineRequired, Message: "no timeline to edit", Hint: "Run 'coroner timeline create <name>' to create one.",
-			}
-		case err != nil || !chosen:
+		if err != nil || !chosen {
 			return timelineToEdit{}, false, err
 		}
 	}
@@ -109,12 +102,11 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 	nameOrID := in.value("timeline")
 	var target timelineToEdit
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		var err error
-		if nameOrID != nil {
-			target.timeline, err = findTimeline(ctx, st, *nameOrID)
-		} else {
-			target.timeline, err = selectTimeline(ctx, st, nil, s.app.LookupEnv)
+		sel, err := selectTimelines(ctx, st, timelineInputOf(in, timelineRule{positional: true}), s.app.LookupEnv)
+		if err != nil {
+			return err
 		}
+		target.timeline, err = sel.one(ctx, st)
 		if err != nil {
 			return err
 		}

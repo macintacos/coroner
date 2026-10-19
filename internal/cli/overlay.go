@@ -98,8 +98,8 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if name == nil {
 		return overlayCreated{}, missingValue("overlay create", "the overlay's name")
 	}
-	names := appendUnique(nil, in.values("timeline")...)
-	if len(names) == 0 {
+	timelines := timelineInputOf(in, timelineRule{several: true})
+	if len(timelines.names) == 0 {
 		return overlayCreated{}, missingValue("overlay create", "-t for each timeline it reads")
 	}
 	id, err := app.NewID()
@@ -111,7 +111,11 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 
 	created := overlayCreated{dryRun: dryRun}
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		created.timelines, err = selectNamedTimelines(ctx, s, names, app.LookupEnv)
+		sel, err := selectTimelines(ctx, s, timelines, app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		created.timelines, err = sel.all(ctx, s)
 		if err != nil {
 			return err
 		}

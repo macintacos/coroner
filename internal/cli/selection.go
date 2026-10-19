@@ -384,53 +384,6 @@ func overlayTimelines(ctx context.Context, s *store.Store, name string) ([]timel
 	return timelinesByID(ctx, s, o.TimelineIDs)
 }
 
-// lookupTimeline returns the timeline -t, CORONER_TIMELINE or the current timeline selects, and
-// its layer; by is "" and err nil when no layer selects one.
-func lookupTimeline(
-	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
-) (timeline.Timeline, selectedBy, error) {
-	var in timelineInput
-	if flag != nil {
-		in.names = []string{*flag}
-	}
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
-	if err != nil || sel.by == "" {
-		return timeline.Timeline{}, sel.by, err
-	}
-
-	return sel.timelines[0], sel.by, nil
-}
-
-// selectTimeline is lookupTimeline for commands that need a timeline: when no layer selects
-// one it is timeline_required, with a hint listing the timelines.
-func selectTimeline(
-	ctx context.Context, s *store.Store, flag *string, lookupEnv func(string) (string, bool),
-) (timeline.Timeline, error) {
-	var in timelineInput
-	if flag != nil {
-		in.names = []string{*flag}
-	}
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
-	if err != nil {
-		return timeline.Timeline{}, err
-	}
-
-	return sel.one(ctx, s)
-}
-
-// selectNamedTimelines returns the timeline each of names, -t's values, selects, each once in
-// the order named, or, when names is empty, the one timeline selectTimeline selects.
-func selectNamedTimelines(
-	ctx context.Context, s *store.Store, names []string, lookupEnv func(string) (string, bool),
-) ([]timeline.Timeline, error) {
-	sel, err := selectTimelines(ctx, s, timelineInput{names: names, rule: timelineRule{several: true}}, lookupEnv)
-	if err != nil {
-		return nil, err
-	}
-
-	return sel.all(ctx, s)
-}
-
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines
 // there are, or 'coroner timeline create' when there are none.
 func timelineRequiredError(ctx context.Context, s *store.Store) error {

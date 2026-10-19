@@ -196,15 +196,15 @@ func chooseTimeline(ctx context.Context, s formSession, def definition, in field
 	var by selectedBy
 	var timelines []timeline.Timeline
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		var err error
-		_, by, err = lookupTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
-		if err != nil || by != "" {
+		sel, err := selectTimelines(ctx, st, timelineInputOf(in, timelineRule{}), s.app.LookupEnv)
+		if err != nil || sel.by != "" {
+			by = sel.by
 			return err
 		}
 
 		timelines, err = st.Timelines(ctx)
 		if err == nil && len(timelines) == 0 {
-			return timelineRequiredError(ctx, st)
+			_, err = sel.one(ctx, st)
 		}
 		return err
 	})
@@ -300,7 +300,11 @@ func (s formSession) askUntil(
 func (f addForm[R]) entryChoices(ctx context.Context, s formSession, in fieldValues, z zone) (formChoices, error) {
 	var choices formChoices
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		t, err := selectTimeline(ctx, st, in.value("timeline"), s.app.LookupEnv)
+		sel, err := selectTimelines(ctx, st, timelineInputOf(in, timelineRule{}), s.app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		t, err := sel.one(ctx, st)
 		if err != nil {
 			return err
 		}
