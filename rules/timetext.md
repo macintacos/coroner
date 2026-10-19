@@ -15,3 +15,7 @@
    [`timetext_test.go`](../internal/timetext/timetext_test.go) that changes is a change in
    what people read on every surface. Decide on it; never edit the row just to make the
    suite pass.
+4. **A coarse window that does not line up in the zone reads in its own offset:** an hour
+   at +05:30 shown in UTC is `10:-- +05:30`, never `04:30`, and an interval's end is read
+   where its start is. Every event is still filed under the day its instant falls on in
+   the zone, so a part on another day shows its date.

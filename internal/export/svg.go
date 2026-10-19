@@ -222,13 +222,15 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	layout := svgLayout{Height: svgAxisHeight, Ticks: axis.ticks(zone)}
 	palette := sourcePalette()
 	byID := readings(v.Events, zone)
+	spans := daysSpanningOffsets(byID)
 	for _, g := range groupEvents(v.Events, sourceOf) {
 		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: svgMuted, Y: layout.Height}
 		if g.key != "" {
 			lane.Label, lane.Title, lane.Color = truncate(g.key, svgLaneLabelRunes), g.key, palette[v.slot(g.key)].Light
 		}
 		for row, e := range g.events {
-			lane.Marks = append(lane.Marks, axis.mark(e, byID[e.ID], lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
+			r := byID[e.ID]
+			lane.Marks = append(lane.Marks, axis.mark(e, svgWhen(r, spans[r.Day]), lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
 		}
 		lane.LabelY = lane.Marks[0].Y
 		lane.Bottom = lane.Y + float64(len(g.events))*svgRowHeight + 2*svgLanePadding
@@ -237,6 +239,21 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	}
 
 	return layout
+}
+
+// daysSpanningOffsets reports, by Day, whether the readings filed under it span more than one
+// offset.
+func daysSpanningOffsets(byID map[string]timetext.Reading) map[string]bool {
+	days := map[string][]timetext.Reading{}
+	for _, r := range byID {
+		days[r.Day] = append(days[r.Day], r)
+	}
+	spans := make(map[string]bool, len(days))
+	for day, readings := range days {
+		_, spans[day] = timetext.DayZone(readings, "")
+	}
+
+	return spans
 }
 
 // exportWindow returns the time an export covers: from its query's since or its first event,
@@ -295,8 +312,8 @@ func (axis svgAxis) x(t time.Time) float64 {
 	return svgGutter + svgPlotWidth*float64(t.Sub(axis.window.From))/float64(axis.window.To.Sub(axis.window.From))
 }
 
-// mark returns e's mark in the row at y, labelled with r, its reading.
-func (axis svgAxis) mark(e Event, r timetext.Reading, y float64) svgMark {
+// mark returns e's mark in the row at y, labelled with when, its time.
+func (axis svgAxis) mark(e Event, when string, y float64) svgMark {
 	start := time.Time(e.OccurredAt)
 	end := start.Add(precisionWindow(e.Precision))
 	shape := svgBand
@@ -307,7 +324,7 @@ func (axis svgAxis) mark(e Event, r timetext.Reading, y float64) svgMark {
 		shape = svgPoint
 	}
 
-	text := svgWhen(r) + " " + flatten(e.Text)
+	text := when + " " + flatten(e.Text)
 	m := svgMark{
 		X: axis.x(start), Y: y, Shape: shape, Inexact: e.Approximate || precisionWindow(e.Precision) > 0,
 		Label: truncate(text, svgLabelRunes), Title: text,
@@ -337,14 +354,15 @@ func labelPlace(from, to float64) (float64, string) {
 }
 
 // svgWhen returns r's start, then its interval's end, and ~ first when it is approximate. A
-// day-precision event shows the date of each end; a timed part reads as partWhen's.
-func svgWhen(r timetext.Reading) string {
-	when := partWhen(r.Start, r.Day, false)
+// day-precision event shows the date of each end; a timed part reads as partWhen's, with its
+// offset when its day spans offsets.
+func svgWhen(r timetext.Reading, offset bool) string {
+	when := partWhen(r.Start, r.Day, offset)
 	if r.Precision == timeline.PrecisionDay {
 		when = r.Start.Date
 	}
 	if r.End != nil {
-		end := partWhen(*r.End, r.Start.Date, false)
+		end := partWhen(*r.End, r.Start.Date, offset)
 		if r.Precision == timeline.PrecisionDay {
 			end = r.End.Date
 		}

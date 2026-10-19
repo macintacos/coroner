@@ -91,14 +91,14 @@
    a source such as `k8s:events` cannot end the section early; a timeline name holds no
    `/`, so the pair is unambiguous. Mermaid dates carry no offset, and a location named
    `Local` says nothing to a reader, so the title names the zone by the abbreviations its
-   times carry on the zone's wall clock, such as `(EDT/EST)`, as the Markdown export
-   labels times. A diagram over `export.MermaidMaxTextSize` is still written whole, with a
-   warning on stderr, because cutting it would silently drop events. The escaper and the
-   guard were checked by rendering in Mermaid 11.12.0 and 10.2.4, and the keyword list
-   follows 11.12.0's `gantt.jison`; a change to the escaper or the diagram's syntax is
-   checked by rendering `internal/export/testdata/mermaid/hostile.mmd` in both. Those
-   goldens change only through `go test ./internal/export -update`, with the diff read
-   before committing.
+   times carry on the zone's wall clock, such as `(EDT/EST)`, through `timetext.DayZone`
+   over every event, falling back to the zone's abbreviation at export. A diagram over
+   `export.MermaidMaxTextSize` is still written whole, with a warning on stderr, because
+   cutting it would silently drop events. The escaper and the guard were checked by
+   rendering in Mermaid 11.12.0 and 10.2.4, and the keyword list follows 11.12.0's
+   `gantt.jison`; a change to the escaper or the diagram's syntax is checked by rendering
+   `internal/export/testdata/mermaid/hostile.mmd` in both. Those goldens change only
+   through `go test ./internal/export -update`, with the diff read before committing.
 10. **The HTML export has one writer:** render it only through `export.WriteHTML`, from
     the
    same `Envelope`. The page embeds that envelope only as `export.Write` encodes it, in

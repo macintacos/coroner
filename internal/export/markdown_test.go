@@ -433,7 +433,7 @@ var _ = Describe("WriteMarkdown", func() {
 		matchGolden("chronological", markdown(checkoutSpike(), export.MarkdownOptions{Zone: time.UTC}))
 	})
 
-	It("shows each time at its precision, approximate times and intervals, with day-precision events first in the day they name", func() {
+	It("lays out times of every precision, approximate times and intervals", func() {
 		matchGolden("precisions", markdown(precisions(), export.MarkdownOptions{Zone: time.UTC}))
 	})
 

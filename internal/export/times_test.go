@@ -48,18 +48,21 @@ var _ = Describe("Markdown and SVG", func() {
 })
 
 // startText returns what both surfaces show of r's start: its date when it is filed under
-// another day, its clock, and its offset when it is read in its own.
+// another day, then its clock and its offset when it is read in its own; a day shows only its
+// date.
 func startText(r timetext.Reading) string {
 	var parts []string
 	if r.Start.Date != r.Day {
 		parts = append(parts, r.Start.Date)
 	}
-	parts = append(parts, r.Start.Clock)
-	if r.Start.OwnOffset {
-		parts = append(parts, r.Start.Offset)
+	if r.Start.Clock != "" {
+		parts = append(parts, r.Start.Clock)
+		if r.Start.OwnOffset {
+			parts = append(parts, r.Start.Offset)
+		}
 	}
 
-	return strings.TrimSpace(strings.Join(parts, " "))
+	return strings.Join(parts, " ")
 }
 
 // markdownItem returns the first line of outline that named matches, and the day heading

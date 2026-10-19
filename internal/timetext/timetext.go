@@ -32,16 +32,21 @@ type Part struct {
 	OwnOffset            bool
 }
 
-// Read returns e's time as it reads in zone. A day-precision event is dated, and filed, in its
-// own offset; an unknown precision reads as the second.
+// Read returns e's time as it reads in zone, filed under the day its instant falls on there. A
+// window that does not line up in zone reads, end included, in e's own offset; an unknown
+// precision reads as the second.
 func Read(e timeline.Event, zone *time.Location) Reading {
-	start := part(e.OccurredAt.In(zone), e.Precision)
-	if e.Precision == timeline.PrecisionDay {
-		start.Date = e.OccurredAt.In(ownOffset(e)).Format(time.DateOnly)
+	loc := Location(e, zone)
+	own := loc != zone
+	start := part(e.OccurredAt.In(loc), e.Precision, own)
+	r := Reading{
+		Day:         e.OccurredAt.In(zone).Format(time.DateOnly),
+		Start:       start,
+		Approximate: e.Approximate,
+		Precision:   e.Precision,
 	}
-	r := Reading{Day: start.Date, Start: start, Approximate: e.Approximate, Precision: e.Precision}
 	if e.EndedAt != nil {
-		end := part(e.EndedAt.In(zone), e.Precision)
+		end := part(e.EndedAt.In(loc), e.Precision, own)
 		r.End = &end
 	}
 
@@ -86,7 +91,7 @@ func zoned(r Reading) []Part {
 	return slices.DeleteFunc(parts, func(p Part) bool { return p.Clock == "" || p.OwnOffset })
 }
 
-func part(t time.Time, precision timeline.Precision) Part {
+func part(t time.Time, precision timeline.Precision, own bool) Part {
 	name, _ := t.Zone()
 
 	return Part{
@@ -94,11 +99,11 @@ func part(t time.Time, precision timeline.Precision) Part {
 		Clock:        clock(t, precision),
 		Abbreviation: name,
 		Offset:       t.Format("-07:00"),
+		OwnOffset:    own,
 	}
 }
 
-// clock returns t's wall clock to precision; a day has none. An hour shows its minutes when t's
-// location puts its start off the hour.
+// clock returns t's wall clock to precision; a day has none.
 func clock(t time.Time, precision timeline.Precision) string {
 	layout := time.TimeOnly
 	switch precision {
@@ -106,9 +111,6 @@ func clock(t time.Time, precision timeline.Precision) string {
 		return ""
 	case timeline.PrecisionHour:
 		layout = "15:--"
-		if t.Minute() != 0 {
-			layout = "15:04"
-		}
 	case timeline.PrecisionMinute:
 		layout = "15:04"
 	case timeline.PrecisionSecond:
@@ -121,6 +123,15 @@ func clock(t time.Time, precision timeline.Precision) string {
 	}
 
 	return t.Format(layout)
+}
+
+// Location is where e's time reads: zone when e's window lines up there, else e's own offset.
+func Location(e timeline.Event, zone *time.Location) *time.Location {
+	if e.Precision.Truncate(e.OccurredAt.In(zone)).Equal(e.OccurredAt) {
+		return zone
+	}
+
+	return ownOffset(e)
 }
 
 func ownOffset(e timeline.Event) *time.Location {

@@ -11,6 +11,8 @@ import (
 	"time"
 	"unicode/utf16"
 	"unicode/utf8"
+
+	"github.com/macintacos/coroner/internal/timetext"
 )
 
 // MermaidMaxTextSize is Mermaid's default maxTextSize: the longest diagram source, in UTF-16
@@ -90,28 +92,22 @@ func (gantt mermaidRenderer) header(v view, exportedAt Instant) []string {
 	title, name := v.title()
 	return []string{
 		"gantt",
-		"  title " + gantt.text(name+" "+title) + " (" + gantt.text(gantt.zoneNames(v.Events, exportedAt)) + ")",
+		"  title " + gantt.text(name+" "+title) + " (" + gantt.text(gantt.zoneLabel(v.Events, exportedAt)) + ")",
 		"  dateFormat " + mermaidDateFormat,
 		"  axisFormat %H:%M:%S",
 	}
 }
 
-// zoneNames returns the zone abbreviations of events' instants, in order of first appearance,
-// joined by /, or the one at exportedAt when there are no events.
-func (gantt mermaidRenderer) zoneNames(events []Event, exportedAt Instant) string {
-	var names []string
+// zoneLabel names the zone events' times read in, or the zone at exportedAt when none has a
+// clock there.
+func (gantt mermaidRenderer) zoneLabel(events []Event, exportedAt Instant) string {
+	readings := make([]timetext.Reading, 0, len(events))
 	for _, e := range events {
-		for _, t := range eventInstants(e) {
-			if name := zoneName(t.In(gantt.zone)); !slices.Contains(names, name) {
-				names = append(names, name)
-			}
-		}
+		readings = append(readings, timetext.Read(e.Domain(), gantt.zone))
 	}
-	if len(names) == 0 {
-		return zoneName(time.Time(exportedAt).In(gantt.zone))
-	}
+	label, _ := timetext.DayZone(readings, zoneName(time.Time(exportedAt).In(gantt.zone)))
 
-	return strings.Join(names, "/")
+	return label
 }
 
 // sections returns a section of tasks per sectionOf key, in order of first appearance; for one
