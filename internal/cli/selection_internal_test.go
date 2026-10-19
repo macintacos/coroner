@@ -73,31 +73,33 @@ var _ = Describe("timeline selection", func() {
 	// selected returns the names of the timelines names, overlay, env or the current timeline
 	// select, and the layer that selected them.
 	selected := func(ctx context.Context, names []string, overlay *string, env map[string]string) ([]string, selectedBy, error) {
-		switch {
-		case overlay != nil:
-			timelines, err := selectChosenTimelines(ctx, s, timelineChoice{names: names, overlay: overlay}, lookup(env))
-			return nameEach(timelines), "", err
-		case len(names) > 1:
-			timelines, err := selectTimelines(ctx, s, names, lookup(env))
-			return nameEach(timelines), selectedByFlag, err
+		in := timelineInput{names: names, overlay: overlay}
+		if overlay != nil || len(names) > 1 {
+			in.rule = timelineRule{several: true}
 		}
-
-		var flag *string
-		if len(names) == 1 {
-			flag = &names[0]
+		sel, err := selectTimelines(ctx, s, in, lookup(env))
+		if err != nil || sel.by == "" {
+			return nil, sel.by, err
 		}
-		t, by, err := lookupTimeline(ctx, s, flag, lookup(env))
-		if err != nil || by == "" {
-			return nil, by, err
-		}
-		return []string{t.Name}, by, nil
+		timelines, err := sel.all(ctx, s)
+		return nameEach(timelines), sel.by, err
 	}
 
 	// required returns the error a command that needs a timeline fails with when no layer
 	// selects one.
 	required := func(ctx context.Context, env map[string]string) error {
-		_, err := selectTimeline(ctx, s, nil, lookup(env))
+		sel, err := selectTimelines(ctx, s, timelineInput{}, lookup(env))
+		if err != nil {
+			return err
+		}
+		_, err = sel.one(ctx, s)
 		return err
+	}
+
+	deleteTimelines := func(ctx SpecContext) {
+		for _, name := range []string{"alpha", "beta", "gamma"} {
+			run(ctx, "timeline", "delete", name, "--yes")
+		}
 	}
 
 	BeforeEach(func(ctx SpecContext) {
@@ -200,20 +202,43 @@ var _ = Describe("timeline selection", func() {
 		})
 
 		DescribeTable("timeline_required hints",
-			func(ctx SpecContext, more int, want string) {
+			func(ctx SpecContext, empty bool, more int, want string) {
 				run(ctx, "timeline", "use", "--clear")
+				if empty {
+					deleteTimelines(ctx)
+				}
 				for i := range more {
 					run(ctx, "timeline", "create", fmt.Sprintf("t%02d", i))
 				}
 
 				err := required(ctx, nil)
 
-				Expect(err).To(HaveField("Kind", KindTimelineRequired))
-				Expect(err).To(HaveField("Hint", HavePrefix(want+"\n")))
+				failure, ok := errors.AsType[*Error](err)
+				Expect(ok).To(BeTrue(), "%v", err)
+				Expect(failure.Kind).To(Equal(KindTimelineRequired))
+				Expect(failure.Message).To(Equal("no timeline selected"))
+				first, _, _ := strings.Cut(failure.Hint, "\n")
+				Expect(first).To(Equal(want))
 			},
-			Entry("lists up to 10 timelines", 0, "Timelines: alpha, beta, gamma"),
-			Entry("counts the rest past 10", 9,
+			Entry("lists up to 10 timelines", false, 0, "Timelines: alpha, beta, gamma"),
+			Entry("counts the rest past 10", false, 9,
 				"Timelines: alpha, beta, gamma, t00, t01, t02, t03, t04, t05, t06, and 2 more"),
+			Entry("names coroner timeline create when there are none", true, 0,
+				"Run 'coroner timeline create <name>' to create one."),
+		)
+
+		DescribeTable("names coroner timeline create on an empty database",
+			func(ctx SpecContext, args ...string) {
+				deleteTimelines(ctx)
+
+				failure := execute(ctx, app, append([]string{"--db", db}, args...)...)
+
+				Expect(failure.Kind).To(Equal(KindTimelineRequired))
+				Expect(failure.Hint).To(Equal("Run 'coroner timeline create <name>' to create one."))
+			},
+			Entry("event add", "event", "add", "x", "--at", "2026-09-10T14:02:00Z"),
+			Entry("annotation add", "annotation", "add", "hi", "--kind", "comment"),
+			Entry("event list", "event", "list"),
 		)
 	})
 

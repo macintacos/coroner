@@ -387,6 +387,16 @@ var _ = Describe("add forms", func() {
 			Expect(errOut.String()).To(ContainSubstring(" event add 'Pager fires' -t mongo-outage"))
 		})
 
+		It("returns timeline_required naming coroner timeline create when there is no timeline", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "delete", "mongo-outage", "--yes")).To(Equal(0), errOut.String())
+			command := eventAdd(ctx, answers())
+
+			err := runForm(ctx, command, "event", "add")
+
+			Expect(err).To(HaveField("Kind", KindTimelineRequired))
+			Expect(err).To(HaveField("Hint", "Run 'coroner timeline create <name>' to create one."))
+		})
+
 		It("refuse --interactive off a terminal before opening anything", func(ctx SpecContext) {
 			app.InIsTTY = false
 

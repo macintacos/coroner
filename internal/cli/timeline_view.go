@@ -68,7 +68,7 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 			}
 
 			return viewTimelines(ctx, cmd, app, func(ctx context.Context, s *store.Store) ([]timeline.Timeline, error) {
-				return selectTimelines(ctx, s, names, app.LookupEnv)
+				return selectNamedTimelines(ctx, s, names, app.LookupEnv)
 			})
 		},
 	}
