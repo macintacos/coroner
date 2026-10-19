@@ -198,7 +198,7 @@ func timelineEditDefinition() definition {
 	return definition{fields: []field{
 		{name: "timeline", arg: true, usage: "Timeline to edit, as a `name|id`"},
 		{name: "name", usage: "New `name`", check: withoutEnv(checkName), suggest: suggestName, changes: true},
-		{name: "title", usage: "New `title`; an empty one clears it", check: utf8Only("title", "--title"), changes: true},
+		{name: "title", usage: "New `title`; an empty one clears it", check: utf8Only("--title"), changes: true},
 		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef), changes: true},
 		{name: "remove-ref", typ: stringsField, usage: "Remove a ref; repeat for more", changes: true},
 		{name: "dry-run", typ: boolField, usage: "Show the edited timeline, and change nothing"},
@@ -297,7 +297,7 @@ func checkAddedRef(ref string) error {
 		return &Error{Kind: KindUsage, Message: "--add-ref must not be blank", Hint: "A ref is a ticket key or URL."}
 	}
 
-	return checkUTF8("refs", "--add-ref", ref)
+	return checkUTF8("--add-ref", ref)
 }
 
 // apply returns t with the edit made and updated at set to now.

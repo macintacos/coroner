@@ -41,7 +41,7 @@ func checkAt(value string, env checkEnv) error {
 // a day from UTC, which an event cannot store, and input that is not UTF-8.
 func resolveAt(input *string, now time.Time, loc *time.Location) (timeparse.Resolved, error) {
 	if input != nil {
-		err := checkUTF8("occurred_raw", "--at", *input)
+		err := checkUTF8("--at", *input)
 		if err != nil {
 			return timeparse.Resolved{}, err
 		}
@@ -52,7 +52,7 @@ func resolveAt(input *string, now time.Time, loc *time.Location) (timeparse.Reso
 	}
 	bound := timeline.ValidateOccurredOffset(r.Offset)
 	if bound != nil {
-		return r, &Error{Kind: KindInvalidTime, Message: "--at: " + bound.Error(), Hint: "Use an offset from -24:00 to +24:00."}
+		return r, &Error{Kind: kindOf(timeline.RuleOffsetRange), Message: "--at: " + bound.Error(), Hint: "Use an offset from -24:00 to +24:00."}
 	}
 
 	return r, nil

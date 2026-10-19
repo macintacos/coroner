@@ -40,7 +40,7 @@ func annotationEditDefinition() definition {
 		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin), changes: true},
 		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName), changes: true},
 		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource), changes: true},
-		{name: "url", usage: "New permalink, as a `url`", check: notBlank("url", "--url"), changes: true},
+		{name: "url", usage: "New permalink, as a `url`", check: freeText("--url"), changes: true},
 		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
 	}}
@@ -182,8 +182,8 @@ func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
 	return edit, nil
 }
 
-// apply returns a with the edit made and updated at set to now, or the first rule the edited
-// annotation breaks as the kind its rule names.
+// apply returns a with the edit made and updated at set to now, rejecting a result the store
+// would.
 func (e annotationEdit) apply(a timeline.Annotation, now time.Time) (timeline.Annotation, error) {
 	if e.kind != nil {
 		a.Kind = *e.kind

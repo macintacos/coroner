@@ -10,7 +10,6 @@ import (
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
-	"github.com/macintacos/coroner/internal/timeline"
 )
 
 // withStorePath opens the database at path, creating and migrating it as needed, through
@@ -64,8 +63,9 @@ func changedString(flags *pflag.FlagSet, name string) *string {
 	return &value
 }
 
-// storeError gives the database failures a user can fix their kinds and messages, and
-// returns any other error as it is. path is the database withStorePath opened.
+// storeError gives the database failures a user can fix their kinds and messages, gives a
+// record the store rejected the kind its first rule names, and returns any other error as it
+// is. path is the database withStorePath opened.
 func storeError(err error, path string) error {
 	switch {
 	case errors.Is(err, store.ErrBusy):
@@ -84,8 +84,6 @@ func storeError(err error, path string) error {
 	case errors.Is(err, store.ErrBackupExists):
 		// The store's text names the backup and how to clear it.
 		return &Error{Kind: KindDBUnreadable, Message: err.Error(), Err: err}
-	case errors.As(err, new(*timeline.ValidationError)):
-		return recordError(err, "")
 	case errors.Is(err, fs.ErrPermission):
 		return &Error{
 			Kind: KindDBUnreadable, Message: "permission denied opening the database at " + path,
@@ -93,5 +91,5 @@ func storeError(err error, path string) error {
 		}
 	}
 
-	return err
+	return recordError(err, "")
 }

@@ -16,6 +16,7 @@ func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSou
 	if err != nil {
 		return err
 	}
+
 	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		err := checkTarget(ctx, q, a.TimelineID, a.EventID)
 		if err != nil {
@@ -75,6 +76,7 @@ func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, new
 	if err != nil {
 		return err
 	}
+
 	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(q *sqlcgen.Queries) error {
 		source, err := sourceID(ctx, q, a.Source, newSourceID, a.UpdatedAt)
 		if err != nil {

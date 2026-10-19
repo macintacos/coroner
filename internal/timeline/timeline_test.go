@@ -2,6 +2,7 @@ package timeline_test
 
 import (
 	"errors"
+	"math"
 	"slices"
 	"strings"
 	"time"
@@ -111,6 +112,11 @@ var _ = Describe("Event.Validate", func() {
 		Entry("a url that is not UTF-8", "url: must be UTF-8", func(e *timeline.Event) { e.URL = new("https://x/\xff") }),
 		Entry("an author that is not UTF-8", "author: must be UTF-8", func(e *timeline.Event) { e.Author = new("Ren\xe9") }),
 	)
+
+	It("names the most negative occurred offset with one sign", func() {
+		Expect(timeline.ValidateOccurredOffset(new(math.MinInt))).
+			To(MatchError("occurred offset -2562047788015215:30:08: must be within a day of UTC"))
+	})
 
 	It("accepts an hour window measured in the stated +05:30", func() {
 		e := valid()

@@ -62,7 +62,7 @@ func eventLinkDefinition() definition {
 		inherited(timelineField()),
 		linkEventsField(),
 		linkKindField(),
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("author", "--author")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		{name: "dry-run", typ: boolField, usage: "Show the link as it would be added, and add nothing"},
 	}}
 }
@@ -125,9 +125,13 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 	if err != nil {
 		return linkChange{}, err
 	}
+	author, err := eventAuthor(in.value("author"), cfg.Author, app.LookupEnv)
+	if err != nil {
+		return linkChange{}, err
+	}
 	dryRun, _ := in.boolean("dry-run")
 	change := linkChange{
-		link:   timeline.Link{ID: id.String(), Kind: kind, CreatedAt: app.Now(), Author: eventAuthor(in.value("author"), cfg.Author, app.LookupEnv)},
+		link:   timeline.Link{ID: id.String(), Kind: kind, CreatedAt: app.Now(), Author: author},
 		dryRun: dryRun, verb: "link", done: "Linked", preposition: "to",
 	}
 
@@ -234,7 +238,7 @@ func checkLink(l timeline.Link, ends linkEnds) error {
 	err := l.Validate()
 	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleSelfLink {
 		return &Error{
-			Kind: KindUsage, Message: fmt.Sprintf("`%s` cannot link to itself", ends.ref(0)), Hint: "Pass two different events.", Err: err,
+			Kind: kindOf(p.Rule), Message: fmt.Sprintf("`%s` cannot link to itself", ends.ref(0)), Hint: "Pass two different events.", Err: err,
 		}
 	}
 

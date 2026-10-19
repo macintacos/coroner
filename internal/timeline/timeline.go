@@ -110,14 +110,14 @@ func (e Event) Validate() error {
 		validatePrecision(e.Precision),
 		validateOccurredAt(e.OccurredAt, e.OccurredOffset, e.Precision),
 		ValidateOccurredOffset(e.OccurredOffset),
-		ValidateOptionalUTF8("occurred_raw", e.OccurredRaw),
-		validateEndedAt(e.EndedAt, e.OccurredAt),
+		validateOptionalUTF8("occurred_raw", e.OccurredRaw),
+		ValidateEndedAt(e.EndedAt, e.OccurredAt),
 		validateOptional(ValidateSourceName, e.Source),
 	}
 	for _, tag := range e.Tags {
 		errs = append(errs, ValidateTag(tag))
 	}
-	errs = append(errs, ValidateOptionalUTF8("url", e.URL), ValidateOptionalUTF8("author", e.Author))
+	errs = append(errs, validateOptionalUTF8("url", e.URL), validateOptionalUTF8("author", e.Author))
 
 	return join(errs...)
 }
@@ -128,8 +128,8 @@ func (a Annotation) Validate() error {
 		validateAnnotationKind(a.Kind),
 		ValidateText("body", a.Body),
 		validateOptional(ValidateSourceName, a.Source),
-		ValidateOptionalUTF8("url", a.URL),
-		ValidateOptionalUTF8("author", a.Author),
+		validateOptionalUTF8("url", a.URL),
+		validateOptionalUTF8("author", a.Author),
 	)
 }
 
@@ -156,8 +156,8 @@ func ValidateUTF8(field, s string) error {
 	return validateUTF8(field, field, s)
 }
 
-// ValidateOptionalUTF8 is [ValidateUTF8] for a field that may be absent.
-func ValidateOptionalUTF8(field string, s *string) error {
+// validateOptionalUTF8 is [ValidateUTF8] for a field that may be absent.
+func validateOptionalUTF8(field string, s *string) error {
 	if s == nil {
 		return nil
 	}
@@ -223,6 +223,7 @@ func validateOccurredAt(at time.Time, offset *int, precision Precision) error {
 }
 
 // MaxOccurredOffset is the furthest an occurred offset may be from UTC, in seconds.
+// It mirrors the event table's occurred_offset CHECK.
 const MaxOccurredOffset = 86400
 
 // ValidateOccurredOffset reports an offset more than [MaxOccurredOffset] from UTC, or nil.
@@ -231,8 +232,9 @@ func ValidateOccurredOffset(offset *int) error {
 		return nil
 	}
 
-	sign, abs := '+', *offset
-	if abs < 0 {
+	// uint so negating math.MinInt cannot overflow
+	sign, abs := '+', uint(*offset)
+	if *offset < 0 {
 		sign, abs = '-', -abs
 	}
 	text := fmt.Sprintf("%c%02d:%02d", sign, abs/3600, abs%3600/60)
@@ -243,7 +245,8 @@ func ValidateOccurredOffset(offset *int) error {
 	return problem("occurred_offset", RuleOffsetRange, "occurred offset %s: must be within a day of UTC", text)
 }
 
-func validateEndedAt(ended *time.Time, occurred time.Time) error {
+// ValidateEndedAt reports an ended at the canonical instant cannot render, or one before occurred, or nil.
+func ValidateEndedAt(ended *time.Time, occurred time.Time) error {
 	if ended == nil {
 		return nil
 	}

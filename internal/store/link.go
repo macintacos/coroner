@@ -14,6 +14,7 @@ func (s *Store) AddLink(ctx context.Context, l timeline.Link) error {
 	if err != nil {
 		return err
 	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		return createLink(ctx, q, l)
 	})

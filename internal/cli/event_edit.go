@@ -65,8 +65,8 @@ func eventEditDefinition() definition {
 		{name: "source", usage: "System, service or person it came from, as a `source`, or none", check: withoutEnv(checkEditedSource), changes: true},
 		{name: "add-tag", typ: stringsField, usage: "Add a `tag`; repeat for more", check: withoutEnv(checkTag), changes: true},
 		{name: "remove-tag", typ: stringsField, usage: "Remove a `tag`; repeat for more", changes: true},
-		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableNotBlank("url", "--url"), changes: true},
-		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableNotBlank("author", "--author"), changes: true},
+		{name: "url", usage: "Permalink to the log line or message, as a `url`, or none", check: clearableFreeText("--url"), changes: true},
+		{name: "author", usage: "Who added it, as a `name`, or none", check: clearableFreeText("--author"), changes: true},
 		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited event, and change nothing"},
 		tzField(),
@@ -88,9 +88,9 @@ func checkEditedSource(source string) error {
 	return checkSource(source)
 }
 
-// clearableNotBlank returns a field check that accepts none, which clears the field, and
-// otherwise rejects a blank value of flag.
-func clearableNotBlank(field, flag string) func(string, checkEnv) error {
+// clearableFreeText returns a field check that accepts none, which clears the field, and
+// otherwise rejects a blank value of flag, or one that is not UTF-8.
+func clearableFreeText(flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
 		if value == clearKeyword {
 			return nil
@@ -101,7 +101,7 @@ func clearableNotBlank(field, flag string) func(string, checkEnv) error {
 			return err
 		}
 
-		return checkUTF8(field, flag, value)
+		return checkUTF8(flag, value)
 	})
 }
 
@@ -367,7 +367,7 @@ func checkEditedEvent(ev timeline.Event, z zone) error {
 	err := ev.Validate()
 	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {
 		return &Error{
-			Kind: KindInvalidTime,
+			Kind: kindOf(p.Rule),
 			Message: fmt.Sprintf("the event would end at %s, before it occurred at %s",
 				ev.EndedAt.In(z.loc).Format(time.RFC3339Nano), occurredText(ev, z)),
 			Hint: "Pass an --ended time no earlier than its occurred at, or --ended none.",

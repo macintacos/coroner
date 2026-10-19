@@ -342,6 +342,7 @@ var _ = Describe("event view, edit and delete", func() {
 			Expect(run(ctx, "event", "link", "1", "2", "--kind", "led_to", "--json")).To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
 			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
 			Expect(out.String()).NotTo(ContainSubstring(`"type":"link"`))
 		})

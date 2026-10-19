@@ -154,7 +154,8 @@ var _ = Describe("write command definitions", func() {
 			for _, f := range def.fields {
 				// -t's and --add-ref's checks reject only a blank value, which a form reads as not given.
 				// --title's rejects only bytes that are not UTF-8, which a form's input replaces.
-				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref" || f.name == "title"
+				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref" ||
+					path+" "+f.name == "timeline create title" || path+" "+f.name == "timeline edit title"
 				if f.check != nil && !exempt && !covered[path+" "+f.name] {
 					missing = append(missing, path+" "+f.name)
 				}

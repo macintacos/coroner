@@ -10,7 +10,7 @@ import (
 )
 
 var _ = Describe("validation", func() {
-	DescribeTable("kindOf maps every rule to today's exit kind",
+	DescribeTable("kindOf maps every rule to its exit kind",
 		func(r timeline.Rule, want Kind) {
 			Expect(kindOf(r)).To(Equal(want))
 		},

@@ -22,8 +22,9 @@ func kindOf(r timeline.Rule) Kind {
 }
 
 // recordError returns a *timeline.ValidationError as the *Error its first problem's rule names,
-// with every problem in Message as Validate wrote them and hint on a usage problem. nil, an
-// *Error and any other error come back unchanged.
+// with every problem in Message as Validate wrote them and hint on a usage problem only, since
+// hints name flags, which an invalid_time or invalid_name message already does. nil, an *Error
+// and any other error come back unchanged.
 func recordError(err error, hint string) error {
 	if _, ok := errors.AsType[*Error](err); ok {
 		return err
@@ -40,7 +41,8 @@ func recordError(err error, hint string) error {
 	return &Error{Kind: kind, Message: err.Error(), Hint: hint, Err: err}
 }
 
-// firstProblem returns the first problem of a *timeline.ValidationError in err.
+// firstProblem returns the first problem of a *timeline.ValidationError in err and true, and
+// false when err holds none.
 func firstProblem(err error) (timeline.Problem, bool) {
 	verr, ok := errors.AsType[*timeline.ValidationError](err)
 	if !ok || len(verr.Problems) == 0 {

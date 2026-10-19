@@ -168,6 +168,7 @@ var _ = Describe("annotation", func() {
 			Expect(run(ctx, "annotation", "add", "election log", "-e", "1", "--kind", "evidence", "--json")).To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
+			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
 			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
 			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
 		})

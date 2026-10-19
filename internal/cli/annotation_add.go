@@ -52,8 +52,8 @@ func annotationAddDefinition() definition {
 		},
 		{name: "kind", required: true, usage: "Annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName)},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("url", "--url")},
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("author", "--author")},
+		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		perEntry(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the annotation as it would be added, and add nothing"},
 	}}
@@ -186,11 +186,15 @@ func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraf
 	if err != nil {
 		return annotationDraft{}, err
 	}
+	author, err := eventAuthor(in.value("author"), cfg.Author, app.LookupEnv)
+	if err != nil {
+		return annotationDraft{}, err
+	}
 	now := app.Now()
 	a := timeline.Annotation{
 		Kind:      timeline.AnnotationKind(*kind),
 		Body:      body,
-		Author:    eventAuthor(in.value("author"), cfg.Author, app.LookupEnv),
+		Author:    author,
 		Source:    fields.source,
 		URL:       fields.url,
 		CreatedAt: now,

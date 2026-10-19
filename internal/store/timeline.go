@@ -13,6 +13,7 @@ func (s *Store) CreateTimeline(ctx context.Context, t timeline.Timeline) error {
 	if err != nil {
 		return err
 	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		return createTimeline(ctx, q, t)
 	})
@@ -78,6 +79,7 @@ func (s *Store) UpdateTimeline(ctx context.Context, t timeline.Timeline) error {
 	if err != nil {
 		return err
 	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		_, err := q.UpdateTimeline(ctx, sqlcgen.UpdateTimelineParams{
 			Name:      t.Name,

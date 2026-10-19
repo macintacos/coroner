@@ -38,6 +38,7 @@ type ValidationError struct {
 	Problems []Problem
 }
 
+// Error returns each problem's message on its own line.
 func (e *ValidationError) Error() string {
 	messages := make([]string, 0, len(e.Problems))
 	for _, p := range e.Problems {
@@ -52,13 +53,19 @@ func problem(field string, rule Rule, format string, args ...any) error {
 }
 
 // join merges the problems of each *ValidationError in errs, returning an untyped nil when
-// there are none so a caller's err != nil stays false.
+// there are none so a caller's err != nil stays false. It never drops an error: any that is
+// not a *ValidationError makes it return every error in errs, joined.
 func join(errs ...error) error {
 	var problems []Problem
 	for _, err := range errs {
-		if verr, ok := errors.AsType[*ValidationError](err); ok {
-			problems = append(problems, verr.Problems...)
+		if err == nil {
+			continue
 		}
+		verr, ok := errors.AsType[*ValidationError](err)
+		if !ok {
+			return errors.Join(errs...)
+		}
+		problems = append(problems, verr.Problems...)
 	}
 	if len(problems) == 0 {
 		return nil

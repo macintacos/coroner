@@ -19,6 +19,11 @@ type NewAttachment struct {
 	Content      io.Reader
 }
 
+// Validate reports a Filename that is not UTF-8, or nil.
+func (a NewAttachment) Validate() error {
+	return timeline.ValidateUTF8("filename", a.Filename)
+}
+
 // stagedAttachment is an attachment row whose content is staged in the blob directory.
 type stagedAttachment struct {
 	attachment timeline.Attachment
@@ -157,15 +162,14 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 
 // writeWithAttachments stages attachments as owner's outside any transaction, then, in one
 // write, runs fn and names their blobs and inserts their rows after it, so a failed fn
-// names no blob. It returns the rows it inserted.
+// names no blob. It returns the rows it inserted. It rejects a filename that is not UTF-8
+// before staging anything.
 func (s *Store) writeWithAttachments(
 	ctx context.Context, owner timeline.AttachmentOwner, attachments []NewAttachment, fn func(*sqlcgen.Queries) error,
 ) ([]timeline.Attachment, error) {
-	for _, a := range attachments {
-		err := timeline.ValidateUTF8("filename", a.Filename)
-		if err != nil {
-			return nil, err
-		}
+	err := validateEach(attachments)
+	if err != nil {
+		return nil, err
 	}
 
 	staged, err := stageAttachments(s.blobDir, owner, attachments)

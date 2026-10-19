@@ -26,8 +26,8 @@ script, without parsing a date.
 
 UTC orders events, but it loses what the source said about local time. So an event also
 keeps its occurred offset: the input's offset from UTC in seconds, as `+02:00` gives 7200.
-An `--at` offset more than a day from UTC is rejected as `invalid_time`, though Go's
-parser accepts up to ±24:59.
+An `--at` offset more than a day from UTC is rejected as `invalid_time`: real zones span
+−12:00 to +14:00, so the database stores only offsets within a day of UTC.
 
 The offset is null when the input was `Z`, `-00:00`, `UTC` or an epoch. Those say when
 something happened but nothing about the local time where it happened, and

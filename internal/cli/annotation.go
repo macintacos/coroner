@@ -161,17 +161,20 @@ func checkBodyOrStdin(body string) error {
 }
 
 func checkBody(body string) error {
-	p, ok := firstProblem(timeline.ValidateText("body", body))
+	err := timeline.ValidateText("body", body)
+	p, ok := firstProblem(err)
 	switch {
 	case !ok:
 		return nil
 	case p.Rule == timeline.RuleBlank:
 		return &Error{Kind: KindUsage, Message: "annotation body must not be blank", Hint: "Pass non-blank text, or - to read it from stdin."}
+	case p.Rule == timeline.RuleNotUTF8:
+		return &Error{
+			Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
+		}
 	}
 
-	return &Error{
-		Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
-	}
+	return recordError(err, "")
 }
 
 // eventFlag returns the event reference -e gives, or nil when -e is not given.

@@ -17,7 +17,8 @@
    and tag grammars may only loosen, because tightening one breaks stored data.
 5. **`Validate` reports nil or a `*ValidationError`** whose problems each carry the
    record's export key and a `Rule`. A new rule adds or reuses a `Rule` constant, adds its
-   SQL CHECK in the same change (store Rule 3) and adds a row to the cli's `kindOf`.
+   SQL CHECK in the same change where SQLite can express one (store Rule 3) and adds a row
+   to the cli's `kindOf`.
 6. **Events order by occurred at, then timeline id, then seq, through `CompareEvents`**,
    never by created at. The store's `ORDER BY` and the export's record order mirror it, so
    an overlay of several timelines merges the same way everywhere.

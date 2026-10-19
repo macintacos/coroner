@@ -137,7 +137,8 @@ digraph coroner_rules_router {
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. A domain validation problem becomes an exit kind in one table, `kindOf` in
-  [`internal/cli/validation.go`](internal/cli/validation.go), and `storeError` routes a
+  [`internal/cli/validation.go`](internal/cli/validation.go); commands turn a record's
+  `Validate` error into an `*Error` with `recordError`, and `storeError` routes a
   store-side `*timeline.ValidationError` through it. Any other error, or a panic, exits 1
   as `internal`. A command declares the output formats it supports in its `formats`
   annotation, and any other `--format` or `--json` exits 2 as `usage`. `-t` names one

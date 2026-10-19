@@ -62,12 +62,18 @@ func TestExportImportRoundTrip(t *testing.T) {
 		}
 	})
 
-	// With fewer checks than rapid's default 100, as when debugging, or under -short, which runs a
-	// fifth of them, too few models are drawn to cover every key.
-	checks, _ := strconv.Atoi(flag.Lookup("rapid.checks").Value.String())
-	if missing := unseen(seen); checks >= 100 && !testing.Short() && len(missing) > 0 {
+	if missing := unseen(seen); enoughChecksToCover() && len(missing) > 0 {
 		t.Errorf("no generated export held %s", strings.Join(missing, ", "))
 	}
+}
+
+// enoughChecksToCover reports whether rapid drew enough cases for a property to require that every
+// case kind it generates was seen. With fewer checks than rapid's default 100, as when debugging,
+// or under -short, which runs a fifth of them, too few are drawn.
+func enoughChecksToCover() bool {
+	checks, _ := strconv.Atoi(flag.Lookup("rapid.checks").Value.String())
+
+	return checks >= 100 && !testing.Short()
 }
 
 var _ = Describe("Frozen export fixtures", func() {

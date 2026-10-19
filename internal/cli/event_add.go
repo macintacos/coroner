@@ -114,8 +114,8 @@ func eventAddDefinition() definition {
 		{name: "approximate", typ: boolField, perEntry: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
 		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
 		{name: "tag", typ: stringsField, usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
-		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: notBlank("url", "--url")},
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: notBlank("author", "--author")},
+		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
+		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		perEntry(attachField()),
 		{
 			name: "id", perEntry: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
@@ -331,10 +331,14 @@ type eventDraft struct {
 }
 
 // draftEvent returns the event in describes, with times read as of env, and gives it new ids,
-// keeping --id's event id when given, rejecting anything the store would. It reads stdin after
-// every field check, so a bad field never waits on it, and draws ids only for a valid event.
+// keeping --id's event id when given, rejecting anything the store would. It reads stdin last,
+// so a bad field never waits on it, and draws ids only for a valid event, so a rejected event
+// leaves the id sequence, which scripts number from, where it was.
 func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (eventDraft, error) {
-	fields := readEventFields(in, cfg.Author, app.LookupEnv)
+	fields, err := readEventFields(in, cfg.Author, app.LookupEnv)
+	if err != nil {
+		return eventDraft{}, err
+	}
 	times, err := resolveEventTimes(in, env)
 	if err != nil {
 		return eventDraft{}, err
@@ -359,17 +363,9 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 		CreatedAt:      env.now,
 		UpdatedAt:      env.now,
 	}
-	err = e.Validate()
-	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {
-		return eventDraft{}, &Error{
-			Kind:    KindInvalidTime,
-			Message: fmt.Sprintf("--ended %s is before --at %s", times.endedWhen, times.when),
-			Hint:    "Pass an --ended time no earlier than --at.",
-			Err:     err,
-		}
-	}
+	err = recordError(e.Validate(), "Run 'coroner event add --help' for what each flag takes.")
 	if err != nil {
-		return eventDraft{}, recordError(err, "Run 'coroner event add --help' for what each flag takes.")
+		return eventDraft{}, err
 	}
 	e.ID, err = newEventID(in.value("id"), app.NewID)
 	if err != nil {
@@ -380,12 +376,7 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 		return eventDraft{}, err
 	}
 
-	when := times.when
-	if times.ended != nil {
-		when += ", ended " + times.endedWhen
-	}
-
-	return eventDraft{event: e, newSourceID: sourceID, when: when}, nil
+	return eventDraft{event: e, newSourceID: sourceID, when: times.when}, nil
 }
 
 // newEventID returns id when it was given, and a new id otherwise.
@@ -455,17 +446,20 @@ func checkTextOrStdin(text string) error {
 }
 
 func checkText(text string) (string, error) {
-	p, ok := firstProblem(timeline.ValidateText("text", text))
+	err := timeline.ValidateText("text", text)
+	p, ok := firstProblem(err)
 	switch {
 	case !ok:
 		return text, nil
 	case p.Rule == timeline.RuleBlank:
 		return "", &Error{Kind: KindUsage, Message: "event text must not be blank", Hint: "Pass non-blank text."}
+	case p.Rule == timeline.RuleNotUTF8:
+		return "", &Error{
+			Kind: KindUsage, Message: "event text must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
+		}
 	}
 
-	return "", &Error{
-		Kind: KindUsage, Message: "event text must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
-	}
+	return "", recordError(err, "")
 }
 
 // eventFields are the source, tags, URL and author an event's fields give it.
@@ -476,13 +470,15 @@ type eventFields struct {
 
 // readEventFields returns the event fields in gives, with the author defaulting to
 // configuredAuthor, then USER.
-func readEventFields(in fieldValues, configuredAuthor string, lookupEnv func(string) (string, bool)) eventFields {
+func readEventFields(in fieldValues, configuredAuthor string, lookupEnv func(string) (string, bool)) (eventFields, error) {
+	author, err := eventAuthor(in.value("author"), configuredAuthor, lookupEnv)
+
 	return eventFields{
 		source: in.value("source"),
 		tags:   appendUnique(nil, in.values("tag")...),
 		url:    in.value("url"),
-		author: eventAuthor(in.value("author"), configuredAuthor, lookupEnv),
-	}
+		author: author,
+	}, err
 }
 
 func checkNotBlank(flag string, value *string) error {
@@ -493,9 +489,9 @@ func checkNotBlank(flag string, value *string) error {
 	return &Error{Kind: KindUsage, Message: flag + " must not be blank", Hint: "Leave " + flag + " out instead."}
 }
 
-// checkUTF8 returns usage when value of flag, which sets the export key field, is not UTF-8.
-func checkUTF8(field, flag, value string) error {
-	if timeline.ValidateUTF8(field, value) == nil {
+// checkUTF8 returns usage when value of flag is not UTF-8.
+func checkUTF8(flag, value string) error {
+	if timeline.ValidateUTF8(flag, value) == nil {
 		return nil
 	}
 
@@ -503,21 +499,21 @@ func checkUTF8(field, flag, value string) error {
 }
 
 // utf8Only returns a field check that rejects a value of flag that is not UTF-8.
-func utf8Only(field, flag string) func(string, checkEnv) error {
+func utf8Only(flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
-		return checkUTF8(field, flag, value)
+		return checkUTF8(flag, value)
 	})
 }
 
-// notBlank returns a field check that rejects a blank value of flag, or one that is not UTF-8.
-func notBlank(field, flag string) func(string, checkEnv) error {
+// freeText returns a field check that rejects a blank value of flag, or one that is not UTF-8.
+func freeText(flag string) func(string, checkEnv) error {
 	return withoutEnv(func(value string) error {
 		err := checkNotBlank(flag, &value)
 		if err != nil {
 			return err
 		}
 
-		return checkUTF8(field, flag, value)
+		return checkUTF8(flag, value)
 	})
 }
 
@@ -565,18 +561,29 @@ func checkSlug(slug string, validate func(string) error) error {
 	return &Error{Kind: KindInvalidName, Message: err.Error(), Hint: hint, Err: err}
 }
 
-// eventAuthor returns flag, else configured, else USER, or nil when all are empty.
-func eventAuthor(flag *string, configured string, lookupEnv func(string) (string, bool)) *string {
+// eventAuthor returns flag, else configured, else USER, or nil when all are empty, rejecting a
+// defaulted author that is not UTF-8.
+func eventAuthor(flag *string, configured string, lookupEnv func(string) (string, bool)) (*string, error) {
 	if flag != nil {
-		return flag
+		return flag, nil
 	}
 
 	user, _ := lookupEnv("USER")
-	if author := cmp.Or(configured, user); author != "" {
-		return &author
+	author := cmp.Or(configured, user)
+	if timeline.ValidateUTF8("author", author) != nil {
+		return nil, &Error{
+			Kind:    KindUsage,
+			Message: "the default author, from the config file's author or USER, must be UTF-8",
+			Hint:    "Pass --author, or fix the config author or USER.",
+		}
 	}
 
-	return nil
+	var defaulted *string
+	if author != "" {
+		defaulted = &author
+	}
+
+	return defaulted, nil
 }
 
 // eventTimes are an event's resolved --at and --ended.
@@ -585,8 +592,8 @@ type eventTimes struct {
 	// raw is --at as given, or nil when it was not.
 	raw   *string
 	ended *time.Time
-	// when and endedWhen are at and ended as the command prints them.
-	when, endedWhen string
+	// when is at, and ended when given, as the command prints them.
+	when string
 }
 
 // resolveEventTimes resolves --at (marked approximate by --approximate) and --ended as of env,
@@ -609,8 +616,18 @@ func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
 	if err != nil {
 		return eventTimes{}, err
 	}
+	endedWhen := formatResolved(ended, env.zone)
+	err = timeline.ValidateEndedAt(&ended.Instant, at.Instant)
+	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {
+		return eventTimes{}, &Error{
+			Kind:    kindOf(p.Rule),
+			Message: fmt.Sprintf("--ended %s is before --at %s", endedWhen, times.when),
+			Hint:    "Pass an --ended time no earlier than --at.",
+			Err:     err,
+		}
+	}
 	times.ended = &ended.Instant
-	times.endedWhen = formatResolved(ended, env.zone)
+	times.when += ", ended " + endedWhen
 
 	return times, nil
 }

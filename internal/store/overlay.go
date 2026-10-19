@@ -14,6 +14,7 @@ func (s *Store) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
 	if err != nil {
 		return err
 	}
+
 	return s.write(ctx, func(q *sqlcgen.Queries) error {
 		_, err := q.CreateOverlay(ctx, sqlcgen.CreateOverlayParams{
 			ID: o.ID, Name: o.Name, CreatedAt: timeline.FormatInstant(o.CreatedAt),
