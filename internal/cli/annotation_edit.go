@@ -82,7 +82,7 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 	}
 
 	ids := replayIDs{draw: app.NewID}
-	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[annotationEdited], error) {
 			ids.rewind()
 			b := attached[annotationEdited]{result: annotationEdited{dryRun: req.dryRun}}
@@ -115,7 +115,7 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 	if err != nil {
 		return edited, err
 	}
-	edited.attach = built.attachResult(req, rows, cfg.DBPath)
+	edited.attach = built.attachResult(req, inserted, cfg.DBPath)
 
 	return edited, nil
 }

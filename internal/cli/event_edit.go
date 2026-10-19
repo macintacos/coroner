@@ -148,7 +148,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 		return eventEdited{}, err
 	}
 
-	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[eventEdited], error) {
 			b := attached[eventEdited]{result: eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}}
 			e, t, err := findEvent(ctx, tx, ref, timelineInputOf(in), app.LookupEnv)
@@ -170,7 +170,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	if err != nil {
 		return edited, err
 	}
-	edited.attach = built.attachResult(req, rows, cfg.DBPath)
+	edited.attach = built.attachResult(req, inserted, cfg.DBPath)
 
 	return edited, nil
 }

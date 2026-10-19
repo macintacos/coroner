@@ -248,8 +248,8 @@ type attached[T any] struct {
 }
 
 // attachResult returns what req attached to b's owner, given the rows the Change inserted.
-func (b attached[T]) attachResult(req attachRequest, rows []timeline.Attachment, dbPath string) attachResult {
-	return req.result(b.stored, rows, b.owner, dbPath)
+func (b attached[T]) attachResult(req attachRequest, inserted []timeline.Attachment, dbPath string) attachResult {
+	return req.result(b.stored, inserted, b.owner, dbPath)
 }
 
 // attachIn makes owner the Change's attachment owner and b's, and keeps in b what owner holds

@@ -163,7 +163,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	}
 
 	owner := timeline.AttachmentOwner{EventID: &draft.event.ID}
-	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[eventAdded], error) {
 			b := attached[eventAdded]{
 				result: eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}, owner: owner,
@@ -202,7 +202,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		// Nothing is attached, so result lists the stored attachments and reports none as added.
 		req = attachRequest{}
 	}
-	added.attach = built.attachResult(req, rows, cfg.DBPath)
+	added.attach = built.attachResult(req, inserted, cfg.DBPath)
 
 	return added, nil
 }

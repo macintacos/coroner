@@ -92,7 +92,7 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	}
 
 	owner := timeline.AttachmentOwner{AnnotationID: &draft.annotation.ID}
-	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[annotationAdded], error) {
 			b := attached[annotationAdded]{result: annotationAdded{dryRun: req.dryRun}}
 			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
@@ -119,7 +119,7 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	if err != nil {
 		return added, err
 	}
-	added.attach = built.attachResult(req, rows, cfg.DBPath)
+	added.attach = built.attachResult(req, inserted, cfg.DBPath)
 
 	return added, nil
 }

@@ -41,10 +41,10 @@ func withChange[T any](
 	ctx context.Context, app App, path string, opts store.ChangeOptions, fn func(*store.Tx) (T, error),
 ) (T, []timeline.Attachment, error) {
 	var result T
-	var rows []timeline.Attachment
+	var inserted []timeline.Attachment
 	err := withStorePath(ctx, app, path, func(s *store.Store) error {
 		var err error
-		rows, err = s.Change(ctx, opts, func(tx *store.Tx) error {
+		inserted, err = s.Change(ctx, opts, func(tx *store.Tx) error {
 			var err error
 			result, err = fn(tx)
 			return err
@@ -52,7 +52,7 @@ func withChange[T any](
 		return err
 	})
 
-	return result, rows, err
+	return result, inserted, err
 }
 
 // collectBlobs deletes the blobs no attachment references, after a delete commits.
