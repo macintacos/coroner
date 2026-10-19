@@ -78,15 +78,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 
 	var snapshot viewer.Snapshot
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		err = sel.checkFormat(o.format)
-		if err != nil {
-			return err
-		}
-		timelines, err := sel.all(ctx, s)
+		timelines, err := selectAll(ctx, s, inv.timelines, app.LookupEnv, o.format)
 		switch {
 		case err != nil:
 			return err

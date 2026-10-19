@@ -128,15 +128,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	var input exportInput
 	var page store.EventPage
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		err = sel.checkFormat(o.format)
-		if err != nil {
-			return err
-		}
-		timelines, err := sel.all(ctx, s)
+		timelines, err := selectAll(ctx, s, inv.timelines, app.LookupEnv, o.format)
 		if err != nil {
 			return err
 		}

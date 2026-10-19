@@ -248,6 +248,23 @@ func selectOne(
 	return sel.one(ctx, s)
 }
 
+// selectAll returns the timelines in selects, usage when they are several and f prints one, or
+// timeline_required when it selects none.
+func selectAll(
+	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool), f format,
+) ([]timeline.Timeline, error) {
+	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	if err != nil {
+		return nil, err
+	}
+	err = sel.checkFormat(f)
+	if err != nil {
+		return nil, err
+	}
+
+	return sel.all(ctx, s)
+}
+
 // one returns the first timeline sel selected, the only one a one-timeline command can, or
 // timeline_required when it selected none.
 func (sel selection) one(ctx context.Context, s records) (timeline.Timeline, error) {
