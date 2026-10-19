@@ -478,13 +478,13 @@ func (md markdownRenderer) when(e Event, offset bool) string {
 }
 
 // partWhen returns p's clock, preceded by its date when that differs from after and followed
-// by its offset when offset is set or p reads in its own.
-func partWhen(p timetext.Part, after string, offset bool) string {
+// by its offset when showOffset is set or p reads in its own.
+func partWhen(p timetext.Part, after string, showOffset bool) string {
 	when := p.Clock
 	if p.Date != after {
 		when = p.Date + " " + when
 	}
-	if offset || p.OwnOffset {
+	if showOffset || p.OwnOffset {
 		when += " " + p.Offset
 	}
 

@@ -160,9 +160,9 @@ func (m Model) bodyLines() ([]string, []block) {
 		if d, ok := gaps[i]; ok {
 			lines = append(lines, m.rule(formatGap(d), m.styles.gap))
 		}
-		if d := timetext.Read(e, m.opts.Location).Day; d != day {
-			lines = append(lines, m.rule(date(d).Format("Mon 2006-01-02"), m.styles.day))
-			day = d
+		if eventDay := timetext.Read(e, m.opts.Location).Day; eventDay != day {
+			lines = append(lines, m.rule(date(eventDay).Format("Mon 2006-01-02"), m.styles.day))
+			day = eventDay
 		}
 		row := len(lines)
 		lines = append(lines, m.row(e, i == m.cursor))

@@ -222,7 +222,7 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	layout := svgLayout{Height: svgAxisHeight, Ticks: axis.ticks(zone)}
 	palette := sourcePalette()
 	byID := readings(v.Events, zone)
-	spans := daysSpanningOffsets(byID)
+	daySpansOffsets := daysSpanningOffsets(byID)
 	for _, g := range groupEvents(v.Events, sourceOf) {
 		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: svgMuted, Y: layout.Height}
 		if g.key != "" {
@@ -230,7 +230,7 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 		}
 		for row, e := range g.events {
 			r := byID[e.ID]
-			lane.Marks = append(lane.Marks, axis.mark(e, svgWhen(r, spans[r.Day]), lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
+			lane.Marks = append(lane.Marks, axis.mark(e, svgWhen(r, daySpansOffsets[r.Day]), lane.Y+svgLanePadding+(float64(row)+0.5)*svgRowHeight))
 		}
 		lane.LabelY = lane.Marks[0].Y
 		lane.Bottom = lane.Y + float64(len(g.events))*svgRowHeight + 2*svgLanePadding
@@ -356,12 +356,12 @@ func labelPlace(from, to float64) (float64, string) {
 // svgWhen returns r's start, then its interval's end, and ~ first when it is approximate. A
 // day-precision event shows the date of each end; a timed part reads as partWhen's, with its
 // offset when its day spans offsets.
-func svgWhen(r timetext.Reading, offset bool) string {
+func svgWhen(r timetext.Reading, showOffset bool) string {
 	part := func(p timetext.Part, after string) string {
 		if r.Precision == timeline.PrecisionDay {
 			return p.Date
 		}
-		return partWhen(p, after, offset)
+		return partWhen(p, after, showOffset)
 	}
 	when := part(r.Start, r.Day)
 	if r.End != nil {

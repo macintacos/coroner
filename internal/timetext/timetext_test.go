@@ -22,12 +22,12 @@ const (
 func event(at string, offset *int, precision timeline.Precision, approximate bool, ended string) timeline.Event {
 	occurred, err := time.Parse(time.RFC3339Nano, at)
 	Expect(err).NotTo(HaveOccurred())
-	own := 0
+	offsetSeconds := 0
 	if offset != nil {
-		own = *offset
+		offsetSeconds = *offset
 	}
 	e := timeline.Event{
-		OccurredAt:     precision.Truncate(occurred.In(time.FixedZone("", own))).UTC(),
+		OccurredAt:     precision.Truncate(occurred.In(time.FixedZone("", offsetSeconds))).UTC(),
 		OccurredOffset: offset,
 		Precision:      precision,
 		Approximate:    approximate,

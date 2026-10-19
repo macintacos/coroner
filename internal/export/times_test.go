@@ -28,9 +28,9 @@ var _ = Describe("Markdown and SVG", func() {
 			named := regexp.MustCompile(`\b` + text + `\b`)
 			heading, item := markdownItem(markdown(env, export.MarkdownOptions{Zone: zone()}), named)
 			titles := parseSVG(svg(env, zone())).titles
-			t := slices.IndexFunc(titles, named.MatchString)
-			Expect(t).NotTo(Equal(-1))
-			title := titles[t]
+			titleIndex := slices.IndexFunc(titles, named.MatchString)
+			Expect(titleIndex).NotTo(Equal(-1))
+			title := titles[titleIndex]
 
 			Expect(heading).To(HavePrefix("## " + r.Day + " ("))
 			for _, w := range want {

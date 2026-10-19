@@ -38,8 +38,8 @@ type Part struct {
 // precision reads as the second.
 func Read(e timeline.Event, zone *time.Location) Reading {
 	loc := Location(e, zone)
-	own := loc != zone
-	start := part(e.OccurredAt.In(loc), e.Precision, own)
+	inOwnOffset := loc != zone
+	start := part(e.OccurredAt.In(loc), e.Precision, inOwnOffset)
 	r := Reading{
 		Day:         e.OccurredAt.In(zone).Format(time.DateOnly),
 		Start:       start,
@@ -47,7 +47,7 @@ func Read(e timeline.Event, zone *time.Location) Reading {
 		Precision:   e.Precision,
 	}
 	if e.EndedAt != nil {
-		end := part(e.EndedAt.In(loc), e.Precision, own)
+		end := part(e.EndedAt.In(loc), e.Precision, inOwnOffset)
 		r.End = &end
 	}
 
@@ -119,7 +119,7 @@ func zoned(r Reading) []Part {
 	return slices.DeleteFunc(parts, func(p Part) bool { return p.Clock == "" || p.OwnOffset })
 }
 
-func part(t time.Time, precision timeline.Precision, own bool) Part {
+func part(t time.Time, precision timeline.Precision, inOwnOffset bool) Part {
 	name, _ := t.Zone()
 
 	return Part{
@@ -127,7 +127,7 @@ func part(t time.Time, precision timeline.Precision, own bool) Part {
 		Clock:        clockText(t, precision),
 		Abbreviation: name,
 		Offset:       t.Format("-07:00"),
-		OwnOffset:    own,
+		OwnOffset:    inOwnOffset,
 	}
 }
 
