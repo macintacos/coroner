@@ -357,16 +357,15 @@ func labelPlace(from, to float64) (float64, string) {
 // day-precision event shows the date of each end; a timed part reads as partWhen's, with its
 // offset when its day spans offsets.
 func svgWhen(r timetext.Reading, offset bool) string {
-	when := partWhen(r.Start, r.Day, offset)
-	if r.Precision == timeline.PrecisionDay {
-		when = r.Start.Date
-	}
-	if r.End != nil {
-		end := partWhen(*r.End, r.Start.Date, offset)
+	part := func(p timetext.Part, after string) string {
 		if r.Precision == timeline.PrecisionDay {
-			end = r.End.Date
+			return p.Date
 		}
-		when += "–" + end
+		return partWhen(p, after, offset)
+	}
+	when := part(r.Start, r.Day)
+	if r.End != nil {
+		when += "–" + part(*r.End, r.Start.Date)
 	}
 	if r.Approximate {
 		when = "~" + when

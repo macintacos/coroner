@@ -74,6 +74,13 @@ func newYork() *time.Location {
 	return loc
 }
 
+func kolkata() *time.Location {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	Expect(err).NotTo(HaveOccurred())
+
+	return loc
+}
+
 func part(date, clock, abbreviation, offset string) timetext.Part {
 	return timetext.Part{Date: date, Clock: clock, Abbreviation: abbreviation, Offset: offset}
 }
@@ -135,6 +142,16 @@ var _ = Describe("timetext", func() {
 		Entry("UTC", inUTC, []string{"E3", "E5", "E10"}, "UTC", false),
 	)
 
+	DescribeTable("WallZone joins the abbreviations of every timed event's instants on the zone's wall clock",
+		func(events []timeline.Event, want string) {
+			Expect(timetext.WallZone(events, newYork(), "fallback")).To(Equal(want))
+		},
+		Entry("the fall-back day", []timeline.Event{fixture()["E15"], fixture()["E16"]}, "EDT/EST"),
+		Entry("an hour read in its own offset", []timeline.Event{fixture()["E3"]}, "EDT"),
+		Entry("an hour at +05:30 in January", []timeline.Event{event("2026-01-15T04:30:00Z", new(ist), timeline.PrecisionHour, false, "")}, "EST"),
+		Entry("day-precision events only", []timeline.Event{fixture()["E1"], fixture()["E2"]}, "fallback"),
+	)
+
 	DescribeTable("Read reads a coarse window that does not line up in the zone in its own offset",
 		func(e timeline.Event, zone func() *time.Location, want timetext.Part) {
 			Expect(timetext.Read(e, zone()).Start).To(Equal(want))
@@ -142,8 +159,8 @@ var _ = Describe("timetext", func() {
 		Entry("an hour at +05:30 in UTC", event("2026-09-11T04:30:00Z", new(ist), timeline.PrecisionHour, false, ""), inUTC, own("2026-09-11", "10:--", "+05:30")),
 		Entry("an hour at +05:30 in New York", event("2026-09-11T04:30:00Z", new(ist), timeline.PrecisionHour, false, ""), newYork, own("2026-09-11", "10:--", "+05:30")),
 		Entry("a day at -05:00 in UTC", event("2026-09-11T05:00:00Z", new(est), timeline.PrecisionDay, false, ""), inUTC, own("2026-09-11", "", "-05:00")),
-		Entry("an hour with no offset, read as UTC", event("2026-09-11T03:00:00Z", nil, timeline.PrecisionHour, false, ""), newYork, edtPart("2026-09-10", "23:--")),
-		Entry("a day with no offset, read as UTC", event("2026-09-11T00:00:00Z", nil, timeline.PrecisionDay, false, ""), newYork, timetext.Part{Date: "2026-09-11", Abbreviation: "UTC", Offset: "+00:00", OwnOffset: true}),
+		Entry("an hour with no offset, read as UTC", event("2026-09-11T03:00:00Z", nil, timeline.PrecisionHour, false, ""), kolkata, own("2026-09-11", "03:--", "+00:00")),
+		Entry("a day with no offset, read as UTC", event("2026-09-11T00:00:00Z", nil, timeline.PrecisionDay, false, ""), newYork, own("2026-09-11", "", "+00:00")),
 		Entry("a window that lines up", event("2026-09-11T03:00:00Z", new(0), timeline.PrecisionHour, false, ""), newYork, edtPart("2026-09-10", "23:--")),
 	)
 
@@ -166,9 +183,10 @@ var _ = Describe("timetext", func() {
 
 	DescribeTable("Location is the zone when the event lines up in it, else the event's own offset",
 		func(e timeline.Event, zone func() *time.Location, wantOffset int, wantZone bool) {
-			loc := timetext.Location(e, zone())
+			z := zone()
+			loc := timetext.Location(e, z)
 			if wantZone {
-				Expect(loc).To(Equal(zone()))
+				Expect(loc).To(BeIdenticalTo(z))
 			}
 			_, offset := e.OccurredAt.In(loc).Zone()
 			Expect(offset).To(Equal(wantOffset))

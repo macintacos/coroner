@@ -426,10 +426,7 @@ func tagsText(e timeline.Event) string {
 	return strings.Join(e.Tags, ",")
 }
 
-// eventTime is e's time as timetext reads it in loc: ~ when approximate, its start's date when it is
-// not the day e is filed under, its clock, then its end, dated when it ends another day, then the
-// zone's abbreviation, or the offset when e reads in its own. A space stands in for ~ so times
-// align.
+// eventTime lays out e's reading in loc; a space stands in for ~ so times align.
 func eventTime(e timeline.Event, loc *time.Location) string {
 	r := timetext.Read(e, loc)
 	text := " "

@@ -12,6 +12,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timetext"
 )
 
@@ -98,16 +99,15 @@ func (gantt mermaidRenderer) header(v view, exportedAt Instant) []string {
 	}
 }
 
-// zoneLabel names the zone events' times read in, or the zone at exportedAt when none has a
-// clock there.
+// zoneLabel names the zone by the abbreviations its bars are drawn in, or by its abbreviation
+// at exportedAt when no event has a clock.
 func (gantt mermaidRenderer) zoneLabel(events []Event, exportedAt Instant) string {
-	readings := make([]timetext.Reading, 0, len(events))
+	domain := make([]timeline.Event, 0, len(events))
 	for _, e := range events {
-		readings = append(readings, timetext.Read(e.Domain(), gantt.zone))
+		domain = append(domain, e.Domain())
 	}
-	label, _ := timetext.DayZone(readings, zoneName(time.Time(exportedAt).In(gantt.zone)))
 
-	return label
+	return timetext.WallZone(domain, gantt.zone, zoneName(time.Time(exportedAt).In(gantt.zone)))
 }
 
 // sections returns a section of tasks per sectionOf key, in order of first appearance; for one

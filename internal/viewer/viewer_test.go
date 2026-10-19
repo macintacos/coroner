@@ -67,9 +67,9 @@ func fixture() viewer.Snapshot {
 	}
 }
 
-// ownOffsetEvents are E2, E3, E13 and E11 of timetext's fixture in domain order: a UTC day, an
-// hour at +05:30 that New York files under the previous day, one whose own date is the next day,
-// and a minute interval crossing midnight UTC.
+// ownOffsetEvents are E2, E3, E13 and E11 of timetext's fixture in domain order: a UTC day New
+// York files under the previous day, an hour at +05:30, one whose own date is the next day, and a
+// minute interval crossing midnight UTC.
 func ownOffsetEvents() []timeline.Event {
 	ist, zero := 5*60*60+30*60, 0
 	end := utc(12, 0, 0, 0)

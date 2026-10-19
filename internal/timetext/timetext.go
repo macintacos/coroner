@@ -22,12 +22,13 @@ type Reading struct {
 
 // Part is one end of an event's time.
 type Part struct {
-	// Date is the part's own date, 2006-01-02; a renderer shows it when it differs from Day.
+	// Date is the part's own date, 2006-01-02; a renderer shows Start's when it differs from
+	// Day, and End's when it differs from Start's.
 	Date string
 	// Clock is the wall clock to the precision, such as 10:-- or 03:14:07.180; "" for a day.
 	Clock string
-	// Abbreviation and Offset ("+05:30") are the zone's, or the event's own offset's when
-	// OwnOffset is set, which a renderer must then show.
+	// Abbreviation and Offset ("+05:30") are the zone's, or, when OwnOffset is set, the
+	// event's own offset with no abbreviation, which a renderer must show on a timed part.
 	Abbreviation, Offset string
 	OwnOffset            bool
 }
@@ -53,8 +54,9 @@ func Read(e timeline.Event, zone *time.Location) Reading {
 	return r
 }
 
-// DayZone returns the abbreviations of a day's readings in order, joined by /, and whether they
-// span more than one offset; fallback names the zone when no reading has a clock.
+// DayZone returns the abbreviations of a day's parts that have a clock read in the zone, in
+// order, joined by /, and whether those parts span more than one offset; fallback names the
+// zone when no part has a clock read in the zone.
 func DayZone(day []Reading, fallback string) (string, bool) {
 	var names []string
 	offsets := map[string]bool{}
@@ -71,6 +73,32 @@ func DayZone(day []Reading, fallback string) (string, bool) {
 	}
 
 	return strings.Join(names, "/"), len(offsets) > 1
+}
+
+// WallZone joins, in order of first appearance, the abbreviations zone gives the instants of
+// the events that have a clock, or returns fallback when none has one. A surface that draws
+// every time on zone's wall clock, writing no offsets, names its zone with it.
+func WallZone(events []timeline.Event, zone *time.Location, fallback string) string {
+	var names []string
+	for _, e := range events {
+		if e.Precision == timeline.PrecisionDay {
+			continue
+		}
+		instants := []time.Time{e.OccurredAt}
+		if e.EndedAt != nil {
+			instants = append(instants, *e.EndedAt)
+		}
+		for _, t := range instants {
+			if name, _ := t.In(zone).Zone(); !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return fallback
+	}
+
+	return strings.Join(names, "/")
 }
 
 // Stamp is when an export was written, as people read it: 2006-01-02 15:04 MST.
@@ -96,15 +124,15 @@ func part(t time.Time, precision timeline.Precision, own bool) Part {
 
 	return Part{
 		Date:         t.Format(time.DateOnly),
-		Clock:        clock(t, precision),
+		Clock:        clockText(t, precision),
 		Abbreviation: name,
 		Offset:       t.Format("-07:00"),
 		OwnOffset:    own,
 	}
 }
 
-// clock returns t's wall clock to precision; a day has none.
-func clock(t time.Time, precision timeline.Precision) string {
+// clockText returns t's wall clock to precision; a day has none.
+func clockText(t time.Time, precision timeline.Precision) string {
 	layout := time.TimeOnly
 	switch precision {
 	case timeline.PrecisionDay:
@@ -125,7 +153,8 @@ func clock(t time.Time, precision timeline.Precision) string {
 	return t.Format(layout)
 }
 
-// Location is where e's time reads: zone when e's window lines up there, else e's own offset.
+// Location is where e's time reads: zone itself, the same pointer, when e's window lines up
+// there, else e's own offset.
 func Location(e timeline.Event, zone *time.Location) *time.Location {
 	if e.Precision.Truncate(e.OccurredAt.In(zone)).Equal(e.OccurredAt) {
 		return zone
@@ -134,9 +163,10 @@ func Location(e timeline.Event, zone *time.Location) *time.Location {
 	return ownOffset(e)
 }
 
+// ownOffset is e's recorded offset; a nil one means its window was cut in UTC.
 func ownOffset(e timeline.Event) *time.Location {
 	if e.OccurredOffset == nil {
-		return time.UTC
+		return time.FixedZone("", 0)
 	}
 
 	return time.FixedZone("", *e.OccurredOffset)

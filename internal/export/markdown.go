@@ -75,14 +75,15 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		link = AttachmentPath
 	}
 
+	zone := cmp.Or(opts.Zone, time.UTC)
 	md := markdownRenderer{
-		zone:          cmp.Or(opts.Zone, time.UTC),
+		zone:          zone,
 		groupBy:       opts.GroupBy,
 		includeRaw:    opts.IncludeRaw,
 		timelineNames: v.Names,
 		byEvent:       v.ByEvent,
 		attachments:   v.Attachments,
-		readings:      readings(v.Events, cmp.Or(opts.Zone, time.UTC)),
+		readings:      readings(v.Events, zone),
 		link:          link,
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
@@ -352,7 +353,7 @@ func (md markdownRenderer) daySections(events []Event, level, groupTag string) [
 }
 
 // days splits events, in occurred at and seq order, by the day each belongs to, with
-// day-precision events first within their day.
+// day-precision events dated their day first within it.
 func (md markdownRenderer) days(events []Event) [][]Event {
 	sorted := slices.Clone(events)
 	slices.SortStableFunc(sorted, func(a, b Event) int {
@@ -476,8 +477,8 @@ func (md markdownRenderer) when(e Event, offset bool) string {
 	return when
 }
 
-// partWhen returns p's clock, after its date when that is not after's, and before its offset
-// when offset is set or p is read in its own.
+// partWhen returns p's clock, preceded by its date when that differs from after and followed
+// by its offset when offset is set or p reads in its own.
 func partWhen(p timetext.Part, after string, offset bool) string {
 	when := p.Clock
 	if p.Date != after {

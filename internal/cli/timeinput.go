@@ -153,10 +153,11 @@ func formatResolved(r timeparse.Resolved, z zone) string {
 		wall.Format("-07:00"), z.label, wall.Format(time.TimeOnly))
 }
 
-// occurredText renders e's occurred at in z to its precision, marked ~ when approximate.
+// occurredText renders e's occurred at in z to its precision, a day-precision event in its own
+// offset when its window does not line up in z, marked ~ when approximate.
 func occurredText(e timeline.Event, z zone) string {
 	if e.Precision == timeline.PrecisionDay {
-		z = zone{loc: timetext.Location(e, z.loc), label: z.label}
+		z = zone{loc: timetext.Location(e, z.loc)}
 	}
 
 	if e.Approximate {

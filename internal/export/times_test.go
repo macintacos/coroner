@@ -65,8 +65,8 @@ func startText(r timetext.Reading) string {
 	return strings.Join(parts, " ")
 }
 
-// markdownItem returns the first line of outline that named matches, and the day heading
-// above it.
+// markdownItem returns the day heading above the first line of outline that named matches,
+// and that line.
 func markdownItem(outline string, named *regexp.Regexp) (string, string) {
 	GinkgoHelper()
 	var heading string
