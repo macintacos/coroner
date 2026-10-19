@@ -400,8 +400,8 @@
   };
 
   // printDays splits events, in export order, by the date each starts on, with day-precision
-  // events first within their day, as the Markdown export did before internal/timetext, which
-  // the page has not adopted yet.
+  // events first within their day. Unlike the Markdown export, it does not follow
+  // internal/timetext yet.
   const printDays = (events) => {
     const rows = events.map((event) => ({
       event,
@@ -419,8 +419,8 @@
   };
 
   // dayZone returns the abbreviations a day's times are shown in, in order, joined by /, and
-  // whether they span more than one offset, so that every time on the day needs its own; as
-  // the Markdown export did before internal/timetext, which the page has not adopted yet.
+  // whether they span more than one offset, so that every time on the day needs its own.
+  // Unlike the Markdown export, it does not follow internal/timetext yet.
   const dayZone = (day) => {
     const times = day.filter((row) => row.event.precision !== "day").flatMap((row) => (row.end ? [row.start, row.end] : [row.start]));
     if (!times.length) return { label: spanAt(instant(day[0].event.occurred_at).valueOf()).abbreviation, offsets: false };
@@ -431,8 +431,7 @@
   };
 
   // printTime returns when an event happened as a printed day lists it, under a heading that
-  // dates it, as the Markdown export did before internal/timetext, which the page has not
-  // adopted yet.
+  // dates it. Unlike the Markdown export, it does not follow internal/timetext yet.
   const printTime = ({ event, start, end }, offsets) => {
     if (event.precision === "day") {
       return [event.approximate && "approximately", end && "until " + end.date].filter(Boolean).join(", ");
