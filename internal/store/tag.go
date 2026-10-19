@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"time"
-
-	"github.com/macintacos/coroner/internal/store/sqlcgen"
 )
 
 // TagUsage is a tag with how many events carry it and when they happened.
@@ -24,8 +22,13 @@ ORDER BY t.tag`
 
 // TagUsages returns every tag an event carries, with its usage, ordered by name.
 func (s *Store) TagUsages(ctx context.Context) ([]TagUsage, error) {
-	return readTx(ctx, s, func(tx sqlcgen.DBTX) ([]TagUsage, error) {
-		return queryAll(ctx, tx, tagUsageQuery, nil, scanTagUsage)
+	return readIn(ctx, s, func(tx *Tx) ([]TagUsage, error) { return tx.TagUsages(ctx) })
+}
+
+// TagUsages returns every tag an event carries, with its usage, ordered by name.
+func (tx *Tx) TagUsages(ctx context.Context) ([]TagUsage, error) {
+	return translated(func() ([]TagUsage, error) {
+		return queryAll(ctx, tx.db, tagUsageQuery, nil, scanTagUsage)
 	})
 }
 

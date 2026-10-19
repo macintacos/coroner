@@ -101,3 +101,13 @@ var _ = Describe("translate", func() {
 		Expect(translate(nil)).To(Succeed())
 	})
 })
+
+var _ = DescribeTable("translate returns an error it already typed as it is",
+	func(err error) {
+		translated := translate(err)
+		Expect(translate(translated)).To(Equal(translated))
+	},
+	Entry("an already translated ErrNotFound", sql.ErrNoRows),
+	Entry("an already translated ErrConflict", errUniqueFailed),
+	Entry("an already translated ErrBusy", errBusy),
+)

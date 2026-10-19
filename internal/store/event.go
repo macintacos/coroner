@@ -15,55 +15,74 @@ import (
 func (s *Store) AddEvent(
 	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
 ) (timeline.Event, error) {
+	var added timeline.Event
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(tx *Tx) error {
+		var err error
+		added, err = tx.AddEvent(ctx, e, newSourceID)
+		return err
+	})
+	if err != nil {
+		return timeline.Event{}, err
+	}
+
+	return added, nil
+}
+
+// AddEvent adds e to its timeline under the timeline's next seq and returns e with that
+// Seq. When no source is called e.Source yet, it creates one with id newSourceID.
+func (tx *Tx) AddEvent(ctx context.Context, e timeline.Event, newSourceID string) (timeline.Event, error) {
 	err := e.Validate()
 	if err != nil {
 		return timeline.Event{}, err
 	}
 
-	var seq int64
-	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
-		var err error
-		seq, err = q.AllocateSeq(ctx, e.TimelineID)
-		if err != nil {
-			return err
-		}
-
-		source, err := sourceID(ctx, q, e.Source, newSourceID, e.CreatedAt)
-		if err != nil {
-			return err
-		}
-
-		return createEvent(ctx, q, e, seq, source)
-	})
-	if err != nil {
-		return timeline.Event{}, err
-	}
-
-	e.Seq = seq
-	return e, nil
-}
-
-// Event returns the event with id.
-func (s *Store) Event(ctx context.Context, id string) (timeline.Event, error) {
-	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Event, error) {
-		row, err := q.GetEvent(ctx, id)
+	return translated(func() (timeline.Event, error) {
+		seq, err := tx.q.AllocateSeq(ctx, e.TimelineID)
 		if err != nil {
 			return timeline.Event{}, err
 		}
 
-		return loadEvent(ctx, q, row)
+		source, err := sourceID(ctx, tx.q, e.Source, newSourceID, e.CreatedAt)
+		if err != nil {
+			return timeline.Event{}, err
+		}
+
+		e.Seq = seq
+		return e, createEvent(ctx, tx.q, e, seq, source)
+	})
+}
+
+// Event returns the event with id.
+func (s *Store) Event(ctx context.Context, id string) (timeline.Event, error) {
+	return readIn(ctx, s, func(tx *Tx) (timeline.Event, error) { return tx.Event(ctx, id) })
+}
+
+// Event returns the event with id.
+func (tx *Tx) Event(ctx context.Context, id string) (timeline.Event, error) {
+	return translated(func() (timeline.Event, error) {
+		row, err := tx.q.GetEvent(ctx, id)
+		if err != nil {
+			return timeline.Event{}, err
+		}
+
+		return loadEvent(ctx, tx.q, row)
 	})
 }
 
 // EventBySeq returns the event numbered seq in the timeline with timelineID.
 func (s *Store) EventBySeq(ctx context.Context, timelineID string, seq int64) (timeline.Event, error) {
-	return read(ctx, s, func(q *sqlcgen.Queries) (timeline.Event, error) {
-		row, err := q.GetEventBySeq(ctx, sqlcgen.GetEventBySeqParams{TimelineID: timelineID, Seq: seq})
+	return readIn(ctx, s, func(tx *Tx) (timeline.Event, error) { return tx.EventBySeq(ctx, timelineID, seq) })
+}
+
+// EventBySeq returns the event numbered seq in the timeline with timelineID.
+func (tx *Tx) EventBySeq(ctx context.Context, timelineID string, seq int64) (timeline.Event, error) {
+	return translated(func() (timeline.Event, error) {
+		row, err := tx.q.GetEventBySeq(ctx, sqlcgen.GetEventBySeqParams{TimelineID: timelineID, Seq: seq})
 		if err != nil {
 			return timeline.Event{}, err
 		}
 
-		return loadEvent(ctx, q, row)
+		return loadEvent(ctx, tx.q, row)
 	})
 }
 
@@ -71,30 +90,43 @@ func (s *Store) EventBySeq(ctx context.Context, timelineID string, seq int64) (t
 // prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase hex
 // and dashes: *, ? and [ are patterns, and ids are lowercase.
 func (s *Store) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error) {
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Event, error) { return tx.EventsByIDPrefix(ctx, prefix, limit) })
+}
+
+// EventsByIDPrefix returns up to limit events, in any timeline, whose id starts with
+// prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase hex
+// and dashes: *, ? and [ are patterns, and ids are lowercase.
+func (tx *Tx) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error) {
 	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
 		return nil, fmt.Errorf("event id prefix %q is not lowercase hex and dashes", prefix)
 	}
 
-	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Event, error) {
-		rows, err := q.ListEventsByIDPrefix(ctx, sqlcgen.ListEventsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
+	return translated(func() ([]timeline.Event, error) {
+		rows, err := tx.q.ListEventsByIDPrefix(ctx, sqlcgen.ListEventsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
 		if err != nil {
 			return nil, err
 		}
 
-		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, q, r) })
+		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, tx.q, r) })
 	})
 }
 
 // Events returns the events of the timeline with timelineID, ordered by occurred at, then
 // seq.
 func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event, error) {
-	return read(ctx, s, func(q *sqlcgen.Queries) ([]timeline.Event, error) {
-		rows, err := q.ListEvents(ctx, timelineID)
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Event, error) { return tx.Events(ctx, timelineID) })
+}
+
+// Events returns the events of the timeline with timelineID, ordered by occurred at, then
+// seq.
+func (tx *Tx) Events(ctx context.Context, timelineID string) ([]timeline.Event, error) {
+	return translated(func() ([]timeline.Event, error) {
+		rows, err := tx.q.ListEvents(ctx, timelineID)
 		if err != nil {
 			return nil, err
 		}
 
-		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, q, r) })
+		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, tx.q, r) })
 	})
 }
 
@@ -102,41 +134,59 @@ func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event
 // its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
 // creates one with id newSourceID.
 func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
+	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(tx *Tx) error {
+		return tx.UpdateEvent(ctx, e, newSourceID)
+	})
+	return err
+}
+
+// UpdateEvent stores every field of e but its timeline, seq and created at, and replaces
+// its tags with e.Tags. When no source is called e.Source yet, it creates one with id
+// newSourceID.
+func (tx *Tx) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string) error {
 	err := e.Validate()
 	if err != nil {
 		return err
 	}
 
-	_, err = s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(q *sqlcgen.Queries) error {
-		source, err := sourceID(ctx, q, e.Source, newSourceID, e.UpdatedAt)
-		if err != nil {
-			return err
-		}
+	source, err := sourceID(ctx, tx.q, e.Source, newSourceID, e.UpdatedAt)
+	if err != nil {
+		return translate(err)
+	}
 
-		return overwriteEvent(ctx, q, e, source, nil)
-	})
-	return err
+	return translate(overwriteEvent(ctx, tx.q, e, source, nil))
 }
 
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of
 // them when any does not exist. Their seqs are never given to other events.
 func (s *Store) DeleteEvents(ctx context.Context, ids ...string) error {
-	return s.write(ctx, func(q *sqlcgen.Queries) error {
-		for _, id := range ids {
-			_, err := q.GetEvent(ctx, id)
-			if err != nil {
-				return err
-			}
-		}
-		for _, id := range ids {
-			err := q.DeleteEvent(ctx, id)
-			if err != nil {
-				return err
-			}
-		}
+	return s.change(ctx, nil, func(tx *Tx) error { return tx.DeleteEvents(ctx, ids...) })
+}
 
-		return nil
-	})
+// DeleteEvents deletes the events with ids, with their tags and annotations, or none of
+// them when any does not exist. Their seqs are never given to other events.
+func (tx *Tx) DeleteEvents(ctx context.Context, ids ...string) error {
+	return translate(deleteAll(ctx, ids, tx.q.GetEvent, tx.q.DeleteEvent))
+}
+
+// deleteAll deletes the records with ids with del, after get has found every one of them.
+func deleteAll[T any](
+	ctx context.Context, ids []string, get func(context.Context, string) (T, error), del func(context.Context, string) error,
+) error {
+	for _, id := range ids {
+		_, err := get(ctx, id)
+		if err != nil {
+			return err
+		}
+	}
+	for _, id := range ids {
+		err := del(ctx, id)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func loadEvent(ctx context.Context, q *sqlcgen.Queries, row sqlcgen.Event) (timeline.Event, error) {

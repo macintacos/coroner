@@ -16,9 +16,32 @@ const (
 	firstBackoff  = 20 * time.Millisecond
 )
 
-// read is readTx for sqlc's queries: fn must only use q.
-func read[T any](ctx context.Context, s *Store, fn func(*sqlcgen.Queries) (T, error)) (T, error) {
-	return readTx(ctx, s, func(tx sqlcgen.DBTX) (T, error) { return fn(sqlcgen.New(tx)) })
+// Tx is one transaction's view of the database. Its methods translate their own errors, so a
+// caller can branch on ErrNotFound and ErrConflict inside a transaction and keep going.
+type Tx struct {
+	q       *sqlcgen.Queries
+	db      sqlcgen.DBTX // hand-written SQL (SourceUsages, ListEvents, TagUsages)
+	blobDir string       // Import's stored-blob check
+}
+
+func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
+	return &Tx{q: sqlcgen.New(db), db: db, blobDir: blobDir}
+}
+
+// readIn runs fn in one read transaction and returns what it produced. fn must only use tx.
+func readIn[T any](ctx context.Context, s *Store, fn func(*Tx) (T, error)) (T, error) {
+	return readTx(ctx, s, func(db sqlcgen.DBTX) (T, error) { return fn(newTx(db, s.blobDir)) })
+}
+
+// translated runs fn and returns its result, or the zero value and its error translated.
+func translated[T any](fn func() (T, error)) (T, error) {
+	v, err := fn()
+	if err != nil {
+		var zero T
+		return zero, translate(err)
+	}
+
+	return v, nil
 }
 
 // readTx runs fn in a transaction modernc begins deferred, so it waits on no writer, and
@@ -85,6 +108,26 @@ func queryAll[T any](
 func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
 	return translate(retryBusy(ctx, writeAttempts, func() error {
 		return s.inTx(ctx, nil, func(tx sqlcgen.DBTX) error { return fn(sqlcgen.New(tx)) })
+	}))
+}
+
+// change runs fn, then names each staged blob and inserts its row after it, in one
+// immediate transaction retried whole while another writer holds the database, so a failed
+// fn names no blob. fn may run more than once and must only use tx. change removes whatever
+// staged file it did not name.
+func (s *Store) change(ctx context.Context, staged []stagedAttachment, fn func(*Tx) error) error {
+	defer discardStaged(staged)
+
+	return translate(retryBusy(ctx, writeAttempts, func() error {
+		return s.inTx(ctx, nil, func(db sqlcgen.DBTX) error {
+			tx := newTx(db, s.blobDir)
+			err := fn(tx)
+			if err != nil {
+				return err
+			}
+
+			return insertAttachments(ctx, tx.q, tx.blobDir, staged)
+		})
 	}))
 }
 
