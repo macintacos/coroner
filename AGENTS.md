@@ -201,8 +201,9 @@ digraph coroner_rules_router {
   only through `export.Decode`, and merge through `merge`
   ([`merge.go`](internal/cli/merge.go)). `merge` decides what to insert, skip or replace
   in `planImport` ([`import_plan.go`](internal/cli/import_plan.go)), which reads the
-  database only through the lookup it is handed and does no other I/O, and writes the plan
-  with `Tx.Import` in the same `Change`; a dry run plans in one `Read`. `import` takes a
+  database only through the lookup it is handed and does no other I/O; `merge` then writes
+  the plan with `Tx.Import` in the same `Change`. A dry run plans in one `Read`, or, when
+  the database does not exist yet, against the empty `storedRecords`. `import` takes a
   file rather than typed values, so it declares plain flags and no `definition`, and opens
   no form. `event add --from-file` ([`event_add_file.go`](internal/cli/event_add_file.go))
   is its insert-only subset: event records through the same `export.Decode`, `merge` and

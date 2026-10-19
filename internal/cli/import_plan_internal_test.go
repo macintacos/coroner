@@ -511,7 +511,7 @@ var _ = Describe("planImport", func() {
 	})
 })
 
-// recordingLookup is a stored state that records each read and fails one of an id outside known.
+// recordingLookup records each read, and fails a read of any id outside known.
 type recordingLookup struct {
 	storedRecords
 	known map[string]bool

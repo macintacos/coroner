@@ -200,7 +200,8 @@ type incomingRecords struct {
 // means the input cannot be imported, and one holding only a takenName means a timeline's name
 // belongs to a stored timeline with another id. A conflict the policy does not resolve sets the
 // plan's blocked. It reads the database only through stored, and returns a read's error at once.
-// ponytail: one read per id, under merge's write lock; batch the reads if large imports hold other writers up.
+// ponytail: one read per id, under merge's write lock; batch the reads if large imports hold
+// other writers up.
 func planImport(ctx context.Context, in importInput, stored storedLookup) (importPlan, error) {
 	timelines, err := stored.Timelines(ctx)
 	if err != nil {

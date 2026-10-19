@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"io/fs"
 	"strings"
 	"testing/fstest"
@@ -37,6 +38,17 @@ var _ = Describe("readImportRecords", func() {
 		Expect(err).To(HaveField("Kind", KindUsage))
 		Expect(KindUsage.ExitCode()).To(Equal(2))
 		Expect(stdin.Len()).To(Equal(len(line)))
+	})
+})
+
+var _ = Describe("sidecarBlobs", func() {
+	It("leaves out a sidecar whose blob is beside the database and keeps the rest", func() {
+		sidecars := map[string][]byte{"stored": []byte("rs.status() before"), "new": []byte("rs.status() after")}
+
+		blobs := sidecarBlobs(sidecars, map[string]bool{"stored": true, "new": false})
+
+		Expect(blobs).To(HaveLen(1))
+		Expect(io.ReadAll(blobs[0])).To(Equal([]byte("rs.status() after")))
 	})
 })
 

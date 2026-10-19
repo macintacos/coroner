@@ -29,7 +29,8 @@ type mergeOutcome struct {
 	plan importPlan
 	// guard is the timeline every record was held to, or nil.
 	guard *timeline.Timeline
-	// inserted are the plan's new events as written, with their seqs, or with seq 0 unwritten.
+	// inserted are the plan's new events: as written, with their seqs, under mergeWrite (none when
+	// the plan could not write), and with seq 0 under mergePlanOnly.
 	inserted []timeline.Event
 }
 
@@ -69,7 +70,7 @@ func merge(ctx context.Context, s *store.Store, in mergeInput, mode mergeMode) (
 		return out, nil
 	}
 
-	_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit, Blobs: sidecarBlobs(in.sidecars)}, func(tx *store.Tx) error {
+	_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit, Blobs: sidecarBlobs(in.sidecars, in.localBlobs)}, func(tx *store.Tx) error {
 		err := plan(tx)
 		if err != nil || !out.plan.canWrite() {
 			return err

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"maps"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -233,11 +231,13 @@ func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
 	return records, nil
 }
 
-// sidecarBlobs returns the contents of sidecars in sha256 order.
-func sidecarBlobs(sidecars map[string][]byte) []io.Reader {
-	blobs := make([]io.Reader, 0, len(sidecars))
-	for _, sha := range slices.Sorted(maps.Keys(sidecars)) {
-		blobs = append(blobs, bytes.NewReader(sidecars[sha]))
+// sidecarBlobs returns the contents of the sidecars whose blob local does not hold.
+func sidecarBlobs(sidecars map[string][]byte, local map[string]bool) []io.Reader {
+	var blobs []io.Reader
+	for sha, content := range sidecars {
+		if !local[sha] {
+			blobs = append(blobs, bytes.NewReader(content))
+		}
 	}
 
 	return blobs
@@ -293,7 +293,9 @@ func unreadableSidecar(path string, err error) error {
 
 // localBlobs reports, by sha256, whether each attachment in records has its blob beside the
 // database at dbPath.
-// ponytail: read before merge's Change, so a garbage collection in between can delete a blob an attachment relies on, which Tx.Import reports as not found; stat inside the Change if that race matters.
+// ponytail: read before merge's Change, so a garbage collection in between can delete a blob an
+// attachment relies on, which Tx.Import reports as not found; stat inside the Change if that race
+// matters.
 func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.FileInfo, error)) map[string]bool {
 	blobs := map[string]bool{}
 	for _, r := range records {

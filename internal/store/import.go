@@ -70,7 +70,7 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) ([]timeline.Eve
 
 	q := tx.q
 	events := inSeqOrder(records.Events)
-	named := len(tx.named)
+	claimed := len(tx.claimed)
 	err := tx.atomic(ctx, func() error {
 		for _, step := range []func() error{
 			func() error { return writeEach(ctx, q, records.Sources, createSource) },
@@ -92,7 +92,7 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) ([]timeline.Eve
 		return nil
 	})
 	if err != nil {
-		tx.named = tx.named[:named]
+		tx.claimed = tx.claimed[:claimed]
 		return nil, err
 	}
 
@@ -235,11 +235,11 @@ func storedSourceID(ctx context.Context, q *sqlcgen.Queries, name *string) (*str
 	return &source.ID, nil
 }
 
-// importAttachments inserts the row of each of attachments, naming the Change's staged blob
+// importAttachments inserts the row of each of attachments, claiming the Change's staged blob
 // with its SHA256, or else requiring that blob already stored.
 func (tx *Tx) importAttachments(ctx context.Context, attachments []timeline.Attachment) error {
 	for _, a := range attachments {
-		err := tx.nameBlob(a)
+		err := tx.claimBlob(a)
 		if err != nil {
 			return err
 		}
@@ -253,8 +253,9 @@ func (tx *Tx) importAttachments(ctx context.Context, attachments []timeline.Atta
 	return nil
 }
 
-// nameBlob appends the staged blob a carries to tx.named, or checks that blob is stored.
-func (tx *Tx) nameBlob(a timeline.Attachment) error {
+// claimBlob appends the staged blob a carries to tx.claimed, or checks that blob is stored, and
+// returns an error when a's size is not the staged blob's.
+func (tx *Tx) claimBlob(a timeline.Attachment) error {
 	blob, ok := tx.blobs[a.SHA256]
 	if !ok {
 		_, err := os.Lstat(filepath.Join(tx.blobDir, a.SHA256))
@@ -267,7 +268,7 @@ func (tx *Tx) nameBlob(a timeline.Attachment) error {
 		return fmt.Errorf("attachment %s: content has sha256 %s and size %d, want %s and %d",
 			a.ID, blob.sha256, blob.size, a.SHA256, a.Size)
 	}
-	tx.named = append(tx.named, blob)
+	tx.claimed = append(tx.claimed, blob)
 
 	return nil
 }

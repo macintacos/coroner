@@ -43,31 +43,40 @@ func TestExportImportRoundTrip(t *testing.T) {
 	runs := t.TempDir()
 	seen := map[string]bool{}
 
-	rapid.Check(t, func(t *rapid.T) {
-		dir, err := os.MkdirTemp(runs, "run")
-		if err != nil {
-			t.Fatal(err)
-		}
+	rapid.Check(t, checkInRun(runs, func(t *rapid.T, dir string) error {
 		first, err := checkRoundTrip(t.Context(), dir, roundTripModel().Draw(t, "model"))
-		if err == nil {
-			err = observe(seen, first)
-		}
 		if err != nil {
-			// rapid shrinks a failure only while its message repeats, and every run has its own directory.
-			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
+			return err
 		}
-		err = os.RemoveAll(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+
+		return observe(seen, first)
+	}))
 
 	if missing := unseen(seen); enoughChecksToCover() && len(missing) > 0 {
 		t.Errorf("no generated export held %s", strings.Join(missing, ", "))
 	}
 }
 
-// importCounts mirrors one record type's counts in import's result object.
+// checkInRun runs check in its own directory under runs, removing it after a pass and failing with
+// the directory written as $RUN, since rapid shrinks a failure only while its message repeats.
+func checkInRun(runs string, check func(t *rapid.T, dir string) error) func(*rapid.T) {
+	return func(t *rapid.T) {
+		dir, err := os.MkdirTemp(runs, "run")
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = check(t, dir)
+		if err != nil {
+			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
+		}
+		err = os.RemoveAll(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// importCounts holds the inserted and conflicting counts of one record type in import's result object.
 type importCounts struct {
 	Inserted    int `json:"inserted"`
 	Conflicting int `json:"conflicting"`
@@ -86,20 +95,9 @@ type importResult struct {
 func TestImportTwiceChangesNothing(t *testing.T) {
 	runs := t.TempDir()
 
-	rapid.Check(t, func(t *rapid.T) {
-		dir, err := os.MkdirTemp(runs, "run")
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = checkImportTwice(t.Context(), dir, roundTripModel().Draw(t, "model"))
-		if err != nil {
-			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
-		}
-		err = os.RemoveAll(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+	rapid.Check(t, checkInRun(runs, func(t *rapid.T, dir string) error {
+		return checkImportTwice(t.Context(), dir, roundTripModel().Draw(t, "model"))
+	}))
 }
 
 // checkImportTwice round-trips m, imports the export into dir/b.db again, and returns an error
@@ -144,24 +142,15 @@ func checkImportTwice(ctx context.Context, dir string, m model) error {
 func TestReplaceThenExportEqualsReplacingFile(t *testing.T) {
 	runs := t.TempDir()
 
-	rapid.Check(t, func(t *rapid.T) {
-		dir, err := os.MkdirTemp(runs, "run")
-		if err != nil {
-			t.Fatal(err)
-		}
+	rapid.Check(t, checkInRun(runs, func(t *rapid.T, dir string) error {
 		m := roundTripModel().Draw(t, "model")
-		err = seedStore(t.Context(), filepath.Join(dir, "a.db"), m)
-		if err == nil {
-			err = checkReplace(t, dir, m.names())
-		}
+		err := seedStore(t.Context(), filepath.Join(dir, "a.db"), m)
 		if err != nil {
-			t.Fatal(strings.ReplaceAll(err.Error(), dir, "$RUN"))
+			return err
 		}
-		err = os.RemoveAll(dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
+
+		return checkReplace(t, dir, m.names())
+	}))
 }
 
 // checkReplace exports dir/a.db into dir/a/, writes it with redrawn titles and texts as

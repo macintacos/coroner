@@ -222,6 +222,7 @@ func storedSameEvent(ctx context.Context, s records, e timeline.Event, files []a
 		return e, false, err
 	}
 
+	// The store set the stored event's times; a re-add brings its own clock's.
 	keys := eventDiff(stored, e, keyCreatedAt, keyUpdatedAt)
 	if !slices.Equal(sortedSHA256s(attachments), fileSHA256s(files)) {
 		keys = append(keys, "attachments")

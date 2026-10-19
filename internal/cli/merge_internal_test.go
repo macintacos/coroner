@@ -144,11 +144,14 @@ var _ = Describe("merge", func() {
 		stored.EventID, incoming.EventID = &e.ID, &e.ID
 		seed(ctx, e, []export.Attachment{stored}, kept)
 		in := inputOf(stored, incoming)
-		in.sidecars = map[string][]byte{stored.SHA256: kept, incoming.SHA256: added}
+		stray := []byte("rs.status() during")
+		straySHA := planAttachment(5, stray).SHA256
+		in.sidecars = map[string][]byte{stored.SHA256: kept, incoming.SHA256: added, straySHA: stray}
 
 		_, err := merge(ctx, s, in, mergeWrite)
 
 		Expect(err).NotTo(HaveOccurred())
+		Expect(filepath.Join(config.BlobDir(dbPath), straySHA)).NotTo(BeAnExistingFile())
 		entries, err := os.ReadDir(config.BlobDir(dbPath))
 		Expect(err).NotTo(HaveOccurred())
 		names := make([]string, 0, len(entries))

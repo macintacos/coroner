@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -203,8 +202,9 @@ type eventsAdded struct {
 }
 
 // newEventsAdded sorts events, each id once in file order, into the ones identical holds and the
-// ones inserted holds.
+// ones inserted holds; every event identical does not hold must be in inserted.
 func newEventsAdded(events []export.Event, identical, inserted []timeline.Event) eventsAdded {
+	identicalByID, insertedByID := eventsByID(identical), eventsByID(inserted)
 	var added eventsAdded
 	seen := make(map[string]bool, len(events))
 	for _, e := range events {
@@ -213,15 +213,23 @@ func newEventsAdded(events []export.Event, identical, inserted []timeline.Event)
 		}
 		seen[e.ID] = true
 		added.ids = append(added.ids, e.ID)
-		byID := func(n timeline.Event) bool { return n.ID == e.ID }
-		if i := slices.IndexFunc(identical, byID); i >= 0 {
-			added.identical = append(added.identical, identical[i])
-		} else {
-			added.inserted = append(added.inserted, inserted[slices.IndexFunc(inserted, byID)])
+		if stored, ok := identicalByID[e.ID]; ok {
+			added.identical = append(added.identical, stored)
+			continue
 		}
+		added.inserted = append(added.inserted, insertedByID[e.ID])
 	}
 
 	return added
+}
+
+func eventsByID(events []timeline.Event) map[string]timeline.Event {
+	byID := make(map[string]timeline.Event, len(events))
+	for _, e := range events {
+		byID[e.ID] = e
+	}
+
+	return byID
 }
 
 // eventsAddedJSON is event add --from-file's result object: every key always present.

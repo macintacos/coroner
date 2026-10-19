@@ -34,8 +34,9 @@ type ChangeOptions struct {
 	// Attach is content staged before the transaction begins, because a reader cannot be read
 	// twice. fn attaches it to one owner with Tx.Attach; content fn never attaches is discarded.
 	Attach []NewAttachment
-	// Blobs is content staged before the transaction begins, with no owner: Tx.Import names each
-	// one an attachment it inserts carries the SHA256 of, and the rest are discarded.
+	// Blobs is content staged before the transaction begins, with no owner. Tx.Import claims the
+	// one whose SHA256 an attachment it inserts carries; Change names those after fn and discards
+	// the rest.
 	Blobs []io.Reader
 }
 
@@ -49,7 +50,7 @@ type Tx struct {
 	blobDir string
 	owner   *timeline.AttachmentOwner // the owner Attach named; nil attaches nothing
 	blobs   map[string]stagedBlob     // the Change's Blobs, by SHA256
-	named   []stagedBlob              // the blobs Tx.Import named
+	claimed []stagedBlob              // the blobs Tx.Import claimed
 }
 
 func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
@@ -62,8 +63,8 @@ func (tx *Tx) Attach(owner timeline.AttachmentOwner) {
 	tx.owner = &owner
 }
 
-// Change runs fn in one immediate transaction, then names the blobs Tx.Import named and names
-// and inserts the content fn attached, then commits, or rolls back under Rollback. fn may run
+// Change runs fn in one immediate transaction, then names the blobs Tx.Import claimed, and
+// names and inserts the content fn attached, then commits, or rolls back under Rollback. fn may run
 // more than once and must use only tx. It returns the attachment rows it attached (none under
 // Rollback).
 func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) error) ([]timeline.Attachment, error) {
@@ -92,7 +93,7 @@ func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) err
 		if err != nil || opts.Mode == Rollback {
 			return err
 		}
-		for _, b := range tx.named {
+		for _, b := range tx.claimed {
 			err = commitBlob(tx.blobDir, b)
 			if err != nil {
 				return err
