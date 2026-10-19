@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -27,6 +29,7 @@ var _ = Describe("planImport", func() {
 		pager      export.Event
 		ledTo      export.Link
 	)
+	ctx := context.Background()
 
 	BeforeEach(func() {
 		tl = planTimeline(1, "inc-4821")
@@ -45,10 +48,10 @@ var _ = Describe("planImport", func() {
 	all := func() []export.Record { return []export.Record{tl, mongod, stepdown, evidence, screenshot} }
 
 	It("inserts every record into an empty database and counts each type", func() {
-		in := planInput(all(), storedRecords{})
+		in := planInput(all())
 		in.sidecars = map[string][]byte{screenshot.SHA256: content}
 
-		plan, err := planImport(in)
+		plan, err := planImport(ctx, in, storedRecords{})
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.blocked).To(Equal(blockNone))
@@ -65,7 +68,7 @@ var _ = Describe("planImport", func() {
 	})
 
 	It("skips every record the database already holds unchanged, and writes nothing", func() {
-		plan, err := planImport(planInput(all(), storedFrom(tl, mongod, stepdown, evidence, screenshot)))
+		plan, err := planImport(ctx, planInput(all()), storedFrom(tl, mongod, stepdown, evidence, screenshot))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.blocked).To(Equal(blockNone))
@@ -79,7 +82,7 @@ var _ = Describe("planImport", func() {
 		stored := stepdown
 		stored.Seq = new(int64(9))
 
-		plan, err := planImport(planInput([]export.Record{tl, stepdown}, storedFrom(tl, stored)))
+		plan, err := planImport(ctx, planInput([]export.Record{tl, stepdown}), storedFrom(tl, stored))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.result.Events).To(Equal(importCounts{Identical: 1}))
@@ -89,7 +92,7 @@ var _ = Describe("planImport", func() {
 		renumbered := stepdown
 		renumbered.Seq = new(int64(9))
 
-		plan, err := planImport(planInput([]export.Record{tl, stepdown, renumbered}, storedRecords{}))
+		plan, err := planImport(ctx, planInput([]export.Record{tl, stepdown, renumbered}), storedRecords{})
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.write.Events).To(Equal([]timeline.Event{stepdown.Domain()}))
@@ -103,7 +106,7 @@ var _ = Describe("planImport", func() {
 		unsortedTags.Tags = []string{"team:db", "phase:detect", "team:db"}
 		storedTags.Tags = []string{"phase:detect", "team:db"}
 
-		plan, err := planImport(planInput([]export.Record{repeatedRefs, unsortedTags}, storedFrom(storedRefs, storedTags)))
+		plan, err := planImport(ctx, planInput([]export.Record{repeatedRefs, unsortedTags}), storedFrom(storedRefs, storedTags))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.result.Conflicts).To(BeEmpty())
@@ -118,13 +121,10 @@ var _ = Describe("planImport", func() {
 		shotEvent := planEvent(9, shots.ID, "Dashboard went red")
 		lagging := planTimeline(10, "a-lagging")
 		screenshot.EventID = &shotEvent.ID
-		in := planInput(
-			[]export.Record{tl, unchangedEvent, planEvent(11, lagging.ID, "Secondary lagged"), screenshot},
-			storedFrom(tl, unchanged, unchangedEvent, shots, shotEvent, lagging),
-		)
+		in := planInput([]export.Record{tl, unchangedEvent, planEvent(11, lagging.ID, "Secondary lagged"), screenshot})
 		in.localBlobs = map[string]bool{screenshot.SHA256: true}
 
-		plan, err := planImport(in)
+		plan, err := planImport(ctx, in, storedFrom(tl, unchanged, unchangedEvent, shots, shotEvent, lagging))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.timelineNames).To(Equal([]string{"a-lagging", "b-shots", "inc-4821"}))
@@ -140,7 +140,7 @@ var _ = Describe("planImport", func() {
 		})
 
 		It("blocks the import on its conflicts under fail, naming the keys that differ", func() {
-			plan, err := planImport(planInput([]export.Record{tl, edited}, storedFrom(tl, stepdown)))
+			plan, err := planImport(ctx, planInput([]export.Record{tl, edited}), storedFrom(tl, stepdown))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.blocked).To(Equal(blockConflicts))
@@ -149,10 +149,10 @@ var _ = Describe("planImport", func() {
 		})
 
 		It("keeps the stored record under skip", func() {
-			in := planInput([]export.Record{tl, edited}, storedFrom(tl, stepdown))
+			in := planInput([]export.Record{tl, edited})
 			in.onConflict = onConflictSkip
 
-			plan, err := planImport(in)
+			plan, err := planImport(ctx, in, storedFrom(tl, stepdown))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.blocked).To(Equal(blockNone))
@@ -161,10 +161,10 @@ var _ = Describe("planImport", func() {
 		})
 
 		It("replaces the stored record under replace", func() {
-			in := planInput([]export.Record{tl, edited}, storedFrom(tl, stepdown))
+			in := planInput([]export.Record{tl, edited})
 			in.onConflict = onConflictReplace
 
-			plan, err := planImport(in)
+			plan, err := planImport(ctx, in, storedFrom(tl, stepdown))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.blocked).To(Equal(blockNone))
@@ -175,10 +175,10 @@ var _ = Describe("planImport", func() {
 		It("replaces a stored annotation whose body differs under replace", func() {
 			reworded := evidence
 			reworded.Body = "replSetStepDown and an election in the log"
-			in := planInput([]export.Record{tl, stepdown, reworded}, storedFrom(tl, stepdown, evidence))
+			in := planInput([]export.Record{tl, stepdown, reworded})
 			in.onConflict = onConflictReplace
 
-			plan, err := planImport(in)
+			plan, err := planImport(ctx, in, storedFrom(tl, stepdown, evidence))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.blocked).To(Equal(blockNone))
@@ -189,10 +189,10 @@ var _ = Describe("planImport", func() {
 		It("gives a replaced timeline the importer's clock as its updated at, which exports do not carry", func() {
 			retitled := tl
 			retitled.Title = "Mongo primary election"
-			in := planInput([]export.Record{retitled}, storedFrom(tl))
+			in := planInput([]export.Record{retitled})
 			in.onConflict = onConflictReplace
 
-			plan, err := planImport(in)
+			plan, err := planImport(ctx, in, storedFrom(tl))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.write.TimelineReplacements).To(HaveLen(1))
@@ -202,16 +202,16 @@ var _ = Describe("planImport", func() {
 
 		DescribeTable("blocks replace when the record cannot be overwritten, and keeps it under skip",
 			func(stored, incoming func() []export.Record) {
-				in := planInput(incoming(), storedFrom(stored()...))
+				in := planInput(incoming())
 				in.onConflict = onConflictReplace
 
-				plan, err := planImport(in)
+				plan, err := planImport(ctx, in, storedFrom(stored()...))
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(plan.blocked).To(Equal(blockUnreplaceable))
 
 				in.onConflict = onConflictSkip
-				plan, err = planImport(in)
+				plan, err = planImport(ctx, in, storedFrom(stored()...))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(plan.blocked).To(Equal(blockNone))
 			},
@@ -247,20 +247,21 @@ var _ = Describe("planImport", func() {
 	})
 
 	It("plans nothing but the taken name for a timeline whose name a stored timeline with another id holds", func() {
-		plan, err := planImport(planInput([]export.Record{tl}, storedFrom(planTimeline(6, tl.Name))))
+		plan, err := planImport(ctx, planInput([]export.Record{tl}), storedFrom(planTimeline(6, tl.Name)))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan).To(Equal(importPlan{takenName: tl.Name}))
 	})
 
 	DescribeTable("plans only problems for input it cannot import, naming the record",
-		func(records func() []export.Record, prepare func(*importInput), wantInMessage string) {
-			in := planInput(records(), storedRecords{})
+		func(records func() []export.Record, prepare func(*importInput, *storedRecords), wantInMessage string) {
+			in := planInput(records())
+			stored := storedRecords{}
 			if prepare != nil {
-				prepare(&in)
+				prepare(&in, &stored)
 			}
 
-			plan, err := planImport(in)
+			plan, err := planImport(ctx, in, stored)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.problems).To(ContainElement(ContainSubstring(wantInMessage)))
@@ -295,16 +296,16 @@ var _ = Describe("planImport", func() {
 			}, nil, "text"),
 		Entry("a record outside the timeline -t selects",
 			func() []export.Record { return []export.Record{tl, stepdown} },
-			func(in *importInput) {
+			func(in *importInput, stored *storedRecords) {
 				other := planTimeline(6, "other").Domain()
 				in.guard = &other
-				in.stored = storedFrom(planTimeline(6, "other"))
+				*stored = storedFrom(planTimeline(6, "other"))
 			}, planID(3)),
 		Entry("an attachment whose stored owner is outside the timeline -t selects",
 			func() []export.Record { return []export.Record{screenshot} },
-			func(in *importInput) {
+			func(in *importInput, stored *storedRecords) {
 				other := planTimeline(6, "other")
-				in.stored = storedFrom(tl, other, stepdown)
+				*stored = storedFrom(tl, other, stepdown)
 				guard := other.Domain()
 				in.guard = &guard
 			}, planID(5)),
@@ -315,8 +316,8 @@ var _ = Describe("planImport", func() {
 				moved.TimelineID, misplaced.TimelineID = other.ID, other.ID
 				return []export.Record{other, moved, misplaced}
 			},
-			func(in *importInput) {
-				in.stored = storedFrom(tl, planTimeline(6, "other"), stepdown)
+			func(in *importInput, stored *storedRecords) {
+				*stored = storedFrom(tl, planTimeline(6, "other"), stepdown)
 				in.onConflict = onConflictSkip
 			}, planID(4)),
 		Entry("an event whose occurred_offset is more than a day",
@@ -333,7 +334,9 @@ var _ = Describe("planImport", func() {
 			}, nil, "seq"),
 		Entry("an attachment file whose content does not match its sha256",
 			func() []export.Record { return []export.Record{tl, stepdown, screenshot} },
-			func(in *importInput) { in.sidecars = map[string][]byte{screenshot.SHA256: []byte("something else")} }, planID(5)),
+			func(in *importInput, _ *storedRecords) {
+				in.sidecars = map[string][]byte{screenshot.SHA256: []byte("something else")}
+			}, planID(5)),
 		Entry("a link whose event is neither in the input nor stored",
 			func() []export.Record { return []export.Record{tl, stepdown, ledTo} }, nil, planID(30)),
 		Entry("a link from an event to itself",
@@ -362,10 +365,10 @@ var _ = Describe("planImport", func() {
 				across.ToEventID = p99.ID
 				return []export.Record{tl, checkout, stepdown, p99, across}
 			},
-			func(in *importInput) {
+			func(in *importInput, stored *storedRecords) {
 				guard := tl.Domain()
 				in.guard = &guard
-				in.stored = storedFrom(tl)
+				*stored = storedFrom(tl)
 			}, planID(31)),
 	)
 
@@ -375,7 +378,7 @@ var _ = Describe("planImport", func() {
 			p99 := planEvent(34, checkout.ID, "Checkout p99 above 2s")
 			ledTo.ToEventID = p99.ID
 
-			plan, err := planImport(planInput([]export.Record{tl, checkout, stepdown, p99, ledTo}, storedRecords{}))
+			plan, err := planImport(ctx, planInput([]export.Record{tl, checkout, stepdown, p99, ledTo}), storedRecords{})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.result.Links).To(Equal(importCounts{Inserted: 1}))
@@ -383,7 +386,7 @@ var _ = Describe("planImport", func() {
 		})
 
 		It("skips a link stored unchanged", func() {
-			plan, err := planImport(planInput([]export.Record{tl, stepdown, pager, ledTo}, storedFrom(tl, stepdown, pager, ledTo)))
+			plan, err := planImport(ctx, planInput([]export.Record{tl, stepdown, pager, ledTo}), storedFrom(tl, stepdown, pager, ledTo))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.result.Links).To(Equal(importCounts{Identical: 1}))
@@ -391,7 +394,7 @@ var _ = Describe("planImport", func() {
 		})
 
 		It("names the timeline of the event a new link leaves as one it writes to", func() {
-			plan, err := planImport(planInput([]export.Record{ledTo}, storedFrom(tl, stepdown, pager)))
+			plan, err := planImport(ctx, planInput([]export.Record{ledTo}), storedFrom(tl, stepdown, pager))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.write.Links).To(HaveLen(1))
@@ -405,7 +408,7 @@ var _ = Describe("planImport", func() {
 			records = append(records, planEvent(10+n, tl.ID, "orphan"))
 		}
 
-		plan, err := planImport(planInput(records, storedRecords{}))
+		plan, err := planImport(ctx, planInput(records), storedRecords{})
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(invalidImportError(plan.problems, invalidImportHint)).To(MatchError(And(HavePrefix("7 records cannot be imported:\n"), HaveSuffix("\nand 2 more"))))
@@ -416,7 +419,7 @@ var _ = Describe("planImport", func() {
 			renumbered := mongod
 			renumbered.ID = planID(7)
 
-			plan, err := planImport(planInput([]export.Record{tl, renumbered, stepdown}, storedFrom(tl, mongod)))
+			plan, err := planImport(ctx, planInput([]export.Record{tl, renumbered, stepdown}), storedFrom(tl, mongod))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.result.Sources).To(Equal(importCounts{Identical: 1}))
@@ -427,7 +430,7 @@ var _ = Describe("planImport", func() {
 			renamed := mongod
 			renamed.Name = "db-2/mongod"
 
-			plan, err := planImport(planInput([]export.Record{renamed}, storedFrom(mongod)))
+			plan, err := planImport(ctx, planInput([]export.Record{renamed}), storedFrom(mongod))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.write.Sources).To(HaveLen(1))
@@ -436,7 +439,7 @@ var _ = Describe("planImport", func() {
 		})
 
 		It("creates a source an imported event names without a source record", func() {
-			plan, err := planImport(planInput([]export.Record{tl, stepdown}, storedRecords{}))
+			plan, err := planImport(ctx, planInput([]export.Record{tl, stepdown}), storedRecords{})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.write.Sources).To(ConsistOf(HaveField("Name", "mongod")))
@@ -448,17 +451,17 @@ var _ = Describe("planImport", func() {
 		records := func() []export.Record { return []export.Record{tl, stepdown, screenshot} }
 
 		It("imports one whose blob is already beside the database without its content", func() {
-			in := planInput(records(), storedRecords{})
+			in := planInput(records())
 			in.localBlobs = map[string]bool{screenshot.SHA256: true}
 
-			plan, err := planImport(in)
+			plan, err := planImport(ctx, in, storedRecords{})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.write.Attachments).To(Equal([]timeline.Attachment{screenshot.Domain()}))
 		})
 
 		It("skips one whose file is neither beside the input nor in the database, and lists it", func() {
-			plan, err := planImport(planInput(records(), storedRecords{}))
+			plan, err := planImport(ctx, planInput(records()), storedRecords{})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.blocked).To(Equal(blockNone))
@@ -467,7 +470,125 @@ var _ = Describe("planImport", func() {
 			Expect(plan.result.MissingAttachments).To(Equal([]missingAttachment{{ID: screenshot.ID, SHA256: screenshot.SHA256}}))
 		})
 	})
+
+	lookupFailed := errors.New("database is locked")
+
+	It("reads every stored record it compares, through the lookup it is handed", func() {
+		added := planEvent(40, tl.ID, "Secondary elected")
+		in := planInput([]export.Record{tl, added, evidence, screenshot, ledTo})
+		in.localBlobs = map[string]bool{screenshot.SHA256: true}
+		lookup := recordingLookup{
+			storedRecords: storedFrom(tl, stepdown, pager),
+			known:         map[string]bool{added.ID: true, evidence.ID: true, stepdown.ID: true, screenshot.ID: true, ledTo.ID: true, pager.ID: true},
+			reads:         &[]string{},
+		}
+
+		_, err := planImport(ctx, in, lookup)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(*lookup.reads).To(ContainElements(
+			"timelines", "event "+added.ID, "annotation "+evidence.ID, "event "+stepdown.ID, "attachment "+screenshot.ID,
+			"link "+ledTo.ID, "event "+pager.ID,
+		))
+	})
+
+	It("stops with the lookup's error", func() {
+		plan, err := planImport(ctx, planInput([]export.Record{tl, stepdown}), failingLookup{failing: "timelines", err: lookupFailed})
+
+		Expect(err).To(MatchError(lookupFailed))
+		Expect(plan).To(Equal(importPlan{}))
+	})
+
+	It("stops at a lookup error, even when the input also has problems", func() {
+		blank := stepdown
+		blank.Text = " "
+		in := planInput([]export.Record{tl, blank, planAnnotation(41, tl.ID, &pager.ID)})
+
+		plan, err := planImport(ctx, in, failingLookup{failing: "event", err: lookupFailed})
+
+		Expect(err).To(MatchError(lookupFailed))
+		Expect(plan).To(Equal(importPlan{}))
+	})
 })
+
+// recordingLookup is a stored state that records each read and fails one of an id outside known.
+type recordingLookup struct {
+	storedRecords
+	known map[string]bool
+	reads *[]string
+}
+
+func (l recordingLookup) read(what, id string) error {
+	*l.reads = append(*l.reads, what+" "+id)
+	if !l.known[id] {
+		return fmt.Errorf("read %s %s, which the input does not name", what, id)
+	}
+
+	return nil
+}
+
+func (l recordingLookup) Timelines(ctx context.Context) ([]timeline.Timeline, error) {
+	*l.reads = append(*l.reads, "timelines")
+	return l.storedRecords.Timelines(ctx)
+}
+
+func (l recordingLookup) Event(ctx context.Context, id string) (timeline.Event, error) {
+	return recordedRead(ctx, l, "event", id, l.storedRecords.Event)
+}
+
+func (l recordingLookup) Annotation(ctx context.Context, id string) (timeline.Annotation, error) {
+	return recordedRead(ctx, l, "annotation", id, l.storedRecords.Annotation)
+}
+
+func (l recordingLookup) Attachment(ctx context.Context, id string) (timeline.Attachment, error) {
+	return recordedRead(ctx, l, "attachment", id, l.storedRecords.Attachment)
+}
+
+func (l recordingLookup) Link(ctx context.Context, id string) (timeline.Link, error) {
+	return recordedRead(ctx, l, "link", id, l.storedRecords.Link)
+}
+
+func recordedRead[T any](ctx context.Context, l recordingLookup, what, id string, get func(context.Context, string) (T, error)) (T, error) {
+	err := l.read(what, id)
+	if err != nil {
+		var none T
+		return none, err
+	}
+
+	return get(ctx, id)
+}
+
+func (l recordingLookup) LinkBetween(ctx context.Context, fromEventID, toEventID string, kind timeline.LinkKind) (timeline.Link, error) {
+	err := errors.Join(l.read("link from", fromEventID), l.read("link to", toEventID))
+	if err != nil {
+		return timeline.Link{}, err
+	}
+
+	return l.storedRecords.LinkBetween(ctx, fromEventID, toEventID, kind)
+}
+
+// failingLookup is an empty database whose timelines or event read, as failing names, fails with err.
+type failingLookup struct {
+	storedRecords
+	failing string
+	err     error
+}
+
+func (l failingLookup) Timelines(ctx context.Context) ([]timeline.Timeline, error) {
+	if l.failing == "timelines" {
+		return nil, l.err
+	}
+
+	return l.storedRecords.Timelines(ctx)
+}
+
+func (l failingLookup) Event(ctx context.Context, id string) (timeline.Event, error) {
+	if l.failing == "event" {
+		return timeline.Event{}, l.err
+	}
+
+	return l.storedRecords.Event(ctx, id)
+}
 
 func planID(n int) string {
 	return fmt.Sprintf("01a09862-b1c0-7000-8000-%012d", n)
@@ -506,8 +627,7 @@ func planAttachment(n int, content []byte) export.Attachment {
 // storedFrom returns the stored state a database holds after importing records.
 func storedFrom(records ...export.Record) storedRecords {
 	stored := storedRecords{
-		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
-		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
+		events: map[string]timeline.Event{}, annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
 		links: map[string]timeline.Link{}, linksByJoin: map[string]timeline.Link{},
 	}
 	for _, r := range records {
@@ -516,7 +636,7 @@ func storedFrom(records ...export.Record) storedRecords {
 			stored.links[r.ID] = r.Domain()
 			stored.linksByJoin[linkJoin(r.FromEventID, r.ToEventID, r.Kind)] = r.Domain()
 		case export.Timeline:
-			stored.timelines[r.ID] = r.Domain()
+			stored.timelines = append(stored.timelines, r.Domain())
 		case export.Source:
 			stored.sources = append(stored.sources, r.Domain())
 		case export.Event:
@@ -531,12 +651,12 @@ func storedFrom(records ...export.Record) storedRecords {
 	return stored
 }
 
-// planInput returns an import of records into stored under --on-conflict fail, with no attachment
-// files, ids numbered from 100 and a fixed clock.
-func planInput(records []export.Record, stored storedRecords) importInput {
+// planInput returns an import of records under --on-conflict fail, with no attachment files, ids
+// numbered from 100 and a fixed clock.
+func planInput(records []export.Record) importInput {
 	next := 100
 	return importInput{
-		records: records, stored: stored, onConflict: onConflictFail, now: time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC),
+		records: records, onConflict: onConflictFail, now: time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC),
 		newID: func() (uuid.UUID, error) {
 			next++
 			return uuid.Parse(planID(next))

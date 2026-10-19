@@ -17,7 +17,6 @@ import (
 
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
-	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newImportCommand(ctx context.Context, app App) *cobra.Command {
@@ -99,7 +98,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return importWriteError(err)
 	})
 	if dryRun && errors.Is(err, fs.ErrNotExist) {
-		plan, err = planUnstoredImport(in, inv.timelines)
+		plan, err = planUnstoredImport(ctx, in, inv.timelines)
 	}
 	if err != nil {
 		return err
@@ -183,23 +182,18 @@ func planStoredImport(ctx context.Context, s *store.Store, in importInput, guard
 		in.guard = &sel.timelines[0]
 	}
 
-	in.stored, err = readStoredRecords(ctx, s, in.records)
-	if err != nil {
-		return importPlan{}, err
-	}
-
-	return planImport(in)
+	return planImport(ctx, in, s)
 }
 
 // planUnstoredImport plans in against a database that does not exist yet, which holds no timeline
 // for guard to name.
-func planUnstoredImport(in importInput, guard timelineInput) (importPlan, error) {
+func planUnstoredImport(ctx context.Context, in importInput, guard timelineInput) (importPlan, error) {
 	err := guard.withoutStore()
 	if err != nil {
 		return importPlan{}, err
 	}
 
-	return planImport(in)
+	return planImport(ctx, in, storedRecords{})
 }
 
 // importWriteError returns id_conflict when another write added or deleted a record the import
@@ -340,90 +334,6 @@ func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.Fi
 	}
 
 	return blobs
-}
-
-// readStoredRecords returns every stored timeline and source, the stored events, annotations,
-// attachments and links whose ids records name, and the stored links joining a link record's
-// events with its kind.
-// ponytail: one read per id; a batched read if large imports read slowly.
-func readStoredRecords(ctx context.Context, s *store.Store, records []export.Record) (storedRecords, error) {
-	timelines, err := s.Timelines(ctx)
-	if err != nil {
-		return storedRecords{}, err
-	}
-	stored := storedRecords{
-		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
-		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
-		links: map[string]timeline.Link{}, linksByJoin: map[string]timeline.Link{},
-	}
-	for _, t := range timelines {
-		stored.timelines[t.ID] = t
-	}
-	stored.sources, err = s.Sources(ctx)
-	if err != nil {
-		return storedRecords{}, err
-	}
-
-	for _, r := range records {
-		switch r := r.(type) {
-		case export.Event:
-			err = addStored(ctx, &r.ID, stored.events, s.Event)
-		case export.Annotation:
-			err = errors.Join(addStored(ctx, &r.ID, stored.annotations, s.Annotation), addStored(ctx, r.EventID, stored.events, s.Event))
-		case export.Attachment:
-			err = errors.Join(
-				addStored(ctx, &r.ID, stored.attachments, s.Attachment),
-				addStored(ctx, r.EventID, stored.events, s.Event), addStored(ctx, r.AnnotationID, stored.annotations, s.Annotation),
-			)
-		case export.Link:
-			err = errors.Join(
-				addStored(ctx, &r.ID, stored.links, s.Link), addStoredJoining(ctx, s, r, stored.linksByJoin),
-				addStored(ctx, &r.FromEventID, stored.events, s.Event), addStored(ctx, &r.ToEventID, stored.events, s.Event),
-			)
-		}
-		if err != nil {
-			return storedRecords{}, err
-		}
-	}
-
-	return stored, nil
-}
-
-// addStoredJoining adds the stored link of l's kind between l's events to into, by linkJoin, unless
-// none is stored.
-func addStoredJoining(ctx context.Context, s *store.Store, l export.Link, into map[string]timeline.Link) error {
-	stored, err := s.LinkBetween(ctx, l.FromEventID, l.ToEventID, l.Kind)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	case err != nil:
-		return err
-	}
-	into[linkJoin(stored.FromEventID, stored.ToEventID, stored.Kind)] = stored
-
-	return nil
-}
-
-// addStored adds the record get finds under id to into, unless id is nil, already there or not
-// stored.
-func addStored[T any](ctx context.Context, id *string, into map[string]T, get func(context.Context, string) (T, error)) error {
-	if id == nil {
-		return nil
-	}
-	if _, ok := into[*id]; ok {
-		return nil
-	}
-
-	record, err := get(ctx, *id)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	case err != nil:
-		return err
-	}
-	into[*id] = record
-
-	return nil
 }
 
 // renderImport says on stderr what plan did, or would do when unwritten, and prints its result

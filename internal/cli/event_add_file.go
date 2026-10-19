@@ -47,11 +47,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 			return err
 		}
 		input := importInput{records: records, onConflict: onConflictFail, guard: &t, newID: app.NewID, now: app.Now()}
-		input.stored, err = readStoredRecords(ctx, s, records)
-		if err != nil {
-			return err
-		}
-		plan, err := planImport(input)
+		plan, err := planImport(ctx, input, s)
 		switch {
 		case err != nil:
 			return err

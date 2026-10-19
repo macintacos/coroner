@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -28,26 +30,83 @@ const (
 	onConflictReplace conflictPolicy = "replace"
 )
 
-// storedRecords is what the database holds of what an import touches.
+// storedLookup is what the planner reads of the database: every timeline and source, and records
+// by id, with store.ErrNotFound when nothing has the id. A *store.Tx satisfies it.
+type storedLookup interface {
+	Timelines(ctx context.Context) ([]timeline.Timeline, error)
+	Sources(ctx context.Context) ([]timeline.Source, error)
+	Event(ctx context.Context, id string) (timeline.Event, error)
+	Annotation(ctx context.Context, id string) (timeline.Annotation, error)
+	Attachment(ctx context.Context, id string) (timeline.Attachment, error)
+	Link(ctx context.Context, id string) (timeline.Link, error)
+	LinkBetween(ctx context.Context, fromEventID, toEventID string, kind timeline.LinkKind) (timeline.Link, error)
+}
+
+// storedRecords is the in-memory storedLookup, for specs and a database that does not exist yet.
 type storedRecords struct {
-	// timelines and sources are every stored one.
-	timelines map[string]timeline.Timeline
-	sources   []timeline.Source
-	// events, annotations and attachments are the stored ones whose ids the input names.
+	timelines   []timeline.Timeline
+	sources     []timeline.Source
 	events      map[string]timeline.Event
 	annotations map[string]timeline.Annotation
 	attachments map[string]timeline.Attachment
-	// links are the stored ones whose ids the input names.
-	links map[string]timeline.Link
-	// linksByJoin are the stored ones joining the same events with the same kind as an input
-	// link, by linkJoin.
+	links       map[string]timeline.Link
+	// linksByJoin are the links by linkJoin.
 	linksByJoin map[string]timeline.Link
+}
+
+func (s storedRecords) Timelines(context.Context) ([]timeline.Timeline, error) {
+	return s.timelines, nil
+}
+
+func (s storedRecords) Sources(context.Context) ([]timeline.Source, error) {
+	return s.sources, nil
+}
+
+func (s storedRecords) Event(_ context.Context, id string) (timeline.Event, error) {
+	return storedByID(s.events, id)
+}
+
+func (s storedRecords) Annotation(_ context.Context, id string) (timeline.Annotation, error) {
+	return storedByID(s.annotations, id)
+}
+
+func (s storedRecords) Attachment(_ context.Context, id string) (timeline.Attachment, error) {
+	return storedByID(s.attachments, id)
+}
+
+func (s storedRecords) Link(_ context.Context, id string) (timeline.Link, error) {
+	return storedByID(s.links, id)
+}
+
+func (s storedRecords) LinkBetween(_ context.Context, fromEventID, toEventID string, kind timeline.LinkKind) (timeline.Link, error) {
+	return storedByID(s.linksByJoin, linkJoin(fromEventID, toEventID, kind))
+}
+
+func storedByID[T any](records map[string]T, id string) (T, error) {
+	r, ok := records[id]
+	if !ok {
+		return r, store.ErrNotFound
+	}
+
+	return r, nil
+}
+
+// lookUp returns the record get finds under id, and whether one is stored.
+func lookUp[T any](ctx context.Context, id string, get func(context.Context, string) (T, error)) (T, bool, error) {
+	r, err := get(ctx, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return r, false, nil
+	case err != nil:
+		return r, false, err
+	}
+
+	return r, true, nil
 }
 
 // importInput is everything planImport decides from.
 type importInput struct {
 	records []export.Record
-	stored  storedRecords
 	// sidecars are the attachment files found beside the input, by sha256.
 	sidecars map[string][]byte
 	// localBlobs are the sha256s whose blobs are beside the database.
@@ -140,27 +199,48 @@ type incomingRecords struct {
 // --on-conflict replace, and nothing for records stored unchanged. A plan holding only problems
 // means the input cannot be imported, and one holding only a takenName means a timeline's name
 // belongs to a stored timeline with another id. A conflict the policy does not resolve sets the
-// plan's blocked.
-func planImport(in importInput) (importPlan, error) {
+// plan's blocked. It reads the database only through stored, and returns a read's error at once.
+// ponytail: one read per id, under merge's write lock; batch the reads if large imports hold other writers up.
+func planImport(ctx context.Context, in importInput, stored storedLookup) (importPlan, error) {
+	timelines, err := stored.Timelines(ctx)
+	if err != nil {
+		return importPlan{}, err
+	}
+	sources, err := stored.Sources(ctx)
+	if err != nil {
+		return importPlan{}, err
+	}
 	incoming, problems := collectRecords(in.records)
-	refs := newRecordIndex(incoming, in.stored)
+	refs, err := newRecordIndex(ctx, incoming, stored, timelines)
+	if err != nil {
+		return importPlan{}, err
+	}
 	problems = append(problems, checkRecords(incoming, refs, in)...)
 	if len(problems) > 0 {
 		return importPlan{problems: problems}, nil
 	}
-	if name := takenTimelineName(incoming.timelines, in.stored.timelines); name != "" {
+	if name := takenTimelineName(incoming.timelines, timelines); name != "" {
 		return importPlan{takenName: name}, nil
 	}
 
-	p := planner{in: in, refs: refs, sources: newSourceIndex(in.stored.sources), timelineIDs: map[string]bool{}}
+	p := planner{in: in, refs: refs, lookup: stored, storedTimelines: map[string]timeline.Timeline{}, sources: newSourceIndex(sources), timelineIDs: map[string]bool{}}
+	for _, t := range timelines {
+		p.storedTimelines[t.ID] = t
+	}
 	p.result = importResultJSON{OnConflict: in.onConflict, Conflicts: []importConflict{}, MissingAttachments: []missingAttachment{}}
 	p.planTimelines(incoming.timelines)
 	p.planSources(incoming.sources)
 	uses := slices.Concat(p.planEvents(incoming.events), p.planAnnotations(incoming.annotations))
-	p.planAttachments(incoming.attachments)
-	p.planLinks(incoming.links)
+	err = p.planAttachments(ctx, incoming.attachments)
+	if err != nil {
+		return importPlan{}, err
+	}
+	err = p.planLinks(ctx, incoming.links)
+	if err != nil {
+		return importPlan{}, err
+	}
 	p.planUnrecordedSources(uses)
-	err := p.assignSourceIDs()
+	err = p.assignSourceIDs()
 	if err != nil {
 		return importPlan{}, err
 	}
@@ -327,11 +407,15 @@ type recordIndex struct {
 	timelines   map[string]bool
 	events      map[string]string // id -> timeline id
 	annotations map[string]string // id -> timeline id
+	// storedEvents and storedAnnotations are the stored ones whose ids the input names.
+	storedEvents      map[string]timeline.Event
+	storedAnnotations map[string]timeline.Annotation
 }
 
-// newRecordIndex indexes incoming and stored records, taking a stored event's or annotation's
+// newRecordIndex indexes incoming records, the stored timelines, and the stored events and
+// annotations incoming names, which it reads from stored, taking a stored event's or annotation's
 // timeline over the input's, since an import never moves a record.
-func newRecordIndex(incoming incomingRecords, stored storedRecords) recordIndex {
+func newRecordIndex(ctx context.Context, incoming incomingRecords, stored storedLookup, timelines []timeline.Timeline) (recordIndex, error) {
 	idx := recordIndex{timelines: map[string]bool{}, events: map[string]string{}, annotations: map[string]string{}}
 	for _, t := range incoming.timelines {
 		idx.timelines[t.ID] = true
@@ -342,17 +426,73 @@ func newRecordIndex(incoming incomingRecords, stored storedRecords) recordIndex 
 	for _, a := range incoming.annotations {
 		idx.annotations[a.ID] = a.TimelineID
 	}
-	for id := range stored.timelines {
-		idx.timelines[id] = true
+	for _, t := range timelines {
+		idx.timelines[t.ID] = true
 	}
-	for id, e := range stored.events {
+
+	eventIDs, annotationIDs := namedRecordIDs(incoming)
+	var err error
+	idx.storedEvents, err = readStored(ctx, eventIDs, stored.Event)
+	if err != nil {
+		return recordIndex{}, err
+	}
+	idx.storedAnnotations, err = readStored(ctx, annotationIDs, stored.Annotation)
+	if err != nil {
+		return recordIndex{}, err
+	}
+	for id, e := range idx.storedEvents {
 		idx.events[id] = e.TimelineID
 	}
-	for id, a := range stored.annotations {
+	for id, a := range idx.storedAnnotations {
 		idx.annotations[id] = a.TimelineID
 	}
 
-	return idx
+	return idx, nil
+}
+
+// namedRecordIDs returns the event and annotation ids incoming names, sorted and each once.
+func namedRecordIDs(incoming incomingRecords) ([]string, []string) {
+	var events, annotations []string
+	for _, e := range incoming.events {
+		events = append(events, e.ID)
+	}
+	for _, a := range incoming.annotations {
+		annotations = append(annotations, a.ID)
+		if a.EventID != nil {
+			events = append(events, *a.EventID)
+		}
+	}
+	for _, a := range incoming.attachments {
+		if a.EventID != nil {
+			events = append(events, *a.EventID)
+		}
+		if a.AnnotationID != nil {
+			annotations = append(annotations, *a.AnnotationID)
+		}
+	}
+	for _, l := range incoming.links {
+		events = append(events, l.FromEventID, l.ToEventID)
+	}
+	slices.Sort(events)
+	slices.Sort(annotations)
+
+	return slices.Compact(events), slices.Compact(annotations)
+}
+
+// readStored returns the records get finds under ids, leaving out those not stored.
+func readStored[T any](ctx context.Context, ids []string, get func(context.Context, string) (T, error)) (map[string]T, error) {
+	found := map[string]T{}
+	for _, id := range ids {
+		r, ok, err := lookUp(ctx, id, get)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			found[id] = r
+		}
+	}
+
+	return found, nil
 }
 
 func (idx recordIndex) timelineKnown(id string) error {
@@ -427,7 +567,7 @@ func checkSidecar(a export.Attachment, sidecars map[string][]byte) error {
 
 // takenTimelineName returns the name of the first incoming timeline that a stored timeline with
 // another id holds, or "".
-func takenTimelineName(incoming []export.Timeline, stored map[string]timeline.Timeline) string {
+func takenTimelineName(incoming []export.Timeline, stored []timeline.Timeline) string {
 	for _, t := range incoming {
 		for _, existing := range stored {
 			if existing.Name == t.Name && existing.ID != t.ID {
@@ -443,8 +583,11 @@ func takenTimelineName(incoming []export.Timeline, stored map[string]timeline.Ti
 type planner struct {
 	in     importInput
 	refs   recordIndex
-	write  store.ImportRecords
-	result importResultJSON
+	lookup storedLookup
+	// storedTimelines are every stored timeline, by id.
+	storedTimelines map[string]timeline.Timeline
+	write           store.ImportRecords
+	result          importResultJSON
 	// unreplaceable are the conflicts --on-conflict replace cannot overwrite.
 	unreplaceable []importConflict
 	// identical are the stored events the input holds unchanged.
@@ -485,7 +628,7 @@ func (p *planner) resolve(counts *importCounts, c importConflict, replaceable bo
 func (p *planner) planTimelines(timelines []export.Timeline) {
 	for _, t := range timelines {
 		p.timelineIDs[t.ID] = true
-		stored, ok := p.in.stored.timelines[t.ID]
+		stored, ok := p.storedTimelines[t.ID]
 		switch {
 		case !ok:
 			p.result.Timelines.Inserted++
@@ -517,7 +660,7 @@ func (p *planner) planSources(sources []export.Source) {
 func (p *planner) planEvents(events []export.Event) []sourceUse {
 	var uses []sourceUse
 	for _, e := range events {
-		if stored, ok := p.in.stored.events[e.ID]; ok {
+		if stored, ok := p.refs.storedEvents[e.ID]; ok {
 			fields := eventDiff(stored, e.Domain())
 			if len(fields) == 0 {
 				p.identical = append(p.identical, stored)
@@ -541,7 +684,7 @@ func (p *planner) planEvents(events []export.Event) []sourceUse {
 func (p *planner) planAnnotations(annotations []export.Annotation) []sourceUse {
 	var uses []sourceUse
 	for _, a := range annotations {
-		if stored, ok := p.in.stored.annotations[a.ID]; ok {
+		if stored, ok := p.refs.storedAnnotations[a.ID]; ok {
 			fields := export.DifferingKeys(export.NewAnnotation(stored), a)
 			replaceable := !slices.Contains(fields, keyTimelineID) && !slices.Contains(fields, keyEventID)
 			if !p.resolve(&p.result.Annotations, importConflict{Type: "annotation", ID: a.ID, Fields: fields}, replaceable) {
@@ -562,9 +705,13 @@ func (p *planner) planAnnotations(annotations []export.Annotation) []sourceUse {
 // planAttachments inserts each new attachment whose content is beside the input or already beside
 // the database, and lists the rest as missing. Attachments never change, so a stored one with
 // different content cannot be replaced.
-func (p *planner) planAttachments(attachments []export.Attachment) {
+func (p *planner) planAttachments(ctx context.Context, attachments []export.Attachment) error {
 	for _, a := range attachments {
-		if stored, ok := p.in.stored.attachments[a.ID]; ok {
+		stored, ok, err := lookUp(ctx, a.ID, p.lookup.Attachment)
+		if err != nil {
+			return err
+		}
+		if ok {
 			p.resolve(&p.result.Attachments, importConflict{Type: "attachment", ID: a.ID, Fields: export.DifferingKeys(export.NewAttachment(stored), a)}, false)
 			continue
 		}
@@ -580,15 +727,22 @@ func (p *planner) planAttachments(attachments []export.Attachment) {
 		ownerTimeline, _ := p.refs.ownerTimeline(a)
 		p.timelineIDs[ownerTimeline] = true
 	}
+
+	return nil
 }
 
 // planLinks inserts each new link. Links never change, so a stored one with different content,
 // or with another id for the same events and kind, cannot be replaced.
-func (p *planner) planLinks(links []export.Link) {
+func (p *planner) planLinks(ctx context.Context, links []export.Link) error {
 	for _, l := range links {
-		stored, ok := p.in.stored.links[l.ID]
-		if !ok {
-			stored, ok = p.in.stored.linksByJoin[linkJoin(l.FromEventID, l.ToEventID, l.Kind)]
+		stored, ok, err := lookUp(ctx, l.ID, p.lookup.Link)
+		if err == nil && !ok {
+			stored, ok, err = lookUp(ctx, l.ID, func(ctx context.Context, _ string) (timeline.Link, error) {
+				return p.lookup.LinkBetween(ctx, l.FromEventID, l.ToEventID, l.Kind)
+			})
+		}
+		if err != nil {
+			return err
 		}
 		if ok {
 			p.resolve(&p.result.Links, importConflict{Type: "link", ID: l.ID, Fields: export.DifferingKeys(export.NewLink(stored), l)}, false)
@@ -600,6 +754,8 @@ func (p *planner) planLinks(links []export.Link) {
 		// checkRecords has already rejected a link whose event is unknown.
 		p.timelineIDs[p.refs.events[l.FromEventID]] = true
 	}
+
+	return nil
 }
 
 // planUnrecordedSources creates each source uses name that is neither stored nor being created,
@@ -649,7 +805,7 @@ func (p *planner) blocked() blockReason {
 // timelineNames returns the sorted names the timelines the import writes to have once it has.
 func (p *planner) timelineNames() []string {
 	names := map[string]string{}
-	for id, t := range p.in.stored.timelines {
+	for id, t := range p.storedTimelines {
 		names[id] = t.Name
 	}
 	for _, t := range slices.Concat(p.write.Timelines, p.write.TimelineReplacements) {
