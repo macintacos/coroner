@@ -63,6 +63,7 @@ func TestScripts(t *testing.T) {
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
+			t.Parallel()
 			files, err := filepath.Glob(filepath.Join(dir, "*.txtar"))
 			if err != nil {
 				t.Fatal(err)

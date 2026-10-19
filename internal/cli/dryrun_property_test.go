@@ -26,13 +26,18 @@ import (
 func TestDryRunMeansWrite(t *testing.T) {
 	t.Parallel()
 	runs := t.TempDir()
+	seeded := t.TempDir()
+	err := seedDryRunStore(t.Context(), filepath.Join(seeded, "coroner.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	check := func(t interface{ Context() context.Context }, args []string) (dryRunOutcome, error) {
 		dir, err := os.MkdirTemp(runs, "run")
 		if err != nil {
 			return dryRunOutcome{}, err
 		}
 		db := filepath.Join(dir, "coroner.db")
-		err = seedDryRunStore(t.Context(), db)
+		err = os.CopyFS(dir, os.DirFS(seeded))
 		if err != nil {
 			return dryRunOutcome{}, err
 		}
