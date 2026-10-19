@@ -42,7 +42,7 @@ func timelineCreateForm(ctx context.Context, app App) formCommand {
 		def:       create.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(create.def, in) },
 		flagsOnly: withOneArg(writeRunE(ctx, app, create.def, create.run)),
-		session: func(_ *cobra.Command, s formSession, in fieldValues) error {
+		session: func(s formSession, in fieldValues) error {
 			return askTimelineCreate(ctx, s, create, in)
 		},
 	}
@@ -104,7 +104,7 @@ func useExisting(ctx context.Context, s formSession, create formWrite[timelineCr
 // timelineNames returns the names of the timelines in the session's database.
 func timelineNames(ctx context.Context, s formSession) ([]string, error) {
 	var names []string
-	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		timelines, err := st.Timelines(ctx)
 		for _, t := range timelines {
 			names = append(names, t.Name)

@@ -56,7 +56,7 @@ var _ = Describe("add forms", func() {
 	)
 
 	It("read times in the local zone when the config file's default_timezone is unknown", func() {
-		env := baseCheckEnv(formSession{app: App{Now: testNow}, cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}})
+		env := baseCheckEnv(formSession{app: App{Now: testNow}, inv: invocation{cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}}})
 
 		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
@@ -416,7 +416,11 @@ var _ = Describe("add forms", func() {
 
 		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
+				lookupEnv := app.LookupEnv
 				app.LookupEnv = func(key string) (string, bool) {
+					if key == "HOME" {
+						return lookupEnv(key)
+					}
 					value, ok := env[key]
 					return value, ok
 				}

@@ -46,8 +46,8 @@ func timelineEditForm(ctx context.Context, app App) formCommand {
 		def:       def,
 		ready:     def.changed,
 		flagsOnly: withOneArg(writeRunEInZone(ctx, app, def, editTimeline)),
-		session: func(cmd *cobra.Command, s formSession, in fieldValues) error {
-			z, err := timeZone(changedString(cmd.Flags(), "tz"), s.cfg.DefaultTimezone, s.app.Now().Location())
+		session: func(s formSession, in fieldValues) error {
+			z, err := s.inv.zone()
 			if err != nil {
 				return err
 			}
@@ -108,7 +108,7 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 
 	nameOrID := in.value("timeline")
 	var target timelineToEdit
-	err := withStorePath(ctx, s.app, s.cfg.DBPath, func(st *store.Store) error {
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		var err error
 		if nameOrID != nil {
 			target.timeline, err = findTimeline(ctx, st, *nameOrID)
@@ -176,16 +176,16 @@ func timelineEditValues(t timeline.Timeline, nameOrID string, submitted fieldVal
 // nothing.
 func editTyped(ctx context.Context, s formSession, z zone, oldName string, values fieldValues) error {
 	if !timelineEditDefinition().changed(values) {
-		return s.o.notify("Nothing to change.")
+		return s.inv.out.notify("Nothing to change.")
 	}
 
-	edited, err := editTimeline(ctx, s.app, s.cfg, values)
+	edited, err := editTimeline(ctx, s.app, s.inv.cfg, values)
 	if err != nil {
 		return err
 	}
-	err = edited.render(s.o, z)
+	err = edited.render(s.inv.out, z)
 	if err == nil && !edited.dryRun && edited.timeline.Name != oldName {
-		err = s.o.notify("`%s` no longer selects this timeline; commands take `%s`.", oldName, edited.timeline.Name)
+		err = s.inv.out.notify("`%s` no longer selects this timeline; commands take `%s`.", oldName, edited.timeline.Name)
 	}
 	if err != nil {
 		return err
