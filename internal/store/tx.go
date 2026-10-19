@@ -50,9 +50,8 @@ func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
 	return &Tx{q: sqlcgen.New(db), db: db, blobDir: blobDir}
 }
 
-// Attach attaches the Change's staged content to owner when fn returns. A Change whose fn never
-// calls it attaches nothing. Only Store.Change attaches; in Read it does nothing. A second call
-// replaces the owner.
+// Attach attaches the Change's staged content to owner when fn returns. Only Store.Change
+// attaches; in Read it does nothing. A second call replaces the owner.
 func (tx *Tx) Attach(owner timeline.AttachmentOwner) {
 	tx.owner = &owner
 }
