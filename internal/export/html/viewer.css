@@ -18,6 +18,7 @@
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 3rem;
+  --measure: 80ch;
   --radius-xs: 2px;
   --radius-sm: 3px;
   --radius-md: 5px;
@@ -33,14 +34,14 @@ body {
 
 header {
   display: grid;
-  grid-template-columns: minmax(0, 80ch) auto;
+  grid-template-columns: minmax(0, var(--measure)) auto;
   justify-content: space-between;
   align-items: start;
   column-gap: var(--space-5);
 }
 
 #detail {
-  max-width: 80ch;
+  max-width: var(--measure);
 }
 
 h1 {
@@ -416,7 +417,7 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-4);
-  max-width: 80ch;
+  max-width: var(--measure);
   margin: 0 0 var(--space-5);
 }
 
@@ -448,6 +449,15 @@ pre.body {
 
 #print {
   display: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @page {

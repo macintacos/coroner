@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>coroner timeline</title>
+<script id="theme-pick">try { const theme = localStorage.getItem("coroner-theme"); if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme; } catch {}</script>
 <style>:root {
   color-scheme: light;
   --paper: #f6f7f5;
@@ -109,6 +110,7 @@
 <button type="button" id="all-times">All times</button>
 </fieldset>
 <button type="button" id="export-png">Export PNG</button>
+<p class="hint" id="png-status" aria-live="polite"></p>
 </form>
 <div id="timeline"></div>
 <section id="review" aria-label="Your comments">
@@ -118,7 +120,8 @@
 <button type="button" id="export-annotations">Export annotations (.jsonl)</button>
 <button type="button" id="clear-exported" hidden>Clear exported drafts</button>
 </section>
-<section id="detail" aria-live="polite"></section>
+<p class="visually-hidden" id="selection-status" aria-live="polite"></p>
+<section id="detail"></section>
 <section id="print"></section>
 </main>
 <noscript>This timeline needs JavaScript to show its events.</noscript>

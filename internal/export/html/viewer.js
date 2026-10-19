@@ -100,16 +100,14 @@
 
   const shownWhen = ({ date, clock, abbreviation }) => (clock === undefined ? date : date + " " + clock + " " + abbreviation);
 
-  const when = (timestamp, precision) => shownWhen(whenParts(timestamp, precision));
-
-  // startedParts returns whenParts of an event's start; a day-precision event's date is the one
-  // it was recorded on, in its own offset.
-  const startedParts = (event) =>
+  // dayParts returns whenParts of one end of an event; a day-precision event's dates are read in
+  // its own recorded offset, so both ends are dated in one frame.
+  const dayParts = (event, timestamp) =>
     event.precision === "day"
-      ? { date: atOffset(instant(event.occurred_at).valueOf(), event.occurred_offset ?? 0).format("YYYY-MM-DD") }
-      : whenParts(event.occurred_at, event.precision);
+      ? { date: atOffset(instant(timestamp).valueOf(), event.occurred_offset ?? 0).format("YYYY-MM-DD") }
+      : whenParts(timestamp, event.precision);
 
-  const started = (event) => shownWhen(startedParts(event));
+  const started = (event) => shownWhen(dayParts(event, event.occurred_at));
 
   const firstLine = (text) => text.split(/\r\n|\r|\n/)[0];
 
@@ -253,6 +251,10 @@
   // editing is the open comment form: its event, the draft it edits or null for a new comment, and
   // the text typed into it, undefined until the author types.
   let editing = null;
+  // unsaved holds the text typed into a form that another form replaced, by formKey, until that
+  // form opens again.
+  const unsaved = new Map();
+  const formKey = ({ eventId, draftId }) => draftId ?? "new " + eventId;
   // pendingEventId is the event whose Add comment asked for the author's name first.
   let pendingEventId = null;
   let lastExport = null; // { filename, versions: Map<draft id, updatedAt> }
@@ -378,7 +380,7 @@
 
   const eventDetail = (event) => {
     let heading = started(event);
-    if (event.ended_at !== null) heading += " to " + when(event.ended_at, event.precision);
+    if (event.ended_at !== null) heading += " to " + shownWhen(dayParts(event, event.ended_at));
     if (event.approximate) heading = "About " + heading;
     const nodes = [element("h2", heading), element("p", event.text, "text")];
 
@@ -405,8 +407,8 @@
   const printDays = (events) => {
     const rows = events.map((event) => ({
       event,
-      start: startedParts(event),
-      end: event.ended_at === null ? null : whenParts(event.ended_at, event.precision),
+      start: dayParts(event, event.occurred_at),
+      end: event.ended_at === null ? null : dayParts(event, event.ended_at),
     }));
     const timed = (row) => Number(row.event.precision !== "day");
     rows.sort((a, b) => (a.start.date > b.start.date) - (a.start.date < b.start.date) || timed(a) - timed(b));
@@ -669,7 +671,10 @@
     canvas.width = image.naturalWidth;
     canvas.height = image.naturalHeight;
     canvas.getContext("2d").drawImage(image, 0, 0);
-    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    // toBlob yields null when the canvas is past the browser's size limit.
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (blob === null) throw new Error("the picture is too large for this browser");
+    return blob;
   };
 
   const download = (blob, filename) => {
@@ -886,9 +891,12 @@
   const writeHash = afterPause(() =>
     history.replaceState(null, "", location.href.split("#")[0] + hashOf(view.filter, view.selected)),
   );
+  const selectionStatus = document.getElementById("selection-status");
   const select = (id) => {
     view.selected = kept(id) ? id : null;
-    show(eventsById.get(view.selected) ?? null);
+    const event = eventsById.get(view.selected) ?? null;
+    show(event);
+    selectionStatus.textContent = event ? "Showing " + firstLine(event.text) : "Showing the whole timeline";
   };
   const printed = document.getElementById("print");
   const showPrintList = () => printed.replaceChildren(...printList(data.events.filter((event) => keeps(event, view.filter))));
@@ -943,9 +951,15 @@
     if (allTimesWindow.start !== undefined) timeline.setWindow(allTimesWindow.start, allTimesWindow.end);
     update({ since: null, until: null });
   });
+  const pngStatus = document.getElementById("png-status");
   document.getElementById("export-png").addEventListener("click", async () => {
-    const svg = pageSVG(document.getElementById("heading"), document.getElementById("timeline"));
-    download(await png(svg), names.join("+") + ".png");
+    pngStatus.textContent = "";
+    try {
+      const svg = pageSVG(document.getElementById("heading"), document.getElementById("timeline"));
+      download(await png(svg), names.join("+") + ".png");
+    } catch (failure) {
+      pngStatus.textContent = "Could not export the PNG: " + (failure?.message || "the browser could not draw it") + ".";
+    }
   });
 
   const pageDrafts = () => drafts.filter((draft) => eventsById.has(draft.eventId));
@@ -996,7 +1010,10 @@
       askName();
       return;
     }
-    editing = { eventId, draftId };
+    if (editing?.text !== undefined) unsaved.set(formKey(editing), editing.text);
+    const key = formKey({ eventId, draftId });
+    editing = { eventId, draftId, text: unsaved.get(key) };
+    unsaved.delete(key);
     refresh();
   };
 

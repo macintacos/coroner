@@ -172,8 +172,10 @@ var _ = Describe("WriteHTML", func() {
 		func(env export.Envelope) {
 			p := page(env, time.UTC)
 
-			Expect(strings.Count(p, "<script")).To(Equal(4))
-			Expect(regexp.MustCompile(`(?i)</script`).FindAllStringIndex(p, -1)).To(HaveLen(4))
+			// The theme pick in <head>, the export and zone data blocks, the library and the viewer.
+			Expect(p).To(ContainSubstring(`<script id="theme-pick">`))
+			Expect(strings.Count(p, "<script")).To(Equal(5))
+			Expect(regexp.MustCompile(`(?i)</script`).FindAllStringIndex(p, -1)).To(HaveLen(5))
 			Expect(regexp.MustCompile(`(?i)</style`).FindAllStringIndex(p, -1)).To(HaveLen(1))
 			Expect(p).NotTo(ContainSubstring("<img"))
 			Expect(p).NotTo(ContainSubstring("<!--"))
