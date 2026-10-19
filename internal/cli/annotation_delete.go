@@ -70,31 +70,32 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 	}
 	dryRun, _ := in.boolean("dry-run")
 
-	deleted := annotationsDeleted{dryRun: dryRun}
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		annotations, err := findAnnotations(ctx, tx, prefixes)
-		if err != nil {
-			return err
-		}
-		deleted.annotations = annotations
-		deleted.timelineNames, err = annotationTimelineNames(ctx, tx, annotations)
-		if err != nil {
-			return err
-		}
-		ids := make([]string, 0, len(annotations))
-		owners := make([]timeline.AttachmentOwner, 0, len(annotations))
-		for _, a := range annotations {
-			ids = append(ids, a.ID)
-			owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
-		}
-		attachments, err := ownersAttachments(ctx, tx, owners)
-		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
-		if err != nil {
-			return err
-		}
+	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (annotationsDeleted, error) {
+			deleted := annotationsDeleted{dryRun: dryRun}
+			annotations, err := findAnnotations(ctx, tx, prefixes)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.annotations = annotations
+			deleted.timelineNames, err = annotationTimelineNames(ctx, tx, annotations)
+			if err != nil {
+				return deleted, err
+			}
+			ids := make([]string, 0, len(annotations))
+			owners := make([]timeline.AttachmentOwner, 0, len(annotations))
+			for _, a := range annotations {
+				ids = append(ids, a.ID)
+				owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
+			}
+			attachments, err := ownersAttachments(ctx, tx, owners)
+			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			if err != nil {
+				return deleted, err
+			}
 
-		return tx.DeleteAnnotations(ctx, ids...)
-	})
+			return deleted, tx.DeleteAnnotations(ctx, ids...)
+		})
 	if err != nil {
 		return deleted, err
 	}

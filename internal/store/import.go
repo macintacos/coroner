@@ -71,24 +71,26 @@ func (tx *Tx) Import(ctx context.Context, records ImportRecords) error {
 
 	q := tx.q
 	events := inSeqOrder(records.Events)
-	for _, step := range []func() error{
-		func() error { return writeEach(ctx, q, records.Sources, createSource) },
-		func() error { return writeEach(ctx, q, records.Timelines, createTimeline) },
-		func() error { return writeEach(ctx, q, records.TimelineReplacements, replaceTimeline) },
-		func() error { return writeEach(ctx, q, events, importEvent) },
-		func() error { return writeEach(ctx, q, records.EventReplacements, replaceEvent) },
-		func() error { return writeEach(ctx, q, records.Annotations, importAnnotation) },
-		func() error { return writeEach(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
-		func() error { return insertStoredBlobAttachments(ctx, q, tx.blobDir, records.Attachments) },
-		func() error { return writeEach(ctx, q, records.Links, createLink) },
-	} {
-		err := step()
-		if err != nil {
-			return translate(err)
+	return tx.atomic(ctx, func() error {
+		for _, step := range []func() error{
+			func() error { return writeEach(ctx, q, records.Sources, createSource) },
+			func() error { return writeEach(ctx, q, records.Timelines, createTimeline) },
+			func() error { return writeEach(ctx, q, records.TimelineReplacements, replaceTimeline) },
+			func() error { return writeEach(ctx, q, events, importEvent) },
+			func() error { return writeEach(ctx, q, records.EventReplacements, replaceEvent) },
+			func() error { return writeEach(ctx, q, records.Annotations, importAnnotation) },
+			func() error { return writeEach(ctx, q, records.AnnotationReplacements, replaceAnnotation) },
+			func() error { return insertStoredBlobAttachments(ctx, q, tx.blobDir, records.Attachments) },
+			func() error { return writeEach(ctx, q, records.Links, createLink) },
+		} {
+			err := step()
+			if err != nil {
+				return err
+			}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }
 
 // validateEach returns the first of records' Validate errors.

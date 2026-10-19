@@ -65,28 +65,27 @@ func editSource(ctx context.Context, app App, cfg config.Config, in fieldValues)
 	newName := *in.value("name")
 	dryRun, _ := in.boolean("dry-run")
 
-	edited := sourceEdited{oldName: *oldName, dryRun: dryRun}
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		edited.source = store.SourceUsage{}
-		// ponytail: reads every source's usage to find one; query by name if sources grow large.
-		usages, err := tx.SourceUsages(ctx)
-		if err != nil {
-			return err
-		}
-		source, err := findSource(usages, *oldName)
-		if err != nil {
-			return err
-		}
-		edited.source = source
-		edited.source.Name = newName
+	edited, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (sourceEdited, error) {
+			// ponytail: reads every source's usage to find one; query by name if sources grow large.
+			usages, err := tx.SourceUsages(ctx)
+			if err != nil {
+				return sourceEdited{}, err
+			}
+			source, err := findSource(usages, *oldName)
+			if err != nil {
+				return sourceEdited{}, err
+			}
+			edited := sourceEdited{source: source, oldName: *oldName, dryRun: dryRun}
+			edited.source.Name = newName
 
-		err = tx.RenameSource(ctx, source.ID, newName)
-		if errors.Is(err, store.ErrConflict) {
-			return sourceExistsError(newName, err)
-		}
+			err = tx.RenameSource(ctx, source.ID, newName)
+			if errors.Is(err, store.ErrConflict) {
+				return edited, sourceExistsError(newName, err)
+			}
 
-		return err
-	})
+			return edited, err
+		})
 
 	return edited, err
 }

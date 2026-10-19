@@ -59,7 +59,7 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 	return rows[0], nil
 }
 
-// ListAttachments returns the attachments of owner, oldest first.
+// ListAttachments is Tx.ListAttachments in its own Read.
 func (s *Store) ListAttachments(ctx context.Context, owner timeline.AttachmentOwner) ([]timeline.Attachment, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Attachment, error) { return tx.ListAttachments(ctx, owner) })
 }
@@ -87,7 +87,7 @@ func (tx *Tx) ListAttachments(ctx context.Context, owner timeline.AttachmentOwne
 	})
 }
 
-// Attachment returns the attachment with id.
+// Attachment is Tx.Attachment in its own Read.
 func (s *Store) Attachment(ctx context.Context, id string) (timeline.Attachment, error) {
 	return readIn(ctx, s, func(tx *Tx) (timeline.Attachment, error) { return tx.Attachment(ctx, id) })
 }
@@ -104,8 +104,7 @@ func (tx *Tx) Attachment(ctx context.Context, id string) (timeline.Attachment, e
 	})
 }
 
-// TimelineAttachments returns the attachments on the events and annotations of the timeline
-// with timelineID, oldest first, then by id.
+// TimelineAttachments is Tx.TimelineAttachments in its own Read.
 func (s *Store) TimelineAttachments(ctx context.Context, timelineID string) ([]timeline.Attachment, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Attachment, error) { return tx.TimelineAttachments(ctx, timelineID) })
 }
@@ -123,9 +122,7 @@ func (tx *Tx) TimelineAttachments(ctx context.Context, timelineID string) ([]tim
 	})
 }
 
-// AttachmentsByIDPrefix returns up to limit attachments, in any timeline, whose id starts
-// with prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase
-// hex and dashes.
+// AttachmentsByIDPrefix is Tx.AttachmentsByIDPrefix in its own Read.
 func (s *Store) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Attachment, error) { return tx.AttachmentsByIDPrefix(ctx, prefix, limit) })
 }
@@ -148,8 +145,7 @@ func (tx *Tx) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit in
 	})
 }
 
-// DeleteAttachments deletes the attachments with ids, or none of them when any does not
-// exist, leaving their blobs to GarbageCollectBlobs.
+// DeleteAttachments is Tx.DeleteAttachments in its own Change.
 func (s *Store) DeleteAttachments(ctx context.Context, ids ...string) error {
 	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAttachments(ctx, ids...) })
 }
@@ -157,15 +153,15 @@ func (s *Store) DeleteAttachments(ctx context.Context, ids ...string) error {
 // DeleteAttachments deletes the attachments with ids, or none of them when any does not
 // exist, leaving their blobs to GarbageCollectBlobs.
 func (tx *Tx) DeleteAttachments(ctx context.Context, ids ...string) error {
-	return translate(deleteAll(ctx, ids, tx.q.GetAttachment, tx.q.DeleteAttachment))
+	return tx.atomic(ctx, func() error { return deleteAll(ctx, ids, tx.q.GetAttachment, tx.q.DeleteAttachment) })
 }
 
 // GarbageCollectBlobs deletes every blob no attachment references and returns their hashes,
 // sorted. Nothing else deletes a blob.
 func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 	var deleted []string
-	err := s.write(ctx, func(q *sqlcgen.Queries) error {
-		referenced, err := q.ListAttachmentHashes(ctx)
+	err := s.change(ctx, Commit, nil, func(tx *Tx) error {
+		referenced, err := tx.q.ListAttachmentHashes(ctx)
 		if err != nil {
 			return err
 		}

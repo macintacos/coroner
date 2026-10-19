@@ -148,33 +148,29 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 		return eventEdited{}, err
 	}
 
-	edited := eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}
-	var owner timeline.AttachmentOwner
-	var stored []timeline.Attachment
-	rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
-		func(tx *store.Tx) error {
+	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) (attached[eventEdited], error) {
+			b := attached[eventEdited]{result: eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}}
 			e, t, err := findEvent(ctx, tx, ref, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
-				return err
+				return b, err
 			}
 			e, err = edit.apply(e, z)
 			if err != nil {
-				return err
+				return b, err
 			}
-			edited.event, edited.timeline = e, t
-			err = tx.UpdateEvent(ctx, e, edit.newSourceID)
+			b.result.event, b.result.timeline = e, t
+			err = b.attachIn(ctx, tx, timeline.AttachmentOwner{EventID: &e.ID})
 			if err != nil {
-				return err
+				return b, err
 			}
-			owner = timeline.AttachmentOwner{EventID: &e.ID}
-			tx.Attach(owner)
-			stored, err = tx.ListAttachments(ctx, owner)
-			return err
+			return b, tx.UpdateEvent(ctx, e, edit.newSourceID)
 		})
+	edited := built.result
 	if err != nil {
 		return edited, err
 	}
-	edited.attach = req.result(stored, rows, owner, cfg.DBPath)
+	edited.attach = built.attachResult(req, rows, cfg.DBPath)
 
 	return edited, nil
 }

@@ -35,18 +35,24 @@ func withStorePath(ctx context.Context, app App, path string, fn func(*store.Sto
 	return withStoreOpenedBy(ctx, app.OpenStore, path, fn)
 }
 
-// withChange opens the database at path and runs fn in one Change.
-func withChange(
-	ctx context.Context, app App, path string, opts store.ChangeOptions, fn func(*store.Tx) error,
-) ([]timeline.Attachment, error) {
+// withChange opens the database at path and runs fn in one Change, returning what fn's last run
+// produced and the attachment rows the Change inserted.
+func withChange[T any](
+	ctx context.Context, app App, path string, opts store.ChangeOptions, fn func(*store.Tx) (T, error),
+) (T, []timeline.Attachment, error) {
+	var result T
 	var rows []timeline.Attachment
 	err := withStorePath(ctx, app, path, func(s *store.Store) error {
 		var err error
-		rows, err = s.Change(ctx, opts, fn)
+		rows, err = s.Change(ctx, opts, func(tx *store.Tx) error {
+			var err error
+			result, err = fn(tx)
+			return err
+		})
 		return err
 	})
 
-	return rows, err
+	return result, rows, err
 }
 
 // collectBlobs deletes the blobs no attachment references, after a delete commits.

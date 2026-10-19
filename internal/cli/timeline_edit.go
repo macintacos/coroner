@@ -216,27 +216,26 @@ func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValue
 	dryRun, _ := in.boolean("dry-run")
 
 	now := app.Now()
-	edited := timelineEdited{dryRun: dryRun}
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		edited.timeline = timeline.Timeline{}
-		t, err := findTimeline(ctx, tx, *nameOrID)
-		if err != nil {
-			return err
-		}
-		t = edit.apply(t, now)
-		err = checkTimeline(t)
-		if err != nil {
-			return err
-		}
-		edited.timeline = t
+	edited, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (timelineEdited, error) {
+			t, err := findTimeline(ctx, tx, *nameOrID)
+			if err != nil {
+				return timelineEdited{}, err
+			}
+			t = edit.apply(t, now)
+			err = checkTimeline(t)
+			if err != nil {
+				return timelineEdited{}, err
+			}
+			edited := timelineEdited{timeline: t, dryRun: dryRun}
 
-		err = tx.UpdateTimeline(ctx, t)
-		if errors.Is(err, store.ErrConflict) {
-			return timelineExistsError(t.Name, "Pick another --name.", err)
-		}
+			err = tx.UpdateTimeline(ctx, t)
+			if errors.Is(err, store.ErrConflict) {
+				return edited, timelineExistsError(t.Name, "Pick another --name.", err)
+			}
 
-		return err
-	})
+			return edited, err
+		})
 
 	return edited, err
 }

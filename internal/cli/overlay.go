@@ -111,34 +111,34 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 
 	now := app.Now()
 
-	var created overlayCreated
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		created = overlayCreated{dryRun: dryRun}
-		sel, err := selectTimelines(ctx, tx, timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		created.timelines, err = sel.all(ctx, tx)
-		if err != nil {
-			return err
-		}
-		created.overlay = timeline.Overlay{ID: id.String(), Name: *name, TimelineIDs: timelineIDs(created.timelines), CreatedAt: now}
-
-		err = tx.CreateOverlay(ctx, created.overlay)
-		switch {
-		case errors.Is(err, store.ErrConflict) && ifNotExists:
-			created.overlay, err = tx.OverlayByName(ctx, *name)
+	created, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (overlayCreated, error) {
+			created := overlayCreated{dryRun: dryRun}
+			sel, err := selectTimelines(ctx, tx, timelines, app.LookupEnv)
 			if err != nil {
-				return err
+				return created, err
 			}
-			created.existed = true
-			created.timelines, err = timelinesByID(ctx, tx, created.overlay.TimelineIDs)
-			return err
-		case errors.Is(err, store.ErrConflict):
-			return overlayExistsError(*name, err)
-		}
-		return err
-	})
+			created.timelines, err = sel.all(ctx, tx)
+			if err != nil {
+				return created, err
+			}
+			created.overlay = timeline.Overlay{ID: id.String(), Name: *name, TimelineIDs: timelineIDs(created.timelines), CreatedAt: now}
+
+			err = tx.CreateOverlay(ctx, created.overlay)
+			switch {
+			case errors.Is(err, store.ErrConflict) && ifNotExists:
+				created.overlay, err = tx.OverlayByName(ctx, *name)
+				if err != nil {
+					return created, err
+				}
+				created.existed = true
+				created.timelines, err = timelinesByID(ctx, tx, created.overlay.TimelineIDs)
+				return created, err
+			case errors.Is(err, store.ErrConflict):
+				return created, overlayExistsError(*name, err)
+			}
+			return created, err
+		})
 
 	return created, err
 }

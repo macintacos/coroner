@@ -69,24 +69,25 @@ func deleteAttachments(ctx context.Context, app App, cfg config.Config, in field
 	}
 	dryRun, _ := in.boolean("dry-run")
 
-	deleted := attachmentsDeleted{dryRun: dryRun}
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		attachments, err := findAttachments(ctx, tx, prefixes)
-		if err != nil {
-			return err
-		}
-		deleted.attachments = attachments
-		deleted.timelineNames, err = attachmentTimelineNames(ctx, tx, attachments)
-		if err != nil {
-			return err
-		}
+	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (attachmentsDeleted, error) {
+			deleted := attachmentsDeleted{dryRun: dryRun}
+			attachments, err := findAttachments(ctx, tx, prefixes)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.attachments = attachments
+			deleted.timelineNames, err = attachmentTimelineNames(ctx, tx, attachments)
+			if err != nil {
+				return deleted, err
+			}
 
-		ids := make([]string, 0, len(attachments))
-		for _, a := range attachments {
-			ids = append(ids, a.ID)
-		}
-		return tx.DeleteAttachments(ctx, ids...)
-	})
+			ids := make([]string, 0, len(attachments))
+			for _, a := range attachments {
+				ids = append(ids, a.ID)
+			}
+			return deleted, tx.DeleteAttachments(ctx, ids...)
+		})
 	deleted.objects = newAttachmentJSONs(deleted.attachments, cfg.DBPath)
 	if err != nil {
 		return deleted, err

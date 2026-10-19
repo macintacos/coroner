@@ -35,15 +35,15 @@ type ChangeOptions struct {
 	Attach []NewAttachment
 }
 
-var errRollback = errors.New("rolled back")
-
-// Tx is one transaction's view of the database. Its methods translate their own errors, so a
-// caller can branch on ErrNotFound and ErrConflict inside a Change and keep going.
+// Tx is one transaction's view of the database. Its methods translate their own errors, and a
+// write method that fails leaves nothing behind, so a caller can branch on ErrNotFound and
+// ErrConflict inside a Change and keep going. A Tx is valid only while the function it was
+// passed to runs, and is not safe for concurrent use.
 type Tx struct {
 	q       *sqlcgen.Queries
-	db      sqlcgen.DBTX              // hand-written SQL (SourceUsages, ListEvents, TagUsages)
-	blobDir string                    // Import's stored-blob check, and naming staged blobs
-	owner   *timeline.AttachmentOwner // set by Attach
+	db      sqlcgen.DBTX // for SQL sqlc did not generate
+	blobDir string
+	owner   *timeline.AttachmentOwner // the owner Attach named; nil attaches nothing
 }
 
 func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
@@ -51,7 +51,8 @@ func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
 }
 
 // Attach attaches the Change's staged content to owner when fn returns. A Change whose fn never
-// calls it attaches nothing.
+// calls it attaches nothing. Only Store.Change attaches; in Read it does nothing. A second call
+// replaces the owner.
 func (tx *Tx) Attach(owner timeline.AttachmentOwner) {
 	tx.owner = &owner
 }
@@ -93,7 +94,8 @@ func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) err
 	return rows, nil
 }
 
-// Read runs fn in one deferred read-only transaction. fn must use only tx.
+// Read runs fn in one deferred transaction, which takes no write lock. fn must only read:
+// Read does not stop it writing. fn must use only tx.
 func (s *Store) Read(ctx context.Context, fn func(*Tx) error) error {
 	_, err := readIn(ctx, s, func(tx *Tx) (struct{}, error) { return struct{}{}, fn(tx) })
 	return err
@@ -116,7 +118,7 @@ func translated[T any](fn func() (T, error)) (T, error) {
 }
 
 // readTx runs fn in a transaction modernc begins deferred, so it waits on no writer, and
-// returns what fn produced. Nothing stops fn from writing; use write for that. fn must only
+// returns what fn produced. Nothing stops fn from writing; use change for that. fn must only
 // use tx: another Store method would run outside this transaction.
 func readTx[T any](ctx context.Context, s *Store, fn func(sqlcgen.DBTX) (T, error)) (T, error) {
 	var result T
@@ -173,14 +175,27 @@ func queryAll[T any](
 	return scanned, rows.Err()
 }
 
-// write runs fn in one immediate transaction, retried whole while another writer holds the
-// database, so fn may run more than once and must only use q: calling another Store method
-// from fn waits on this transaction's own lock until ErrBusy.
-func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) error {
-	return translate(retryBusy(ctx, writeAttempts, func() error {
-		return s.inTx(ctx, nil, func(tx sqlcgen.DBTX) error { return fn(sqlcgen.New(tx)) })
-	}))
+// atomic runs fn inside a savepoint, so a failed fn leaves nothing behind in the transaction,
+// and returns fn's error translated.
+func (tx *Tx) atomic(ctx context.Context, fn func() error) error {
+	_, err := tx.db.ExecContext(ctx, "SAVEPOINT w")
+	if err != nil {
+		return translate(err)
+	}
+
+	err = fn()
+	if err != nil {
+		_, rollbackErr := tx.db.ExecContext(ctx, "ROLLBACK TO w")
+		_, releaseErr := tx.db.ExecContext(ctx, "RELEASE w")
+		return translate(errors.Join(err, rollbackErr, releaseErr))
+	}
+
+	_, err = tx.db.ExecContext(ctx, "RELEASE w")
+	return translate(err)
 }
+
+// errRollback ends a Rollback change's transaction; change reports it as success.
+var errRollback = errors.New("rolled back")
 
 // change runs fn, then names each staged blob and inserts its row after it, in one
 // immediate transaction retried whole while another writer holds the database, so a failed

@@ -20,7 +20,7 @@ FROM event_tag t JOIN event e ON e.id = t.event_id
 GROUP BY t.tag
 ORDER BY t.tag`
 
-// TagUsages returns every tag an event carries, with its usage, ordered by name.
+// TagUsages is Tx.TagUsages in its own Read.
 func (s *Store) TagUsages(ctx context.Context) ([]TagUsage, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]TagUsage, error) { return tx.TagUsages(ctx) })
 }

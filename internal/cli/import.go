@@ -114,7 +114,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 // planStoredImport plans in against what s holds, within the timeline guard names when it names
 // one.
 // ponytail: the plan reads outside the write transaction, so a writer in between can fail the
-// import; plan inside Store.write if concurrent imports matter.
+// import; plan inside the import's Change if concurrent imports matter.
 func planStoredImport(ctx context.Context, s *store.Store, in importInput, guard timelineInput) (importPlan, error) {
 	sel, err := selectTimelines(ctx, s, guard, nil)
 	if err != nil {

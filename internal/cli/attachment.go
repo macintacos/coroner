@@ -239,6 +239,29 @@ func (r attachRequest) result(stored, added []timeline.Attachment, owner timelin
 	return attachResult{added: described, objects: objects, dryRun: true}
 }
 
+// attached is what an attach command's Change built: its result, the owner it attaches to and
+// what that owner held before the Change inserted.
+type attached[T any] struct {
+	result T
+	owner  timeline.AttachmentOwner
+	stored []timeline.Attachment
+}
+
+// attachResult returns what req attached to b's owner, given the rows the Change inserted.
+func (b attached[T]) attachResult(req attachRequest, rows []timeline.Attachment, dbPath string) attachResult {
+	return req.result(b.stored, rows, b.owner, dbPath)
+}
+
+// attachIn makes owner the Change's attachment owner and b's, and keeps in b what owner holds
+// before the Change inserts the staged content.
+func (b *attached[T]) attachIn(ctx context.Context, tx *store.Tx, owner timeline.AttachmentOwner) error {
+	tx.Attach(owner)
+	b.owner = owner
+	var err error
+	b.stored, err = tx.ListAttachments(ctx, owner)
+	return err
+}
+
 // attachResult is what an add or edit prints about attachments.
 type attachResult struct {
 	// added is what the command attached, or would attach.

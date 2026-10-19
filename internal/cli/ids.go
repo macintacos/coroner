@@ -26,7 +26,8 @@ func (r *replayIDs) newID() (uuid.UUID, error) {
 	return id, nil
 }
 
-// rewind starts a re-run, which fn does first.
+// rewind makes the next newID return the first id drawn. Call it first in every run of fn, or a
+// re-run draws new ids.
 func (r *replayIDs) rewind() {
 	r.next = 0
 }

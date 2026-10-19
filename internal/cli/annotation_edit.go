@@ -81,45 +81,41 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 		return annotationEdited{}, err
 	}
 
-	edited := annotationEdited{dryRun: req.dryRun}
 	ids := replayIDs{draw: app.NewID}
-	var owner timeline.AttachmentOwner
-	var stored []timeline.Attachment
-	rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
-		func(tx *store.Tx) error {
+	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) (attached[annotationEdited], error) {
 			ids.rewind()
+			b := attached[annotationEdited]{result: annotationEdited{dryRun: req.dryRun}}
 			a, err := findAnnotation(ctx, tx, prefix)
 			if err != nil {
-				return err
+				return b, err
 			}
 			t, err := tx.Timeline(ctx, a.TimelineID)
 			if err != nil {
-				return err
+				return b, err
 			}
 			a, err = edit.apply(a, now)
 			if err != nil {
-				return err
+				return b, err
 			}
-			edited.annotation, edited.timeline = a, t
+			b.result.annotation, b.result.timeline = a, t
 			// UpdateAnnotation resolves a.Source by name even when --source did not change it, so
 			// it always needs a fallback id.
 			sourceID, err := newSourceID(a.Source, ids.newID)
 			if err != nil {
-				return err
+				return b, err
 			}
-			err = tx.UpdateAnnotation(ctx, a, sourceID)
+			err = b.attachIn(ctx, tx, timeline.AttachmentOwner{AnnotationID: &a.ID})
 			if err != nil {
-				return err
+				return b, err
 			}
-			owner = timeline.AttachmentOwner{AnnotationID: &a.ID}
-			tx.Attach(owner)
-			stored, err = tx.ListAttachments(ctx, owner)
-			return err
+			return b, tx.UpdateAnnotation(ctx, a, sourceID)
 		})
+	edited := built.result
 	if err != nil {
 		return edited, err
 	}
-	edited.attach = req.result(stored, rows, owner, cfg.DBPath)
+	edited.attach = built.attachResult(req, rows, cfg.DBPath)
 
 	return edited, nil
 }

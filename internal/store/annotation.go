@@ -9,8 +9,8 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// AddAnnotation adds a with attachments. When no source is called a.Source yet, it creates
-// one with id newSourceID.
+// AddAnnotation is Tx.AddAnnotation in its own Change, attaching attachments to the new
+// annotation.
 func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
 	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
 		err := tx.AddAnnotation(ctx, a, newSourceID)
@@ -31,23 +31,21 @@ func (tx *Tx) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourc
 		return err
 	}
 
-	return translate(addAnnotation(ctx, tx.q, a, newSourceID))
+	return tx.atomic(ctx, func() error {
+		err := checkTarget(ctx, tx.q, a.TimelineID, a.EventID)
+		if err != nil {
+			return err
+		}
+		source, err := sourceID(ctx, tx.q, a.Source, newSourceID, a.CreatedAt)
+		if err != nil {
+			return err
+		}
+
+		return createAnnotation(ctx, tx.q, a, source)
+	})
 }
 
-func addAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Annotation, newSourceID string) error {
-	err := checkTarget(ctx, q, a.TimelineID, a.EventID)
-	if err != nil {
-		return err
-	}
-	source, err := sourceID(ctx, q, a.Source, newSourceID, a.CreatedAt)
-	if err != nil {
-		return err
-	}
-
-	return createAnnotation(ctx, q, a, source)
-}
-
-// Annotation returns the annotation with id.
+// Annotation is Tx.Annotation in its own Read.
 func (s *Store) Annotation(ctx context.Context, id string) (timeline.Annotation, error) {
 	return readIn(ctx, s, func(tx *Tx) (timeline.Annotation, error) { return tx.Annotation(ctx, id) })
 }
@@ -64,8 +62,7 @@ func (tx *Tx) Annotation(ctx context.Context, id string) (timeline.Annotation, e
 	})
 }
 
-// Annotations returns every annotation in the timeline with timelineID, on its events or
-// on the timeline itself, oldest first.
+// Annotations is Tx.Annotations in its own Read.
 func (s *Store) Annotations(ctx context.Context, timelineID string) ([]timeline.Annotation, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Annotation, error) { return tx.Annotations(ctx, timelineID) })
 }
@@ -83,7 +80,7 @@ func (tx *Tx) Annotations(ctx context.Context, timelineID string) ([]timeline.An
 	})
 }
 
-// EventAnnotations returns the annotations on the event with eventID, oldest first.
+// EventAnnotations is Tx.EventAnnotations in its own Read.
 func (s *Store) EventAnnotations(ctx context.Context, eventID string) ([]timeline.Annotation, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Annotation, error) { return tx.EventAnnotations(ctx, eventID) })
 }
@@ -100,8 +97,8 @@ func (tx *Tx) EventAnnotations(ctx context.Context, eventID string) ([]timeline.
 	})
 }
 
-// UpdateAnnotation stores a's kind, body, author, source, URL and updated at, and adds
-// attachments. When no source is called a.Source yet, it creates one with id newSourceID.
+// UpdateAnnotation is Tx.UpdateAnnotation in its own Change, attaching attachments to the
+// annotation.
 func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
 	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
 		err := tx.UpdateAnnotation(ctx, a, newSourceID)
@@ -122,12 +119,14 @@ func (tx *Tx) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSo
 		return err
 	}
 
-	source, err := sourceID(ctx, tx.q, a.Source, newSourceID, a.UpdatedAt)
-	if err != nil {
-		return translate(err)
-	}
+	return tx.atomic(ctx, func() error {
+		source, err := sourceID(ctx, tx.q, a.Source, newSourceID, a.UpdatedAt)
+		if err != nil {
+			return err
+		}
 
-	return translate(overwriteAnnotation(ctx, tx.q, a, source, nil))
+		return overwriteAnnotation(ctx, tx.q, a, source, nil)
+	})
 }
 
 // overwriteAnnotation stores a's kind, body, author, URL and updated at, naming the source
@@ -146,9 +145,7 @@ func overwriteAnnotation(ctx context.Context, q *sqlcgen.Queries, a timeline.Ann
 	return err
 }
 
-// AnnotationsByIDPrefix returns up to limit annotations, in any timeline, whose id starts
-// with prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase
-// hex and dashes: *, ? and [ are patterns, and ids are lowercase.
+// AnnotationsByIDPrefix is Tx.AnnotationsByIDPrefix in its own Read.
 func (s *Store) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Annotation, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Annotation, error) { return tx.AnnotationsByIDPrefix(ctx, prefix, limit) })
 }
@@ -171,8 +168,7 @@ func (tx *Tx) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit in
 	})
 }
 
-// DeleteAnnotations deletes the annotations with ids, or none of them when any does not
-// exist.
+// DeleteAnnotations is Tx.DeleteAnnotations in its own Change.
 func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
 	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAnnotations(ctx, ids...) })
 }
@@ -180,7 +176,7 @@ func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
 // DeleteAnnotations deletes the annotations with ids, or none of them when any does not
 // exist.
 func (tx *Tx) DeleteAnnotations(ctx context.Context, ids ...string) error {
-	return translate(deleteAll(ctx, ids, tx.q.GetAnnotation, tx.q.DeleteAnnotation))
+	return tx.atomic(ctx, func() error { return deleteAll(ctx, ids, tx.q.GetAnnotation, tx.q.DeleteAnnotation) })
 }
 
 // checkTarget returns an error wrapping ErrNotFound unless the timeline with timelineID

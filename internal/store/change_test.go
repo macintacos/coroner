@@ -318,4 +318,93 @@ var _ = Describe("Tx", func() {
 			return err
 		}),
 	)
+
+	// swallowing runs call in a committed Change whose fn ignores call's error.
+	swallowing := func(ctx context.Context, s *store.Store, call func(*store.Tx) error) error {
+		GinkgoHelper()
+		var callErr error
+		_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit}, func(tx *store.Tx) error {
+			callErr = call(tx)
+			return nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+		return callErr
+	}
+
+	It("leaves no overlay behind when its timelines conflict", func(ctx SpecContext) {
+		s := openStore(ctx)
+		Expect(s.CreateTimeline(ctx, changeIncident())).To(Succeed())
+		pair := timeline.Overlay{ID: uuid(5), Name: "pair", TimelineIDs: []string{uuid(1), uuid(1)}, CreatedAt: changeCreated()}
+
+		err := swallowing(ctx, s, func(tx *store.Tx) error { return tx.CreateOverlay(ctx, pair) })
+
+		Expect(errors.Is(err, store.ErrConflict)).To(BeTrue(), "got %v", err)
+		_, err = s.OverlayByName(ctx, "pair")
+		Expect(errors.Is(err, store.ErrNotFound)).To(BeTrue(), "got %v", err)
+	})
+
+	It("leaves no source or seq behind when an event's id is taken", func(ctx SpecContext) {
+		s := openStore(ctx)
+		Expect(s.CreateTimeline(ctx, changeIncident())).To(Succeed())
+		_, err := s.AddEvent(ctx, event, uuid(4))
+		Expect(err).NotTo(HaveOccurred())
+		duplicate := event
+		duplicate.Source = new("pagerduty")
+
+		err = swallowing(ctx, s, func(tx *store.Tx) error { _, err := tx.AddEvent(ctx, duplicate, uuid(6)); return err })
+
+		Expect(errors.Is(err, store.ErrConflict)).To(BeTrue(), "got %v", err)
+		Expect(s.Sources(ctx)).To(BeEmpty())
+		next, err := s.AddEvent(ctx, changeEvent(7), uuid(8))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(next.Seq).To(Equal(int64(2)))
+	})
+
+	DescribeTable("gives ErrConflict for a write that collides",
+		func(ctx SpecContext, call func(context.Context, *store.Tx) error) {
+			s := openStore(ctx)
+			Expect(s.CreateTimeline(ctx, changeIncident())).To(Succeed())
+			other := changeIncident()
+			other.ID, other.Name = uuid(10), "inc-466"
+			Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+			_, err := s.AddEvent(ctx, event, uuid(4))
+			Expect(err).NotTo(HaveOccurred())
+			second := changeEvent(11)
+			second.Source = new("grafana")
+			_, err = s.AddEvent(ctx, second, uuid(12))
+			Expect(err).NotTo(HaveOccurred())
+			third := changeEvent(13)
+			third.Source = new("pagerduty")
+			_, err = s.AddEvent(ctx, third, uuid(14))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(s.CreateOverlay(ctx, timeline.Overlay{ID: uuid(15), Name: "pair", TimelineIDs: []string{uuid(1)}, CreatedAt: changeCreated()})).To(Succeed())
+			Expect(s.AddLink(ctx, link(16))).To(Succeed())
+
+			err = swallowing(ctx, s, func(tx *store.Tx) error { return call(ctx, tx) })
+
+			Expect(errors.Is(err, store.ErrConflict)).To(BeTrue(), "got %v", err)
+		},
+		Entry("CreateTimeline, a taken name", func(ctx context.Context, tx *store.Tx) error {
+			t := changeIncident()
+			t.ID = uuid(20)
+			return tx.CreateTimeline(ctx, t)
+		}),
+		Entry("UpdateTimeline, to a taken name", func(ctx context.Context, tx *store.Tx) error {
+			t := changeIncident()
+			t.ID = uuid(10)
+			return tx.UpdateTimeline(ctx, t)
+		}),
+		Entry("CreateOverlay, a taken name", func(ctx context.Context, tx *store.Tx) error {
+			return tx.CreateOverlay(ctx, timeline.Overlay{ID: uuid(21), Name: "pair", TimelineIDs: []string{uuid(1)}, CreatedAt: changeCreated()})
+		}),
+		Entry("AddLink, a duplicate link", func(ctx context.Context, tx *store.Tx) error { return tx.AddLink(ctx, link(22)) }),
+		Entry("RenameSource, to a taken name", func(ctx context.Context, tx *store.Tx) error {
+			return tx.RenameSource(ctx, uuid(12), "pagerduty")
+		}),
+		Entry("AddEvent, a taken id", func(ctx context.Context, tx *store.Tx) error { _, err := tx.AddEvent(ctx, event, uuid(23)); return err }),
+	)
 })
+
+func link(n int) timeline.Link {
+	return timeline.Link{ID: uuid(n), FromEventID: uuid(2), ToEventID: uuid(13), Kind: timeline.LinkLedTo, CreatedAt: changeCreated()}
+}

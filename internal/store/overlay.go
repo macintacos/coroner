@@ -7,8 +7,7 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// CreateOverlay saves o with its timelines, kept in the order given. It returns an error
-// wrapping ErrConflict when another overlay has o's name.
+// CreateOverlay is Tx.CreateOverlay in its own Change.
 func (s *Store) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
 	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.CreateOverlay(ctx, o) })
 }
@@ -21,27 +20,25 @@ func (tx *Tx) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
 		return err
 	}
 
-	return translate(createOverlay(ctx, tx.q, o))
-}
-
-func createOverlay(ctx context.Context, q *sqlcgen.Queries, o timeline.Overlay) error {
-	_, err := q.CreateOverlay(ctx, sqlcgen.CreateOverlayParams{
-		ID: o.ID, Name: o.Name, CreatedAt: timeline.FormatInstant(o.CreatedAt),
-	})
-	if err != nil {
-		return err
-	}
-	for i, timelineID := range o.TimelineIDs {
-		err = q.AddOverlayTimeline(ctx, sqlcgen.AddOverlayTimelineParams{OverlayID: o.ID, TimelineID: timelineID, Position: int64(i + 1)})
+	return tx.atomic(ctx, func() error {
+		_, err := tx.q.CreateOverlay(ctx, sqlcgen.CreateOverlayParams{
+			ID: o.ID, Name: o.Name, CreatedAt: timeline.FormatInstant(o.CreatedAt),
+		})
 		if err != nil {
 			return err
 		}
-	}
+		for i, timelineID := range o.TimelineIDs {
+			err = tx.q.AddOverlayTimeline(ctx, sqlcgen.AddOverlayTimelineParams{OverlayID: o.ID, TimelineID: timelineID, Position: int64(i + 1)})
+			if err != nil {
+				return err
+			}
+		}
 
-	return nil
+		return nil
+	})
 }
 
-// OverlayByName returns the overlay called name.
+// OverlayByName is Tx.OverlayByName in its own Read.
 func (s *Store) OverlayByName(ctx context.Context, name string) (timeline.Overlay, error) {
 	return readIn(ctx, s, func(tx *Tx) (timeline.Overlay, error) { return tx.OverlayByName(ctx, name) })
 }
@@ -58,7 +55,7 @@ func (tx *Tx) OverlayByName(ctx context.Context, name string) (timeline.Overlay,
 	})
 }
 
-// TimelineOverlays returns the overlays the timeline with timelineID is in, ordered by name.
+// TimelineOverlays is Tx.TimelineOverlays in its own Read.
 func (s *Store) TimelineOverlays(ctx context.Context, timelineID string) ([]timeline.Overlay, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Overlay, error) { return tx.TimelineOverlays(ctx, timelineID) })
 }

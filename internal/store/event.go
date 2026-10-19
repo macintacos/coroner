@@ -9,9 +9,7 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// AddEvent adds e to its timeline under the timeline's next seq, with attachments, and
-// returns e with that Seq. When no source is called e.Source yet, it creates one with id
-// newSourceID.
+// AddEvent is Tx.AddEvent in its own Change, attaching attachments to the new event.
 func (s *Store) AddEvent(
 	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
 ) (timeline.Event, error) {
@@ -40,23 +38,28 @@ func (tx *Tx) AddEvent(ctx context.Context, e timeline.Event, newSourceID string
 		return timeline.Event{}, err
 	}
 
-	return translated(func() (timeline.Event, error) {
+	err = tx.atomic(ctx, func() error {
 		seq, err := tx.q.AllocateSeq(ctx, e.TimelineID)
 		if err != nil {
-			return timeline.Event{}, err
+			return err
 		}
 
 		source, err := sourceID(ctx, tx.q, e.Source, newSourceID, e.CreatedAt)
 		if err != nil {
-			return timeline.Event{}, err
+			return err
 		}
 
 		e.Seq = seq
-		return e, createEvent(ctx, tx.q, e, seq, source)
+		return createEvent(ctx, tx.q, e, seq, source)
 	})
+	if err != nil {
+		return timeline.Event{}, err
+	}
+
+	return e, nil
 }
 
-// Event returns the event with id.
+// Event is Tx.Event in its own Read.
 func (s *Store) Event(ctx context.Context, id string) (timeline.Event, error) {
 	return readIn(ctx, s, func(tx *Tx) (timeline.Event, error) { return tx.Event(ctx, id) })
 }
@@ -73,7 +76,7 @@ func (tx *Tx) Event(ctx context.Context, id string) (timeline.Event, error) {
 	})
 }
 
-// EventBySeq returns the event numbered seq in the timeline with timelineID.
+// EventBySeq is Tx.EventBySeq in its own Read.
 func (s *Store) EventBySeq(ctx context.Context, timelineID string, seq int64) (timeline.Event, error) {
 	return readIn(ctx, s, func(tx *Tx) (timeline.Event, error) { return tx.EventBySeq(ctx, timelineID, seq) })
 }
@@ -90,9 +93,7 @@ func (tx *Tx) EventBySeq(ctx context.Context, timelineID string, seq int64) (tim
 	})
 }
 
-// EventsByIDPrefix returns up to limit events, in any timeline, whose id starts with
-// prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase hex
-// and dashes: *, ? and [ are patterns, and ids are lowercase.
+// EventsByIDPrefix is Tx.EventsByIDPrefix in its own Read.
 func (s *Store) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Event, error) { return tx.EventsByIDPrefix(ctx, prefix, limit) })
 }
@@ -115,8 +116,7 @@ func (tx *Tx) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([
 	})
 }
 
-// Events returns the events of the timeline with timelineID, ordered by occurred at, then
-// seq.
+// Events is Tx.Events in its own Read.
 func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Event, error) { return tx.Events(ctx, timelineID) })
 }
@@ -134,9 +134,7 @@ func (tx *Tx) Events(ctx context.Context, timelineID string) ([]timeline.Event, 
 	})
 }
 
-// UpdateEvent stores every field of e but its timeline, seq and created at, and replaces
-// its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
-// creates one with id newSourceID.
+// UpdateEvent is Tx.UpdateEvent in its own Change, attaching attachments to the event.
 func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
 	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
 		err := tx.UpdateEvent(ctx, e, newSourceID)
@@ -158,16 +156,17 @@ func (tx *Tx) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID str
 		return err
 	}
 
-	source, err := sourceID(ctx, tx.q, e.Source, newSourceID, e.UpdatedAt)
-	if err != nil {
-		return translate(err)
-	}
+	return tx.atomic(ctx, func() error {
+		source, err := sourceID(ctx, tx.q, e.Source, newSourceID, e.UpdatedAt)
+		if err != nil {
+			return err
+		}
 
-	return translate(overwriteEvent(ctx, tx.q, e, source, nil))
+		return overwriteEvent(ctx, tx.q, e, source, nil)
+	})
 }
 
-// DeleteEvents deletes the events with ids, with their tags and annotations, or none of
-// them when any does not exist. Their seqs are never given to other events.
+// DeleteEvents is Tx.DeleteEvents in its own Change.
 func (s *Store) DeleteEvents(ctx context.Context, ids ...string) error {
 	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteEvents(ctx, ids...) })
 }
@@ -175,7 +174,7 @@ func (s *Store) DeleteEvents(ctx context.Context, ids ...string) error {
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of
 // them when any does not exist. Their seqs are never given to other events.
 func (tx *Tx) DeleteEvents(ctx context.Context, ids ...string) error {
-	return translate(deleteAll(ctx, ids, tx.q.GetEvent, tx.q.DeleteEvent))
+	return tx.atomic(ctx, func() error { return deleteAll(ctx, ids, tx.q.GetEvent, tx.q.DeleteEvent) })
 }
 
 // deleteAll deletes the records with ids with del, after get has found every one of them.

@@ -162,34 +162,36 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		return eventAdded{}, err
 	}
 
-	added := eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}
 	owner := timeline.AttachmentOwner{EventID: &draft.event.ID}
-	var stored []timeline.Attachment
-	rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
-		func(tx *store.Tx) error {
-			added.event, added.existed = draft.event, false
+	built, rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) (attached[eventAdded], error) {
+			b := attached[eventAdded]{
+				result: eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}, owner: owner,
+			}
 			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
-				return err
+				return b, err
 			}
-			added.timeline = t
-			added.event.TimelineID = t.ID
+			b.result.timeline = t
+			b.result.event.TimelineID = t.ID
 			if in.given("id") {
-				added.event, added.existed, err = storedSameEvent(ctx, tx, added.event, req.files)
+				b.result.event, b.result.existed, err = storedSameEvent(ctx, tx, b.result.event, req.files)
 				if err != nil {
-					return err
+					return b, err
 				}
 			}
-			if !added.existed {
-				added.event, err = tx.AddEvent(ctx, added.event, draft.newSourceID)
-				if err != nil {
-					return err
-				}
-				tx.Attach(owner)
+			if b.result.existed {
+				b.stored, err = tx.ListAttachments(ctx, owner)
+				return b, err
 			}
-			stored, err = tx.ListAttachments(ctx, owner)
-			return err
+			b.result.event, err = tx.AddEvent(ctx, b.result.event, draft.newSourceID)
+			if err != nil {
+				return b, err
+			}
+			err = b.attachIn(ctx, tx, owner)
+			return b, err
 		})
+	added := built.result
 	if err != nil {
 		return added, err
 	}
@@ -200,7 +202,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 		// Nothing is attached, so result lists the stored attachments and reports none as added.
 		req = attachRequest{}
 	}
-	added.attach = req.result(stored, rows, owner, cfg.DBPath)
+	added.attach = built.attachResult(req, rows, cfg.DBPath)
 
 	return added, nil
 }

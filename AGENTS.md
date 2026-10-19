@@ -172,7 +172,8 @@ digraph coroner_rules_router {
   definition's values, calls a plain run function that returns a result, and renders it.
   The run function does its find, apply and write in one `withChange`
   ([`store.go`](internal/cli/store.go)), and `--dry-run` is that change rolled back;
-  `import` and `--from-file` instead plan in a read transaction. Specs in
+  `import` and `--from-file` instead plan from reads taken before, and outside, the
+  write's transaction. Specs in
   [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fail when a
   flag has no form field, a form field has no flag, or the two reject a bad value
   differently; when a command a write verb names has neither a definition nor a

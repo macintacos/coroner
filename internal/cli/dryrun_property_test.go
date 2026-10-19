@@ -24,29 +24,32 @@ import (
 // Races and --id conflicts are excluded: each check runs alone against its own database.
 func TestDryRunMeansWrite(t *testing.T) {
 	runs := t.TempDir()
-	check := func(t interface{ Context() context.Context }, args []string) error {
+	check := func(t interface{ Context() context.Context }, args []string) (dryRunOutcome, error) {
 		dir, err := os.MkdirTemp(runs, "run")
 		if err != nil {
-			return err
+			return dryRunOutcome{}, err
 		}
 		db := filepath.Join(dir, "coroner.db")
 		err = seedDryRunStore(t.Context(), db)
 		if err != nil {
-			return err
+			return dryRunOutcome{}, err
 		}
-		err = checkDryRunMeansWrite(t, coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)}, db, dryRunWriteOf(args))
+		got, err := checkDryRunMeansWrite(t, coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)}, db, dryRunWriteOf(args))
 		if err != nil {
-			return errors.New(strings.ReplaceAll(err.Error(), dir, "$RUN"))
+			return got, errors.New(strings.ReplaceAll(err.Error(), dir, "$RUN"))
 		}
 
-		return os.RemoveAll(dir)
+		return got, os.RemoveAll(dir)
 	}
 
 	for _, c := range dryRunCases() {
 		t.Run(c.name, func(t *testing.T) {
-			err := check(t, c.args)
+			got, err := check(t, c.args)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if got != c.want {
+				t.Fatalf("the dry run exited %d with kind %q, want %d with kind %q", got.code, got.kind, c.want.code, c.want.kind)
 			}
 		})
 	}
@@ -58,11 +61,17 @@ func TestDryRunMeansWrite(t *testing.T) {
 		args := rapid.OneOf(
 			eventWrite(), annotationWrite(), linkWrite(), timelineWrite(), deleteWrite(), overlayWrite(), sourceWrite(),
 		).Draw(t, "write")
-		err := check(t, args)
+		_, err := check(t, args)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
+}
+
+// dryRunOutcome is a command's exit code and the kind its JSON error envelope names.
+type dryRunOutcome struct {
+	code int
+	kind string
 }
 
 // dryRunCases reaches every write command's write, and the failures each must report alike in
@@ -70,38 +79,41 @@ func TestDryRunMeansWrite(t *testing.T) {
 func dryRunCases() []struct {
 	name string
 	args []string
+	want dryRunOutcome
 } {
+	wrote := dryRunOutcome{}
 	return []struct {
 		name string
 		args []string
+		want dryRunOutcome
 	}{
-		{"timeline create", []string{"timeline", "create", "incident"}},
-		{"timeline edit", []string{"timeline", "edit", "standby", "--name", "replica", "--title", "Standby site"}},
-		{"timeline delete", []string{"timeline", "delete", "standby", "--yes"}},
-		{"timeline use", []string{"timeline", "use", "standby"}},
-		{"timeline use --clear", []string{"timeline", "use", "--clear"}},
-		{"event add", []string{"event", "add", "Primary elected", "-t", "outage", "--tag", "phase:detect"}},
-		{"event edit", []string{"event", "edit", "2", "-t", "outage", "--text", "Election won"}},
-		{"event delete", []string{"event", "delete", "2", "-t", "outage"}},
-		{"event link", []string{"event", "link", "2", "1", "-t", "outage", "--kind", "same_as"}},
-		{"event unlink", []string{"event", "unlink", "1", "2", "-t", "outage", "--kind", "led_to"}},
-		{"annotation add", []string{"annotation", "add", "Step-down", "-t", "outage", "--kind", "comment", "-e", "1"}},
-		{"annotation edit", []string{"annotation", "edit", seededAnnotationID, "--body", "Burst first"}},
-		{"annotation delete", []string{"annotation", "delete", seededAnnotationID}},
-		{"attachment delete", []string{"attachment", "delete", seededAttachmentID}},
-		{"overlay create", []string{"overlay", "create", "pair", "-t", "outage", "-t", "standby"}},
-		{"source edit", []string{"source", "edit", "mongod", "--name", "mongo"}},
+		{"timeline create", []string{"timeline", "create", "incident"}, wrote},
+		{"timeline edit", []string{"timeline", "edit", "standby", "--name", "replica", "--title", "Standby site"}, wrote},
+		{"timeline delete", []string{"timeline", "delete", "standby", "--yes"}, wrote},
+		{"timeline use", []string{"timeline", "use", "standby"}, wrote},
+		{"timeline use --clear", []string{"timeline", "use", "--clear"}, wrote},
+		{"event add", []string{"event", "add", "Primary elected", "-t", "outage", "--tag", "phase:detect"}, wrote},
+		{"event edit", []string{"event", "edit", "2", "-t", "outage", "--text", "Election won"}, wrote},
+		{"event delete", []string{"event", "delete", "2", "-t", "outage"}, wrote},
+		{"event link", []string{"event", "link", "2", "1", "-t", "outage", "--kind", "same_as"}, wrote},
+		{"event unlink", []string{"event", "unlink", "1", "2", "-t", "outage", "--kind", "led_to"}, wrote},
+		{"annotation add", []string{"annotation", "add", "Step-down", "-t", "outage", "--kind", "comment", "-e", "1"}, wrote},
+		{"annotation edit", []string{"annotation", "edit", seededAnnotationID, "--body", "Burst first"}, wrote},
+		{"annotation delete", []string{"annotation", "delete", seededAnnotationID}, wrote},
+		{"attachment delete", []string{"attachment", "delete", seededAttachmentID}, wrote},
+		{"overlay create", []string{"overlay", "create", "pair", "-t", "outage", "-t", "standby"}, wrote},
+		{"source edit", []string{"source", "edit", "mongod", "--name", "mongo"}, wrote},
 
-		{"timeline create taken name", []string{"timeline", "create", "standby"}},
-		{"timeline edit taken name", []string{"timeline", "edit", "standby", "--name", "outage"}},
-		{"timeline delete missing timeline", []string{"timeline", "delete", "incident", "--yes"}},
-		{"event delete missing event", []string{"event", "delete", "9", "-t", "outage"}},
-		{"event link existing link", []string{"event", "link", "1", "2", "-t", "outage", "--kind", "led_to"}},
-		{"annotation add missing event", []string{"annotation", "add", "Step-down", "-t", "outage", "--kind", "comment", "-e", "99"}},
-		{"annotation delete missing annotation", []string{"annotation", "delete", missingIDPrefix}},
-		{"attachment delete missing attachment", []string{"attachment", "delete", missingIDPrefix}},
-		{"overlay create taken name", []string{"overlay", "create", "both", "-t", "outage"}},
-		{"source edit taken name", []string{"source", "edit", "mongod", "--name", "slack"}},
+		{"timeline create taken name", []string{"timeline", "create", "standby"}, dryRunOutcome{4, "timeline_exists"}},
+		{"timeline edit taken name", []string{"timeline", "edit", "standby", "--name", "outage"}, dryRunOutcome{4, "timeline_exists"}},
+		{"timeline delete missing timeline", []string{"timeline", "delete", "incident", "--yes"}, dryRunOutcome{3, "timeline_not_found"}},
+		{"event delete missing event", []string{"event", "delete", "9", "-t", "outage"}, dryRunOutcome{3, "event_not_found"}},
+		{"event link existing link", []string{"event", "link", "1", "2", "-t", "outage", "--kind", "led_to"}, dryRunOutcome{4, "link_exists"}},
+		{"annotation add missing event", []string{"annotation", "add", "Step-down", "-t", "outage", "--kind", "comment", "-e", "99"}, dryRunOutcome{3, "event_not_found"}},
+		{"annotation delete missing annotation", []string{"annotation", "delete", missingIDPrefix}, dryRunOutcome{3, "annotation_not_found"}},
+		{"attachment delete missing attachment", []string{"attachment", "delete", missingIDPrefix}, dryRunOutcome{3, "attachment_not_found"}},
+		{"overlay create taken name", []string{"overlay", "create", "both", "-t", "outage"}, dryRunOutcome{4, "overlay_exists"}},
+		{"source edit taken name", []string{"source", "edit", "mongod", "--name", "slack"}, dryRunOutcome{4, "source_exists"}},
 	}
 }
 
@@ -238,41 +250,42 @@ func dryRunEvent(id, text string, at time.Time) timeline.Event {
 	}
 }
 
-// checkDryRunMeansWrite runs w with --dry-run --json, then without --dry-run, returning an error
-// unless both fail with the same exit code and error kind, or both exit 0 and the write did what
-// the dry run previewed.
-func checkDryRunMeansWrite(t interface{ Context() context.Context }, c coroner, db string, w dryRunWrite) error {
+// checkDryRunMeansWrite runs w with --dry-run --json, then without --dry-run, and returns the dry
+// run's outcome. It returns an error unless both fail with the same exit code and error kind, or
+// both exit 0 and the write did what the dry run previewed.
+func checkDryRunMeansWrite(t interface{ Context() context.Context }, c coroner, db string, w dryRunWrite) (dryRunOutcome, error) {
 	args := append([]string{"--db", db, "--no-input"}, w.args...)
 	line := "coroner " + strings.Join(args, " ")
 	preview, dryErr, dryCode := c.exec(t.Context(), append(args, "--dry-run", "--json")...)
+	dry := dryRunOutcome{dryCode, errorKind(dryErr)}
 	if strings.Contains(dryErr, "unknown flag") || strings.Contains(dryErr, "unknown shorthand flag") {
-		return fmt.Errorf("%s: the generator drew a flag the command lacks:\n%s", line, dryErr)
+		return dry, fmt.Errorf("%s: the generator drew a flag the command lacks:\n%s", line, dryErr)
 	}
 	_, writeErr, writeCode := c.exec(t.Context(), append(args, "--json")...)
 	if dryCode != 0 {
-		if writeCode != dryCode || errorKind(writeErr) != errorKind(dryErr) {
-			return fmt.Errorf("%s: the dry run exited %d and the write exited %d\ndry run stderr:\n%s\nwrite stderr:\n%s", line, dryCode, writeCode, dryErr, writeErr)
+		if writeCode != dryCode || errorKind(writeErr) != dry.kind {
+			return dry, fmt.Errorf("%s: the dry run exited %d and the write exited %d\ndry run stderr:\n%s\nwrite stderr:\n%s", line, dryCode, writeCode, dryErr, writeErr)
 		}
 
-		return nil
+		return dry, nil
 	}
 	if writeCode != 0 {
-		return fmt.Errorf("%s: the dry run exited 0 and the write exited %d\ndry run stderr:\n%s\nwrite stderr:\n%s", line, writeCode, dryErr, writeErr)
+		return dry, fmt.Errorf("%s: the dry run exited 0 and the write exited %d\ndry run stderr:\n%s\nwrite stderr:\n%s", line, writeCode, dryErr, writeErr)
 	}
 
 	var want map[string]any
 	err := json.Unmarshal([]byte(preview), &want)
 	if err != nil {
-		return fmt.Errorf("%s: reading the preview: %w", line, err)
+		return dry, fmt.Errorf("%s: reading the preview: %w", line, err)
 	}
 	readBack := w.readBack(want)
 	out, errOut, code := c.exec(t.Context(), append([]string{"--db", db}, readBack...)...)
 	err = w.expect(preview, commandResult{out, errOut, code})
 	if err != nil {
-		return fmt.Errorf("%s, then %s: %w", line, strings.Join(readBack, " "), err)
+		return dry, fmt.Errorf("%s, then %s: %w", line, strings.Join(readBack, " "), err)
 	}
 
-	return nil
+	return dry, nil
 }
 
 // errorKind returns the kind in the JSON error envelope that ends stderr, or "".

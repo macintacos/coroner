@@ -71,21 +71,22 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	}
 	dryRun, _ := in.boolean("dry-run")
 
-	deleted := eventsDeleted{dryRun: dryRun}
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		found, err := findEvents(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		deleted.found = found
-		attachments, err := ownersAttachments(ctx, tx, found.owners())
-		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
-		if err != nil {
-			return err
-		}
+	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (eventsDeleted, error) {
+			deleted := eventsDeleted{dryRun: dryRun}
+			found, err := findEvents(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.found = found
+			attachments, err := ownersAttachments(ctx, tx, found.owners())
+			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			if err != nil {
+				return deleted, err
+			}
 
-		return tx.DeleteEvents(ctx, found.ids()...)
-	})
+			return deleted, tx.DeleteEvents(ctx, found.ids()...)
+		})
 	if err != nil {
 		return deleted, err
 	}

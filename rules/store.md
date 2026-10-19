@@ -62,12 +62,16 @@
    any import of `sqlcgen` outside `internal/store`.
 6. **A function passed to `Change` or `Read` uses only the `Tx` it is given:** calling a
    `Store` method there waits on the transaction's own write lock until `ErrBusy`. Every
-   `Store` record method delegates to its `Tx` method, and `Tx` methods translate their
-   own errors, so `fn` can branch on `ErrNotFound` or `ErrConflict` and keep going. A
-   `Change` runs in one immediate transaction, which it retries whole, re-running `fn`,
-   while another writer holds the database; so `fn` reads no `io.Reader`, prints nothing,
-   and draws ids only through a source that replays them on a re-run. `Read` begins
-   deferred and never takes the write lock. Only `Open` and `OpenReadOnly` use the pool
+   `Store` record method delegates to its `Tx` method. `Tx` methods translate their own
+   errors, and a `Tx` write method runs in a savepoint (`Tx.atomic`), so one that fails
+   leaves nothing behind; `fn` can branch on `ErrNotFound` or `ErrConflict` and keep
+   going. A `Tx` method runs hand-written SQL (Rule 4) on `tx.db` through `queryAll`,
+   since `sqlcgen.Queries` cannot run SQL it did not generate. A `Change` runs in one
+   immediate transaction, which it retries whole, re-running `fn`, while another writer
+   holds the database; so `fn` reads no `io.Reader`, prints nothing, and draws ids only
+   through a source that replays them on a re-run. `Read` begins deferred and takes no
+   write lock; `fn` passed to `Read` only reads. Every other transaction, garbage
+   collection included, runs through `change`. Only `Open` and `OpenReadOnly` use the pool
    directly, for their identity and version checks, and `Open` also for its WAL pragma and
    backup. Never use `SetMaxOpenConns(1)` or `:memory:`: a query on the pool then waits
    forever while a transaction holds the only connection, and every pooled `:memory:`

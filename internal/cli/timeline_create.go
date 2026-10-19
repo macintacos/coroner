@@ -185,21 +185,21 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	ifNotExists, _ := in.boolean("if-not-exists")
 	dryRun, _ := in.boolean("dry-run")
 
-	var created timelineCreated
-	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
-		created = timelineCreated{timeline: t, dryRun: dryRun}
-		err := tx.CreateTimeline(ctx, t)
-		switch {
-		case errors.Is(err, store.ErrConflict) && ifNotExists:
-			created.timeline, err = tx.TimelineByName(ctx, t.Name)
-			created.existed = true
-			return err
-		case errors.Is(err, store.ErrConflict):
-			return timelineExistsError(t.Name, "Pick another name, or pass --if-not-exists to use the existing timeline.", err)
-		}
+	created, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
+		func(tx *store.Tx) (timelineCreated, error) {
+			created := timelineCreated{timeline: t, dryRun: dryRun}
+			err := tx.CreateTimeline(ctx, t)
+			switch {
+			case errors.Is(err, store.ErrConflict) && ifNotExists:
+				created.timeline, err = tx.TimelineByName(ctx, t.Name)
+				created.existed = true
+				return created, err
+			case errors.Is(err, store.ErrConflict):
+				return created, timelineExistsError(t.Name, "Pick another name, or pass --if-not-exists to use the existing timeline.", err)
+			}
 
-		return err
-	})
+			return created, err
+		})
 
 	return created, err
 }

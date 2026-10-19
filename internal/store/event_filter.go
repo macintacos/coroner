@@ -58,10 +58,7 @@ type EventPage struct {
 	Truncated bool
 }
 
-// ListEvents returns the events of f's timelines that f keeps, with their tags and source,
-// merged in timeline.CompareEvents order. An unknown timeline adds no events, not
-// ErrNotFound; a filter naming no timeline, or a bound outside years 0000–9999, is an
-// error.
+// ListEvents is Tx.ListEvents in its own Read.
 func (s *Store) ListEvents(ctx context.Context, f EventFilter) (EventPage, error) {
 	return readIn(ctx, s, func(tx *Tx) (EventPage, error) { return tx.ListEvents(ctx, f) })
 }

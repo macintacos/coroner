@@ -9,7 +9,7 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// Sources returns every source, ordered by name.
+// Sources is Tx.Sources in its own Read.
 func (s *Store) Sources(ctx context.Context) ([]timeline.Source, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Source, error) { return tx.Sources(ctx) })
 }
@@ -47,7 +47,7 @@ LEFT JOIN (SELECT source_id, COUNT(*) n
 	FROM annotation WHERE source_id IS NOT NULL GROUP BY source_id) a ON a.source_id = s.id
 ORDER BY s.name`
 
-// SourceUsages returns every source with its usage, ordered by name.
+// SourceUsages is Tx.SourceUsages in its own Read.
 func (s *Store) SourceUsages(ctx context.Context) ([]SourceUsage, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]SourceUsage, error) { return tx.SourceUsages(ctx) })
 }
@@ -79,8 +79,7 @@ func scanSourceUsage(rows *sql.Rows) (SourceUsage, error) {
 	return usage, p.err
 }
 
-// RenameSource sets the name of the source with id. Its events and annotations name it by id,
-// so they follow.
+// RenameSource is Tx.RenameSource in its own Change.
 func (s *Store) RenameSource(ctx context.Context, id, name string) error {
 	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.RenameSource(ctx, id, name) })
 }
@@ -93,8 +92,10 @@ func (tx *Tx) RenameSource(ctx context.Context, id, name string) error {
 		return err
 	}
 
-	_, err = tx.q.UpdateSource(ctx, sqlcgen.UpdateSourceParams{Name: name, ID: id})
-	return translate(err)
+	return tx.atomic(ctx, func() error {
+		_, err := tx.q.UpdateSource(ctx, sqlcgen.UpdateSourceParams{Name: name, ID: id})
+		return err
+	})
 }
 
 func loadSource(row sqlcgen.Source) (timeline.Source, error) {
