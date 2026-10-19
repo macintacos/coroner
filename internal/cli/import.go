@@ -15,7 +15,6 @@ import (
 
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
-	"github.com/macintacos/coroner/internal/timeline"
 )
 
 func newImportCommand(ctx context.Context, app App) *cobra.Command {
@@ -67,7 +66,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	records, err := readImportRecords(path, app.ReadFile, app.In, app.InIsTTY)
+	records, err := readImportRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
 	if err != nil {
 		return err
 	}
@@ -78,82 +77,103 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return err
 	}
 
-	in := importInput{
+	in := mergeInput{
 		records: records, sidecars: sidecars, localBlobs: localBlobs(inv.cfg.DBPath, records, app.Stat),
 		onConflict: policy, newID: app.NewID, now: app.Now(),
+		timelines: inv.timelines, lookupEnv: app.LookupEnv,
 	}
-	open := app.OpenStore
-	if dryRun {
-		open = app.OpenStoreReadOnly
-	}
-	var plan importPlan
-	err = withStoreOpenedBy(ctx, open, inv.cfg.DBPath, func(s *store.Store) error {
-		plan, err = planStoredImport(ctx, s, in, inv.timelines)
-		if err != nil || dryRun || plan.blocked != nil {
-			return err
-		}
-
-		return importWriteError(s.Import(ctx, plan.write))
-	})
-	if dryRun && errors.Is(err, fs.ErrNotExist) {
-		plan, err = planUnstoredImport(in, inv.timelines)
-	}
+	plan, err := mergeImport(ctx, app, inv.cfg.DBPath, in, dryRun)
 	if err != nil {
 		return err
+	}
+	if len(plan.problems) > 0 {
+		return invalidImportError(plan.problems, invalidImportHint)
+	}
+	if plan.takenName != "" {
+		return timelineNameTakenError(plan.takenName)
 	}
 
 	plan.result.DryRun = dryRun
-	err = renderImport(inv.out, plan, dryRun || plan.blocked != nil)
-	if err != nil || plan.blocked == nil {
+	err = renderImport(inv.out, plan, dryRun || !plan.canWrite())
+	if err != nil {
 		return err
 	}
 
-	return plan.blocked
+	return importBlockedError(plan)
 }
 
-// planStoredImport plans in against what s holds, within the timeline guard names when it names
-// one.
-// ponytail: the plan reads outside the write transaction, so a writer in between can fail the
-// import; plan inside the import's Change if concurrent imports matter.
-func planStoredImport(ctx context.Context, s *store.Store, in importInput, guard timelineInput) (importPlan, error) {
-	sel, err := selectTimelines(ctx, s, guard, nil)
-	if err != nil {
-		return importPlan{}, err
+// invalidImportError returns problems as one invalid_input error: a count, the first few, and
+// how many more there are, with hint.
+func invalidImportError(problems []string, hint string) *Error {
+	header := fmt.Sprintf("%d records cannot be imported:", len(problems))
+	if len(problems) == 1 {
+		header = "1 record cannot be imported:"
 	}
-	if len(sel.timelines) > 0 {
-		in.guard = &sel.timelines[0]
-	}
-
-	in.stored, err = readStoredRecords(ctx, s, in.records)
-	if err != nil {
-		return importPlan{}, err
+	lines := append([]string{header}, problems[:min(len(problems), shownImportProblems)]...)
+	if more := len(problems) - shownImportProblems; more > 0 {
+		lines = append(lines, fmt.Sprintf("and %d more", more))
 	}
 
-	return planImport(in)
+	return &Error{Kind: KindInvalidInput, Message: strings.Join(lines, "\n"), Hint: hint}
 }
 
-// planUnstoredImport plans in against a database that does not exist yet, which holds no timeline
-// for guard to name.
-func planUnstoredImport(in importInput, guard timelineInput) (importPlan, error) {
-	err := guard.withoutStore()
-	if err != nil {
-		return importPlan{}, err
-	}
+const invalidImportHint = "Nothing was imported. Fix those records, or export the file again."
 
-	return planImport(in)
-}
-
-// importWriteError returns id_conflict when another write added or deleted a record the import
-// holds, and any other error as it is.
-func importWriteError(err error) error {
-	if !errors.Is(err, store.ErrConflict) && !errors.Is(err, store.ErrNotFound) {
-		return err
-	}
-
+// timelineNameTakenError returns timeline_exists for an incoming timeline named name, which a
+// stored timeline with another id holds.
+func timelineNameTakenError(name string) *Error {
 	return &Error{
-		Kind: KindIDConflict, Message: "the database changed during the import, so nothing was imported",
-		Hint: "Another write changed the database; import again.", Err: err,
+		Kind:    KindTimelineExists,
+		Message: fmt.Sprintf("timeline `%s` already exists here as another timeline, so nothing was imported", name),
+		Hint:    fmt.Sprintf("Rename it with 'coroner timeline edit %s --name <new-name>', then import again.", name),
 	}
+}
+
+// importBlockedError returns the id_conflict that stops plan from writing, or nil when nothing
+// blocks it.
+func importBlockedError(plan importPlan) error {
+	switch plan.blocked {
+	case blockConflicts:
+		return &Error{
+			Kind:    KindIDConflict,
+			Message: recordCount(len(plan.result.Conflicts)) + " conflict with what is stored, so nothing was imported",
+			Hint:    "Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's.",
+		}
+	case blockUnreplaceable:
+		return &Error{
+			Kind: KindIDConflict,
+			Message: recordCount(len(plan.unreplaceable)) +
+				" cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
+			Hint: "Pass --on-conflict skip to keep what is stored.",
+		}
+	case blockNone:
+	}
+
+	return nil
+}
+
+// mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens
+// the database read-only and plans against an empty one when it does not exist yet.
+func mergeImport(ctx context.Context, app App, dbPath string, in mergeInput, dryRun bool) (importPlan, error) {
+	open, mode := app.OpenStore, mergeWrite
+	if dryRun {
+		open, mode = app.OpenStoreReadOnly, mergePlanOnly
+	}
+	var out mergeOutcome
+	err := withStoreOpenedBy(ctx, open, dbPath, func(s *store.Store) error {
+		var err error
+		out, err = merge(ctx, s, in, mode)
+		return err
+	})
+	if !dryRun || !errors.Is(err, fs.ErrNotExist) {
+		return out.plan, err
+	}
+	err = in.timelines.withoutStore()
+	if err != nil {
+		return importPlan{}, err
+	}
+
+	return planImport(ctx, in.importInput, storedRecords{})
 }
 
 // readConflictPolicy returns the policy --on-conflict names.
@@ -171,19 +191,26 @@ func readConflictPolicy(flags *pflag.FlagSet) (conflictPolicy, error) {
 	}
 }
 
-// readImportRecords reads and decodes the export at path, or on stdin when path is -. It never
-// reads a terminal stdin.
-func readImportRecords(
-	path string, readFile func(string) ([]byte, error), stdin io.Reader, stdinIsTTY bool,
-) ([]export.Record, error) {
+// jsonlSource is where JSONL records come from: the file at path, or stdin when path is -.
+type jsonlSource struct {
+	path       string
+	readFile   func(string) ([]byte, error)
+	stdin      io.Reader
+	stdinIsTTY bool
+}
+
+// readImportRecords reads and decodes the export src names, putting hint on a decode error. It
+// never reads a terminal stdin.
+func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
+	path, stdin := src.path, src.stdin
 	switch {
-	case path == "-" && stdinIsTTY:
+	case path == "-" && src.stdinIsTTY:
 		return nil, &Error{
 			Kind: KindUsage, Message: "- reads the export from stdin, which is a terminal",
 			Hint: "Pipe an export in, as in: cat inc-4821.jsonl | coroner import -",
 		}
 	case path != "-":
-		data, err := readFile(path)
+		data, err := src.readFile(path)
 		if err != nil {
 			return nil, &Error{
 				Kind: KindUsage, Message: "cannot read " + path, Err: err,
@@ -195,13 +222,25 @@ func readImportRecords(
 
 	records, err := export.Decode(stdin)
 	if invalid, ok := errors.AsType[*export.DecodeError](err); ok {
-		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: invalidImportHint, Err: err}
+		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: hint, Err: err}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read the export: %w", err)
 	}
 
 	return records, nil
+}
+
+// sidecarBlobs returns the contents of the sidecars whose blob local does not hold.
+func sidecarBlobs(sidecars map[string][]byte, local map[string]bool) []io.Reader {
+	var blobs []io.Reader
+	for sha, content := range sidecars {
+		if !local[sha] {
+			blobs = append(blobs, bytes.NewReader(content))
+		}
+	}
+
+	return blobs
 }
 
 // readSidecars returns the content of the attachments' files in the attachments/ directory beside
@@ -254,6 +293,9 @@ func unreadableSidecar(path string, err error) error {
 
 // localBlobs reports, by sha256, whether each attachment in records has its blob beside the
 // database at dbPath.
+// ponytail: read before merge's Change, so a garbage collection in between can delete a blob an
+// attachment relies on, which Tx.Import reports as not found; stat inside the Change if that race
+// matters.
 func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.FileInfo, error)) map[string]bool {
 	blobs := map[string]bool{}
 	for _, r := range records {
@@ -264,90 +306,6 @@ func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.Fi
 	}
 
 	return blobs
-}
-
-// readStoredRecords returns every stored timeline and source, the stored events, annotations,
-// attachments and links whose ids records name, and the stored links joining a link record's
-// events with its kind.
-// ponytail: one read per id; a batched read if large imports read slowly.
-func readStoredRecords(ctx context.Context, s *store.Store, records []export.Record) (storedRecords, error) {
-	timelines, err := s.Timelines(ctx)
-	if err != nil {
-		return storedRecords{}, err
-	}
-	stored := storedRecords{
-		timelines: map[string]timeline.Timeline{}, events: map[string]timeline.Event{},
-		annotations: map[string]timeline.Annotation{}, attachments: map[string]timeline.Attachment{},
-		links: map[string]timeline.Link{}, linksByJoin: map[string]timeline.Link{},
-	}
-	for _, t := range timelines {
-		stored.timelines[t.ID] = t
-	}
-	stored.sources, err = s.Sources(ctx)
-	if err != nil {
-		return storedRecords{}, err
-	}
-
-	for _, r := range records {
-		switch r := r.(type) {
-		case export.Event:
-			err = addStored(ctx, &r.ID, stored.events, s.Event)
-		case export.Annotation:
-			err = errors.Join(addStored(ctx, &r.ID, stored.annotations, s.Annotation), addStored(ctx, r.EventID, stored.events, s.Event))
-		case export.Attachment:
-			err = errors.Join(
-				addStored(ctx, &r.ID, stored.attachments, s.Attachment),
-				addStored(ctx, r.EventID, stored.events, s.Event), addStored(ctx, r.AnnotationID, stored.annotations, s.Annotation),
-			)
-		case export.Link:
-			err = errors.Join(
-				addStored(ctx, &r.ID, stored.links, s.Link), addStoredJoining(ctx, s, r, stored.linksByJoin),
-				addStored(ctx, &r.FromEventID, stored.events, s.Event), addStored(ctx, &r.ToEventID, stored.events, s.Event),
-			)
-		}
-		if err != nil {
-			return storedRecords{}, err
-		}
-	}
-
-	return stored, nil
-}
-
-// addStoredJoining adds the stored link of l's kind between l's events to into, by linkJoin, unless
-// none is stored.
-func addStoredJoining(ctx context.Context, s *store.Store, l export.Link, into map[string]timeline.Link) error {
-	stored, err := s.LinkBetween(ctx, l.FromEventID, l.ToEventID, l.Kind)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	case err != nil:
-		return err
-	}
-	into[linkJoin(stored.FromEventID, stored.ToEventID, stored.Kind)] = stored
-
-	return nil
-}
-
-// addStored adds the record get finds under id to into, unless id is nil, already there or not
-// stored.
-func addStored[T any](ctx context.Context, id *string, into map[string]T, get func(context.Context, string) (T, error)) error {
-	if id == nil {
-		return nil
-	}
-	if _, ok := into[*id]; ok {
-		return nil
-	}
-
-	record, err := get(ctx, *id)
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil
-	case err != nil:
-		return err
-	}
-	into[*id] = record
-
-	return nil
 }
 
 // renderImport says on stderr what plan did, or would do when unwritten, and prints its result

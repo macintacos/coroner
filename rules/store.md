@@ -86,15 +86,18 @@
    pending, `Open` holds a `flock` on `<db>.lock` from the WAL pragma through `Up`,
    because goose has no SQLite locker; never delete that file, or a waiter locks a file no
    later process opens.
-9. **An attachment's blob is named before its row is written, and only garbage collection
+9. **An attachment's blob is named before its row commits, and only garbage collection
    deletes a blob:** `Change` streams each `ChangeOptions.Attach` content into a synced
    temporary file in the blob directory before its transaction begins; `fn` names the
    owner with `Tx.Attach`, and only under `Commit`, after `fn` writes the owner's row,
    does `Change` rename each file to its SHA-256 and insert its row, so the owner and its
-   attachments commit together and a failed owner write names no blob. `Import` stages its
-   own content the same way. `GarbageCollectBlobs` is never called inside a `Change`: it
-   runs after a delete commits, in its own write transaction, so the write lock keeps it
-   from deleting a blob between an add's rename and its insert. A crash leaves at most an
+   attachments commit together and a failed owner write names no blob. `Change` also
+   stages each `ChangeOptions.Blobs` content, with no owner, before its transaction
+   begins. `Tx.Import` claims the staged blob whose SHA-256 each attachment it inserts
+   carries, and only under `Commit`, after `fn`, does `Change` name the claimed blobs. It
+   discards the rest. `GarbageCollectBlobs` is never called inside a `Change`: it runs
+   after a delete commits, in its own write transaction, so the write lock keeps it from
+   deleting a blob between an add's rename and its insert. A crash leaves at most an
    unreferenced blob or a staged `.tmp-*` file, which garbage collection leaves, never a
    row without its blob. Nothing else deletes a blob, not `Open`, a delete or a migration.
    A `<db>.pre-v<N>.bak` backup copies the database file only: restored to the database's

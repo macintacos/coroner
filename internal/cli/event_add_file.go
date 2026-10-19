@@ -2,9 +2,7 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -30,7 +28,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 		return err
 	}
 	path, _ := cmd.Flags().GetString("from-file")
-	events, err := readEventRecords(path, app.ReadFile, app.In, app.InIsTTY)
+	events, err := readEventRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY})
 	if err != nil {
 		return err
 	}
@@ -40,36 +38,32 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 	}
 
 	dryRun, _ := in.boolean("dry-run")
+	mode := mergeWrite
+	if dryRun {
+		mode = mergePlanOnly
+	}
+	input := mergeInput{
+		records: records, onConflict: onConflictFail, newID: app.NewID, now: app.Now(),
+		timelines: timelineInputOf(in), lookupEnv: app.LookupEnv,
+	}
 	var added eventsAdded
 	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
+		out, err := merge(ctx, s, input, mode)
+		switch {
+		case err != nil:
 			return err
-		}
-		input := importInput{records: records, onConflict: onConflictFail, guard: &t, newID: app.NewID, now: app.Now()}
-		input.stored, err = readStoredRecords(ctx, s, records)
-		if err != nil {
-			return err
-		}
-		plan, err := planImport(input)
-		if err != nil {
-			return withFromFileHint(err)
-		}
-		if plan.blocked != nil {
-			return conflictingEventsError(plan.result.Conflicts)
+		case len(out.plan.problems) > 0:
+			return invalidImportError(out.plan.problems, fromFileInvalidHint)
+		case out.plan.blocked != blockNone:
+			return conflictingEventsError(out.plan.result.Conflicts)
 		}
 
-		inserted := plannedEvents(plan.write.Events)
-		if !dryRun {
-			inserted, err = writeEvents(ctx, s, plan.write, t.ID)
-			if err != nil {
-				return err
-			}
-		}
-		added = newEventsAdded(events, input.stored.events, inserted)
-		added.timeline, added.dryRun, added.dbPath = t, dryRun, inv.cfg.DBPath
-		added.attached, err = eventsAttachments(ctx, s, added.identical)
-		return err
+		added = newEventsAdded(events, out.plan.identical, out.inserted)
+		added.timeline, added.dryRun, added.dbPath = *out.guard, dryRun, inv.cfg.DBPath
+		return s.Read(ctx, func(tx *store.Tx) error {
+			added.attached, err = eventsAttachments(ctx, tx, added.identical)
+			return err
+		})
 	})
 	if err != nil {
 		return err
@@ -105,26 +99,24 @@ func checkFromFileAlone(in fieldValues, interactive bool) error {
 	}
 }
 
-// readEventRecords returns the event records in the file at path, or on stdin for -, rejecting
-// any other record type and a file with none.
-func readEventRecords(
-	path string, readFile func(string) ([]byte, error), stdin io.Reader, stdinIsTTY bool,
-) ([]export.Event, error) {
-	if path == "" {
+// readEventRecords returns the event records src names, rejecting any other record type and a
+// file with none.
+func readEventRecords(src jsonlSource) ([]export.Event, error) {
+	if src.path == "" {
 		return nil, &Error{Kind: KindUsage, Message: "--from-file needs a file", Hint: "Pass a JSONL file of event records, or - to read them from stdin."}
 	}
-	records, err := readImportRecords(path, readFile, stdin, stdinIsTTY)
+	records, err := readImportRecords(src, fromFileInvalidHint)
 	if err != nil {
-		return nil, withFromFileHint(err)
+		return nil, err
 	}
 	events, problems := eventRecords(records)
 	switch {
 	case len(problems) > 0:
-		return nil, withFromFileHint(invalidImportError(problems))
-	case len(events) == 0 && path == "-":
+		return nil, invalidImportError(problems, fromFileInvalidHint)
+	case len(events) == 0 && src.path == "-":
 		return nil, &Error{Kind: KindInvalidInput, Message: "stdin holds no event records", Hint: fromFileHint}
 	case len(events) == 0:
-		return nil, &Error{Kind: KindInvalidInput, Message: path + " holds no event records", Hint: fromFileHint}
+		return nil, &Error{Kind: KindInvalidInput, Message: src.path + " holds no event records", Hint: fromFileHint}
 	}
 
 	return events, nil
@@ -163,18 +155,7 @@ func eventRecords(records []export.Record) ([]export.Event, []string) {
 
 const fromFileHint = "Nothing was added. Pass a JSONL file of event records, one per line, as 'coroner timeline export --format jsonl' writes them."
 
-// withFromFileHint gives an invalid_input error from import's reader or planner event add's hint,
-// and returns any other error as it is.
-func withFromFileHint(err error) error {
-	typed, ok := errors.AsType[*Error](err)
-	if !ok || typed.Kind != KindInvalidInput {
-		return err
-	}
-	hinted := *typed
-	hinted.Hint = "Nothing was added. Fix those records and run the command again."
-
-	return &hinted
-}
+const fromFileInvalidHint = "Nothing was added. Fix those records and run the command again."
 
 // conflictingEventsError returns id_conflict listing the first few conflicts and how many more
 // there are.
@@ -197,46 +178,9 @@ func conflictingEventsError(conflicts []importConflict) *Error {
 	}
 }
 
-// plannedEvents returns the events a dry run would insert, by id.
-func plannedEvents(events []timeline.Event) map[string]timeline.Event {
-	planned := make(map[string]timeline.Event, len(events))
-	for _, e := range events {
-		// A dry run allocates no seq, so the preview prints null as event add --dry-run does.
-		e.Seq = 0
-		planned[e.ID] = e
-	}
-
-	return planned
-}
-
-// writeEvents writes records and returns the events of the timeline with timelineID by id, which
-// now hold records' under the seqs the store gave them.
-func writeEvents(ctx context.Context, s *store.Store, records store.ImportRecords, timelineID string) (map[string]timeline.Event, error) {
-	err := s.Import(ctx, records)
-	if errors.Is(err, store.ErrConflict) {
-		return nil, &Error{
-			Kind: KindIDConflict, Message: "the database changed while the events were being added, so nothing was added",
-			Hint: "Run the command again, which skips the events already stored.", Err: err,
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-	events, err := s.Events(ctx, timelineID)
-	if err != nil {
-		return nil, err
-	}
-	byID := make(map[string]timeline.Event, len(events))
-	for _, e := range events {
-		byID[e.ID] = e
-	}
-
-	return byID, nil
-}
-
 // eventsAttachments returns the stored attachments of events.
 // ponytail: one read per event; read the timeline's attachments at once if large re-runs read slowly.
-func eventsAttachments(ctx context.Context, s *store.Store, events []timeline.Event) ([]timeline.Attachment, error) {
+func eventsAttachments(ctx context.Context, s records, events []timeline.Event) ([]timeline.Attachment, error) {
 	owners := make([]timeline.AttachmentOwner, 0, len(events))
 	for _, e := range events {
 		owners = append(owners, timeline.AttachmentOwner{EventID: &e.ID})
@@ -257,9 +201,10 @@ type eventsAdded struct {
 	dbPath string
 }
 
-// newEventsAdded sorts events, each id once in file order, into the identical ones stored holds
-// and the inserted ones inserted holds.
-func newEventsAdded(events []export.Event, stored, inserted map[string]timeline.Event) eventsAdded {
+// newEventsAdded sorts events, each id once in file order, into the ones identical holds and the
+// ones inserted holds; every event identical does not hold must be in inserted.
+func newEventsAdded(events []export.Event, identical, inserted []timeline.Event) eventsAdded {
+	identicalByID, insertedByID := eventsByID(identical), eventsByID(inserted)
 	var added eventsAdded
 	seen := make(map[string]bool, len(events))
 	for _, e := range events {
@@ -268,14 +213,23 @@ func newEventsAdded(events []export.Event, stored, inserted map[string]timeline.
 		}
 		seen[e.ID] = true
 		added.ids = append(added.ids, e.ID)
-		if identical, ok := stored[e.ID]; ok {
-			added.identical = append(added.identical, identical)
-		} else {
-			added.inserted = append(added.inserted, inserted[e.ID])
+		if stored, ok := identicalByID[e.ID]; ok {
+			added.identical = append(added.identical, stored)
+			continue
 		}
+		added.inserted = append(added.inserted, insertedByID[e.ID])
 	}
 
 	return added
+}
+
+func eventsByID(events []timeline.Event) map[string]timeline.Event {
+	byID := make(map[string]timeline.Event, len(events))
+	for _, e := range events {
+		byID[e.ID] = e
+	}
+
+	return byID
 }
 
 // eventsAddedJSON is event add --from-file's result object: every key always present.

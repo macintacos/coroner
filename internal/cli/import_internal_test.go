@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 	"testing/fstest"
@@ -10,15 +10,22 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/export"
-	"github.com/macintacos/coroner/internal/store"
 )
 
-var _ = DescribeTable("importWriteError",
-	func(err error) {
-		Expect(importWriteError(err)).To(HaveField("Kind", KindIDConflict))
+var _ = DescribeTable("importBlockedError",
+	func(plan importPlan, wantMessage, wantHint string) {
+		Expect(importBlockedError(plan)).To(And(
+			HaveField("Kind", KindIDConflict), HaveField("Message", wantMessage), HaveField("Hint", wantHint),
+		))
 	},
-	Entry("gives id_conflict when another write added a record the import holds", fmt.Errorf("insert: %w", store.ErrConflict)),
-	Entry("gives id_conflict when another write deleted a record the import replaces", fmt.Errorf("replace: %w", store.ErrNotFound)),
+	Entry("names the conflicts under --on-conflict fail",
+		importPlan{blocked: blockConflicts, result: importResultJSON{Conflicts: make([]importConflict, 2)}},
+		"2 records conflict with what is stored, so nothing was imported",
+		"Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's."),
+	Entry("names the records --on-conflict replace cannot overwrite",
+		importPlan{blocked: blockUnreplaceable, unreplaceable: make([]importConflict, 1)},
+		"1 record cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
+		"Pass --on-conflict skip to keep what is stored."),
 )
 
 var _ = Describe("readImportRecords", func() {
@@ -26,11 +33,22 @@ var _ = Describe("readImportRecords", func() {
 		const line = `{"type":"event"}`
 		stdin := strings.NewReader(line)
 
-		_, err := readImportRecords("-", nil, stdin, true)
+		_, err := readImportRecords(jsonlSource{path: "-", stdin: stdin, stdinIsTTY: true}, invalidImportHint)
 
 		Expect(err).To(HaveField("Kind", KindUsage))
 		Expect(KindUsage.ExitCode()).To(Equal(2))
 		Expect(stdin.Len()).To(Equal(len(line)))
+	})
+})
+
+var _ = Describe("sidecarBlobs", func() {
+	It("leaves out a sidecar whose blob is beside the database and keeps the rest", func() {
+		sidecars := map[string][]byte{"stored": []byte("rs.status() before"), "new": []byte("rs.status() after")}
+
+		blobs := sidecarBlobs(sidecars, map[string]bool{"stored": true, "new": false})
+
+		Expect(blobs).To(HaveLen(1))
+		Expect(io.ReadAll(blobs[0])).To(Equal([]byte("rs.status() after")))
 	})
 })
 

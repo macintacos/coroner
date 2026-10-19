@@ -170,7 +170,7 @@ func (tx *Tx) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit in
 
 // DeleteAnnotations is Tx.DeleteAnnotations in its own Change.
 func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAnnotations(ctx, ids...) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.DeleteAnnotations(ctx, ids...) })
 }
 
 // DeleteAnnotations deletes the annotations with ids, or none of them when any does not

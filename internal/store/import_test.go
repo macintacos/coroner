@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -95,7 +96,7 @@ var _ = Describe("Import", func() {
 				Timelines:   []timeline.Timeline{incident},
 				Events:      events,
 				Annotations: []timeline.Annotation{onPager, onIncident},
-			})).To(Succeed())
+			})).Error().To(Succeed())
 
 			Expect(s.Timeline(ctx, incident.ID)).To(Equal(incident))
 			Expect(s.Events(ctx, incident.ID)).To(Equal(events))
@@ -107,7 +108,7 @@ var _ = Describe("Import", func() {
 		Expect(s.Import(ctx, store.ImportRecords{
 			Timelines: []timeline.Timeline{incident},
 			Events:    []timeline.Event{newEvent(12, 5), newEvent(10, 1), newEvent(11, 2)},
-		})).To(Succeed())
+		})).Error().To(Succeed())
 
 		added, err := s.AddEvent(ctx, newEvent(13, 0), uuid(20))
 
@@ -119,7 +120,7 @@ var _ = Describe("Import", func() {
 		Expect(s.Import(ctx, store.ImportRecords{
 			Timelines: []timeline.Timeline{incident},
 			Events:    []timeline.Event{newEvent(10, 0), newEvent(11, 1), newEvent(12, 2)},
-		})).To(Succeed())
+		})).Error().To(Succeed())
 
 		Expect(s.Event(ctx, uuid(11))).To(HaveField("Seq", int64(1)))
 		Expect(s.Event(ctx, uuid(12))).To(HaveField("Seq", int64(2)))
@@ -135,11 +136,26 @@ var _ = Describe("Import", func() {
 
 			Expect(s.Import(ctx, store.ImportRecords{
 				Events: []timeline.Event{newEvent(13, 7), newEvent(12, 2)},
-			})).To(Succeed())
+			})).Error().To(Succeed())
 
 			Expect(s.Event(ctx, uuid(12))).To(HaveField("Seq", int64(3)))
 			Expect(s.Event(ctx, uuid(13))).To(HaveField("Seq", int64(7)))
 		})
+
+	It("returns the events it inserted, each with the seq it was written under", func(ctx SpecContext) {
+		Expect(s.CreateTimeline(ctx, incident)).To(Succeed())
+		Expect(s.AddEvent(ctx, newEvent(10, 0), uuid(20))).Error().NotTo(HaveOccurred())
+
+		inserted, err := s.Import(ctx, store.ImportRecords{
+			Events: []timeline.Event{newEvent(11, 7), newEvent(12, 1), newEvent(13, 0)},
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(inserted).To(HaveLen(3))
+		for _, e := range inserted {
+			Expect(s.Event(ctx, e.ID)).To(HaveField("Seq", e.Seq))
+		}
+	})
 
 	It("replaces every replaceable field of a timeline, event and annotation, keeping the event's seq",
 		func(ctx SpecContext) {
@@ -155,7 +171,7 @@ var _ = Describe("Import", func() {
 				Timelines:   []timeline.Timeline{incident},
 				Events:      []timeline.Event{pager},
 				Annotations: []timeline.Annotation{evidence},
-			})).To(Succeed())
+			})).Error().To(Succeed())
 			later := created.Add(24 * time.Hour)
 			renamed := timeline.Timeline{
 				ID: incident.ID, Name: "inc-465-db2", Title: "db-2 election storm",
@@ -179,7 +195,7 @@ var _ = Describe("Import", func() {
 				TimelineReplacements:   []timeline.Timeline{renamed},
 				EventReplacements:      []timeline.Event{edited},
 				AnnotationReplacements: []timeline.Annotation{revised},
-			})).To(Succeed())
+			})).Error().To(Succeed())
 
 			edited.Seq = 1
 			Expect(s.Timeline(ctx, incident.ID)).To(Equal(renamed))
@@ -192,9 +208,9 @@ var _ = Describe("Import", func() {
 			Expect(s.Import(ctx, store.ImportRecords{
 				Timelines: []timeline.Timeline{incident},
 				Events:    []timeline.Event{newEvent(10, 1)},
-			})).To(Succeed())
+			})).Error().To(Succeed())
 
-			Expect(s.Import(ctx, records)).To(MatchError(store.ErrNotFound))
+			Expect(s.Import(ctx, records)).Error().To(MatchError(store.ErrNotFound))
 		},
 		Entry("a timeline replacement", store.ImportRecords{
 			TimelineReplacements: []timeline.Timeline{{
@@ -219,15 +235,14 @@ var _ = Describe("Import", func() {
 			ID: uuid(40), Owner: onPager, Filename: "grafana.png", MIME: "application/octet-stream",
 			SHA256: screenshotSHA256, Size: int64(len(screenshot)), CreatedAt: created,
 		}
-		withEvent := func(attachments ...store.ImportAttachment) store.ImportRecords {
+		withEvent := func(attachments ...timeline.Attachment) store.ImportRecords {
 			return store.ImportRecords{
 				Timelines: []timeline.Timeline{incident}, Events: []timeline.Event{pager}, Attachments: attachments,
 			}
 		}
 
 		It("stores content under its hash, keeping the record's MIME", func(ctx SpecContext) {
-			Expect(s.Import(ctx, withEvent(store.ImportAttachment{Attachment: grafana, Content: bytes.NewReader(screenshot)}))).
-				To(Succeed())
+			Expect(s.Import(ctx, withEvent(grafana), bytes.NewReader(screenshot))).Error().To(Succeed())
 
 			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{grafana}))
 			Expect(os.ReadFile(filepath.Clean(store.BlobPath(dbPath, screenshotSHA256)))).To(Equal(screenshot))
@@ -243,29 +258,30 @@ var _ = Describe("Import", func() {
 				ID: uuid(41), Owner: timeline.AttachmentOwner{EventID: new(earlier.ID)}, Filename: "panel.png", CreatedAt: created,
 			}, bytes.NewReader(screenshot))).Error().NotTo(HaveOccurred())
 
-			Expect(s.Import(ctx, withEvent(store.ImportAttachment{Attachment: grafana}))).To(Succeed())
+			Expect(s.Import(ctx, withEvent(grafana))).Error().To(Succeed())
 
 			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{grafana}))
 		})
 
 		DescribeTable("writes nothing when an attachment's content cannot be stored",
-			func(ctx SpecContext, attachment func() store.ImportAttachment, matchErr types.GomegaMatcher) {
-				Expect(s.Import(ctx, withEvent(attachment()))).To(matchErr)
+			func(ctx SpecContext, attachment timeline.Attachment, content []byte, matchErr types.GomegaMatcher) {
+				var blobs []io.Reader
+				if content != nil {
+					blobs = append(blobs, bytes.NewReader(content))
+				}
+				Expect(s.Import(ctx, withEvent(attachment), blobs...)).Error().To(matchErr)
 
 				Expect(s.Event(ctx, pager.ID)).Error().To(MatchError(store.ErrNotFound))
 				Expect(filepath.Glob(filepath.Join(blobDir, "*"))).To(BeEmpty())
 			},
-			Entry("content whose hash differs from the record's", func() store.ImportAttachment {
-				return store.ImportAttachment{Attachment: grafana, Content: bytes.NewReader(bytes.ToUpper(screenshot))}
-			}, HaveOccurred()),
-			Entry("content whose size differs from the record's", func() store.ImportAttachment {
+			Entry("content whose hash differs from the record's, with ErrNotFound",
+				grafana, bytes.ToUpper(screenshot), MatchError(store.ErrNotFound)),
+			Entry("content whose size differs from the record's", func() timeline.Attachment {
 				short := grafana
 				short.Size--
-				return store.ImportAttachment{Attachment: short, Content: bytes.NewReader(screenshot)}
-			}, HaveOccurred()),
-			Entry("no content and no stored blob, with ErrNotFound", func() store.ImportAttachment {
-				return store.ImportAttachment{Attachment: grafana}
-			}, MatchError(store.ErrNotFound)),
+				return short
+			}(), screenshot, HaveOccurred()),
+			Entry("no content and no stored blob, with ErrNotFound", grafana, nil, MatchError(store.ErrNotFound)),
 		)
 	})
 
@@ -278,13 +294,13 @@ var _ = Describe("Import", func() {
 			Timelines: []timeline.Timeline{incident},
 			Events:    []timeline.Event{newEvent(10, 1), newEvent(11, 2)},
 			Links:     []timeline.Link{link},
-		})).To(Succeed())
+		})).Error().To(Succeed())
 
 		Expect(s.EventLinks(ctx, uuid(11))).To(Equal([]timeline.Link{link}))
 	})
 
 	It("writes nothing when a link's event is missing", func(ctx SpecContext) {
-		err := s.Import(ctx, store.ImportRecords{
+		_, err := s.Import(ctx, store.ImportRecords{
 			Timelines: []timeline.Timeline{incident},
 			Events:    []timeline.Event{newEvent(10, 1)},
 			Links:     []timeline.Link{{ID: uuid(50), FromEventID: uuid(10), ToEventID: uuid(11), Kind: timeline.LinkSameAs, CreatedAt: created}},
@@ -297,7 +313,7 @@ var _ = Describe("Import", func() {
 	It("writes nothing when a write midway fails", func(ctx SpecContext) {
 		twin := timeline.Timeline{ID: uuid(2), Name: incident.Name, Refs: []string{}, CreatedAt: created, UpdatedAt: created}
 
-		err := s.Import(ctx, store.ImportRecords{
+		_, err := s.Import(ctx, store.ImportRecords{
 			Timelines: []timeline.Timeline{incident, twin},
 			Events:    []timeline.Event{newEvent(10, 1)},
 		})

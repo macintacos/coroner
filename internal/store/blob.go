@@ -59,6 +59,41 @@ func stageBlob(blobDir string, content io.Reader) (stagedBlob, error) {
 	return staged, nil
 }
 
+// stageBlobs stages each of contents, outside any transaction, removing what it staged when
+// one fails.
+func stageBlobs(blobDir string, contents []io.Reader) ([]stagedBlob, error) {
+	staged := make([]stagedBlob, 0, len(contents))
+	for _, content := range contents {
+		blob, err := stageBlob(blobDir, content)
+		if err != nil {
+			discardBlobs(staged)
+			return nil, err
+		}
+		staged = append(staged, blob)
+	}
+
+	return staged, nil
+}
+
+func discardBlobs(staged []stagedBlob) {
+	for _, b := range staged {
+		// Once commitBlob has renamed or discarded the file, the error is expected.
+		_ = os.Remove(b.tempPath)
+	}
+}
+
+// bySHA256 maps each of staged by its hash, keeping the first of blobs with the same bytes.
+func bySHA256(staged []stagedBlob) map[string]stagedBlob {
+	m := make(map[string]stagedBlob, len(staged))
+	for _, b := range staged {
+		if _, ok := m[b.sha256]; !ok {
+			m[b.sha256] = b
+		}
+	}
+
+	return m
+}
+
 // writeBlob copies content into f and syncs it, returning its hash, size and first sniffLen
 // bytes.
 func writeBlob(f *os.File, content io.Reader) (stagedBlob, error) {

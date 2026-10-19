@@ -3,9 +3,13 @@ package store_test
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -190,6 +194,86 @@ var _ = Describe("Change", func() {
 		Expect(rows).To(HaveLen(1))
 		Expect(s.ListAttachments(ctx, owner)).To(Equal(rows))
 	})
+
+	{
+		panel := []byte("a Grafana panel")
+		trace := []byte("a trace")
+		traceSHA256 := func() string {
+			sum := sha256.Sum256(trace)
+			return hex.EncodeToString(sum[:])
+		}()
+		blobs := func() []io.Reader {
+			return []io.Reader{bytes.NewReader(panel), bytes.NewReader(panel), bytes.NewReader(trace)}
+		}
+		attachment := func(n int, sha string) timeline.Attachment {
+			return timeline.Attachment{
+				ID: uuid(n), Owner: timeline.AttachmentOwner{EventID: new(uuid(2))}, Filename: "trace.txt",
+				MIME: "text/plain", SHA256: sha, Size: int64(len(trace)), CreatedAt: changeCreated(),
+			}
+		}
+		// seeded opens a store holding one event, uuid(2), and returns its path.
+		seeded := func(ctx context.Context) (*store.Store, string) {
+			GinkgoHelper()
+			s, path := openStoreAt(ctx)
+			Expect(s.CreateTimeline(ctx, changeIncident())).To(Succeed())
+			Expect(s.AddEvent(ctx, changeEvent(2), uuid(3))).Error().NotTo(HaveOccurred())
+			return s, path
+		}
+		importing := func(ctx context.Context, attachments ...timeline.Attachment) func(*store.Tx) error {
+			return func(tx *store.Tx) error {
+				_, err := tx.Import(ctx, store.ImportRecords{Attachments: attachments})
+				return err
+			}
+		}
+
+		It("names under Commit only the Blobs an imported attachment carries, and discards the rest", func(ctx SpecContext) {
+			s, path := seeded(ctx)
+
+			_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit, Blobs: blobs()}, importing(ctx, attachment(60, traceSHA256)))
+
+			Expect(err).NotTo(HaveOccurred())
+			entries := blobEntries(path)
+			Expect(entries).To(HaveLen(1))
+			Expect(entries[0].Name()).To(Equal(traceSHA256))
+		})
+
+		It("names no Blobs under Rollback", func(ctx SpecContext) {
+			s, path := seeded(ctx)
+
+			_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Rollback, Blobs: blobs()}, importing(ctx, attachment(60, traceSHA256)))
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(blobEntries(path)).To(BeEmpty())
+		})
+
+		It("names no Blobs when fn fails", func(ctx SpecContext) {
+			s, path := seeded(ctx)
+			failed := errors.New("fn failed")
+
+			_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit, Blobs: blobs()}, func(tx *store.Tx) error {
+				Expect(importing(ctx, attachment(60, traceSHA256))(tx)).To(Succeed())
+				return failed
+			})
+
+			Expect(err).To(MatchError(failed))
+			Expect(blobEntries(path)).To(BeEmpty())
+		})
+
+		It("names nothing for a Tx.Import that fails and fn recovers from", func(ctx SpecContext) {
+			s, path := seeded(ctx)
+			var importErr error
+
+			_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Commit, Blobs: blobs()}, func(tx *store.Tx) error {
+				importErr = importing(ctx, attachment(60, traceSHA256), attachment(61, strings.Repeat("0", 64)))(tx)
+				return nil
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(importErr).To(MatchError(store.ErrNotFound))
+			Expect(blobEntries(path)).To(BeEmpty())
+			Expect(s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: new(uuid(2))})).To(BeEmpty())
+		})
+	}
 
 	It("serialises: a write on a second connection waits for the Change, or gets ErrBusy", func(ctx SpecContext) {
 		s, path := openStoreAt(ctx)

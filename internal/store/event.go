@@ -168,7 +168,7 @@ func (tx *Tx) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID str
 
 // DeleteEvents is Tx.DeleteEvents in its own Change.
 func (s *Store) DeleteEvents(ctx context.Context, ids ...string) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteEvents(ctx, ids...) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.DeleteEvents(ctx, ids...) })
 }
 
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of

@@ -147,7 +147,7 @@ func (tx *Tx) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit in
 
 // DeleteAttachments is Tx.DeleteAttachments in its own Change.
 func (s *Store) DeleteAttachments(ctx context.Context, ids ...string) error {
-	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAttachments(ctx, ids...) })
+	return s.change(ctx, Commit, func(tx *Tx) error { return tx.DeleteAttachments(ctx, ids...) })
 }
 
 // DeleteAttachments deletes the attachments with ids, or none of them when any does not
@@ -160,7 +160,7 @@ func (tx *Tx) DeleteAttachments(ctx context.Context, ids ...string) error {
 // sorted. Nothing else deletes a blob.
 func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 	var deleted []string
-	err := s.change(ctx, Commit, nil, func(tx *Tx) error {
+	err := s.change(ctx, Commit, func(tx *Tx) error {
 		referenced, err := tx.q.ListAttachmentHashes(ctx)
 		if err != nil {
 			return err

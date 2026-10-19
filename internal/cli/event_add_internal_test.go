@@ -40,7 +40,7 @@ var _ = Describe("event add --id", func() {
 	})
 })
 
-var _ = Describe("changedEventKeys", func() {
+var _ = Describe("eventDiff", func() {
 	stored := func() timeline.Event {
 		at := time.Date(2026, 9, 11, 3, 14, 30, 0, time.UTC)
 		return timeline.Event{
@@ -50,27 +50,50 @@ var _ = Describe("changedEventKeys", func() {
 		}
 	}
 
-	DescribeTable("names the keys a re-add under the same id would change",
-		func(change func(e *timeline.Event), want []string) {
-			draft := stored()
-			change(&draft)
+	DescribeTable("names the export keys in which the incoming event differs",
+		func(change func(e *timeline.Event), want ...string) {
+			incoming := stored()
+			change(&incoming)
 
-			Expect(changedEventKeys(stored(), draft)).To(Equal(want))
+			Expect(eventDiff(stored(), incoming, keyCreatedAt, keyUpdatedAt)).To(HaveExactElements(want))
 		},
 		Entry("none when only what the store sets differs: seq, created and updated at", func(e *timeline.Event) {
 			e.Seq = 0
 			e.CreatedAt = e.CreatedAt.Add(time.Hour)
 			e.UpdatedAt = e.UpdatedAt.Add(time.Hour)
-		}, nil),
+		}),
 		Entry("none when tags come in another order", func(e *timeline.Event) {
 			e.Tags = []string{"phase:detect", "election"}
-		}, nil),
-		Entry("tags, when the re-add has none", func(e *timeline.Event) { e.Tags = []string{} }, []string{"tags"}),
-		Entry("text", func(e *timeline.Event) { e.Text = "Election timeout on db-4" }, []string{"text"}),
-		Entry("the timeline", func(e *timeline.Event) { e.TimelineID = "01a09862-b1c0-7000-8000-000000000009" }, []string{"timeline_id"}),
+		}),
+		Entry("tags, when the incoming event has none", func(e *timeline.Event) { e.Tags = []string{} }, "tags"),
+		Entry("text", func(e *timeline.Event) { e.Text = "Election timeout on db-4" }, "text"),
+		Entry("the timeline", func(e *timeline.Event) { e.TimelineID = "01a09862-b1c0-7000-8000-000000000009" }, "timeline_id"),
 		Entry("several keys, in the export's key order", func(e *timeline.Event) {
 			e.Source = nil
 			e.OccurredAt = e.OccurredAt.Add(time.Second)
-		}, []string{"occurred_at", "source"}),
+		}, "occurred_at", "source"),
 	)
+
+	It("ignores seq always", func() {
+		incoming := stored()
+		incoming.Seq = 9
+
+		Expect(eventDiff(stored(), incoming)).To(BeEmpty())
+	})
+
+	It("ignores the keys it is told to", func() {
+		incoming := stored()
+		incoming.Text = "Election timeout on db-4"
+		incoming.UpdatedAt = incoming.UpdatedAt.Add(time.Hour)
+
+		Expect(eventDiff(stored(), incoming, keyUpdatedAt)).To(Equal([]string{"text"}))
+		Expect(eventDiff(stored(), incoming)).To(Equal([]string{"text", "updated_at"}))
+	})
+
+	It("compares tags sorted and once each", func() {
+		incoming := stored()
+		incoming.Tags = []string{"phase:detect", "election", "election"}
+
+		Expect(eventDiff(stored(), incoming)).To(BeEmpty())
+	})
 })

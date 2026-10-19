@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
+	"io"
 	"math/big"
 	"time"
 
@@ -27,12 +28,16 @@ const (
 	Rollback
 )
 
-// ChangeOptions says how a Change ends and what content it may attach.
+// ChangeOptions says how a Change ends and what content it may attach or import.
 type ChangeOptions struct {
 	Mode Mode
 	// Attach is content staged before the transaction begins, because a reader cannot be read
 	// twice. fn attaches it to one owner with Tx.Attach; content fn never attaches is discarded.
 	Attach []NewAttachment
+	// Blobs is content staged before the transaction begins, with no owner. Tx.Import claims the
+	// one whose SHA256 an attachment it inserts carries; Change names those after fn and discards
+	// the rest.
+	Blobs []io.Reader
 }
 
 // Tx is one transaction's view of the database. Its methods translate their own errors, and a
@@ -44,6 +49,8 @@ type Tx struct {
 	db      sqlcgen.DBTX // for SQL sqlc did not generate
 	blobDir string
 	owner   *timeline.AttachmentOwner // the owner Attach named; nil attaches nothing
+	blobs   map[string]stagedBlob     // the Change's Blobs, by SHA256
+	claimed []stagedBlob              // the blobs Tx.Import claimed
 }
 
 func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
@@ -56,9 +63,10 @@ func (tx *Tx) Attach(owner timeline.AttachmentOwner) {
 	tx.owner = &owner
 }
 
-// Change runs fn in one immediate transaction, then names and inserts the content fn attached,
-// then commits, or rolls back under Rollback. fn may run more than once and must use only tx. It
-// returns the attachment rows it inserted (none under Rollback).
+// Change runs fn in one immediate transaction, then names the blobs Tx.Import claimed, and
+// names and inserts the content fn attached, then commits, or rolls back under Rollback. fn may run
+// more than once and must use only tx. It returns the attachment rows it attached (none under
+// Rollback).
 func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) error) ([]timeline.Attachment, error) {
 	err := validateEach(opts.Attach)
 	if err != nil {
@@ -71,12 +79,28 @@ func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) err
 	}
 	defer discardStaged(staged)
 
+	blobs, err := stageBlobs(s.blobDir, opts.Blobs)
+	if err != nil {
+		return nil, err
+	}
+	defer discardBlobs(blobs)
+
 	var inserted []stagedAttachment
-	err = s.change(ctx, opts.Mode, nil, func(tx *Tx) error {
+	err = s.change(ctx, opts.Mode, func(tx *Tx) error {
 		inserted = nil
+		tx.blobs = bySHA256(blobs)
 		err := fn(tx)
-		if err != nil || tx.owner == nil || opts.Mode == Rollback {
+		if err != nil || opts.Mode == Rollback {
 			return err
+		}
+		for _, b := range tx.claimed {
+			err = commitBlob(tx.blobDir, b)
+			if err != nil {
+				return err
+			}
+		}
+		if tx.owner == nil {
+			return nil
 		}
 		inserted = owned(staged, *tx.owner)
 		return insertAttachments(ctx, tx.q, tx.blobDir, inserted)
@@ -196,13 +220,10 @@ func (tx *Tx) atomic(ctx context.Context, fn func() error) error {
 // errRollback ends a Rollback change's transaction; change reports it as success.
 var errRollback = errors.New("rolled back")
 
-// change runs fn, then names each staged blob and inserts its row after it, in one
-// immediate transaction retried whole while another writer holds the database, so a failed
-// fn names no blob. Under Rollback it names none and undoes fn's writes. fn may run more than
-// once and must only use tx. change removes whatever staged file it did not name.
-func (s *Store) change(ctx context.Context, mode Mode, staged []stagedAttachment, fn func(*Tx) error) error {
-	defer discardStaged(staged)
-
+// change runs fn in one immediate transaction retried whole while another writer holds the
+// database. Under Rollback it undoes fn's writes. fn may run more than once and must only use
+// tx.
+func (s *Store) change(ctx context.Context, mode Mode, fn func(*Tx) error) error {
 	err := retryBusy(ctx, writeAttempts, func() error {
 		return s.inTx(ctx, nil, func(db sqlcgen.DBTX) error {
 			tx := newTx(db, s.blobDir)
@@ -214,7 +235,7 @@ func (s *Store) change(ctx context.Context, mode Mode, staged []stagedAttachment
 				return errRollback
 			}
 
-			return insertAttachments(ctx, tx.q, tx.blobDir, staged)
+			return nil
 		})
 	})
 	// A failed ROLLBACK joined to errRollback still committed nothing.
