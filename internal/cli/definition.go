@@ -40,7 +40,7 @@ type field struct {
 	required bool
 	// changes marks a field that changes the record; an edit needs at least one.
 	changes bool
-	// perEntry marks a field another form entry opens without.
+	// perEntry marks a field another add form entry opens without; only an add form reads it.
 	perEntry bool
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
 	preview func(value string, env checkEnv) string

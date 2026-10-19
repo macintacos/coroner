@@ -235,9 +235,9 @@ var _ = Describe("definition", func() {
 		in := fieldValues{"id": {"0199a1b2"}, "author": {"priya"}}
 
 		Expect(edit.changed(in)).To(BeFalse())
-		var err *Error
-		Expect(errors.As(edit.requireChange(in), &err)).To(BeTrue())
-		Expect(err).To(SatisfyAll(
+		failure, ok := errors.AsType[*Error](edit.requireChange(in))
+		Expect(ok).To(BeTrue())
+		Expect(failure).To(SatisfyAll(
 			HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", "Pass --body, --kind or --url.")))
 	})
 
@@ -254,16 +254,7 @@ var _ = Describe("definition", func() {
 var _ = Describe("write run functions", func() {
 	DescribeTable("return usage, not a panic, when given no value for the positional argument their command requires",
 		func(ctx SpecContext, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) {
-			app := App{
-				In: strings.NewReader(""), Now: testNow,
-				NewID: func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-				OpenStore: func(context.Context, string) (*store.Store, error) {
-					Fail("opened the store before rejecting its input")
-					return nil, errors.New("unreachable")
-				},
-			}
-
-			err := run(ctx, app, config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
+			err := runWithoutStore(ctx, run, in)
 
 			failure, ok := errors.AsType[*Error](err)
 			Expect(ok).To(BeTrue(), "returned %v", err)
@@ -283,7 +274,39 @@ var _ = Describe("write run functions", func() {
 		Entry("overlay create", errorOf(createOverlay), fieldValues{"timeline": {"mongo-failover"}}),
 		Entry("source edit", errorOf(editSource), fieldValues{"name": {"mongodb"}}),
 	)
+
+	DescribeTable("return nothing to edit, naming every changing flag, when an edit is given no change",
+		func(ctx SpecContext, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues, hint string) {
+			err := runWithoutStore(ctx, run, in)
+
+			failure, ok := errors.AsType[*Error](err)
+			Expect(ok).To(BeTrue(), "returned %v", err)
+			Expect(failure).To(SatisfyAll(
+				HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", hint)))
+		},
+		Entry("event edit", errorOf(editEvent), fieldValues{"event": {"12"}},
+			"Pass --text, --at, --ended, --approximate, --source, --add-tag, --remove-tag, --url, --author or --attach."),
+		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"id": {"0199a1b2"}},
+			"Pass --body, --kind, --source, --url or --attach."),
+		Entry("timeline edit", errorOf(editTimeline), fieldValues{"timeline": {"mongo-outage"}},
+			"Pass --name, --title, --add-ref or --remove-ref."),
+		Entry("source edit", errorOf(editSource), fieldValues{"source": {"mongo"}}, "Pass --name."),
+	)
 })
+
+// runWithoutStore calls run with an App whose store fails the spec when opened.
+func runWithoutStore(ctx context.Context, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) error {
+	app := App{
+		In: strings.NewReader(""), Now: testNow,
+		NewID: func() (uuid.UUID, error) { return uuid.UUID{}, nil },
+		OpenStore: func(context.Context, string) (*store.Store, error) {
+			Fail("opened the store before rejecting its input")
+			return nil, errors.New("unreachable")
+		},
+	}
+
+	return run(ctx, app, config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
+}
 
 // errorOf returns run with its result dropped.
 func errorOf[R any](
