@@ -18,7 +18,7 @@ var _ = Describe("the configuration reference", func() {
 		for _, field := range reflect.VisibleFields(reflect.TypeFor[fileConfig]()) {
 			key, _, _ := strings.Cut(field.Tag.Get("toml"), ",")
 			Expect(key).NotTo(BeEmpty(), field.Name)
-			Expect(string(page)).To(ContainSubstring("`"+key+"`"), key)
+			Expect(string(page)).To(ContainSubstring("\n| `"+key+"` |"), key)
 		}
 	})
 })

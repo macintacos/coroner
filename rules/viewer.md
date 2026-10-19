@@ -31,7 +31,9 @@
    placeholder text the renderer redraws like any other. Send nothing before the reply to
    the attributes query `Init` sends: until the terminal reads the first frame it is on
    its main screen, and an image sent there never shows on the alternate one. An image
-   attachment is read through `Options.Image` in a command, one at a time, never while
-   rendering, and an attachment that cannot be read or shown is its placeholder text,
-   never an error. Only `internal/graphics` decides which terminals and which attachments
-   show images; `Terminal` turns them off without color.
+   attachment's bytes are read through `Options.Image` in a command, one at a time across
+   every expanded event, never while rendering, and the viewer decodes them for its own
+   protocol in that command. An attachment that cannot be read or shown is its placeholder
+   text, never an error. Only `internal/graphics` decides which terminals and which
+   attachments show images; `Terminal` turns them off without color, so a caller never
+   repeats that rule.

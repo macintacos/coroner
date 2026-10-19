@@ -108,11 +108,11 @@ func (d eventsDeleted) render(o output, z zone) error {
 	}
 
 	err = notifyDeletion(o, "Deleted", d.found)
-	if err != nil || d.blobsErr == nil {
+	if err != nil {
 		return err
 	}
 
-	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
+	return notifyBlobsErr(o, d.blobsErr)
 }
 
 // foundEvents are events with their timelines, each once, in the order first named.

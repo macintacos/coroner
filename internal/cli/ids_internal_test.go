@@ -18,6 +18,7 @@ var _ = Describe("replayIDs", func() {
 	})
 
 	draw := func(count int) []uuid.UUID {
+		GinkgoHelper()
 		var drawn []uuid.UUID
 		for range count {
 			id, err := ids.newID()

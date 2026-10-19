@@ -54,7 +54,7 @@ func addEventFilterFlags(flags *pflag.FlagSet) {
 	flags.String("since", "", "Keep events at or after this `time`")
 	flags.String("until", "", "Keep events before this `time`")
 	addEventMatchFlags(flags)
-	flags.String("order", "asc", "Order by occurred at, then timeline id, then seq, as an `order`: {asc|desc}")
+	flags.String("order", "asc", "Order by occurred at, then timeline id, then seq, as an `order`: {asc | desc}")
 	flags.Int("limit", 0, "Show at most this `number` of events (default: every one)")
 }
 
@@ -116,7 +116,7 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 
 // noEventsMessage returns what text output says when f selects no events.
 func noEventsMessage(f store.EventFilter) string {
-	if f.Since != nil || f.Until != nil || len(f.Sources) > 0 || len(f.Tags) > 0 || f.Contains != "" || f.Limit > 0 {
+	if f.Since != nil || f.Until != nil || len(f.Sources) > 0 || len(f.Tags) > 0 || f.Contains != "" {
 		return "No events match."
 	}
 
@@ -169,13 +169,19 @@ func readEventMatch(flags *pflag.FlagSet) (store.EventFilter, error) {
 
 func checkFilterSlugs(f store.EventFilter) error {
 	for _, source := range f.Sources {
-		err := checkSlug(source, timeline.ValidateSourceName)
+		err := checkSource(source)
+		if err != nil {
+			return err
+		}
+	}
+	for _, tag := range f.Tags {
+		err := checkTag(tag)
 		if err != nil {
 			return err
 		}
 	}
 
-	return checkSlugs(nil, f.Tags)
+	return nil
 }
 
 func readContains(flags *pflag.FlagSet) (string, error) {
@@ -184,7 +190,7 @@ func readContains(flags *pflag.FlagSet) (string, error) {
 		return "", nil
 	}
 
-	return *contains, checkNotBlank("--contains", contains)
+	return *contains, checkNotBlank("--contains", *contains)
 }
 
 func readOrder(flags *pflag.FlagSet) (store.Order, error) {

@@ -55,13 +55,15 @@ var _ = Describe("validation", func() {
 		})
 
 		It("adds the hint only on a usage problem", func() {
-			usage, _ := errors.AsType[*Error](recordError(blankAndOffset, "hint"))
+			usage, ok := errors.AsType[*Error](recordError(blankAndOffset, "hint"))
+			Expect(ok).To(BeTrue())
 			Expect(usage.Hint).To(Equal("hint"))
 
 			offsetOnly := &timeline.ValidationError{Problems: []timeline.Problem{
 				{Field: "occurred_offset", Rule: timeline.RuleOffsetRange, Message: "out of range"},
 			}}
-			timeErr, _ := errors.AsType[*Error](recordError(offsetOnly, "hint"))
+			timeErr, ok := errors.AsType[*Error](recordError(offsetOnly, "hint"))
+			Expect(ok).To(BeTrue())
 			Expect(timeErr.Kind).To(Equal(KindInvalidTime))
 			Expect(timeErr.Hint).To(BeEmpty())
 		})

@@ -64,16 +64,6 @@ func messages(cmd tea.Cmd) []tea.Msg {
 	return msgs
 }
 
-// drain hands m every message cmd produces, and then those of the commands m returns.
-func drain(m tea.Model, cmd tea.Cmd) tea.Model {
-	for _, msg := range messages(cmd) {
-		var next tea.Cmd
-		m, next = m.Update(msg)
-		m = drain(m, next)
-	}
-	return m
-}
-
 // pickedName is the name of the timeline m picked, or "" when it picked none.
 func pickedName(m tea.Model) string {
 	GinkgoHelper()
@@ -108,7 +98,7 @@ var _ = Describe("the timeline picker", func() {
 			viewer.PickerColumns{Marker: " ", Name: "x", Events: "1 event", Last: "last 2026-09-11 Sep 12 02:-- +05:30", Title: "-", Refs: "-"}),
 		Entry("keeps a title on one line with no control characters",
 			viewer.TimelineRow{Timeline: timeline.Timeline{Name: "x", Title: "Primary\n\tstepped\x1b[2J down"}},
-			viewer.PickerColumns{Marker: " ", Name: "x", Events: "0 events", Last: "-", Title: "Primary stepped[2J down", Refs: "-"}),
+			viewer.PickerColumns{Marker: " ", Name: "x", Events: "0 events", Last: "-", Title: "Primary stepped down", Refs: "-"}),
 	)
 
 	Describe("its screen", func() {
@@ -156,11 +146,11 @@ var _ = Describe("the timeline picker", func() {
 
 	It("narrows the rows to the name or title typed after /", func() {
 		m, cmd := press(openPicker(""), "/")
-		m = drain(m, cmd)
+		m, _ = drainMsgs(m, cmd)
 		for _, r := range "election" {
 			m, cmd = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
-			m = drain(m, cmd)
 		}
+		m, _ = drainMsgs(m, cmd)
 		m, _ = press(m, "enter")
 
 		Expect(screen(m)).NotTo(ContainSubstring("db-2-disk-full"))
@@ -170,7 +160,7 @@ var _ = Describe("the timeline picker", func() {
 
 	It("types q into the filter rather than quitting", func() {
 		m, cmd := press(openPicker(""), "/")
-		m = drain(m, cmd)
+		m, _ = drainMsgs(m, cmd)
 		_, cmd = press(m, "q")
 
 		Expect(messages(cmd)).NotTo(ContainElement(BeAssignableToTypeOf(tea.QuitMsg{})))

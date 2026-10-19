@@ -53,7 +53,7 @@ func parseNatural(text string, now time.Time, loc *time.Location) (Resolved, err
 }
 
 func resolveDuration(got date.Date, now time.Time, loc *time.Location) (Resolved, error) {
-	precision, err := periodPrecision(got.Period)
+	precision, err := datePrecision(got)
 	if err != nil {
 		return Resolved{}, err
 	}
@@ -75,20 +75,33 @@ func parseWall(text string, clock, now time.Time, loc *time.Location) (Resolved,
 		return Resolved{}, err
 	}
 
-	precision, err := periodPrecision(got.Period)
+	precision, err := datePrecision(got)
 	if err != nil {
 		return Resolved{}, err
 	}
 
 	wall := wallClock(got.Time)
-	// A day is checked at noon: a DST change at midnight must not reject a date that never
-	// stated a time.
 	if precision == timeline.PrecisionDay {
-		year, month, day := wall.t.Date()
-		wall = wallTime{time.Date(year, month, day, 12, 0, 0, 0, time.UTC)}
+		return resolveDay(wall, loc), nil
 	}
 
 	return resolveLocal(wall, loc, precision)
+}
+
+// resolveDay resolves wall's day to its first instant in loc: its 00:00, read in the offset
+// before a DST change at midnight, which must not reject a date that never stated a time.
+func resolveDay(wall wallTime, loc *time.Location) Resolved {
+	year, month, day := wall.t.Date()
+	midnight := wallTime{time.Date(year, month, day, 0, 0, 0, 0, time.UTC)}
+
+	t, err := resolveWall(midnight, loc)
+	if err != nil {
+		t = readInOffsetAt(midnight, loc, -24*time.Hour)
+	}
+
+	_, offset := t.Zone()
+
+	return resolve(t, &offset, timeline.PrecisionDay)
 }
 
 // parseZoned reads an input that stated zone entirely in that zone.
@@ -98,7 +111,7 @@ func parseZoned(text string, now time.Time, zone *time.Location) (Resolved, erro
 		return Resolved{}, err
 	}
 
-	precision, err := periodPrecision(got.Period)
+	precision, err := datePrecision(got)
 	if err != nil {
 		return Resolved{}, err
 	}
@@ -170,10 +183,12 @@ func dateparse(text string, clock time.Time, source dateparser.PreferredDateSour
 	return got, nil
 }
 
-func periodPrecision(period date.Period) (timeline.Precision, error) {
-	switch period {
+// datePrecision is got's period as a precision; a second keeps any fraction go-dateparser read
+// at the coarsest sub-second precision that holds it.
+func datePrecision(got date.Date) (timeline.Precision, error) {
+	switch got.Period {
 	case date.Second:
-		return timeline.PrecisionSecond, nil
+		return subsecondPrecision(got.Time.Nanosecond()), nil
 	case date.Minute:
 		return timeline.PrecisionMinute, nil
 	case date.Hour:
@@ -186,4 +201,19 @@ func periodPrecision(period date.Period) (timeline.Precision, error) {
 	}
 
 	return "", errNoMatch
+}
+
+// subsecondPrecision is the coarsest precision that keeps nanos, the fraction of a second;
+// the text's digits cannot say, as a date such as 12.09.2026 has a dot too.
+func subsecondPrecision(nanos int) timeline.Precision {
+	switch {
+	case nanos == 0:
+		return timeline.PrecisionSecond
+	case nanos%int(time.Millisecond) == 0:
+		return timeline.PrecisionMillisecond
+	case nanos%int(time.Microsecond) == 0:
+		return timeline.PrecisionMicrosecond
+	default:
+		return timeline.PrecisionNanosecond
+	}
 }

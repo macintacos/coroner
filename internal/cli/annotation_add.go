@@ -30,7 +30,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks\n" +
 			"the event from the timeline, and prints the command each entry equals. Under --json only\n" +
 			"--interactive opens it, and --no-input never does.",
-		Args:        annotationBodyArg,
+		Args:        annotationBodyInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner annotation add - -e 12 --kind evidence --source mongod < stepdown.log\n" +
 			"  $ coroner annotation add \"Step-down lands 5 s after the COLLSCAN burst\" -e 12 --kind comment\n" +
@@ -45,7 +45,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 func annotationAddDefinition() definition {
 	return definition{fields: []field{
 		timelineField(),
-		{name: "body", arg: true, required: true, perEntry: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin)},
+		{name: "body", arg: true, required: true, perEntry: true, usage: "The annotation's `body`, or - to read it from stdin", check: withoutEnv(annotationBodyInput().checkOrStdin)},
 		{
 			name: "event", shorthand: "e", check: withoutEnv(checkEventRef),
 			usage: "Event to attach it to, as a `ref`: seq, timeline#seq or id (default: the timeline)",
@@ -185,11 +185,11 @@ func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraf
 	if rawBody == nil {
 		return annotationDraft{}, &Error{Kind: KindUsage, Message: "annotation add needs the annotation's body", Hint: missingBodyHint}
 	}
-	body, err := annotationBody(*rawBody, app.In, app.InIsTTY)
+	author, err := defaultAuthor(in.value("author"), cfg.Author, app.LookupEnv)
 	if err != nil {
 		return annotationDraft{}, err
 	}
-	author, err := eventAuthor(in.value("author"), cfg.Author, app.LookupEnv)
+	body, err := annotationBodyInput().read(*rawBody, app.In, app.InIsTTY)
 	if err != nil {
 		return annotationDraft{}, err
 	}
@@ -218,17 +218,4 @@ func draftAnnotation(in fieldValues, app App, cfg config.Config) (annotationDraf
 	}
 
 	return annotationDraft{annotation: a, newSourceID: sourceID}, nil
-}
-
-// annotationBodyArg rejects more than one argument, which is most often a body left unquoted.
-func annotationBodyArg(_ *cobra.Command, args []string) error {
-	if len(args) <= 1 {
-		return nil
-	}
-
-	return &Error{
-		Kind:    KindUsage,
-		Message: fmt.Sprintf("annotation add takes the body as one argument, got %d", len(args)),
-		Hint:    "Quote a body that has spaces, or pass - to read it from stdin.",
-	}
 }

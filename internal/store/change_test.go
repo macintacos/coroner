@@ -401,6 +401,12 @@ var _ = Describe("Tx", func() {
 			_, err := tx.AddEvent(ctx, e, uuid(4))
 			return err
 		}),
+		Entry("AddLink, a missing event", func(ctx context.Context, tx *store.Tx) error {
+			return tx.AddLink(ctx, timeline.Link{ID: uuid(50), FromEventID: missing, ToEventID: uuid(98), Kind: timeline.LinkLedTo, CreatedAt: changeCreated()})
+		}),
+		Entry("CreateOverlay, a missing timeline", func(ctx context.Context, tx *store.Tx) error {
+			return tx.CreateOverlay(ctx, timeline.Overlay{ID: uuid(5), Name: "pair", TimelineIDs: []string{changeIncident().ID, missing}, CreatedAt: changeCreated()})
+		}),
 	)
 
 	// swallowing runs call in a committed Change whose fn ignores call's error.

@@ -27,7 +27,9 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		Short: "Build root-cause investigation timelines",
 		Long: "coroner records what happened during an investigation, in order: name a timeline,\n" +
 			"add timestamped events from logs, chat and people, then view and export it.",
-		Example:     "  $ coroner version --json",
+		Example: "  $ coroner timeline create checkout-outage --title \"Checkout outage\"\n" +
+			"  $ coroner event add -t checkout-outage \"Error rate crossed 5%\" --at 2026-09-11T03:14Z --source datadog\n" +
+			"  $ coroner event list -t checkout-outage",
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
@@ -100,7 +102,7 @@ func globalFlags() *pflag.FlagSet {
 	flags := pflag.NewFlagSet("global", pflag.ContinueOnError)
 	flags.String("db", "", "Database file `path` (env: CORONER_DB)")
 	flags.String("config", "", "Config file `path` (env: CORONER_CONFIG)")
-	flags.String("format", string(formatText), "Output `format`: {text|json|jsonl}, and more on timeline export")
+	flags.String("format", string(formatText), "Output `format`: {text | json | jsonl}, and more on timeline export")
 	flags.Bool("json", false, "Short for --format json")
 	flags.BoolP("quiet", "q", false, "Print only essential output")
 	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
@@ -141,8 +143,7 @@ func addCompletionCommand(root *cobra.Command, app App) {
 
 // wrapRunErrors makes every error a command's hooks or body return an *Error, recovering a
 // panic into an internal one, so Run can tell an untyped error from cobra, which rejected the
-// command line, from a command's own. A body runs only once outputFormat accepts
-// --format and --json, and readTimelineInput accepts -t, --overlay and a positional timeline.
+// command line, from a command's own. A body runs only once checkCommandLine accepts args.
 func wrapRunErrors(cmd *cobra.Command) {
 	hooks := []*func(*cobra.Command, []string) error{
 		&cmd.PersistentPreRunE, &cmd.PreRunE, &cmd.RunE, &cmd.PostRunE, &cmd.PersistentPostRunE,
@@ -153,12 +154,20 @@ func wrapRunErrors(cmd *cobra.Command) {
 		}
 	}
 
+	if check := cmd.Args; check != nil {
+		cmd.Args = func(cmd *cobra.Command, args []string) error {
+			err := check(cmd, args)
+			if _, ok := errors.AsType[*Error](err); err != nil && !ok {
+				return argsError(cmd, err)
+			}
+
+			return err
+		}
+	}
+
 	if run := cmd.RunE; run != nil {
 		cmd.RunE = func(cmd *cobra.Command, args []string) error {
-			_, err := outputFormat(cmd)
-			if err == nil {
-				_, err = readTimelineInput(cmd.Flags(), args, ruleOf(cmd))
-			}
+			err := checkCommandLine(cmd, args)
 			if err != nil {
 				return err
 			}
@@ -170,6 +179,21 @@ func wrapRunErrors(cmd *cobra.Command) {
 	for _, child := range cmd.Commands() {
 		wrapRunErrors(child)
 	}
+}
+
+// checkCommandLine accepts cmd's --format and --json through outputFormat, and its -t,
+// --overlay and positional timeline through readTimelineInput. A command with subcommands
+// prints only help or an error, so any format passes it.
+func checkCommandLine(cmd *cobra.Command, args []string) error {
+	if !cmd.HasSubCommands() {
+		_, err := outputFormat(cmd)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := readTimelineInput(cmd.Flags(), args, ruleOf(cmd))
+
+	return err
 }
 
 // typedHook returns run with its errors and panics made *Error.

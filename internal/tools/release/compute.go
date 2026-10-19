@@ -15,6 +15,9 @@ import (
 // prNumber matches the (#N) a squash merge appends to its subject.
 var prNumber = regexp.MustCompile(`\(#(\d+)\)$`)
 
+// stabilityWord matches the word filled in after stability:, whatever punctuation surrounds it.
+var stabilityWord = regexp.MustCompile(`stability:\W*(breaking|additive|experimental)\b`)
+
 // deprecationCall matches a line that calls deprecateCommand or deprecateFlag, and their
 // declarations, which parseDeprecations filters out.
 var deprecationCall = regexp.MustCompile(`deprecate(Command|Flag)\(`)
@@ -65,8 +68,12 @@ type computeResult struct {
 // compute works out the next tag and gathers what the agent needs to write its notes: the
 // pull requests and commits since the latest final tag, and the contract changes among them.
 func compute(ctx context.Context, sys system, args []string) (any, error) {
-	if len(args) == 0 || !slices.Contains([]string{"patch", "minor", "major"}, args[0]) {
+	if len(args) == 0 {
 		return nil, usageError("compute needs a bump of patch, minor or major; %s", usageLine)
+	}
+	next, err := parseBump(args[0])
+	if err != nil {
+		return nil, usageError("compute needs a bump of patch, minor or major: %s; %s", err, usageLine)
 	}
 	result := computeResult{OK: true, Bump: args[0]}
 
@@ -74,7 +81,7 @@ func compute(ctx context.Context, sys system, args []string) (any, error) {
 	flags.SetOutput(io.Discard)
 	flags.BoolVar(&result.RC, "rc", false, "tag a release candidate")
 	rev := flags.String("sha", "", "the commit to release")
-	err := parseFlags(flags, args[1:], "sha")
+	err = parseFlags(flags, args[1:], "sha")
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +99,7 @@ func compute(ctx context.Context, sys system, args []string) (any, error) {
 	tags := parseLsRemote(lsRemote)
 	tagNames := slices.Collect(maps.Keys(tags))
 
-	result.Tag, err = nextTag(tagNames, result.Bump, result.RC)
-	if err != nil {
-		return nil, usageError("%s", err)
-	}
+	result.Tag = nextTag(tagNames, next, result.RC)
 
 	var base string
 	logRange := sha
@@ -231,13 +235,12 @@ func stability(body string) string {
 			continue
 		}
 		lower := strings.ToLower(strings.ReplaceAll(line, "`", ""))
-		_, after, found := strings.Cut(lower, "stability:")
-		if !found {
+		if !strings.Contains(lower, "stability:") {
 			continue
 		}
 
-		if words := strings.Fields(after); len(words) > 0 && slices.Contains([]string{"breaking", "additive", "experimental"}, words[0]) {
-			return words[0]
+		if m := stabilityWord.FindStringSubmatch(lower); m != nil {
+			return m[1]
 		}
 		if strings.Contains(lower, "[x]") {
 			return "none"

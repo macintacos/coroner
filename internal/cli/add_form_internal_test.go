@@ -61,6 +61,13 @@ var _ = Describe("add forms", func() {
 		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
 
+	It("read times in --tz over the config file's default_timezone", func() {
+		tz := "UTC"
+		env := baseCheckEnv(formSession{app: App{Now: testNow}, inv: invocation{tz: &tz, cfg: config.Config{DefaultTimezone: "Asia/Tokyo"}}})
+
+		Expect(env.zone.loc).To(Equal(time.UTC))
+	})
+
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
 		cancelled := false
 		text := huh.NewInput().Key("text")
@@ -141,19 +148,8 @@ var _ = Describe("add forms", func() {
 			return choices.options["event"]
 		}
 
-		// answers returns forms that answer each ask in turn with the next of answers, recording what
-		// each ask showed.
 		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-			return func(bool, graphics.Protocol) askFunc {
-				return func(_ context.Context, fields ...huh.Field) (bool, error) {
-					GinkgoHelper()
-					asked = append(asked, fields)
-					Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
-					answer := answers[0]
-					answers = answers[1:]
-					return answer(fields)
-				}
-			}
+			return scriptedForms(&asked, answers...)
 		}
 
 		// runForm runs args against a root holding parent, whose add command runs its form as RunE does
@@ -189,10 +185,7 @@ var _ = Describe("add forms", func() {
 			asked = nil
 			home := GinkgoT().TempDir()
 			db = filepath.Join(home, "coroner.db")
-			app = scratchApp(home, &out, &errOut, func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			})
+			app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 			app.InIsTTY, app.OutIsTTY = true, true
 
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
@@ -204,7 +197,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open --interactive prefilled from the command line's arguments and flags", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, decline))
+				command := eventAdd(ctx, answers(cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "Primary stepped down", "--interactive", "--source", "mongod")).To(Succeed())
 
@@ -215,7 +208,7 @@ var _ = Describe("add forms", func() {
 			It("write what the form submits and echo a command that dry-runs to the same event", func(ctx SpecContext) {
 				command := eventAdd(ctx, answers(submit(map[string]string{
 					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
-				}), decline))
+				}), confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
@@ -226,7 +219,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open when a required flag is missing, prefilled from the argument", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel, decline))
+				command := annotationAdd(ctx, answers(cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add", "replSetStepDown")).To(Succeed())
 
@@ -235,7 +228,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open with no kind chosen", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel, decline))
+				command := annotationAdd(ctx, answers(cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
@@ -252,7 +245,7 @@ var _ = Describe("add forms", func() {
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
 					Expect(fieldText(fields, "event")).To(Equal(prefix))
 					return true, nil
-				}, decline))
+				}, confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "-e", prefix, "--kind", "evidence", "body", "--json")).
 					To(Succeed())
@@ -266,7 +259,7 @@ var _ = Describe("add forms", func() {
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
 					offered = optionValues(namedField(fields, "event"))
 					return submit(map[string]string{"body": "replSetStepDown", "event": "1", "kind": "evidence"})(fields)
-				}, decline))
+				}, confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "--json")).To(Succeed())
 				written := withoutRecordKeys(out.Bytes())
@@ -283,7 +276,7 @@ var _ = Describe("add forms", func() {
 						"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election",
 						"url": "https://example.com/1",
 					}
-					command := eventAdd(ctx, answers(submit(entry), accept, cancel, decline))
+					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
 
 					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 
@@ -310,7 +303,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("skip an entry Esc cancels and end when no other is wanted", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, decline))
+				command := eventAdd(ctx, answers(cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -320,7 +313,7 @@ var _ = Describe("add forms", func() {
 
 			It("ask the entry again, as typed, when the add rejects it", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
-				command := eventAdd(ctx, answers(submit(entry), cancel, decline))
+				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -329,9 +322,8 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
-				app.Args = []string{"--db", db, "event", "add", "--json"}
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
-				command := eventAdd(ctx, answers(submit(entry), cancel, decline))
+				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
@@ -379,7 +371,7 @@ var _ = Describe("add forms", func() {
 					return submit(map[string]string{"timeline": "mongo-outage"})(fields)
 				},
 				submit(map[string]string{"text": "Pager fires"}),
-				decline,
+				confirm(false),
 			))
 
 			Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -406,13 +398,7 @@ var _ = Describe("add forms", func() {
 
 		DescribeTable("run the command line as given on a terminal, asking nothing, when input is turned off or a machine format is asked for",
 			func(ctx SpecContext, env map[string]string, args ...string) {
-				lookupEnv := app.LookupEnv
-				app.LookupEnv = func(key string) (string, bool) {
-					if value, ok := env[key]; ok {
-						return value, true
-					}
-					return lookupEnv(key)
-				}
+				withEnv(&app, env)
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add"}, args...)...)
 
@@ -426,13 +412,7 @@ var _ = Describe("add forms", func() {
 
 		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
-				lookupEnv := app.LookupEnv
-				app.LookupEnv = func(key string) (string, bool) {
-					if value, ok := env[key]; ok {
-						return value, true
-					}
-					return lookupEnv(key)
-				}
+				withEnv(&app, env)
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add", "Pager fires", "--interactive"}, flags...)...)
 
@@ -463,7 +443,7 @@ var _ = Describe("add forms", func() {
 			}
 			Expect(json.Unmarshal(out.Bytes(), &resolved)).To(Succeed())
 			def := eventAddDefinition()
-			at := def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == "at" })]
+			at := fieldNamed(def, "at")
 			preview := at.preview(input, formCheckEnv())
 			occurredAt, err := timeline.ParseInstant(resolved.OccurredAt)
 			Expect(err).NotTo(HaveOccurred())
@@ -494,6 +474,89 @@ func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, err
 	}
 }
 
+// storelessApp returns an App that runs args, with no config file, and fails the spec when it
+// opens the store.
+func storelessApp(args []string) App {
+	return App{
+		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard,
+		LookupEnv: envOf(map[string]string{"HOME": "/nonexistent", "CORONER_DB": "/nonexistent/coroner.db"}),
+		ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
+		Now:       testNow,
+		NewID:     func() (uuid.UUID, error) { return uuid.UUID{}, nil },
+		OpenStore: func(context.Context, string) (*store.Store, error) {
+			Fail(strings.TrimSpace("coroner "+strings.Join(args, " ")) + " opened the store before rejecting its input")
+			return nil, errors.New("unreachable")
+		},
+	}
+}
+
+// testNow is the suite's fixed clock.
+func testNow() time.Time {
+	return time.Date(2026, 9, 12, 21, 30, 0, 0, time.UTC)
+}
+
+// sequentialIDs returns ids numbered from *n+1, counting in *n.
+func sequentialIDs(n *int) func() (uuid.UUID, error) {
+	return func() (uuid.UUID, error) {
+		*n++
+		return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", *n))
+	}
+}
+
+// envOf returns a LookupEnv that reads env.
+func envOf(env map[string]string) func(string) (string, bool) {
+	return func(key string) (string, bool) {
+		value, ok := env[key]
+		return value, ok
+	}
+}
+
+// withEnv sets env over app's environment.
+func withEnv(app *App, env map[string]string) {
+	lookupEnv := app.LookupEnv
+	app.LookupEnv = func(key string) (string, bool) {
+		if value, ok := env[key]; ok {
+			return value, true
+		}
+		return lookupEnv(key)
+	}
+}
+
+// fieldNamed returns def's field called name.
+func fieldNamed(def definition, name string) field {
+	GinkgoHelper()
+	i := def.fieldIndex(name)
+	if i == -1 {
+		Fail("no field " + name)
+	}
+
+	return def.fields[i]
+}
+
+// shellSplit returns line's words, split as a shell splits them.
+func shellSplit(ctx context.Context, line string) []string {
+	GinkgoHelper()
+	split, err := exec.CommandContext(ctx, "sh", "-c", "printf '%s\\0' "+line).Output() //nolint:gosec // the spec hands the line to a shell on purpose
+	Expect(err).NotTo(HaveOccurred())
+
+	return strings.Split(strings.TrimSuffix(string(split), "\x00"), "\x00")
+}
+
+// scriptedForms returns forms that answer each ask in turn with the next of answers, appending
+// what each ask showed to asked.
+func scriptedForms(asked *[][]huh.Field, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+	return func(bool, graphics.Protocol) askFunc {
+		return func(_ context.Context, fields ...huh.Field) (bool, error) {
+			GinkgoHelper()
+			*asked = append(*asked, fields)
+			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
+			answer := answers[0]
+			answers = answers[1:]
+			return answer(fields)
+		}
+	}
+}
+
 // submit returns an answer that fills a form's fields with values and submits it.
 func submit(values map[string]string) func([]huh.Field) (bool, error) {
 	return func(fields []huh.Field) (bool, error) {
@@ -505,22 +568,15 @@ func submit(values map[string]string) func([]huh.Field) (bool, error) {
 // cancel answers a form as Esc does.
 func cancel([]huh.Field) (bool, error) { return false, nil }
 
-// accept answers "add another" yes.
-func accept(fields []huh.Field) (bool, error) {
-	yes := true
-	confirm, ok := fields[0].(*huh.Confirm)
-	Expect(ok).To(BeTrue(), "expected the add-another confirm, got %T", fields[0])
-	confirm.Value(&yes)
-	return true, nil
-}
-
-// decline answers "add another" no.
-func decline(fields []huh.Field) (bool, error) {
-	no := false
-	confirm, ok := fields[0].(*huh.Confirm)
-	Expect(ok).To(BeTrue(), "expected the add-another confirm, got %T", fields[0])
-	confirm.Value(&no)
-	return true, nil
+// confirm returns an answer to "add another": yes or no.
+func confirm(yes bool) func([]huh.Field) (bool, error) {
+	return func(fields []huh.Field) (bool, error) {
+		GinkgoHelper()
+		another, ok := fields[0].(*huh.Confirm)
+		Expect(ok).To(BeTrue(), "expected the add-another confirm, got %T", fields[0])
+		another.Value(&yes)
+		return true, nil
+	}
 }
 
 // fill sets each field named in values to that value, as typing and picking would.
@@ -570,10 +626,8 @@ func echoedArgs(ctx context.Context, stderr string) []string {
 	i := strings.LastIndex(stderr, prefix)
 	Expect(i).NotTo(Equal(-1), "no equivalent command in %q", stderr)
 	line, _, _ := strings.Cut(stderr[i+len(prefix):], "\n")
-	split, err := exec.CommandContext(ctx, "sh", "-c", "printf '%s\\0' "+line).Output() //nolint:gosec // the spec hands the echoed line to a shell on purpose
-	Expect(err).NotTo(HaveOccurred())
 
-	return strings.Split(strings.TrimSuffix(string(split), "\x00"), "\x00")
+	return shellSplit(ctx, line)
 }
 
 // withoutRecordKeys returns the JSON object in data without the keys a new record gets.

@@ -197,6 +197,33 @@ var _ = Describe("timetext", func() {
 		Entry("a day with no offset", event("2026-09-11T00:00:00Z", nil, timeline.PrecisionDay, false, ""), newYork, 0, false),
 	)
 
+	DescribeTable("Read clocks an interval's end at the finer of the start's precision and the end's own",
+		func(e timeline.Event, want string) {
+			Expect(timetext.Read(e, newYork()).End).To(HaveField("Clock", want))
+		},
+		Entry("an hour ending at a minute", event("2026-09-12T13:00:00Z", new(edt), timeline.PrecisionHour, false, "2026-09-12T14:47:00Z"), "10:47"),
+		Entry("an hour ending on the hour", event("2026-09-12T13:00:00Z", new(edt), timeline.PrecisionHour, false, "2026-09-12T14:00:00Z"), "10:--"),
+		Entry("a day ending at a second", event("2026-09-11T04:00:00Z", new(edt), timeline.PrecisionDay, false, "2026-09-12T18:05:33Z"), "14:05:33"),
+		Entry("a minute ending at a millisecond", event("2026-09-12T14:15:00Z", new(edt), timeline.PrecisionMinute, false, "2026-09-12T14:47:33.25Z"), "10:47:33.250"),
+		Entry("a second ending on a minute", event("2026-09-12T14:15:07Z", new(edt), timeline.PrecisionSecond, false, "2026-09-12T14:47:00Z"), "10:47:00"),
+	)
+
+	DescribeTable("ReadWindow spans from the earliest start to the furthest any interval or precision window reaches",
+		func(events []timeline.Event, zone func() *time.Location, want timetext.Window) {
+			Expect(timetext.ReadWindow(events, zone())).To(Equal(want))
+		},
+		Entry("a second and an interval in UTC", []timeline.Event{fixture()["E10"], fixture()["E6"]}, inUTC,
+			timetext.Window{Start: utc("2026-09-11", "03:14:07"), Reach: utc("2026-09-11", "03:16:30")}),
+		Entry("an hour reaching its end", []timeline.Event{fixture()["E4"], fixture()["E5"]}, inUTC,
+			timetext.Window{Start: utc("2026-09-11", "03:--"), Reach: utc("2026-09-11", "04:00")}),
+		Entry("a start read in its own offset", []timeline.Event{fixture()["E3"]}, newYork,
+			timetext.Window{Start: own("2026-09-11", "10:--", "+05:30"), Reach: edtPart("2026-09-11", "01:30")}),
+		Entry("the fall-back day", []timeline.Event{fixture()["E15"], fixture()["E16"]}, newYork,
+			timetext.Window{Start: edtPart("2026-11-01", "01:30:00"), Reach: part("2026-11-01", "01:45", "EST", "-05:00")}),
+		Entry("a day reaching the next midnight", []timeline.Event{fixture()["E12"]}, inUTC,
+			timetext.Window{Start: utc("2026-09-12", ""), Reach: utc("2026-09-13", "00:00")}),
+	)
+
 	It("Stamp writes the minute and the zone's abbreviation then", func() {
 		at := time.Date(2026, 11, 1, 6, 30, 59, 0, time.UTC)
 		Expect(timetext.Stamp(at, newYork())).To(Equal("2026-11-01 01:30 EST"))

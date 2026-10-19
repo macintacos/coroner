@@ -78,15 +78,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 
 	var snapshot viewer.Snapshot
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		err = sel.checkFormat(o.format)
-		if err != nil {
-			return err
-		}
-		timelines, err := sel.all(ctx, s)
+		timelines, err := selectAll(ctx, s, inv.timelines, app.LookupEnv, o.format)
 		switch {
 		case err != nil:
 			return err
@@ -105,17 +97,15 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	logger, flush := viewerDiagnostics(inv.debug, app.Err)
-	color := inv.outColor
-	images := graphics.None
-	if color {
-		images = graphics.Detect(app.LookupEnv)
+	term := viewer.Terminal{
+		In: app.In, Out: app.Out, NoColor: !inv.outColor, Graphics: graphics.Detect(app.LookupEnv), Env: terminalEnv(app.LookupEnv),
 	}
-	term := viewer.Terminal{In: app.In, Out: app.Out, NoColor: !color, Graphics: images}
 	err = viewer.Run(ctx, term, viewer.Options{
 		Snapshot: snapshot,
 		Match:    viewer.Match{Sources: filter.Sources, Tags: filter.Tags, Contains: filter.Contains},
 		Load:     timelineLoader(ctx, app, cfg.DBPath, timelineIDs(snapshot.Timelines)),
-		Image:    imageReader(app.ReadFile, cfg.DBPath, images, logger),
+		Image:    blobReader(app.ReadFile, cfg.DBPath),
+		Log:      logger,
 		Location: z.loc, ZoneLabel: z.label, Now: app.Now,
 	})
 	err = errors.Join(err, flush())
@@ -192,29 +182,24 @@ func (l *lockedBuffer) WriteTo(w io.Writer) (int64, error) {
 	return l.b.WriteTo(w)
 }
 
-// imageReader returns the viewer's Image for the database at path: it reads an attachment's blob
-// and decodes it when protocol shows images, or reads only its size otherwise, logging why it
-// could not.
-func imageReader(
-	readFile func(string) ([]byte, error), path string, protocol graphics.Protocol, logger *slog.Logger,
-) func(timeline.Attachment) (graphics.Image, error) {
-	decode := graphics.DecodeSize
-	if protocol == graphics.Kitty {
-		decode = graphics.Decode
+// blobReader returns the viewer's Image for the database at path: it reads an attachment's blob.
+func blobReader(readFile func(string) ([]byte, error), path string) func(timeline.Attachment) ([]byte, error) {
+	return func(a timeline.Attachment) ([]byte, error) {
+		return readFile(store.BlobPath(path, a.SHA256))
+	}
+}
+
+// terminalEnv is the part of the environment lookupEnv reads that bubbletea uses to drive the
+// terminal: TERM, TERM_PROGRAM, SSH_TTY and WT_SESSION.
+func terminalEnv(lookupEnv func(string) (string, bool)) []string {
+	var env []string
+	for _, key := range []string{"TERM", "TERM_PROGRAM", "SSH_TTY", "WT_SESSION"} {
+		if value, ok := lookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
 	}
 
-	return func(a timeline.Attachment) (graphics.Image, error) {
-		content, err := readFile(store.BlobPath(path, a.SHA256))
-		img := graphics.Image{}
-		if err == nil {
-			img, err = decode(content)
-		}
-		if err != nil {
-			logger.Debug("attachment image not shown", "attachment", a.ID, "sha256", a.SHA256, "error", err)
-		}
-
-		return img, err
-	}
+	return env
 }
 
 // hintedError shows an *Error's message and hint as its text, for a screen that shows only
@@ -241,17 +226,22 @@ func hinted(err error) error {
 // annotation and attachment in them.
 func readSnapshot(ctx context.Context, s *store.Store, timelines []timeline.Timeline, filter store.EventFilter) (viewer.Snapshot, error) {
 	filter.TimelineIDs = timelineIDs(timelines)
-	page, err := s.ListEvents(ctx, filter)
-	if err != nil {
-		return viewer.Snapshot{}, err
-	}
-	annotations, err := readEach(timelines, func(id string) ([]timeline.Annotation, error) { return s.Annotations(ctx, id) })
-	if err != nil {
-		return viewer.Snapshot{}, err
-	}
-	attachments, err := readEach(timelines, func(id string) ([]timeline.Attachment, error) { return s.TimelineAttachments(ctx, id) })
+	snapshot := viewer.Snapshot{Timelines: timelines}
+	err := s.Read(ctx, func(tx *store.Tx) error {
+		page, err := tx.ListEvents(ctx, filter)
+		if err != nil {
+			return err
+		}
+		snapshot.Events = page.Events
+		snapshot.Annotations, err = readEach(timelines, func(id string) ([]timeline.Annotation, error) { return tx.Annotations(ctx, id) })
+		if err != nil {
+			return err
+		}
+		snapshot.Attachments, err = readEach(timelines, func(id string) ([]timeline.Attachment, error) { return tx.TimelineAttachments(ctx, id) })
+		return err
+	})
 
-	return viewer.Snapshot{Timelines: timelines, Events: page.Events, Annotations: annotations, Attachments: attachments}, err
+	return snapshot, err
 }
 
 // keptAnnotations counts snapshot's annotations on its events or on the timeline itself.

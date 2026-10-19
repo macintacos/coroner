@@ -1,7 +1,7 @@
 # Checkout latency spike (checkout-spike)
 
 - **Refs:** INC-4821, https://status.example.com/incidents/4821
-- **Window:** 2026-09-10 23:58:12 → 2026-09-11 00:07:00 UTC
+- **Window:** 2026-09-10 23:58:12 → 2026-09-11 00:08 UTC
 - **Events:** 4 · **Sources:** `mongod`, `slack` · **Tags:** `#db` `#election`
 - **Exported:** 2026-09-12 21:40 UTC by coroner 0.1.0
 

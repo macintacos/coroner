@@ -36,10 +36,10 @@ func newAnnotationEditCommand(ctx context.Context, app App) *cobra.Command {
 func annotationEditDefinition() definition {
 	return definition{fields: []field{
 		{name: "id", arg: true, usage: "Annotation to edit, as an `id` or unique id prefix", check: withoutEnv(checkAnnotationRef)},
-		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(checkBodyOrStdin), changes: true},
+		{name: "body", usage: "New `body`, or - to read it from stdin", check: withoutEnv(annotationBodyInput().checkOrStdin), changes: true},
 		{name: "kind", usage: "New annotation `kind`: {evidence | comment}", check: withoutEnv(checkAnnotationKindName), changes: true},
-		{name: "source", usage: "New `source`, created on first use", check: withoutEnv(checkSource), changes: true},
-		{name: "url", usage: "New permalink, as a `url`", check: freeText("--url"), changes: true},
+		{name: "source", usage: "New `source`, created on first use, or none", check: withoutEnv(checkEditedSource), changes: true},
+		{name: "url", usage: "New permalink, as a `url`, or none", check: clearableFreeText("--url"), changes: true},
 		changing(attachField()),
 		{name: "dry-run", typ: boolField, usage: "Show the edited annotation, and change nothing"},
 	}}
@@ -143,9 +143,9 @@ func (e annotationEdited) render(o output) error {
 
 // annotationEdit is the change edit's fields ask for. Nil fields change nothing.
 type annotationEdit struct {
-	kind   *timeline.AnnotationKind
-	body   *string
-	fields annotationFields
+	kind        *timeline.AnnotationKind
+	body        *string
+	source, url fieldEdit
 }
 
 // readAnnotationEdit returns the edit in asks for. It reads stdin last, so a bad field never
@@ -156,13 +156,13 @@ func readAnnotationEdit(in fieldValues, app App) (annotationEdit, error) {
 		return annotationEdit{}, err
 	}
 
-	edit := annotationEdit{fields: readAnnotationFields(in)}
+	edit := annotationEdit{source: readFieldEdit(in, "source"), url: readFieldEdit(in, "url")}
 	if kind := in.value("kind"); kind != nil {
 		k := timeline.AnnotationKind(*kind)
 		edit.kind = &k
 	}
 	if body := in.value("body"); body != nil {
-		b, err := annotationBody(*body, app.In, app.InIsTTY)
+		b, err := annotationBodyInput().read(*body, app.In, app.InIsTTY)
 		if err != nil {
 			return edit, err
 		}
@@ -181,12 +181,8 @@ func (e annotationEdit) apply(a timeline.Annotation, now time.Time) (timeline.An
 	if e.body != nil {
 		a.Body = *e.body
 	}
-	if e.fields.source != nil {
-		a.Source = e.fields.source
-	}
-	if e.fields.url != nil {
-		a.URL = e.fields.url
-	}
+	a.Source = e.source.apply(a.Source)
+	a.URL = e.url.apply(a.URL)
 	a.UpdatedAt = now
 
 	return a, recordError(a.Validate(), "Run 'coroner annotation edit --help' for what each flag takes.")

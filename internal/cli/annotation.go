@@ -16,8 +16,6 @@ import (
 const (
 	annotationKindHint  = "Pass --kind evidence for raw material such as a log line, or --kind comment for commentary."
 	listAnnotationsHint = "Run 'coroner annotation list' to see a timeline's annotations and their ids."
-	// shownAnnotations is how many annotations an ambiguous id prefix lists.
-	shownAnnotations = 10
 )
 
 func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
@@ -29,9 +27,7 @@ func newAnnotationCommand(ctx context.Context, app App) *cobra.Command {
 			"attached to an event or to the whole timeline. It has no time of its own in the\n" +
 			"chronology.",
 		Example: "  $ pbpaste | coroner annotation add - -e 12 --kind evidence --source mongod",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE:    runNoun,
 	}
 
 	cmd.AddCommand(
@@ -109,54 +105,6 @@ func checkAnnotationKindName(kind string) error {
 	return &Error{Kind: KindUsage, Message: fmt.Sprintf("--kind %q is not evidence or comment", kind), Hint: annotationKindHint}
 }
 
-// annotationBody returns the body value gives, reading in when that is -. Stdin loses one
-// trailing newline and is otherwise kept verbatim; it is never read from a terminal.
-func annotationBody(value string, in io.Reader, inIsTTY bool) (string, error) {
-	body := value
-	if value == "-" {
-		if inIsTTY {
-			return "", &Error{
-				Kind:    KindUsage,
-				Message: "- reads the annotation body from stdin, which is a terminal",
-				Hint:    "Pipe the body in, as in: pbpaste | coroner annotation add - --kind evidence",
-			}
-		}
-		data, err := io.ReadAll(in)
-		if err != nil {
-			return "", fmt.Errorf("read the annotation body from stdin: %w", err)
-		}
-		body = strings.TrimSuffix(string(data), "\n")
-	}
-
-	return body, checkBody(body)
-}
-
-// checkBodyOrStdin checks a body as typed, where - stands for a body read from stdin later.
-func checkBodyOrStdin(body string) error {
-	if body == "-" {
-		return nil
-	}
-
-	return checkBody(body)
-}
-
-func checkBody(body string) error {
-	err := timeline.ValidateText("body", body)
-	p, ok := firstProblem(err)
-	switch {
-	case !ok:
-		return nil
-	case p.Rule == timeline.RuleBlank:
-		return &Error{Kind: KindUsage, Message: "annotation body must not be blank", Hint: "Pass non-blank text, or - to read it from stdin."}
-	case p.Rule == timeline.RuleNotUTF8:
-		return &Error{
-			Kind: KindUsage, Message: "annotation body must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
-		}
-	}
-
-	return recordError(err, "")
-}
-
 // eventFlag returns the event reference -e gives, or nil when -e is not given.
 func eventFlag(flags *pflag.FlagSet) (*eventRef, error) {
 	return optionalEventRef(changedString(flags, "event"))
@@ -187,14 +135,6 @@ func parseAnnotationRef(ref string) (string, error) {
 	return prefix, nil
 }
 
-// parseIDPrefix returns ref lowercased, and whether that is an id prefix: hex digits and dashes,
-// starting with a hex digit.
-func parseIDPrefix(ref string) (string, bool) {
-	prefix := strings.ToLower(ref)
-	return prefix, prefix != "" && strings.ContainsRune("0123456789abcdef", rune(prefix[0])) &&
-		strings.Trim(prefix, "0123456789abcdef-") == ""
-}
-
 func checkAnnotationRef(ref string) error {
 	_, err := parseAnnotationRef(ref)
 	return err
@@ -203,7 +143,7 @@ func checkAnnotationRef(ref string) error {
 // findAnnotation returns the annotation whose id is, or uniquely starts with, prefix, in any
 // timeline.
 func findAnnotation(ctx context.Context, s records, prefix string) (timeline.Annotation, error) {
-	annotations, err := s.AnnotationsByIDPrefix(ctx, prefix, shownAnnotations+1)
+	annotations, err := s.AnnotationsByIDPrefix(ctx, prefix, shownMatches+1)
 	switch {
 	case err != nil:
 		return timeline.Annotation{}, err
@@ -213,19 +153,12 @@ func findAnnotation(ctx context.Context, s records, prefix string) (timeline.Ann
 		return timeline.Annotation{}, annotationNotFoundError("no annotation has an id starting "+prefix, nil)
 	}
 
-	lines := make([]string, 0, shownAnnotations+1)
-	for _, a := range annotations[:min(len(annotations), shownAnnotations)] {
-		lines = append(lines, fmt.Sprintf("  %s  %s", a.ID, a.Kind))
-	}
-	if len(annotations) > shownAnnotations {
-		lines = append(lines, "  and more")
+	var rows []string
+	for _, a := range annotations[:min(len(annotations), shownMatches)] {
+		rows = append(rows, fmt.Sprintf("%s  %s", a.ID, a.Kind))
 	}
 
-	return timeline.Annotation{}, &Error{
-		Kind:    KindAmbiguousID,
-		Message: "more than one annotation has an id starting " + prefix,
-		Hint:    "Pass more of the id:\n" + strings.Join(lines, "\n"),
-	}
+	return timeline.Annotation{}, ambiguousIDError("annotation", prefix, rows, len(annotations) > shownMatches)
 }
 
 func annotationNotFoundError(message string, err error) *Error {

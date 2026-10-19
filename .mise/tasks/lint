@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Check formatting and lint rules (read-only)"
+#MISE description="Run the linters and fail on a stale CLI reference or export schema (read-only)"
 
 set -euo pipefail
 

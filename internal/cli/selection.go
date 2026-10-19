@@ -207,7 +207,7 @@ type selection struct {
 // selectTimelines returns the timelines the first layer that names any selects: --overlay's, in
 // the overlay's order; the positional name; -t's names, each once in the order named; then,
 // unless in's rule is guard, a non-empty CORONER_TIMELINE, then the current timeline.
-// readTimelineInput lets at most one of --overlay, the positional name and -t through. A layer
+// readTimelineInput refuses -t beside --overlay or the positional name. A layer
 // naming a missing timeline is timeline_not_found rather than falling through to the next, so a
 // typo never acts on another timeline.
 func selectTimelines(
@@ -246,6 +246,23 @@ func selectOne(
 	}
 
 	return sel.one(ctx, s)
+}
+
+// selectAll returns the timelines in selects, usage when they are several and f prints one, or
+// timeline_required when it selects none.
+func selectAll(
+	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool), f format,
+) ([]timeline.Timeline, error) {
+	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	if err != nil {
+		return nil, err
+	}
+	err = sel.checkFormat(f)
+	if err != nil {
+		return nil, err
+	}
+
+	return sel.all(ctx, s)
 }
 
 // one returns the first timeline sel selected, the only one a one-timeline command can, or
@@ -397,15 +414,11 @@ func timelineRequiredError(ctx context.Context, s records) error {
 		}
 	}
 
-	const shown = 10
-	names := make([]string, 0, shown)
-	for _, t := range timelines[:min(len(timelines), shown)] {
+	names := make([]string, 0, len(timelines))
+	for _, t := range timelines {
 		names = append(names, t.Name)
 	}
-	if more := len(timelines) - len(names); more > 0 {
-		names = append(names, fmt.Sprintf("and %d more", more))
-	}
-	hint := "Timelines: " + strings.Join(names, ", ") + "\n" +
+	hint := "Timelines: " + strings.Join(firstFew(names, 10), ", ") + "\n" +
 		"Pass -t <name>, set CORONER_TIMELINE, or run 'coroner timeline use <name>'."
 
 	return &Error{Kind: KindTimelineRequired, Message: "no timeline selected", Hint: hint}

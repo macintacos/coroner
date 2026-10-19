@@ -211,20 +211,26 @@ func unknownHelpError(root *cobra.Command, name string, topics []HelpTopic, err 
 		candidates[i] = candidate.name
 	}
 
+	hint := fmt.Sprintf("Run '%s help' to list commands and topics.", root.Name())
+	if suggestion := closest(name, candidates); suggestion != "" {
+		hint = fmt.Sprintf("Did you mean '%s help %s'?", root.Name(), suggestion)
+	}
+
 	return &Error{
 		Kind:    KindUsage,
 		Message: fmt.Sprintf("unknown help topic or command %q", name),
-		Hint:    fmt.Sprintf("Did you mean '%s help %s'?", root.Name(), closest(name, candidates)),
+		Hint:    hint,
 		Err:     err,
 	}
 }
 
 // closest returns the candidate the fewest single-character edits from name, the first of
-// several at the same distance; names are ASCII.
+// several at the same distance, or "" when none is within two, the distance cobra suggests
+// commands within; names are ASCII.
 func closest(name string, candidates []string) string {
-	best, bestDistance := "", -1
+	best, bestDistance := "", 3
 	for _, candidate := range candidates {
-		if distance := levenshtein(name, candidate); bestDistance < 0 || distance < bestDistance {
+		if distance := levenshtein(name, candidate); distance < bestDistance {
 			best, bestDistance = candidate, distance
 		}
 	}

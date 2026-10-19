@@ -63,10 +63,10 @@ var _ = Describe("Decode", func() {
 var _ = Describe("DecodeSize", func() {
 	DescribeTable("reads the size in pixels, without the PNG",
 		func(encode func(*bytes.Buffer, image.Image) error) {
-			img, err := graphics.DecodeSize(encoded(encode, picture(40, 30)))
+			size, err := graphics.DecodeSize(encoded(encode, picture(40, 30)))
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(img).To(Equal(graphics.Image{Width: 40, Height: 30}))
+			Expect(size).To(Equal(graphics.Pixels{Width: 40, Height: 30}))
 		},
 		Entry("PNG", func(b *bytes.Buffer, m image.Image) error { return png.Encode(b, m) }),
 		Entry("JPEG", func(b *bytes.Buffer, m image.Image) error { return jpeg.Encode(b, m, nil) }),
@@ -97,18 +97,16 @@ func grayPNG(width, height int) func() []byte {
 }
 
 var _ = DescribeTableSubtree("Decode and DecodeSize limits",
-	func(decode func([]byte) (graphics.Image, error)) {
+	func(decode func([]byte) error) {
 		It("rejects content that is not a PNG, JPEG or GIF", func() {
 			webp := []byte("RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00")
 
-			_, err := decode(webp)
-
-			Expect(err).To(MatchError(image.ErrFormat))
+			Expect(decode(webp)).To(MatchError(image.ErrFormat))
 		})
 
 		DescribeTable("rejects an image too large to decode safely or show, without decoding it",
 			func(content func() []byte, size string) {
-				_, err := decode(content())
+				err := decode(content())
 
 				Expect(err).To(MatchError(ContainSubstring(size)))
 			},
@@ -118,13 +116,22 @@ var _ = DescribeTableSubtree("Decode and DecodeSize limits",
 		)
 
 		It("accepts an image 10000 pixels a side", func() {
-			_, err := decode(grayPNG(10_000, 1)())
-
-			Expect(err).NotTo(HaveOccurred())
+			Expect(decode(grayPNG(10_000, 1)())).To(Succeed())
 		})
 	},
-	Entry("Decode", graphics.Decode),
-	Entry("DecodeSize", graphics.DecodeSize),
+	Entry("Decode", func(content []byte) error { _, err := graphics.Decode(content); return err }),
+	Entry("DecodeSize", func(content []byte) error { _, err := graphics.DecodeSize(content); return err }),
+)
+
+var _ = DescribeTable("IsImage",
+	func(mime string, want bool) {
+		Expect(graphics.IsImage(mime)).To(Equal(want))
+	},
+	Entry("an image Decode reads", "image/png", true),
+	Entry("an image Decode cannot read", "image/webp", true),
+	Entry("a media type in another case, with parameters", " Image/SVG+xml; charset=utf-8", true),
+	Entry("text", "text/plain; charset=utf-8", false),
+	Entry("no media type", "", false),
 )
 
 var _ = DescribeTable("Decodable",

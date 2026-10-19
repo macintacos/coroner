@@ -103,11 +103,20 @@ func deleteAttachments(ctx context.Context, app App, cfg config.Config, in field
 // says when the blobs they leave unused could not be deleted.
 func (d attachmentsDeleted) render(o output) error {
 	err := d.write(o)
-	if err != nil || d.blobsErr == nil {
+	if err != nil {
 		return err
 	}
 
-	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
+	return notifyBlobsErr(o, d.blobsErr)
+}
+
+// notifyBlobsErr says, when err is set, that a delete could not delete the blobs it left unused.
+func notifyBlobsErr(o output, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", err)
 }
 
 func (d attachmentsDeleted) write(o output) error {

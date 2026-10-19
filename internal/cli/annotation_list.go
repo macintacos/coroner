@@ -48,35 +48,34 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		t, err := selectOne(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		annotations, events, err := readAnnotations(ctx, s, t, ref)
-		if err != nil {
-			return err
-		}
-		order := orderEvents(events)
-		sortAnnotations(annotations, order)
-		if inv.out.format == formatJSON {
-			attachments, err := s.TimelineAttachments(ctx, t.ID)
+		return s.Read(ctx, func(tx *store.Tx) error {
+			t, err := selectOne(ctx, tx, inv.timelines, app.LookupEnv)
 			if err != nil {
 				return err
 			}
-			return inv.out.json(newAnnotationListJSON(annotations, attachmentsByOwner(attachments, inv.cfg.DBPath)))
-		}
+			annotations, events, err := readAnnotations(ctx, tx, t, ref)
+			if err != nil {
+				return err
+			}
+			order := orderEvents(events)
+			sortAnnotations(annotations, order)
+			if inv.out.format == formatJSON {
+				attachments, err := tx.TimelineAttachments(ctx, t.ID)
+				if err != nil {
+					return err
+				}
+				return inv.out.json(newAnnotationListJSON(annotations, attachmentsByOwner(attachments, inv.cfg.DBPath)))
+			}
 
-		return printAnnotations(inv.out, annotations, order)
+			return printAnnotations(inv.out, annotations, order)
+		})
 	})
 }
 
 // readAnnotations returns the annotations in t, or on the event ref names when set, with the
 // events they may be on in timeline.CompareEvents order.
-// ponytail: annotations and events are read in separate transactions, so an event deleted in
-// between lists its annotations last, and text shows them on event #0; read both in one store
-// call if that matters.
 func readAnnotations(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
+	ctx context.Context, s *store.Tx, t timeline.Timeline, ref *eventRef,
 ) ([]timeline.Annotation, []timeline.Event, error) {
 	if ref != nil {
 		e, err := findEventIn(ctx, s, t, *ref)

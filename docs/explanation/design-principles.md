@@ -68,10 +68,10 @@ coroner timeline use mongo-outage
 ```
 
 The order runs from most to least specific: a flag describes one command, the variable one
-shell, and the stored timeline every command run against that database. When you pick a
-timeline in the `coroner timeline list` picker while `CORONER_TIMELINE` names another,
-coroner warns that the variable still wins, so a forgotten variable does not quietly send
-events to the wrong investigation.
+shell, and the stored timeline every command run against that database. When you make a
+timeline current, with `coroner timeline use` or in the `coroner timeline list` picker,
+while `CORONER_TIMELINE` names another, coroner warns that the variable still wins, so a
+forgotten variable does not quietly send events to the wrong investigation.
 
 ## Honest functions: a pure core in a thin shell
 

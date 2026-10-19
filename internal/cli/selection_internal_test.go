@@ -6,12 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strings"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
@@ -29,29 +27,11 @@ var _ = Describe("timeline selection", func() {
 		s   *store.Store
 	)
 
-	lookup := func(env map[string]string) func(string) (string, bool) {
-		return func(key string) (string, bool) {
-			value, ok := env[key]
-			return value, ok
-		}
-	}
-
 	run := func(ctx SpecContext, args ...string) {
 		GinkgoHelper()
 		a := app
 		a.Args = append([]string{"--db", db}, args...)
 		Expect(Run(ctx, a)).To(Equal(0), strings.Join(args, " "))
-	}
-
-	// execute runs args through the root and returns the error it fails with.
-	execute := func(ctx context.Context, a App, args ...string) *Error {
-		GinkgoHelper()
-		root := NewRoot(ctx, a)
-		root.SetArgs(args)
-		_, err := root.ExecuteContextC(ctx)
-		failure, ok := errors.AsType[*Error](err)
-		Expect(ok).To(BeTrue(), "coroner %s returned %v", strings.Join(args, " "), err)
-		return failure
 	}
 
 	nameEach := func(timelines []timeline.Timeline) []string {
@@ -65,7 +45,7 @@ var _ = Describe("timeline selection", func() {
 	// selected returns the names of the timelines in, env or the current timeline select, and
 	// the layer that selected them.
 	selected := func(ctx context.Context, in timelineInput, env map[string]string) ([]string, selectedBy, error) {
-		sel, err := selectTimelines(ctx, s, in, lookup(env))
+		sel, err := selectTimelines(ctx, s, in, envOf(env))
 		if err != nil || sel.by == "" {
 			return nil, sel.by, err
 		}
@@ -76,7 +56,7 @@ var _ = Describe("timeline selection", func() {
 	// required returns the error a command that needs a timeline fails with when no layer
 	// selects one.
 	required := func(ctx context.Context, env map[string]string) error {
-		sel, err := selectTimelines(ctx, s, timelineInput{}, lookup(env))
+		sel, err := selectTimelines(ctx, s, timelineInput{}, envOf(env))
 		if err != nil {
 			return err
 		}
@@ -94,18 +74,8 @@ var _ = Describe("timeline selection", func() {
 		ids := 0
 		home := GinkgoT().TempDir()
 		db = filepath.Join(home, "coroner.db")
-		app = App{
-			In: strings.NewReader(""), Out: io.Discard, Err: io.Discard,
-			LookupEnv: lookup(map[string]string{"HOME": home}),
-			ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-			Now:       testNow,
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore:         store.Open,
-			OpenStoreReadOnly: store.OpenReadOnly,
-		}
+		app = scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
+		app.In = strings.NewReader("")
 		for _, args := range [][]string{
 			{"timeline", "create", "alpha"},
 			{"timeline", "create", "beta"},
@@ -222,7 +192,7 @@ var _ = Describe("timeline selection", func() {
 			func(ctx SpecContext, args ...string) {
 				deleteTimelines(ctx)
 
-				failure := execute(ctx, app, append([]string{"--db", db}, args...)...)
+				failure := executeError(ctx, app, append([]string{"--db", db}, args...)...)
 
 				Expect(failure.Kind).To(Equal(KindTimelineRequired))
 				Expect(failure.Hint).To(Equal("Run 'coroner timeline create <name>' to create one."))
@@ -264,7 +234,7 @@ var _ = Describe("timeline selection", func() {
 				args = append(args, "-o", file)
 			}
 
-			failure := execute(ctx, app, append([]string{"--db", db, "-t", "alpha", "-t", "beta"}, args...)...)
+			failure := executeError(ctx, app, append([]string{"--db", db, "-t", "alpha", "-t", "beta"}, args...)...)
 
 			Expect(failure.Kind).To(Equal(KindUsage))
 			Expect(file).NotTo(BeAnExistingFile())
@@ -276,7 +246,7 @@ var _ = Describe("timeline selection", func() {
 	It("names --overlay when an overlay selects several timelines for a format that prints one", func(ctx SpecContext) {
 		file := filepath.Join(filepath.Dir(db), "x.svg")
 
-		failure := execute(ctx, app, "--db", db, "timeline", "export", "--overlay", "o", "--format", "svg", "-o", file)
+		failure := executeError(ctx, app, "--db", db, "timeline", "export", "--overlay", "o", "--format", "svg", "-o", file)
 
 		Expect(failure.Kind).To(Equal(KindUsage))
 		Expect(failure.Message).To(ContainSubstring("--overlay selects 2"))
@@ -285,16 +255,11 @@ var _ = Describe("timeline selection", func() {
 
 	It("names in the count hint exactly the commands that read several timelines", func(ctx SpecContext) {
 		var several []string
-		var walk func(cmd *cobra.Command)
-		walk = func(cmd *cobra.Command) {
+		walkCommands(NewRoot(ctx, app), func(cmd *cobra.Command) {
 			if ruleOf(cmd).several {
 				several = append(several, "'"+cmd.CommandPath()+"'")
 			}
-			for _, sub := range cmd.Commands() {
-				walk(sub)
-			}
-		}
-		walk(NewRoot(ctx, app))
+		})
 		Expect(several).NotTo(BeEmpty())
 
 		failure := flagError(ctx, []string{"event", "view", "1", "-t", "alpha", "-t", "beta"})
@@ -311,7 +276,7 @@ var _ = Describe("timeline selection", func() {
 		_, err = raw.ExecContext(ctx, "DROP TABLE event")
 		Expect(err).NotTo(HaveOccurred())
 
-		failure := execute(ctx, app, "--db", db, "timeline", "export", "-t", "alpha", "-t", "beta",
+		failure := executeError(ctx, app, "--db", db, "timeline", "export", "-t", "alpha", "-t", "beta",
 			"--format", "svg", "-o", filepath.Join(filepath.Dir(db), "x.svg"))
 
 		Expect(failure.Kind).To(Equal(KindUsage))

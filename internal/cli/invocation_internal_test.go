@@ -19,10 +19,7 @@ var _ = Describe("invocation", func() {
 		env["HOME"] = "/home/priya"
 		return App{
 			InIsTTY: true, OutIsTTY: true, ErrIsTTY: true,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			},
+			LookupEnv: envOf(env),
 			ReadFile: func(string) ([]byte, error) {
 				if configFile == "" {
 					return nil, fs.ErrNotExist
@@ -134,6 +131,20 @@ var _ = Describe("invocation", func() {
 		Expect(read(ctx, invocationApp(map[string]string{}, "")).debug).To(BeFalse())
 		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--debug").debug).To(BeTrue())
 		Expect(read(ctx, invocationApp(map[string]string{"CORONER_DEBUG": "1"}, "")).debug).To(BeTrue())
+		Expect(read(ctx, invocationApp(map[string]string{"CORONER_DEBUG": "1"}, ""), "--debug=false").debug).To(BeFalse())
+	})
+
+	DescribeTable("reads a no or off CORONER_DEBUG, in any case, as false",
+		func(ctx SpecContext, value string) {
+			Expect(read(ctx, invocationApp(map[string]string{"CORONER_DEBUG": value}, "")).debug).To(BeFalse())
+		},
+		Entry(nil, "no"), Entry(nil, "OFF"), Entry(nil, "No"),
+	)
+
+	It("colours both streams under --no-color=false, whatever NO_COLOR says", func(ctx SpecContext) {
+		inv := read(ctx, invocationApp(map[string]string{"NO_COLOR": "1", "CORONER_NO_COLOR": "1"}, ""), "--no-color=false")
+
+		Expect([]bool{inv.outColor, inv.errColor}).To(Equal([]bool{true, true}))
 	})
 
 	It("never opens the store", func(ctx SpecContext) {
@@ -142,9 +153,10 @@ var _ = Describe("invocation", func() {
 		Expect(inv.cfg.DBPath).NotTo(BeEmpty())
 	})
 
-	It("lets a viewer open on a terminal until --format is given", func(ctx SpecContext) {
+	It("lets a viewer open on a terminal until --format or --json is given", func(ctx SpecContext) {
 		Expect(read(ctx, invocationApp(map[string]string{}, "")).interactive()).To(BeTrue())
 		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--format", "text").interactive()).To(BeFalse())
+		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--json").interactive()).To(BeFalse())
 	})
 })
 

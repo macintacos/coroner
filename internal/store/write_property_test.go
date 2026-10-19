@@ -1,9 +1,7 @@
 package store_test
 
 import (
-	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,23 +15,7 @@ import (
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 func TestEventWritesReadBack(t *testing.T) {
 	ctx := t.Context()
-	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "coroner.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		err := s.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	})
-
-	// One store for every run, so each run gets a timeline and ids no earlier run used.
-	n := 0
-	nextID := func() string {
-		n++
-		return uuid(n)
-	}
+	s, nextID := openPropertyStore(t)
 
 	rapid.Check(t, func(t *rapid.T) {
 		created := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
@@ -142,18 +124,14 @@ func anyTag() *rapid.Generator[string] {
 	return rapid.StringMatching(`^[a-z0-9][a-z0-9._:/-]{0,63}$`)
 }
 
-// anyText draws text the store's not-blank CHECK accepts: any Unicode, text that breaks HTML,
+// anyText draws text timeline.ValidateText, and so the store's not-blank CHECK, accepts: any Unicode, text that breaks HTML,
 // lines or JSON, or a long run.
 func anyText() *rapid.Generator[string] {
 	return rapid.OneOf(
 		rapid.StringN(1, 32, -1),
 		rapid.SampledFrom([]string{"</script><script>alert(1)</script>", "line one\nline two\r\n", "Réplica caída — 東京 ✓", "a\u2028b\u0000c"}),
 		rapid.StringN(1000, 5000, -1),
-	).Filter(func(s string) bool {
-		// SQLite's length() stops at a NUL, so the CHECK reads text whose trimmed start is NUL as blank.
-		trimmed := strings.TrimSpace(s)
-		return trimmed != "" && trimmed[0] != 0
-	})
+	).Filter(func(s string) bool { return timeline.ValidateText("text", s) == nil })
 }
 
 // anyBlankable draws text for a field with no not-blank rule, often empty or only whitespace.

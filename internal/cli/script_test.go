@@ -5,7 +5,6 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -63,9 +62,12 @@ func TestScripts(t *testing.T) {
 	}
 	for _, dir := range []string{"testdata/script", "testdata/script/contract"} {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
-			files, _ := filepath.Glob(filepath.Join(dir, "*.txtar"))
+			files, err := filepath.Glob(filepath.Join(dir, "*.txtar"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			if files == nil {
-				t.Skip("no scripts in " + dir)
+				t.Fatalf("no scripts in %s", dir)
 			}
 			p := params
 			p.Files = files
@@ -221,24 +223,46 @@ func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: bumpschema <db>")
 	}
 
-	db, err := sql.Open("sqlite", ts.MkAbs(args[0]))
-	ts.Check(err)
-	_, err = db.ExecContext(context.Background(),
-		"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
-	ts.Check(errors.Join(err, db.Close()))
+	ts.Check(bumpSchemaVersion(context.Background(), ts.MkAbs(args[0])))
 }
 
-// runCoroner runs coroner as scripts do, through run (cli.Run or a test variant): main.go's
-// App with the clock and IDs pinned.
+// bumpSchemaVersion records one migration past the highest the database at path applied.
+func bumpSchemaVersion(ctx context.Context, path string) error {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx,
+		"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
+	return errors.Join(err, db.Close())
+}
+
+// runCoroner runs coroner as scripts do, through run (cli.Run or a test variant): processApp
+// with the clock and IDs pinned.
 func runCoroner(run func(context.Context, cli.App) int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
 
+	app, err := withTestClock(processApp())
+	if err == nil {
+		app, err = withTestIDs(app)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		// Distinct from coroner's exit codes, so an exact exit-code assertion tells a broken harness from a coroner failure.
+		os.Exit(125)
+	}
+	os.Exit(run(ctx, app))
+}
+
+// processApp is main.go's App, built from this process. Keep the two in sync: a seam main.go sets
+// reaches scripts only through here.
+func processApp() cli.App {
 	version := "(devel)"
 	if build, ok := debug.ReadBuildInfo(); ok {
 		version = build.Main.Version
 	}
-	app, err := withTestClock(cli.App{
+	return cli.App{
 		Args:              os.Args[1:],
 		In:                os.Stdin,
 		Out:               os.Stdout,
@@ -260,21 +284,14 @@ func runCoroner(run func(context.Context, cli.App) int) {
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
-	})
-	if err == nil {
-		app, err = withTestIDs(app)
 	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		// Distinct from coroner's exit codes, so an exact exit-code assertion tells a broken harness from a coroner failure.
-		os.Exit(125)
-	}
-	os.Exit(run(ctx, app))
 }
 
-func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
-	return os.OpenFile(filepath.Clean(name), flag, perm)
-}
+var _ = Describe("processApp", func() {
+	It("sets every seam", func() {
+		Expect(nilSeams(processApp())).To(BeEmpty())
+	})
+})
 
 func withTestClock(app cli.App) (cli.App, error) {
 	value, _ := app.LookupEnv("CORONER_TEST_NOW")
@@ -345,16 +362,6 @@ func withTestIDs(app cli.App) (cli.App, error) {
 		return testID(millis, n), nil
 	}
 	return app, nil
-}
-
-// testID returns the UUIDv7 whose timestamp is millis and whose random bits hold n.
-func testID(millis int64, n uint64) uuid.UUID {
-	var id uuid.UUID
-	binary.BigEndian.PutUint64(id[:8], uint64(max(millis, 0))<<16)
-	binary.BigEndian.PutUint64(id[8:], n)
-	id[6] = 0x70
-	id[8] = id[8]&0x3f | 0x80
-	return id
 }
 
 var _ = Describe("withTestIDs", func() {

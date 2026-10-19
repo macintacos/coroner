@@ -4,17 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/macintacos/coroner/internal/store"
 )
 
 type ran struct {
@@ -22,32 +18,29 @@ type ran struct {
 	out, errOut string
 }
 
-// kind is the error kind named by the JSON error envelope that ends ran's stderr.
+// kind is the error kind named by the JSON error envelope that ends ran's stderr, or "" when it
+// exited 0.
 func (r ran) kind() Kind {
+	GinkgoHelper()
+	if r.code == 0 {
+		return ""
+	}
 	lines := strings.Split(strings.TrimSpace(r.errOut), "\n")
 	var e envelope
-	_ = json.Unmarshal([]byte(lines[len(lines)-1]), &e)
+	Expect(json.Unmarshal([]byte(lines[len(lines)-1]), &e)).To(Succeed(), r.errOut)
 	return e.Error.Kind
 }
 
 // realRunner returns a runner of commands against a database file in a fresh home, with real ids
-// and a fixed clock.
+// and the fixed clock.
 func realRunner(ctx context.Context) func(args ...string) ran {
 	home := GinkgoT().TempDir()
 	db := filepath.Join(home, "coroner.db")
 	return func(args ...string) ran {
 		var out, errOut bytes.Buffer
-		code := Run(ctx, App{
-			Args: append([]string{"--db", db}, args...), In: strings.NewReader(""), Out: &out, Err: &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := map[string]string{"HOME": home}[key]
-				return value, ok
-			},
-			ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-			Now:       func() time.Time { return time.Date(2026, 9, 13, 1, 30, 0, 0, time.UTC) },
-			NewID:     uuid.NewV7,
-			OpenStore: store.Open,
-		})
+		app := scratchApp(home, &out, &errOut, uuid.NewV7)
+		app.Args, app.In = append([]string{"--db", db}, args...), strings.NewReader("")
+		code := Run(ctx, app)
 		return ran{code: code, out: out.String(), errOut: errOut.String()}
 	}
 }

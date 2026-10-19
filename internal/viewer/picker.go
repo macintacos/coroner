@@ -288,8 +288,7 @@ func helpStyles(s styles) help.Styles {
 	}
 }
 
-// filterStyles styles the filter prompt in ANSI colors, with a cursor that does not blink: a
-// blinking cursor re-arms its tick forever, so a keystroke's commands never settle.
+// filterStyles styles the filter prompt in ANSI colors.
 func filterStyles() textinput.Styles {
 	f := textinput.DefaultStyles(true)
 	f.Focused.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Cyan)
@@ -300,7 +299,6 @@ func filterStyles() textinput.Styles {
 	f.Blurred.Suggestion = f.Focused.Placeholder
 	f.Blurred.Text = lipgloss.NewStyle()
 	f.Cursor.Color = lipgloss.White
-	f.Cursor.Blink = false
 
 	return f
 }

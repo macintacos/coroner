@@ -23,6 +23,7 @@ var _ = Describe("event view, edit and delete", func() {
 		steppedDown = "0199a1b4-0000-7000-8000-000000000000"
 		pagerFires  = "0199a1b6-0000-7000-8000-000000000000"
 		drill       = "0199a1b8-0000-7000-8000-000000000000"
+		outageID    = "0199a1b3-0000-7000-8000-000000000000"
 	)
 
 	var (
@@ -38,24 +39,15 @@ var _ = Describe("event view, edit and delete", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, cli.App{
-			Args:    append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			In:      in,
-			InIsTTY: inIsTTY,
-			Out:     &out,
-			Err:     &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			},
-			ReadFile: readNoFile,
-			Now:      func() time.Time { return now },
-			NewID: func() (uuid.UUID, error) {
+		return cli.Run(ctx, harness{
+			home: home, db: filepath.Join(home, "coroner.db"), env: env, in: in, inIsTTY: inIsTTY,
+			out: &out, errOut: &errOut,
+			now: func() time.Time { return now },
+			newID: func() (uuid.UUID, error) {
 				ids++
 				return uuid.Parse(fmt.Sprintf("%08x-0000-7000-8000-000000000000", 0x0199a1b2+ids))
 			},
-			OpenStore: store.Open,
-		})
+		}.app(args...))
 	}
 	withStore := func(ctx SpecContext) *store.Store {
 		GinkgoHelper()
@@ -157,7 +149,7 @@ var _ = Describe("event view, edit and delete", func() {
 			func(ctx SpecContext) {
 				eventID := steppedDown
 				Expect(withStore(ctx).AddAnnotation(ctx, timeline.Annotation{
-					ID: "0199a1c0-0000-7000-8000-000000000000", TimelineID: "0199a1b3-0000-7000-8000-000000000000",
+					ID: "0199a1c0-0000-7000-8000-000000000000", TimelineID: outageID,
 					EventID: &eventID, Kind: timeline.AnnotationEvidence, Body: "replSetStepDown", CreatedAt: now, UpdatedAt: now,
 				}, "0199a1c1-0000-7000-8000-000000000000")).To(Succeed())
 
@@ -326,7 +318,7 @@ var _ = Describe("event view, edit and delete", func() {
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 				Expect(stored(ctx, steppedDown)).To(Equal(before))
-				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+				expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 			},
 			Entry(nil, "--url", "https://logs.example.com/\xff"),
 			Entry(nil, "--author", "julian\xff"),
@@ -339,7 +331,7 @@ var _ = Describe("event view, edit and delete", func() {
 				To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
-			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 		})
 
 		It("exits 2 with kind usage on a USER author that is not UTF-8, linking nothing", func(ctx SpecContext) {
@@ -349,19 +341,11 @@ var _ = Describe("event view, edit and delete", func() {
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
-			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
-			Expect(out.String()).NotTo(ContainSubstring(`"type":"link"`))
+			Expect(expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))).NotTo(ContainSubstring(`"type":"link"`))
 		})
 	})
 
-	It("exits 2 on event add --source none, saying why none is no source", func(ctx SpecContext) {
-		Expect(run(ctx, "event", "add", "x", "--source", "none")).To(Equal(2))
-
-		Expect(errOut.String()).To(ContainSubstring("none clears an event's source in event edit"))
-	})
-
 	Describe("delete", func() {
-		const outageID = "0199a1b3-0000-7000-8000-000000000000"
 		events := func(ctx SpecContext, timelineID string) []timeline.Event {
 			GinkgoHelper()
 			e, err := withStore(ctx).Events(ctx, timelineID)

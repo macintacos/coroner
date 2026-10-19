@@ -67,6 +67,10 @@ var _ = Describe("prepare", func() {
 			func(env *Envelope) { env.Attachments[0].EventID = new("gone") }, "attachment f1", "gone"),
 		Entry("an attachment's annotation missing", consistent(),
 			func(env *Envelope) { env.Attachments[1].AnnotationID = new("gone") }, "attachment f2", "gone"),
+		Entry("an attachment with no owner", consistent(),
+			func(env *Envelope) { env.Attachments[0].EventID = nil }, "attachment f1", "exactly one event or annotation"),
+		Entry("an attachment with two owners", consistent(),
+			func(env *Envelope) { env.Attachments[0].AnnotationID = new("a1") }, "attachment f1", "exactly one event or annotation"),
 		Entry("a link's leaving event missing", consistent(),
 			func(env *Envelope) { env.Links[0].FromEventID = "gone" }, "link l1", "gone"),
 		Entry("a link's reaching event missing", consistent(),
@@ -182,6 +186,9 @@ var _ = Describe("prepare", func() {
 			var b bytes.Buffer
 			err := WriteMermaid(&b, env, time.UTC)
 			return b.Len(), err
+		}),
+		Entry("MermaidSize", func(env Envelope) (int, error) {
+			return MermaidSize(env, time.UTC)
 		}),
 		Entry("HTML", func(env Envelope) (int, error) {
 			var b bytes.Buffer

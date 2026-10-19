@@ -2,8 +2,8 @@ mongo-outage  Primary election storm                   times in America/New_York
 5 events
 Keys
 
-↑/k    up           enter expand          s filter by source    ?      keys     
-↓/j    down         @     jump to time    t filter by tag       esc    close    
+↑/k    up/scroll    enter expand          s filter by source    ?      keys     
+↓/j    dn/scroll    @     jump to time    t filter by tag       esc    close    
 pgup   page up      r     refresh         / filter by text      q      quit     
 pgdn   page down                                                ctrl+c interrupt
 g/home first                                                                    

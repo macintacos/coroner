@@ -18,7 +18,9 @@ coroner <command> [flags]
 ### Examples
 
 ```
-  $ coroner version --json
+  $ coroner timeline create checkout-outage --title "Checkout outage"
+  $ coroner event add -t checkout-outage "Error rate crossed 5%" --at 2026-09-11T03:14Z --source datadog
+  $ coroner event list -t checkout-outage
 ```
 
 ### Options
@@ -27,7 +29,7 @@ coroner <command> [flags]
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)

@@ -4,22 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"slices"
 	"strings"
-	"time"
 
 	"charm.land/huh/v2"
-	"github.com/charmbracelet/x/ansi"
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/config"
-	"github.com/macintacos/coroner/internal/store"
 )
 
 // writeDefinitions returns every write command's definition, by its path below coroner.
@@ -298,16 +292,7 @@ var _ = Describe("write run functions", func() {
 
 // runWithoutStore calls run with an App whose store fails the spec when opened.
 func runWithoutStore(ctx context.Context, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) error {
-	app := App{
-		In: strings.NewReader(""), Now: testNow,
-		NewID: func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-		OpenStore: func(context.Context, string) (*store.Store, error) {
-			Fail("opened the store before rejecting its input")
-			return nil, errors.New("unreachable")
-		},
-	}
-
-	return run(ctx, app, config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
+	return run(ctx, storelessApp(nil), config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
 }
 
 // errorOf returns run with its result dropped.
@@ -395,8 +380,7 @@ func flagShapeProblems(path string, flag *pflag.Flag, f field) []string {
 func fieldProblems(path string, flag *pflag.Flag, formField huh.Field) []string {
 	var problems []string
 	_, usage := pflag.UnquoteUsage(flag)
-	view, _ := formField.WithWidth(400).(interface{ View() string })
-	if view == nil || !strings.Contains(ansi.Strip(view.View()), usage) {
+	if !strings.Contains(fieldView(formField), usage) {
 		problems = append(problems, fmt.Sprintf("coroner %s: form field %s does not show %q", path, flag.Name, usage))
 	}
 
@@ -408,11 +392,6 @@ func fieldProblems(path string, flag *pflag.Flag, formField huh.Field) []string 
 	}
 
 	return problems
-}
-
-// testNow is the clock both the flag and the form side of the validation table read.
-func testNow() time.Time {
-	return time.Date(2026, 9, 12, 21, 30, 0, 0, time.UTC)
 }
 
 // badValue is a value the field of the write command at path rejects, and the other arguments
@@ -486,11 +465,10 @@ func badValueEntries() []TableEntry {
 // commandLine returns the arguments that give bad's field its value, as its positional argument
 // or its flag, after bad's other arguments.
 func commandLine(def definition, bad badValue) []string {
+	GinkgoHelper()
 	args := append(strings.Fields(bad.path), bad.otherArgs...)
-	i := slices.IndexFunc(def.fields, func(f field) bool { return f.name == bad.field })
-	Expect(i).NotTo(Equal(-1), "%s has no field %s", bad.path, bad.field)
 
-	return append(args, fieldArg(def.fields[i], bad.value))
+	return append(args, fieldArg(fieldNamed(def, bad.field), bad.value))
 }
 
 // fieldArg returns the argument that gives f value: value itself for the positional argument, or
@@ -506,20 +484,13 @@ func fieldArg(f field, value string) string {
 // flagError runs args, with a store that fails the spec when opened, and returns the *Error it
 // fails with.
 func flagError(ctx context.Context, args []string) *Error {
-	app := App{
-		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard,
-		LookupEnv: func(key string) (string, bool) {
-			value, ok := map[string]string{"HOME": "/nonexistent", "CORONER_DB": "/nonexistent/coroner.db"}[key]
-			return value, ok
-		},
-		ReadFile: func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-		Now:      testNow,
-		NewID:    func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-		OpenStore: func(context.Context, string) (*store.Store, error) {
-			Fail("coroner " + strings.Join(args, " ") + " opened the store before rejecting its input")
-			return nil, errors.New("unreachable")
-		},
-	}
+	GinkgoHelper()
+	return executeError(ctx, storelessApp(args), args...)
+}
+
+// executeError runs args through app's root and returns the *Error it fails with.
+func executeError(ctx context.Context, app App, args ...string) *Error {
+	GinkgoHelper()
 	root := NewRoot(ctx, app)
 	root.SetArgs(args)
 
@@ -533,22 +504,17 @@ func flagError(ctx context.Context, args []string) *Error {
 // formError returns the error def's form field called name shows once it holds value and loses
 // focus, with times read as the flag side reads them.
 func formError(def definition, name, value string) error {
-	for _, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
-		if formField.GetKey() != name {
-			continue
-		}
-		typeInto(formField, value)
-		formField.Blur()
+	GinkgoHelper()
+	formField := namedField(def.formFields(formCheckEnv(), fieldValues{}, formChoices{}), name)
+	typeInto(formField, value)
+	formField.Blur()
 
-		return formField.Error()
-	}
-
-	Fail("no form field " + name)
-	return nil
+	return formField.Error()
 }
 
 // formCheckEnv is what form fields check time input against, as the flag side reads it.
 func formCheckEnv() checkEnv {
+	GinkgoHelper()
 	z, err := timeZone(nil, "local", testNow().Location())
 	Expect(err).NotTo(HaveOccurred())
 

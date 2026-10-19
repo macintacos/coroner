@@ -3,7 +3,7 @@
 - **Timelines:**
   - `mongo-failover` · MongoDB primary failover · **Refs:** INC-4820
   - `checkout-latency` · Checkout latency · **Refs:** INC-4821, https://status.example.com/incidents/4821
-- **Window:** 2026-09-10 14:01:30 → 14:07:00 UTC
+- **Window:** 2026-09-10 14:01:30 → 14:08 UTC
 - **Events:** 6 · **Sources:** `k8s:events`, `mongod`, `slack` · **Tags:** `#db` `#deploy`
 - **Exported:** 2026-09-12 21:40 UTC by coroner 0.1.0
 

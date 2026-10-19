@@ -19,6 +19,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
@@ -54,12 +55,35 @@ type Schema struct {
 // not create, ErrDatabaseTooNew for a database a newer coroner migrated, even while Open
 // waited on the lock, and ErrBackupExists when that backup is already there.
 func Open(ctx context.Context, path string) (*Store, error) {
+	fsys, err := embeddedMigrations()
+	if err != nil {
+		return nil, err
+	}
+
+	return open(ctx, path, fsys)
+}
+
+func embeddedMigrations() (fs.FS, error) {
 	fsys, err := fs.Sub(migrations, "migrations")
 	if err != nil {
 		return nil, fmt.Errorf("load migrations: %w", err)
 	}
 
-	return open(ctx, path, fsys)
+	return fsys, nil
+}
+
+// storeAfter returns the Store over db once checkErr, the result of checking it, is nil, and
+// otherwise closes db.
+func storeAfter(path string, db *sql.DB, fsys fs.FS, checkErr error) (*Store, error) {
+	if checkErr != nil {
+		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(checkErr)), db.Close())
+	}
+
+	return &Store{db: db, migrations: fsys, blobDir: config.BlobDir(path)}, nil
+}
+
+func tooNew(current int64) error {
+	return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
 }
 
 // OpenReadOnly opens the existing coroner database at path without creating, migrating or
@@ -68,9 +92,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 // path, and ErrForeignDatabase or ErrDatabaseTooNew as Open does. Below the latest schema,
 // only Schema may be called.
 func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
-	fsys, err := fs.Sub(migrations, "migrations")
+	fsys, err := embeddedMigrations()
 	if err != nil {
-		return nil, fmt.Errorf("load migrations: %w", err)
+		return nil, err
 	}
 
 	// mode=ro reports a missing file as SQLITE_CANTOPEN, not fs.ErrNotExist.
@@ -89,11 +113,7 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 	}
 
 	_, err = inspect(ctx, db, fsys)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
-	}
-
-	return &Store{db: db, migrations: fsys, blobDir: config.BlobDir(path)}, nil
+	return storeAfter(path, db, fsys, err)
 }
 
 // Schema reads the database's schema version. It is safe to call below Latest; every other
@@ -133,12 +153,7 @@ func open(ctx context.Context, path string, fsys fs.FS) (*Store, error) {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	err = prepare(ctx, db, path, fsys)
-	if err != nil {
-		return nil, errors.Join(fmt.Errorf("open %s: %w", path, translate(err)), db.Close())
-	}
-
-	return &Store{db: db, migrations: fsys, blobDir: config.BlobDir(path)}, nil
+	return storeAfter(path, db, fsys, prepare(ctx, db, path, fsys))
 }
 
 // directoryError is the error for a directory at the database path, which SQLite reports only
@@ -189,6 +204,9 @@ func refuseForeign(ctx context.Context, db *sql.DB) error {
 		(SELECT count(*) FROM sqlite_schema WHERE name NOT IN (?, 'sqlite_sequence'))`,
 		goose.DefaultTablename,
 	).Scan(&appID, &otherObjects)
+	if resultCode(err) == sqlite3.SQLITE_NOTADB {
+		return fmt.Errorf("%w: %w", ErrForeignDatabase, err)
+	}
 	if err != nil {
 		return fmt.Errorf("read database identity: %w", err)
 	}
@@ -227,7 +245,7 @@ func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) (bool, error) {
 	}
 
 	if current > latest {
-		return false, fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
+		return false, tooNew(current)
 	}
 
 	return current < latest, nil
@@ -298,7 +316,7 @@ func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 	}
 
 	if current > target {
-		return fmt.Errorf("%w (schema %d); upgrade coroner", ErrDatabaseTooNew, current)
+		return tooNew(current)
 	}
 
 	if current > 0 && current < target {

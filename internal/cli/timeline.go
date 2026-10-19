@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -13,15 +12,6 @@ import (
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
-)
-
-// The characters and length of timeline names, sources and tags; keep in sync with
-// internal/timeline/grammar.go.
-const (
-	slugAlphanumerics = "abcdefghijklmnopqrstuvwxyz0123456789"
-	namePunct         = "._-"
-	sourceTagPunct    = "._:/-"
-	maxSlugLength     = 64
 )
 
 func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
@@ -34,9 +24,7 @@ func newTimelineCommand(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner timeline create mongo-outage-2026-09-11 --ref INC-4821\n" +
 			"  $ coroner timeline use mongo-outage-2026-09-11\n" +
 			"  $ coroner timeline list",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE: runNoun,
 	}
 
 	cmd.AddCommand(
@@ -151,7 +139,7 @@ func suggestName(name string) string {
 		return ""
 	}
 
-	return suggestSlug(name, namePunct, timeline.ValidateTimelineName)
+	return timeline.SuggestTimelineName(name)
 }
 
 // withOneArg returns run behind cobra.ExactArgs(1), failing as Run reports cobra's own rejection,
@@ -160,7 +148,7 @@ func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, [
 	return func(cmd *cobra.Command, args []string) error {
 		err := cobra.ExactArgs(1)(cmd, args)
 		if err != nil {
-			return oneArgError(cmd, err)
+			return argsError(cmd, err)
 		}
 
 		return run(cmd, args)
@@ -171,45 +159,14 @@ func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, [
 // cobra.ExactArgs(1) does.
 func oneArgOrNone(cmd *cobra.Command, args []string) error {
 	if len(args) > 1 {
-		return oneArgError(cmd, cobra.ExactArgs(1)(cmd, args))
+		return cobra.ExactArgs(1)(cmd, args)
 	}
 
 	return nil
 }
 
-// oneArgError is usageError with the usage line in its hint, as cobra's message never names the
-// argument to pass.
-func oneArgError(cmd *cobra.Command, err error) *Error {
-	failure := usageError(cmd, err)
-	failure.Hint = fmt.Sprintf("Usage: %s\nRun '%s --help' for more.", cmd.UseLine(), cmd.CommandPath())
-	return failure
-}
-
 func timelineExistsError(name, hint string, err error) *Error {
 	return &Error{Kind: KindTimelineExists, Message: fmt.Sprintf("timeline %q already exists", name), Hint: hint, Err: err}
-}
-
-// suggestSlug returns input made into a slug of letters, digits and punct (lowercased, other
-// characters dashed, trimmed, cut to 64) that valid accepts, or "" when nothing valid remains.
-func suggestSlug(input, punct string, valid func(string) error) string {
-	var b strings.Builder
-	for _, r := range strings.ToLower(input) {
-		if !strings.ContainsRune(slugAlphanumerics+punct, r) {
-			r = '-'
-		}
-		if r == '-' && strings.HasSuffix(b.String(), "-") {
-			continue
-		}
-		b.WriteRune(r)
-	}
-
-	slug := strings.TrimLeft(b.String(), punct)
-	slug = strings.TrimRight(slug[:min(len(slug), maxSlugLength)], "-")
-	if valid(slug) != nil {
-		return ""
-	}
-
-	return slug
 }
 
 // appendUnique appends each value in add that values does not hold yet.

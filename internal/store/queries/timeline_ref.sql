@@ -13,6 +13,6 @@ SELECT ref FROM timeline_ref
 WHERE timeline_id = ?
 ORDER BY position;
 
--- name: DeleteTimelineRef :exec
+-- name: DeleteTimelineRefs :exec
 DELETE FROM timeline_ref
-WHERE timeline_id = ? AND ref = ?;
+WHERE timeline_id = ?;

@@ -21,11 +21,6 @@ WHERE id GLOB ?
 ORDER BY id
 LIMIT ?;
 
--- name: ListEvents :many
-SELECT * FROM event
-WHERE timeline_id = ?
-ORDER BY occurred_at, seq;
-
 -- name: OverwriteEvent :one
 -- OverwriteEvent returns id only so that a missing row is sql.ErrNoRows.
 UPDATE event

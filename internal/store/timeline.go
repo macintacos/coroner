@@ -219,15 +219,9 @@ func addRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []
 
 // replaceRefs replaces the refs of the timeline with timelineID with refs, in the order given.
 func replaceRefs(ctx context.Context, q *sqlcgen.Queries, timelineID string, refs []string) error {
-	stored, err := q.ListTimelineRefs(ctx, timelineID)
+	err := q.DeleteTimelineRefs(ctx, timelineID)
 	if err != nil {
 		return err
-	}
-	for _, ref := range stored {
-		err = q.DeleteTimelineRef(ctx, sqlcgen.DeleteTimelineRefParams{TimelineID: timelineID, Ref: ref})
-		if err != nil {
-			return err
-		}
 	}
 
 	return addRefs(ctx, q, timelineID, refs)

@@ -1,6 +1,6 @@
 # times
 
-- **Window:** 2026-09-10 20:00:00 EDT → 2026-11-01 01:45:00 EST
+- **Window:** 2026-09-11 +00:00 → 2026-11-01 01:45 EST
 - **Events:** 16
 - **Exported:** 2026-09-12 21:40 EDT by coroner (devel)
 

@@ -30,6 +30,11 @@ type fakeSystem struct {
 
 var errFailed = errors.New("fake: failed")
 
+// failingWriter fails every write, as a full disk or closed pipe would.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errFailed }
+
 func newFake() *fakeSystem {
 	return &fakeSystem{answers: map[string]string{}, failing: map[string]error{}, goos: "darwin", goarch: "arm64"}
 }

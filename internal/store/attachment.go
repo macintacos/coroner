@@ -2,11 +2,9 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
@@ -29,34 +27,6 @@ func (a NewAttachment) Validate() error {
 type stagedAttachment struct {
 	attachment timeline.Attachment
 	blob       stagedBlob
-}
-
-// AddAttachment stores content as a blob and adds a, which carries its ID, Owner, Filename and
-// CreatedAt, returning a with the content's MIME, SHA256 and Size. It returns an error
-// wrapping ErrNotFound when the owner does not exist, having named no blob. A crash or
-// failed insert after the blob is named leaves it unreferenced until GarbageCollectBlobs,
-// never a row without its blob.
-func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, content io.Reader) (timeline.Attachment, error) {
-	err := a.Owner.Validate()
-	if err != nil {
-		return timeline.Attachment{}, err
-	}
-
-	rows, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: []NewAttachment{
-		{ID: a.ID, Filename: a.Filename, CreatedAt: a.CreatedAt, Content: content},
-	}}, func(tx *Tx) error {
-		err := checkOwner(ctx, tx.q, a.Owner)
-		if err != nil {
-			return translate(err)
-		}
-		tx.Attach(a.Owner)
-		return nil
-	})
-	if err != nil {
-		return timeline.Attachment{}, err
-	}
-
-	return rows[0], nil
 }
 
 // ListAttachments is Tx.ListAttachments in its own Read.
@@ -85,11 +55,6 @@ func (tx *Tx) ListAttachments(ctx context.Context, owner timeline.AttachmentOwne
 
 		return loadAll(rows, loadAttachment)
 	})
-}
-
-// Attachment is Tx.Attachment in its own Read.
-func (s *Store) Attachment(ctx context.Context, id string) (timeline.Attachment, error) {
-	return readIn(ctx, s, func(tx *Tx) (timeline.Attachment, error) { return tx.Attachment(ctx, id) })
 }
 
 // Attachment returns the attachment with id.
@@ -131,12 +96,13 @@ func (s *Store) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit 
 // with prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase
 // hex and dashes.
 func (tx *Tx) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Attachment, error) {
-	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
-		return nil, fmt.Errorf("attachment id prefix %q is not lowercase hex and dashes", prefix)
+	pattern, err := globPrefix("attachment", prefix)
+	if err != nil {
+		return nil, err
 	}
 
 	return translated(func() ([]timeline.Attachment, error) {
-		rows, err := tx.q.ListAttachmentsByIDPrefix(ctx, sqlcgen.ListAttachmentsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
+		rows, err := tx.q.ListAttachmentsByIDPrefix(ctx, sqlcgen.ListAttachmentsByIDPrefixParams{ID: pattern, Limit: int64(limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -245,17 +211,6 @@ func createAttachment(ctx context.Context, q *sqlcgen.Queries, a timeline.Attach
 		Size:         a.Size,
 		CreatedAt:    timeline.FormatInstant(a.CreatedAt),
 	})
-	return err
-}
-
-// checkOwner returns an error wrapping ErrNotFound unless owner's event or annotation exists.
-func checkOwner(ctx context.Context, q *sqlcgen.Queries, owner timeline.AttachmentOwner) error {
-	if owner.EventID != nil {
-		_, err := q.GetEvent(ctx, *owner.EventID)
-		return err
-	}
-
-	_, err := q.GetAnnotation(ctx, *owner.AnnotationID)
 	return err
 }
 

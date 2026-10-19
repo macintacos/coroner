@@ -45,9 +45,24 @@ const (
 	svgLabelRunes     = 60
 	svgLaneLabelRunes = 24
 	svgMaxTicks       = 8
-	// svgMuted colours the lane of events with no source.
-	svgMuted = "#545c63"
+	// svgBackground is white rather than the viewer's paper: the picture is pasted onto
+	// pages of any colour, and a white card reads on all of them.
+	svgBackground = "#ffffff"
 )
+
+// svgColors are the light theme's tokens the SVG paints with, so it follows the HTML page.
+type svgColors struct {
+	Background, Ink, Muted, Rule string
+}
+
+func newSVGColors() svgColors {
+	light := map[string]string{}
+	for _, t := range viewerTokens() {
+		light[t.Name] = t.Color.Light
+	}
+
+	return svgColors{Background: svgBackground, Ink: light["ink"], Muted: light["muted"], Rule: light["rule"]}
+}
 
 // svgPicture is what the SVG template prints: a title at TitleY and header lines, then the
 // plot, translated down to PlotY, or a note at NoteY when there are no events. The title,
@@ -60,6 +75,7 @@ type svgPicture struct {
 	Label, Title string
 	Header       []svgText
 	Plot         svgLayout
+	Colors       svgColors
 }
 
 // svgText is a line of header text with its baseline.
@@ -117,7 +133,7 @@ func newSVGPicture(env Envelope, v view, zone *time.Location) svgPicture {
 
 	picture := svgPicture{
 		Width: svgWidth, Margin: svgMargin, TitleY: svgTitleBaseline, AxisY: svgAxisHeight,
-		Label: truncate(title, svgHeaderRunes), Title: title,
+		Label: truncate(title, svgHeaderRunes), Title: title, Colors: newSVGColors(),
 	}
 	y := svgTitleBaseline + svgTitleLeading
 	for _, line := range header {
@@ -224,7 +240,7 @@ func layoutSVG(v view, window svgWindow, zone *time.Location) svgLayout {
 	byID := readings(v.Events, zone)
 	daySpansOffsets := daysSpanningOffsets(byID)
 	for _, g := range groupEvents(v.Events, sourceOf) {
-		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: svgMuted, Y: layout.Height}
+		lane := svgLane{Label: "(no source)", Title: "(no source)", Color: newSVGColors().Muted, Y: layout.Height}
 		if g.key != "" {
 			lane.Label, lane.Title, lane.Color = truncate(g.key, svgLaneLabelRunes), g.key, palette[v.slot(g.key)].Light
 		}
@@ -309,7 +325,13 @@ type svgAxis struct {
 }
 
 func (axis svgAxis) x(t time.Time) float64 {
-	return svgGutter + svgPlotWidth*float64(t.Sub(axis.window.From))/float64(axis.window.To.Sub(axis.window.From))
+	return svgGutter + svgPlotWidth*secondsBetween(axis.window.From, t)/secondsBetween(axis.window.From, axis.window.To)
+}
+
+// secondsBetween returns to - from in seconds; unlike time.Time.Sub, it does not saturate past
+// 292 years.
+func secondsBetween(from, to time.Time) float64 {
+	return float64(to.Unix()-from.Unix()) + float64(to.Nanosecond()-from.Nanosecond())/1e9
 }
 
 // mark returns e's mark in the row at y, labelled with when, its time.
@@ -376,7 +398,7 @@ func svgWhen(r timetext.Reading, showOffset bool) string {
 
 // ticks returns the axis's ticks at round times on zone's wall clock.
 func (axis svgAxis) ticks(zone *time.Location) []svgTick {
-	step := tickStep(axis.window.To.Sub(axis.window.From))
+	step := tickStep(secondsBetween(axis.window.From, axis.window.To))
 	layout := "15:04"
 	switch {
 	case step < time.Minute:
@@ -398,20 +420,20 @@ func (axis svgAxis) ticks(zone *time.Location) []svgTick {
 	return ticks
 }
 
-// tickStep returns the roundest step that puts fewer than svgMaxTicks steps across span.
-func tickStep(span time.Duration) time.Duration {
+// tickStep returns the roundest step that puts fewer than svgMaxTicks steps across span seconds.
+func tickStep(span float64) time.Duration {
 	for _, step := range []time.Duration{
 		time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second, 15 * time.Second, 30 * time.Second,
 		time.Minute, 2 * time.Minute, 5 * time.Minute, 10 * time.Minute, 15 * time.Minute, 30 * time.Minute,
 		time.Hour, 2 * time.Hour, 3 * time.Hour, 6 * time.Hour, 12 * time.Hour, 24 * time.Hour,
 	} {
-		if span < svgMaxTicks*step {
+		if span < svgMaxTicks*step.Seconds() {
 			return step
 		}
 	}
 
 	day := 24 * time.Hour
-	days := int64(span/(svgMaxTicks*day)) + 1
+	days := int64(span/(svgMaxTicks*day.Seconds())) + 1
 	return time.Duration(days) * day
 }
 

@@ -8,10 +8,7 @@ import (
 
 func CommandTopics() []HelpTopic { return commandTopics() }
 
-func OutputFormat(cmd *cobra.Command) error {
-	_, err := outputFormat(cmd)
-	return err
-}
+func CheckCommandLine(cmd *cobra.Command, args []string) error { return checkCommandLine(cmd, args) }
 
 // RunWithThrowawayDeprecation is Run with one more global flag, --throwaway, deprecated in
 // favour of --json.

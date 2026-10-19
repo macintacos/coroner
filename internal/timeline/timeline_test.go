@@ -279,7 +279,7 @@ var _ = Describe("ValidationError", func() {
 		}))
 	})
 
-	It("joins messages as errors.Join did", func() {
+	It("joins problem messages with newlines, in check order", func() {
 		e := event()
 		e.Text = ""
 		e.EndedAt = new(quarterPast().Add(-time.Minute))
@@ -299,6 +299,13 @@ var _ = Describe("ValidationError", func() {
 			timeline.Problem{Field: "precision", Rule: timeline.RuleUnknown}),
 		Entry("a blank ref", timeline.Timeline{Name: "inc-465", Refs: []string{" "}}.Validate(),
 			timeline.Problem{Field: "refs", Rule: timeline.RuleBlank}),
+		// SQLite's length() stops at the first NUL, so the store's CHECK sees this as empty.
+		Entry("a NUL-led text", timeline.ValidateText("text", "\x00abc"),
+			timeline.Problem{Field: "text", Rule: timeline.RuleBlank}),
+		Entry("a NUL-led text after spaces", timeline.ValidateText("text", " \x00abc"),
+			timeline.Problem{Field: "text", Rule: timeline.RuleBlank}),
+		Entry("an instant past 9999", timeline.ValidateInstantRange("occurred_at", "occurred at", time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)),
+			timeline.Problem{Field: "occurred_at", Rule: timeline.RuleYearRange}),
 		Entry("the source none", timeline.Source{Name: "none"}.Validate(),
 			timeline.Problem{Field: "name", Rule: timeline.RuleReserved}),
 		Entry("the source none on an event", func() error { e := event(); e.Source = new("none"); return e.Validate() }(),

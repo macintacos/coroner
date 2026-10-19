@@ -22,9 +22,7 @@ func newOverlayCommand(ctx context.Context, app App) *cobra.Command {
 			"of repeating -t. An overlay is kept in this database only: exports never carry it.",
 		Example: "  $ coroner overlay create checkout-incident -t mongo-failover -t checkout-latency\n" +
 			"  $ coroner event list --overlay checkout-incident",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE: runNoun,
 	}
 
 	cmd.AddCommand(newOverlayCreateCommand(ctx, app))
@@ -73,7 +71,7 @@ func checkOverlayName(name string) error {
 	}
 
 	hint := "Use lowercase letters, digits, '.', '_' and '-'."
-	if suggestion := suggestSlug(name, namePunct, timeline.ValidateOverlayName); suggestion != "" {
+	if suggestion := timeline.SuggestOverlayName(name); suggestion != "" {
 		hint = fmt.Sprintf("Did you mean `%s`?", suggestion)
 	}
 

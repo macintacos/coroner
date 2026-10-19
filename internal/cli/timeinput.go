@@ -112,15 +112,19 @@ func resolveTime(flag string, input *string, now time.Time, loc *time.Location) 
 	if rejected, ok := errors.AsType[*timeparse.ParseError](err); ok {
 		return r, &Error{Kind: KindInvalidTime, Message: flag + ": " + rejected.Error(), Hint: rejected.Hint, Err: err}
 	}
-	if year := r.Instant.UTC().Year(); err == nil && (year < 0 || year > 9999) {
+	if err != nil {
+		return r, err
+	}
+	rangeErr := timeline.ValidateInstantRange(flag, flag, r.Instant)
+	if p, ok := firstProblem(rangeErr); ok {
 		return r, &Error{
-			Kind:    KindInvalidTime,
-			Message: fmt.Sprintf("%s: time %q is in the year %d in UTC", flag, *input, year),
-			Hint:    "Use a year from 0000 to 9999, in UTC.",
+			Kind:    kindOf(p.Rule),
+			Message: fmt.Sprintf("%s: time %q is in the year %d in UTC", flag, *input, r.Instant.UTC().Year()),
+			Hint:    "Use a year from 0000 to 9999, in UTC.", Err: rangeErr,
 		}
 	}
 
-	return r, err
+	return r, nil
 }
 
 // timePreview renders a resolved time as the echo prints it, with its precision, or a rejected
@@ -165,6 +169,15 @@ func occurredText(e timeline.Event, z zone) string {
 	}
 
 	return displayTime(e.OccurredAt, e.Precision, z)
+}
+
+// endedText renders e's ended at as the wall clock in z, or - when it has none.
+func endedText(e timeline.Event, z zone) string {
+	if e.EndedAt == nil {
+		return "-"
+	}
+
+	return e.EndedAt.In(z.loc).Format(time.RFC3339Nano)
 }
 
 // displayTime renders t as the wall clock in z, with the fractional digits precision states

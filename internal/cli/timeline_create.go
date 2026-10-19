@@ -62,7 +62,7 @@ func askTimelineCreate(ctx context.Context, s formSession, create formWrite[time
 		note = func(name string) string { return "Timeline `" + name + "` exists; submitting uses it." }
 	}
 	def := withoutField(create.def, "if-not-exists")
-	def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == "name" })].preview = namePreview(taken, note)
+	def.fields[def.fieldIndex("name")].preview = namePreview(taken, note)
 
 	_, err = s.askUntil(ctx, def, formChoices{}, in, func(typed fieldValues) error {
 		if ifNotExists {

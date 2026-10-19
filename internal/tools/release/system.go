@@ -32,7 +32,7 @@ func realSystem(stderr io.Writer) system {
 		goos:   runtime.GOOS,
 		goarch: runtime.GOARCH,
 		output: func(ctx context.Context, name string, args ...string) (string, error) {
-			cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // runs git, gh and mise with arguments the tool builds
+			cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // runs git, gh and mise with arguments the tool builds, and the downloaded coroner after checkChecksums
 			var errOut bytes.Buffer
 			cmd.Stderr = io.MultiWriter(stderr, &errOut)
 			out, err := cmd.Output()

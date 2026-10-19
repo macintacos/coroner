@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strings"
@@ -164,6 +165,10 @@ func keyPress(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	case "down":
 		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "pgup":
+		return tea.KeyPressMsg{Code: tea.KeyPgUp}
+	case "pgdown":
+		return tea.KeyPressMsg{Code: tea.KeyPgDown}
 	case "ctrl+c":
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	}
@@ -264,6 +269,18 @@ var _ = Describe("the viewer", func() {
 
 			Expect(m.View().Content).NotTo(ContainSubstring("\x1b]52"))
 			Expect(m.View().Content).NotTo(ContainSubstring("\x1b[2J"))
+			Expect(cursorLine(m)).To(ContainSubstring("Primary stepped down  ("))
+		})
+
+		It("draws its key help in the 16 ANSI colors, which the terminal's theme picks shades for", func() {
+			Expect(open(fixture(), viewer.Match{}, l).View().Content).NotTo(ContainSubstring("38;2;"))
+		})
+
+		It("keeps the end of a value too long for the prompt line in view as it is typed", func() {
+			m, _ := press(open(fixture(), viewer.Match{}, l), "/")
+			m = typeText(m, strings.Repeat("x", 100)+"END")
+
+			Expect(screen(m)).To(ContainSubstring("xEND"))
 		})
 
 		It("shows a coarse time in its own offset when the viewer's zone would cut its window elsewhere", func() {
@@ -387,6 +404,94 @@ var _ = Describe("the viewer", func() {
 			m, _ = press(m, "g")
 			Expect(cursorLine(m)).To(ContainSubstring("#2"))
 			Expect(screen(m)).To(ContainSubstring("── Thu 2026-09-10"))
+		})
+
+		Describe("through an expanded event taller than the window", func() {
+			var tall viewer.Snapshot
+			var lines []string
+
+			BeforeEach(func() {
+				tall = fixture()
+				lines = nil
+				for i := range 60 {
+					lines = append(lines, fmt.Sprintf("logline-%02d", i))
+				}
+				tall.Annotations[0].Body = strings.Join(lines, "\n")
+			})
+
+			// seenPressing presses k times from m, and returns every screen shown along the way.
+			seenPressing := func(m tea.Model, k string) (tea.Model, string) {
+				seen := []string{screen(m)}
+				for range 80 {
+					m, _ = press(m, k)
+					seen = append(seen, screen(m))
+				}
+				return m, strings.Join(seen, "\n")
+			}
+
+			It("scrolls down a line at a time until its last line shows, then moves on", func() {
+				m, _ := press(open(tall, viewer.Match{}, l), "enter")
+				m, seen := seenPressing(m, "j")
+
+				for _, line := range lines {
+					Expect(seen).To(ContainSubstring(line))
+				}
+				Expect(cursorLine(m)).To(ContainSubstring("#5"))
+			})
+
+			It("scrolls up a line at a time until its first line shows", func() {
+				m, _ := press(open(tall, viewer.Match{}, l), "enter", "G")
+				_, seen := seenPressing(m, "k")
+
+				for _, line := range lines {
+					Expect(seen).To(ContainSubstring(line))
+				}
+			})
+		})
+
+		Describe("a page at a time", func() {
+			var long viewer.Snapshot
+
+			BeforeEach(func() {
+				long = fixture()
+				long.Events = nil
+				for i := range 40 {
+					long.Events = append(long.Events, timeline.Event{
+						ID: fmt.Sprintf("e%02d", i), Seq: int64(i + 1), OccurredAt: utc(11, 3, i, 0), Precision: timeline.PrecisionMinute,
+						Text: fmt.Sprintf("evt-%02d", i),
+					})
+				}
+			})
+
+			// cursorText is the text of the event under m's cursor.
+			cursorText := func(m tea.Model) string {
+				return regexp.MustCompile(`evt-\d\d`).FindString(cursorLine(m))
+			}
+			// neighbour is the text of the event step events after the one named text.
+			neighbour := func(text string, step int) string {
+				var i int
+				_, err := fmt.Sscanf(text, "evt-%02d", &i)
+				Expect(err).NotTo(HaveOccurred())
+				return fmt.Sprintf("evt-%02d", i+step)
+			}
+
+			It("moves down to the first event below the screen", func() {
+				m := open(long, viewer.Match{}, l)
+				before := screen(m)
+				m, _ = press(m, "pgdown")
+
+				Expect(before).NotTo(ContainSubstring(cursorText(m)))
+				Expect(before).To(ContainSubstring(neighbour(cursorText(m), -1)))
+			})
+
+			It("moves up to the last event above the screen, however many lines the events shown take", func() {
+				m, _ := press(open(long, viewer.Match{}, l), "G", "enter")
+				before := screen(m)
+				m, _ = press(m, "pgup")
+
+				Expect(before).NotTo(ContainSubstring(cursorText(m)))
+				Expect(before).To(ContainSubstring(neighbour(cursorText(m), 1)))
+			})
 		})
 	})
 

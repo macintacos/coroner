@@ -12,6 +12,6 @@ SELECT tag FROM event_tag
 WHERE event_id = ?
 ORDER BY tag;
 
--- name: DeleteEventTag :exec
+-- name: DeleteEventTags :exec
 DELETE FROM event_tag
-WHERE event_id = ? AND tag = ?;
+WHERE event_id = ?;

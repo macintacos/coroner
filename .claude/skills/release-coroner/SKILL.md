@@ -90,7 +90,7 @@ process for people.
 | `git_error`, `github_error`, `internal` | Show `message` and stop. |
 | `empty_notes` | From `tag`: rewrite the notes. From `verify`: the pushed tag's message is blank; report the release as broken and never re-tag. |
 | `tag_exists` | Someone released meanwhile: start over from `gates`. After a `push_failed`, a `tag_exists` naming only the local tag means its removal failed: clear it with `git tag -d <tag>`, a local delete, and re-run `tag`. |
-| `push_failed` | The tool tries to remove the local tag; fix access and re-run `tag`. |
+| `push_failed` | The tool tries to remove the local tag, and the message names the `git tag -d` failure when that fails too; fix access and re-run `tag`. |
 | `tag_not_found` | From `verify`: most likely a failed fetch, so re-run `verify`. |
 | `lightweight_tag` | From `verify`: the pushed tag is not annotated. Report it; never re-tag. |
 | `workflow_not_found`, `workflow_timeout`, `watch_interrupted` | Re-run `watch`. |

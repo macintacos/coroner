@@ -87,4 +87,10 @@ var _ = Describe("The HTML viewer's theme", func() {
 		},
 		pairEntries(sources, withRole(roleBackground)),
 	)
+
+	It("gives each source colour, which labels its lane in the SVG export, WCAG AA text contrast on the SVG's background", func() {
+		for _, c := range sourcePalette() {
+			Expect(contrast(c.Light, svgBackground)).To(BeNumerically(">=", 4.5), c.Light)
+		}
+	})
 })

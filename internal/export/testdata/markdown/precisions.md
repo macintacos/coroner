@@ -1,6 +1,6 @@
 # precisions
 
-- **Window:** 2026-09-11 00:00:00 → 2026-09-12 00:20:00 UTC
+- **Window:** 2026-09-11 → 2026-09-13 00:00 UTC
 - **Events:** 12
 - **Exported:** 2026-09-12 21:40 UTC by coroner 0.1.0
 

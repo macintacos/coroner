@@ -21,11 +21,7 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-const (
-	listAttachmentsHint = "Run 'coroner attachment list' to see a timeline's attachments and their ids."
-	// shownAttachments is how many attachments an ambiguous id prefix lists.
-	shownAttachments = 10
-)
+const listAttachmentsHint = "Run 'coroner attachment list' to see a timeline's attachments and their ids."
 
 func newAttachmentCommand(ctx context.Context, app App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -38,9 +34,7 @@ func newAttachmentCommand(ctx context.Context, app App) *cobra.Command {
 			"the directory beside the database.",
 		Example: "  $ coroner event edit 12 --attach ./grafana-p99.png\n" +
 			"  $ coroner attachment list -e 12",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE: runNoun,
 	}
 
 	cmd.AddCommand(
@@ -70,7 +64,7 @@ func checkAttachmentRef(ref string) error {
 // findAttachment returns the attachment whose id is, or uniquely starts with, prefix, in any
 // timeline.
 func findAttachment(ctx context.Context, s records, prefix string) (timeline.Attachment, error) {
-	attachments, err := s.AttachmentsByIDPrefix(ctx, prefix, shownAttachments+1)
+	attachments, err := s.AttachmentsByIDPrefix(ctx, prefix, shownMatches+1)
 	switch {
 	case err != nil:
 		return timeline.Attachment{}, err
@@ -82,19 +76,12 @@ func findAttachment(ctx context.Context, s records, prefix string) (timeline.Att
 		}
 	}
 
-	lines := make([]string, 0, shownAttachments+1)
-	for _, a := range attachments[:min(len(attachments), shownAttachments)] {
-		lines = append(lines, fmt.Sprintf("  %s  %s", a.ID, a.Filename))
-	}
-	if len(attachments) > shownAttachments {
-		lines = append(lines, "  and more")
+	var rows []string
+	for _, a := range attachments[:min(len(attachments), shownMatches)] {
+		rows = append(rows, fmt.Sprintf("%s  %s", a.ID, a.Filename))
 	}
 
-	return timeline.Attachment{}, &Error{
-		Kind:    KindAmbiguousID,
-		Message: "more than one attachment has an id starting " + prefix,
-		Hint:    "Pass more of the id:\n" + strings.Join(lines, "\n"),
-	}
+	return timeline.Attachment{}, ambiguousIDError("attachment", prefix, rows, len(attachments) > shownMatches)
 }
 
 type attachmentListJSON struct {

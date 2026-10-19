@@ -254,7 +254,7 @@ var _ = Describe("Import", func() {
 			earlier := newEvent(11, 0)
 			earlier.TimelineID = other.ID
 			Expect(s.AddEvent(ctx, earlier, uuid(20))).Error().NotTo(HaveOccurred())
-			Expect(s.AddAttachment(ctx, timeline.Attachment{
+			Expect(attach(ctx, s, timeline.Attachment{
 				ID: uuid(41), Owner: timeline.AttachmentOwner{EventID: new(earlier.ID)}, Filename: "panel.png", CreatedAt: created,
 			}, bytes.NewReader(screenshot))).Error().NotTo(HaveOccurred())
 
@@ -306,7 +306,7 @@ var _ = Describe("Import", func() {
 			Links:     []timeline.Link{{ID: uuid(50), FromEventID: uuid(10), ToEventID: uuid(11), Kind: timeline.LinkSameAs, CreatedAt: created}},
 		})
 
-		Expect(err).To(HaveOccurred())
+		Expect(err).To(MatchError(store.ErrNotFound))
 		Expect(s.Timelines(ctx)).To(BeEmpty())
 	})
 

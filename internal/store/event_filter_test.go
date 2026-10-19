@@ -94,13 +94,6 @@ var _ = Describe("ListEvents", func() {
 		}
 	})
 
-	It("returns every event of the timeline, as Events reads them, for a filter of that timeline alone", func(ctx SpecContext) {
-		events, err := s.Events(ctx, incident.ID)
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{incident.ID}})).To(Equal(store.EventPage{Events: events, Total: 4}))
-	})
-
 	It("returns an empty page for a timeline with no events", func(ctx SpecContext) {
 		Expect(s.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{uuid(9)}})).To(Equal(store.EventPage{Events: []timeline.Event{}}))
 	})

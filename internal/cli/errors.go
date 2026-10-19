@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 const (
@@ -131,6 +132,14 @@ func usageError(cmd *cobra.Command, err error) *Error {
 	}
 }
 
+// argsError is usageError with the usage line in its hint, as cobra's message about a wrong
+// number of arguments never names the arguments to pass.
+func argsError(cmd *cobra.Command, err error) *Error {
+	failure := usageError(cmd, err)
+	failure.Hint = fmt.Sprintf("Usage: %s\nRun '%s --help' for more.", cmd.UseLine(), cmd.CommandPath())
+	return failure
+}
+
 // asInternal passes nil and a kinded *Error through and makes any other error an internal
 // one.
 func asInternal(err error) error {
@@ -164,22 +173,37 @@ func errorStyleFor(app App) (errorStyle, bool) {
 
 	chosen, _ := flags.GetString("format")
 	asJSON, _ := flags.GetBool("json")
-	debug, _ := flags.GetBool("debug")
-	noColor, _ := flags.GetBool("no-color")
+	noColor, debug := readSwitches(flags, app.LookupEnv)
 
 	style := errorStyle{
 		color:   colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv),
 		machine: asJSON || format(chosen).machine(),
 	}
 
-	return style, debug || envTrue(app.LookupEnv, "CORONER_DEBUG")
+	return style, debug
+}
+
+// readSwitches reports whether color is off and debug is on: --no-color and --debug when
+// given, else their environment variables.
+func readSwitches(flags *pflag.FlagSet, lookupEnv func(string) (string, bool)) (bool, bool) {
+	noColor := flagOrEnv(flags, "no-color", envSet(lookupEnv, "NO_COLOR") || envSet(lookupEnv, "CORONER_NO_COLOR"))
+	return noColor, flagOrEnv(flags, "debug", envTrue(lookupEnv, "CORONER_DEBUG"))
+}
+
+// flagOrEnv returns the boolean flag name when it was given, and fromEnv otherwise.
+func flagOrEnv(flags *pflag.FlagSet, name string, fromEnv bool) bool {
+	if !flags.Changed(name) {
+		return fromEnv
+	}
+
+	value, _ := flags.GetBool(name)
+	return value
 }
 
 // colorEnabled reports whether a stream may carry color.
-func colorEnabled(isTTY, noColorFlag bool, lookupEnv func(string) (string, bool)) bool {
+func colorEnabled(isTTY, noColor bool, lookupEnv func(string) (string, bool)) bool {
 	term, _ := lookupEnv("TERM")
-	return isTTY && !noColorFlag && term != "dumb" &&
-		!envSet(lookupEnv, "NO_COLOR") && !envSet(lookupEnv, "CORONER_NO_COLOR")
+	return isTTY && !noColor && term != "dumb"
 }
 
 // envSet reports whether the environment variable key is set and non-empty.
@@ -188,10 +212,14 @@ func envSet(lookupEnv func(string) (string, bool), key string) bool {
 	return value != ""
 }
 
-// envTrue reports whether the environment variable key is set to a true boolean, or to any
-// other non-empty value that is not one.
+// envTrue reports whether the environment variable key is set to a value other than empty or
+// a false value: 0, f, false, no or off, in any case.
 func envTrue(lookupEnv func(string) (string, bool), key string) bool {
 	value, _ := lookupEnv(key)
+	value = strings.ToLower(value)
+	if value == "no" || value == "off" {
+		return false
+	}
 	on, err := strconv.ParseBool(value)
 	return on || (err != nil && value != "")
 }

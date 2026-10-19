@@ -7,7 +7,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -47,32 +46,34 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		e, t, err := findEvent(ctx, s, parsed, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		links, err := s.EventLinks(ctx, e.ID)
-		if err != nil {
-			return err
-		}
-		if inv.out.format == formatJSON {
-			attachments, err := s.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
+		return s.Read(ctx, func(tx *store.Tx) error {
+			e, t, err := findEvent(ctx, tx, parsed, inv.timelines, app.LookupEnv)
 			if err != nil {
 				return err
 			}
-			return inv.out.json(eventViewJSON{eventJSON: newEventJSON(e, newAttachmentJSONs(attachments, inv.cfg.DBPath)), Links: newLinkJSONs(links)})
-		}
+			links, err := tx.EventLinks(ctx, e.ID)
+			if err != nil {
+				return err
+			}
+			if inv.out.format == formatJSON {
+				attachments, err := tx.ListAttachments(ctx, timeline.AttachmentOwner{EventID: &e.ID})
+				if err != nil {
+					return err
+				}
+				return inv.out.json(eventViewJSON{eventJSON: newEventJSON(e, newAttachmentJSONs(attachments, inv.cfg.DBPath)), Links: newLinkJSONs(links)})
+			}
 
-		annotations, err := s.EventAnnotations(ctx, e.ID)
-		if err != nil {
-			return err
-		}
-		linkRows, err := eventLinkRows(ctx, s, e.ID, links)
-		if err != nil {
-			return err
-		}
+			annotations, err := tx.EventAnnotations(ctx, e.ID)
+			if err != nil {
+				return err
+			}
+			linkRows, err := eventLinkRows(ctx, tx, e.ID, links)
+			if err != nil {
+				return err
+			}
 
-		return writeEventView(inv.out, z, eventView{event: e, timeline: t, annotations: annotations, linkRows: linkRows})
+			return writeEventView(inv.out, z, eventView{event: e, timeline: t, annotations: annotations, linkRows: linkRows})
+		})
 	})
 }
 
@@ -87,7 +88,7 @@ type eventViewJSON struct {
 func newLinkJSONs(links []timeline.Link) []export.Link {
 	objects := make([]export.Link, 0, len(links))
 	for _, l := range links {
-		objects = append(objects, newLinkJSON(l))
+		objects = append(objects, export.NewLink(l))
 	}
 
 	return objects
@@ -128,7 +129,7 @@ func writeSection(o output, heading string, rows [][]string) error {
 
 // eventLinkRows returns a row per link of the event with eventID: kind, to or from, the event at
 // the link's other end as timeline#seq, and that event's text.
-func eventLinkRows(ctx context.Context, s *store.Store, eventID string, links []timeline.Link) ([][]string, error) {
+func eventLinkRows(ctx context.Context, s *store.Tx, eventID string, links []timeline.Link) ([][]string, error) {
 	rows := make([][]string, 0, len(links))
 	for _, l := range links {
 		direction, otherID := "to", l.ToEventID
@@ -151,11 +152,7 @@ func eventLinkRows(ctx context.Context, s *store.Store, eventID string, links []
 
 // eventSummary describes e, in t, one field per line under a heading, with times in z.
 func eventSummary(e timeline.Event, t timeline.Timeline, z zone) string {
-	ended := "-"
-	if e.EndedAt != nil {
-		ended = e.EndedAt.In(z.loc).Format(time.RFC3339Nano)
-	}
-
+	ended := endedText(e, z)
 	var b strings.Builder
 	fmt.Fprintf(&b, "Event #%d in timeline `%s`\n", e.Seq, t.Name)
 	writeField(&b, "ID:", e.ID)

@@ -2,6 +2,7 @@ package export_test
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -94,6 +95,16 @@ var _ = Describe("WriteMermaid", func() {
 		Expect(diagram).To(ContainSubstring("  title fall-back Clock change (EDT/EST)\n"))
 		Expect(strings.Count(diagram, "2026-11-01T01:30:00")).To(Equal(2), diagram)
 		Expect(diagram).To(ContainSubstring("    Failover window :2026-11-01T01:50:00, 1200s\n"))
+	})
+
+	It("draws a bar for its whole interval when the interval is longer than 292 years", func() {
+		env := envelope(export.Timeline{ID: "t1", Name: "long", Refs: []string{}}, []export.Event{{
+			ID: "e1", Seq: new(int64(1)), OccurredAt: utc("1626-01-01T00:00:00Z"), Precision: timeline.PrecisionSecond,
+			EndedAt: new(utc("2026-01-01T00:00:00Z")), Tags: []string{}, Text: "Era",
+		}}, nil)
+		seconds := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Unix() - time.Date(1626, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
+
+		Expect(mermaid(env, time.UTC)).To(ContainSubstring("    Era :1626-01-01T00:00:00, " + strconv.FormatInt(seconds, 10) + "s\n"))
 	})
 
 	It("names the zone at export in the title of a timeline of day-precision events only", func() {

@@ -310,13 +310,11 @@ func (a Annotation) validate() error {
 }
 
 func (a Attachment) validate() error {
-	owned := timeline.Attachment{Owner: timeline.AttachmentOwner{EventID: a.EventID, AnnotationID: a.AnnotationID}, SHA256: a.SHA256, Size: a.Size}
-
 	return errors.Join(
 		validateID("id", a.ID),
 		validateOptionalID("event_id", a.EventID),
 		validateOptionalID("annotation_id", a.AnnotationID),
-		owned.Validate(),
+		a.Domain().Validate(),
 	)
 }
 

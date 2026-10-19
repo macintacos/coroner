@@ -11,11 +11,19 @@ uv run --locked zensical build --clean --strict
 mkdir -p site/schema
 cp schema/*.json site/schema/
 
-# Neither rumdl nor Zensical checks a root-absolute link.
-{ grep -roE 'href="/coroner/schema/[^"]+' site || true; } | while IFS= read -r link; do
+# Neither rumdl nor Zensical checks a root-absolute link. /coroner/ is site_url's path in
+# zensical.toml; keep the two in sync.
+rc=0
+links=$(grep -roE 'href="/coroner/schema/[^"]+' site) || rc=$?
+((rc <= 1)) || exit "$rc"
+if [[ -z $links ]]; then
+	echo "docs:build: no page links /coroner/schema/, so the schema link check inspected nothing" >&2
+	exit 1
+fi
+while IFS= read -r link; do
 	file=${link#*:href=\"/coroner/}
 	test -f "site/${file}" || {
-		echo "docs:build: ${link%%:*} links /coroner/${file}, which is not in site/" >&2
+		printf 'docs:build: %s links /coroner/%s, which is not in site/\n' "${link%%:*}" "$file" >&2
 		exit 1
 	}
-done
+done <<<"$links"

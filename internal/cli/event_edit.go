@@ -48,7 +48,7 @@ func eventEditDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
 		{name: "event", arg: true, usage: "Event to edit, as a `ref`: seq, timeline#seq or id", check: withoutEnv(checkEventRef)},
-		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin), changes: true},
+		{name: "text", usage: "New `text`, or - to read it from stdin", check: withoutEnv(eventTextInput().checkOrStdin), changes: true},
 		{name: "at", usage: "When it happened, as a `time`", check: checkAt, changes: true},
 		{
 			name: "ended", usage: "When it ended, as a `time`, or none", changes: true,
@@ -73,36 +73,6 @@ func eventEditDefinition() definition {
 }
 
 const editedEndedHint = "~ and around mark --at only; pass --approximate."
-
-// checkEditedSource accepts none, which clears the source, and otherwise a source name.
-func checkEditedSource(source string) error {
-	if source == clearKeyword {
-		return nil
-	}
-	err := checkNotBlank("--source", &source)
-	if err != nil {
-		return err
-	}
-
-	return checkSource(source)
-}
-
-// clearableFreeText returns a field check that accepts none, which clears the field, and
-// otherwise rejects a blank value of flag, or one that is not UTF-8.
-func clearableFreeText(flag string) func(string, checkEnv) error {
-	return withoutEnv(func(value string) error {
-		if value == clearKeyword {
-			return nil
-		}
-
-		err := checkNotBlank(flag, &value)
-		if err != nil {
-			return err
-		}
-
-		return checkUTF8(flag, value)
-	})
-}
 
 // eventEdited is the event as edit stored it or, with --dry-run, would store it, with the zone
 // its times print in.
@@ -365,7 +335,7 @@ func checkEditedEvent(ev timeline.Event, z zone) error {
 		return &Error{
 			Kind: kindOf(p.Rule),
 			Message: fmt.Sprintf("the event would end at %s, before it occurred at %s",
-				ev.EndedAt.In(z.loc).Format(time.RFC3339Nano), occurredText(ev, z)),
+				endedText(ev, z), occurredText(ev, z)),
 			Hint: "Pass an --ended time no earlier than its occurred at, or --ended none.",
 			Err:  err,
 		}

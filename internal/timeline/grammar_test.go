@@ -68,3 +68,36 @@ var _ = Describe("Grammar", func() {
 		accepts(timeline.ValidateTimelineName, "none")
 	})
 })
+
+var _ = Describe("Suggest", func() {
+	DescribeTable("SuggestTimelineName",
+		func(input, want string) {
+			Expect(timeline.SuggestTimelineName(input)).To(Equal(want))
+		},
+		Entry("lowercases and dashes spaces", "Mongo Outage", "mongo-outage"),
+		Entry("collapses a run of rejected characters into one dash", "db-2 / primary!!", "db-2-primary"),
+		Entry("trims what a name cannot start or end with", "--x--", "x"),
+		Entry("keeps dots and underscores", "INC_4821.retro", "inc_4821.retro"),
+		Entry("replaces letters outside a-z", "ÉTÉ 2026", "t-2026"),
+		Entry("cuts to 64 characters", strings.Repeat("A", 80), strings.Repeat("a", 64)),
+		Entry("suggests nothing when no letter or digit survives", "!!", ""),
+	)
+
+	It("SuggestOverlayName follows the timeline name grammar", func() {
+		Expect(timeline.SuggestOverlayName("DB-2/Primary")).To(Equal("db-2-primary"))
+	})
+
+	DescribeTable("SuggestSourceName and SuggestTag keep the colons and slashes their grammar allows",
+		func(input, want string) {
+			Expect(timeline.SuggestSourceName(input)).To(Equal(want))
+			Expect(timeline.SuggestTag(input)).To(Equal(want))
+		},
+		Entry("keeps a slash", "DB-2/Mongod Primary", "db-2/mongod-primary"),
+		Entry("trims a leading colon", ":Phase:Detect", "phase:detect"),
+	)
+
+	It("SuggestSourceName suggests nothing for the reserved none", func() {
+		Expect(timeline.SuggestSourceName("NONE")).To(BeEmpty())
+		Expect(timeline.SuggestTag("NONE")).To(Equal("none"))
+	})
+})

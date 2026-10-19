@@ -39,45 +39,6 @@ checksum = "sha256:07f80ce5d741eb4b0a9380ac78a19c7cb5bd44e2a9a47a5a04839e3ba54dd
 url = "https://github.com/google/yamlfmt/releases/download/v0.21.0/yamlfmt_0.21.0_Windows_x86_64.tar.gz"
 url_api = "https://api.github.com/repos/google/yamlfmt/releases/assets/336650206"
 
-[[tools."aqua:pressly/goose"]]
-version = "3.28.0"
-backend = "aqua:pressly/goose"
-
-[tools."aqua:pressly/goose"."platforms.linux-arm64"]
-checksum = "sha256:3968855c11b4093af271c5226909789ea294468f6e50203d738b7504995b6247"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_linux_arm64"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871038"
-
-[tools."aqua:pressly/goose"."platforms.linux-arm64-musl"]
-checksum = "sha256:3968855c11b4093af271c5226909789ea294468f6e50203d738b7504995b6247"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_linux_arm64"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871038"
-
-[tools."aqua:pressly/goose"."platforms.linux-x64"]
-checksum = "sha256:ab073515b78ef345f64f018c0d79aa7db50106806efc686dda7181253765ae13"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_linux_x86_64"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871035"
-
-[tools."aqua:pressly/goose"."platforms.linux-x64-musl"]
-checksum = "sha256:ab073515b78ef345f64f018c0d79aa7db50106806efc686dda7181253765ae13"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_linux_x86_64"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871035"
-
-[tools."aqua:pressly/goose"."platforms.macos-arm64"]
-checksum = "sha256:e0bc7db0b4cfc652495f86dbf1681a668bb26e17d0ca28bad44218a905d01ac9"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_darwin_arm64"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871077"
-
-[tools."aqua:pressly/goose"."platforms.macos-x64"]
-checksum = "sha256:8aa97e65273da3f58d6eae031d09f43089ef34e6b44cd713e80b2ffd5465bda7"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_darwin_x86_64"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871037"
-
-[tools."aqua:pressly/goose"."platforms.windows-x64"]
-checksum = "sha256:c8d66777b66638cc215abe92db305cc5ba41539cd57aa36c99deac7f52730666"
-url = "https://github.com/pressly/goose/releases/download/v3.28.0/goose_windows_x86_64.exe"
-url_api = "https://api.github.com/repos/pressly/goose/releases/assets/540871039"
-
 [[tools.go]]
 version = "1.27.1"
 backend = "core:go"

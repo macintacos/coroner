@@ -48,7 +48,9 @@ reference    Every command and flag on one Markdown page
 Examples:
 
 ~~~console
-  $ coroner version --json
+  $ coroner timeline create checkout-outage --title "Checkout outage"
+  $ coroner event add -t checkout-outage "Error rate crossed 5%" --at 2026-09-11T03:14Z --source datadog
+  $ coroner event list -t checkout-outage
 ~~~
 
 Flags:
@@ -63,7 +65,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -102,7 +104,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -136,7 +138,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -179,7 +181,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -240,7 +242,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -280,7 +282,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -317,8 +319,8 @@ Flags:
       --body body       New body, or - to read it from stdin
       --dry-run         Show the edited annotation, and change nothing
       --kind kind       New annotation kind: {evidence | comment}
-      --source source   New source, created on first use
-      --url url         New permalink, as a url
+      --source source   New source, created on first use, or none
+      --url url         New permalink, as a url, or none
 ~~~
 
 Global flags:
@@ -327,7 +329,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -370,7 +372,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -414,7 +416,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -454,7 +456,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -495,7 +497,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -536,7 +538,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -579,7 +581,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -633,7 +635,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -714,7 +716,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -762,7 +764,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -821,7 +823,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -872,7 +874,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -918,7 +920,7 @@ Flags:
 ~~~text
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
-      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
+      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc | desc} (default "asc")
       --overlay name    Read the timelines of the overlay called name, instead of -t
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
@@ -932,7 +934,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -977,7 +979,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1015,7 +1017,7 @@ Global flags:
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1066,7 +1068,7 @@ Flags:
 
 ~~~text
       --dry-run              Show what the import would change, and write nothing
-      --on-conflict policy   What to do with a record stored with different content, as a policy: {fail|skip|replace} (default "fail")
+      --on-conflict policy   What to do with a record stored with different content, as a policy: {fail | skip | replace} (default "fail")
   -t, --timeline name|id     Timeline name|id to act on
 ~~~
 
@@ -1076,7 +1078,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1117,7 +1119,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1160,7 +1162,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1202,7 +1204,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1243,7 +1245,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1277,7 +1279,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1317,7 +1319,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1356,7 +1358,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1389,7 +1391,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1436,7 +1438,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1486,7 +1488,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1529,7 +1531,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1580,7 +1582,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1656,10 +1658,10 @@ Flags:
 ~~~text
       --contains text      Keep events whose text contains this text, ignoring case
       --diagram            Append a Mermaid gantt diagram of the events (--format md only)
-      --group-by field     Section Markdown events by a field: {source|tag} (experimental)
+      --group-by field     Section Markdown events by a field: {source | tag} (experimental)
       --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
-      --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
+      --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc | desc} (default "asc")
   -o, --output path        Write the export to this path, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
       --overlay name       Read the timelines of the overlay called name, instead of -t
       --since time         Keep events at or after this time
@@ -1675,7 +1677,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1713,7 +1715,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1754,7 +1756,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1812,7 +1814,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
@@ -1844,7 +1846,7 @@ Global flags:
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)

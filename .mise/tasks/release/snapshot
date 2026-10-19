@@ -10,6 +10,6 @@ after=$(git status --porcelain --untracked-files=all)
 new=$(comm -13 <(sort <<<"$before") <(sort <<<"$after"))
 if [[ -n "$new" ]]; then
 	echo "release:snapshot: the build left files git sees, so a tag's binaries would report +dirty; add each path to .gitignore:" >&2
-	echo "$new" >&2
+	printf '%s\n' "$new" >&2
 	exit 1
 fi

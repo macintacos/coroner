@@ -88,7 +88,11 @@ func WriteMarkdown(w io.Writer, env Envelope, opts MarkdownOptions) error {
 		// Escapes what opens inline syntax (emphasis, code, links, HTML, entities, table cells,
 		// strikethrough) so text shows as written; & keeps &lt; literal. escape leaves URLs whole.
 		escaper: strings.NewReplacer(`\`, `\\`, "`", "\\`", "*", `\*`, "_", `\_`, "[", `\[`, "]", `\]`, "<", `\<`, ">", `\>`, "|", `\|`, "&", `\&`, "~", `\~`),
-		urls:    regexp.MustCompile("https?://[^\\s<>`]+"),
+		// A URL ends at [, ] and \, so the escaper escapes them and no link or image forms in it.
+		urls: regexp.MustCompile("https?://[^\\s<>`\\\\\\[\\]]+"),
+		// Where no autolink swallows a URL, a * anywhere or a _ not between letters or digits
+		// opens emphasis, ~ strikethrough, and &name; is an entity.
+		rawSyntax: regexp.MustCompile(`[*~]|(^|[^\pL\pN])_|_([^\pL\pN]|$)|&#?\w+;`),
 	}
 	blocks := slices.Concat(
 		md.header(v, md.exported(env.ExportedAt, env.CoronerVersion)),
@@ -122,6 +126,7 @@ type markdownRenderer struct {
 	link        func(Attachment) string
 	escaper     *strings.Replacer
 	urls        *regexp.Regexp
+	rawSyntax   *regexp.Regexp
 }
 
 // header returns the title and the metadata list: the timelines, the window v's events span,
@@ -187,26 +192,35 @@ func (md markdownRenderer) exported(at Instant, coronerVersion string) string {
 	return "- **Exported:** " + timetext.Stamp(time.Time(at), md.zone) + " by coroner " + md.oneLine(coronerVersion)
 }
 
-// window returns the span from the first event to the last moment any event reaches, to the
-// second, labelled once when both ends share a zone abbreviation.
+// window returns timetext's window of events: its start, then its reach, dated when that
+// differs from the start's date, each zone labelled once when both ends share it.
 func (md markdownRenderer) window(events []Event) string {
-	var instants []time.Time
+	domain := make([]timeline.Event, 0, len(events))
 	for _, e := range events {
-		instants = append(instants, eventInstants(e)...)
+		domain = append(domain, e.Domain())
 	}
-	start := time.Time(events[0].OccurredAt).In(md.zone)
-	end := slices.MaxFunc(instants, time.Time.Compare).In(md.zone)
+	w := timetext.ReadWindow(domain, md.zone)
 
-	startText := start.Format(time.DateTime)
-	if zoneName(start) != zoneName(end) {
-		startText += " " + zoneName(start)
-	}
-	endLayout := time.TimeOnly
-	if end.Format(time.DateOnly) != start.Format(time.DateOnly) {
-		endLayout = time.DateTime
+	start := strings.TrimSpace(w.Start.Date + " " + w.Start.Clock)
+	if zoneLabel(w.Start) != zoneLabel(w.Reach) {
+		start = strings.TrimSpace(start + " " + zoneLabel(w.Start))
 	}
 
-	return startText + " → " + end.Format(endLayout) + " " + zoneName(end)
+	reach := w.Reach.Clock
+	if w.Reach.Date != w.Start.Date {
+		reach = w.Reach.Date + " " + reach
+	}
+
+	return start + " → " + reach + " " + zoneLabel(w.Reach)
+}
+
+// zoneLabel returns what names p's zone: its own offset, or the zone's abbreviation.
+func zoneLabel(p timetext.Part) string {
+	if p.OwnOffset {
+		return p.Offset
+	}
+
+	return p.Abbreviation
 }
 
 // eventSummary returns the metadata bullet counting events, with the sources and tags they
@@ -284,48 +298,6 @@ func (md markdownRenderer) sections(events []Event) []string {
 	}
 
 	return blocks
-}
-
-// eventGroup is the events that share a key, such as a source; the group whose events have
-// none has the key "".
-type eventGroup struct {
-	key    string
-	events []Event
-}
-
-// groupEvents returns events under each key keys gives them, in order of first appearance,
-// then the events keys gives none.
-func groupEvents(events []Event, keys func(Event) []string) []eventGroup {
-	var groups []eventGroup
-	var keyless []Event
-	index := map[string]int{}
-	for _, e := range events {
-		if len(keys(e)) == 0 {
-			keyless = append(keyless, e)
-		}
-		for _, key := range keys(e) {
-			i, ok := index[key]
-			if !ok {
-				i = len(groups)
-				index[key] = i
-				groups = append(groups, eventGroup{key: key})
-			}
-			groups[i].events = append(groups[i].events, e)
-		}
-	}
-	if len(keyless) > 0 {
-		groups = append(groups, eventGroup{events: keyless})
-	}
-
-	return groups
-}
-
-func sourceOf(e Event) []string {
-	if e.Source == nil {
-		return nil
-	}
-
-	return []string{*e.Source}
 }
 
 func tagsOf(e Event) []string {
@@ -430,14 +402,14 @@ func (md markdownRenderer) eventItem(e Event, offset bool, groupTag string) stri
 	return item
 }
 
-// attachmentLinks returns an image of each image attachment of the event or annotation with
+// attachmentLinks returns an image of each raster image attachment of the event or annotation with
 // ownerID, and a link to each other one, its filename as the text.
 func (md markdownRenderer) attachmentLinks(ownerID string) []string {
 	var links []string
 	for _, a := range md.attachments[ownerID] {
 		// Not md.escape: a URL it keeps whole could hold a ] that ends the text early.
 		rendered := "[" + md.escaper.Replace(strings.Join(lines(a.Filename), " ")) + "](" + linkDestination(md.link(a)) + ")"
-		if strings.HasPrefix(a.MIME, "image/") {
+		if rasterImage(a) {
 			rendered = "!" + rendered
 		}
 		links = append(links, rendered)
@@ -565,12 +537,15 @@ func (md markdownRenderer) oneLine(s string) string {
 	return md.escape(strings.Join(lines(s), " "))
 }
 
-// escape escapes s with md.escaper, but for its http and https URLs, which it keeps as
-// written: GFM ends an autolink at a backslash.
+// escape escapes s with md.escaper, but for its http and https URLs free of md.rawSyntax,
+// which it keeps as written: GFM ends an autolink at a backslash.
 func (md markdownRenderer) escape(s string) string {
 	var b strings.Builder
 	last := 0
 	for _, match := range md.urls.FindAllStringIndex(s, -1) {
+		if md.rawSyntax.MatchString(s[match[0]:match[1]]) {
+			continue
+		}
 		b.WriteString(md.escaper.Replace(s[last:match[0]]))
 		b.WriteString(s[match[0]:match[1]])
 		last = match[1]
@@ -641,17 +616,6 @@ func codeBlock(body []string, indent string) string {
 	return strings.Join(append(block, indent+fence), "\n")
 }
 
-// lines returns s split at its line breaks, of any convention, without trailing blank lines.
-func lines(s string) []string {
-	split := strings.Split(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s), "\n")
-	last := len(split) - 1
-	for last > 0 && strings.TrimSpace(split[last]) == "" {
-		last--
-	}
-
-	return split[:last+1]
-}
-
 func longestRun(s string, c byte) int {
 	longest, run := 0, 0
 	for i := range len(s) {
@@ -665,24 +629,6 @@ func longestRun(s string, c byte) int {
 	return longest
 }
 
-func eventInstants(e Event) []time.Time {
-	if e.EndedAt == nil {
-		return []time.Time{time.Time(e.OccurredAt)}
-	}
-
-	return []time.Time{time.Time(e.OccurredAt), time.Time(*e.EndedAt)}
-}
-
-// readings returns each event's time as it reads in zone, by event id.
-func readings(events []Event, zone *time.Location) map[string]timetext.Reading {
-	byID := make(map[string]timetext.Reading, len(events))
-	for _, e := range events {
-		byID[e.ID] = timetext.Read(e.Domain(), zone)
-	}
-
-	return byID
-}
-
 // timed orders day-precision events dated the day they are filed under before timed ones.
 func timed(r timetext.Reading) int {
 	if r.Precision == timeline.PrecisionDay && r.Start.Date == r.Day {
@@ -690,9 +636,4 @@ func timed(r timetext.Reading) int {
 	}
 
 	return 1
-}
-
-func zoneName(t time.Time) string {
-	name, _ := t.Zone()
-	return name
 }

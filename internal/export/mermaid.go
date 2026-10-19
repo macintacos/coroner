@@ -149,8 +149,8 @@ func (gantt mermaidRenderer) task(e Event) string {
 		return gantt.label(e) + " :milestone, " + at + ", 0s"
 	}
 
-	seconds := time.Time(*e.EndedAt).Truncate(time.Second).Sub(start) / time.Second
-	return gantt.label(e) + " :" + at + ", " + strconv.FormatInt(int64(seconds), 10) + "s"
+	seconds := time.Time(*e.EndedAt).Unix() - start.Unix()
+	return gantt.label(e) + " :" + at + ", " + strconv.FormatInt(seconds, 10) + "s"
 }
 
 // label returns e's text as a task label, ~ first when it is approximate. Otherwise, a label

@@ -34,8 +34,8 @@ In Claude Code, on an up-to-date `main`, type:
 
 The bump picks the next version from the latest final tag, or from `v0.0.0` when there is
 none. `rc` makes a release candidate such as `v0.1.0-rc.0`, which publishes a GitHub
-pre-release and leaves the Homebrew cask alone. `dry run` runs every check, prints the tag
-and the notes, and creates no tag.
+pre-release and leaves the Homebrew cask and the docs site alone. `dry run` runs every
+check, prints the tag and the notes, and creates no tag.
 
 The skill drives `go run ./internal/tools/release`, which does each step and prints one
 JSON object:

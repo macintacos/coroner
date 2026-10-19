@@ -42,7 +42,9 @@ func usageError(format string, args ...any) error {
 func runCommand(ctx context.Context, sys system, args []string, stdout io.Writer) int {
 	result, err := dispatch(ctx, sys, args)
 	if err == nil {
-		writeJSON(stdout, result)
+		if writeJSON(stdout, result) != nil {
+			return 1
+		}
 		return 0
 	}
 
@@ -50,7 +52,9 @@ func runCommand(ctx context.Context, sys system, args []string, stdout io.Writer
 	if !ok {
 		failure = &toolError{Code: "internal", Message: err.Error()}
 	}
-	writeJSON(stdout, map[string]any{"ok": false, "error": failure})
+	if writeJSON(stdout, map[string]any{"ok": false, "error": failure}) != nil {
+		return 1
+	}
 	if failure.Code == "usage" {
 		return 2
 	}
@@ -100,7 +104,12 @@ func parseFlags(flags *flag.FlagSet, args []string, required ...string) error {
 	return nil
 }
 
-func writeJSON(w io.Writer, v any) {
-	_ = json.MarshalWrite(w, v, jsontext.AllowInvalidUTF8(true))
-	_, _ = io.WriteString(w, "\n")
+func writeJSON(w io.Writer, v any) error {
+	err := json.MarshalWrite(w, v, jsontext.AllowInvalidUTF8(true))
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(w, "\n")
+
+	return err
 }

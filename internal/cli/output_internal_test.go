@@ -23,11 +23,26 @@ var _ = Describe("output.rows", func() {
 
 		Expect(out.String()).To(Equal("*  a          x\n   long-name  y\n"))
 	})
+
+	DescribeTable("prints a stored control character escaped, so it cannot drive the terminal",
+		func(tty bool, field, want string) {
+			var out bytes.Buffer
+
+			Expect(output{out: &out, outTTY: tty}.rows([][]string{{field}})).To(Succeed())
+
+			Expect(out.String()).To(Equal(want + "\n"))
+		},
+		Entry("an ESC sequence on a terminal", true, "ok\x1b[2Khidden", `ok\x1b[2Khidden`),
+		Entry("an ESC sequence when piped", false, "ok\x1b[2Khidden", `ok\x1b[2Khidden`),
+		Entry("DEL", false, "a\x7fb", `a\x7fb`),
+		Entry("a C1 control", false, "a\u009bb", `a\u009bb`),
+	)
 })
 
 var _ = Describe("command record objects", func() {
 	// tokens returns b's JSON tokens, so encodings that escape <, > and & differently compare equal.
 	tokens := func(b []byte) []json.Token {
+		GinkgoHelper()
 		decoder := json.NewDecoder(bytes.NewReader(b))
 		decoder.UseNumber()
 		var out []json.Token
@@ -88,8 +103,8 @@ var _ = Describe("command record objects", func() {
 		Entry("an annotation on its whole timeline with every nullable field null", newAnnotationJSON(bareAnnotation, nil), export.NewAnnotation(bareAnnotation), attachments),
 		Entry("a timeline with refs", newTimelineJSON(refsTimeline), export.NewTimeline(refsTimeline), nil),
 		Entry("a timeline with nil refs", newTimelineJSON(bareTimeline), export.NewTimeline(bareTimeline), nil),
-		Entry("a link with an author", newLinkJSON(authoredLink), export.NewLink(authoredLink), nil),
-		Entry("a link with no author", newLinkJSON(bareLink), export.NewLink(bareLink), nil),
+		Entry("a link with an author", export.NewLink(authoredLink), export.NewLink(authoredLink), nil),
+		Entry("a link with no author", export.NewLink(bareLink), export.NewLink(bareLink), nil),
 	)
 
 	It("encodes a record with no tags or refs as [] under --json", func() {

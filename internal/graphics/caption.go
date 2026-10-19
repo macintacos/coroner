@@ -60,5 +60,5 @@ func ByteSize(n int64) string {
 		unit++
 	}
 
-	return fmt.Sprintf("%.0f %s", value, units[unit])
+	return fmt.Sprintf("%d %s", int64(math.Round(value)), units[unit])
 }

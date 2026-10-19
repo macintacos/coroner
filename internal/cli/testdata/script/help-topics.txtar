@@ -27,10 +27,11 @@ exits 2 coroner help tiem
 ! stdout .
 stderr '^Did you mean ''coroner help time''\?$'
 
-# A name close to nothing still gets a suggestion.
-exits 2 coroner help nope
+# A name close to nothing points at the list instead.
+exits 2 coroner help kubernetes
 ! stdout .
-stderr '^Did you mean ''coroner help [a-z-]+''\?$'
+! stderr 'Did you mean'
+stderr '^Run ''coroner help'' to list commands and topics\.$'
 
 # help completes topic names alongside command names.
 exec coroner __complete help ''

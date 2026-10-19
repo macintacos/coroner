@@ -71,10 +71,10 @@ coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o 
 ```
       --contains text      Keep events whose text contains this text, ignoring case
       --diagram            Append a Mermaid gantt diagram of the events (--format md only)
-      --group-by field     Section Markdown events by a field: {source|tag} (experimental)
+      --group-by field     Section Markdown events by a field: {source | tag} (experimental)
       --include-raw        Add each event's time as it was given (--format md only)
       --limit number       Export at most this number of events (default: every one)
-      --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc|desc} (default "asc")
+      --order order        Keep the earliest or latest events when --limit cuts the export, as an order: {asc | desc} (default "asc")
   -o, --output path        Write the export to this path, to stdout when it is -, or, for md and jsonl, into a directory with its attachments (default "-")
       --overlay name       Read the timelines of the overlay called name, instead of -t
       --since time         Keep events at or after this time
@@ -90,7 +90,7 @@ coroner timeline export --format {json | jsonl | md | mermaid | html | svg} [-o 
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)

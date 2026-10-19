@@ -48,34 +48,22 @@ var _ = Describe("wrapRunErrors", func() {
 var _ = Describe("NewRoot", func() {
 	It("gives every command an example", func(ctx SpecContext) {
 		var missing []string
-		var visit func(*cobra.Command)
-		visit = func(cmd *cobra.Command) {
+		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
 			if !cmd.Hidden && cmd.Example == "" {
 				missing = append(missing, cmd.CommandPath())
 			}
-			for _, child := range cmd.Commands() {
-				visit(child)
-			}
-		}
-
-		visit(NewRoot(ctx, App{}))
+		})
 
 		Expect(missing).To(BeEmpty())
 	})
 
 	It("completes -t on every command that accepts it", func(ctx SpecContext) {
 		var missing []string
-		var visit func(*cobra.Command)
-		visit = func(cmd *cobra.Command) {
+		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
 			if _, ok := cmd.GetFlagCompletionFunc("timeline"); cmd.Flag("timeline") != nil && !ok {
 				missing = append(missing, cmd.CommandPath())
 			}
-			for _, child := range cmd.Commands() {
-				visit(child)
-			}
-		}
-
-		visit(NewRoot(ctx, App{}))
+		})
 
 		Expect(missing).To(BeEmpty())
 	})

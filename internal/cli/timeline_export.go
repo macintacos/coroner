@@ -78,9 +78,9 @@ func newTimelineExportCommand(ctx context.Context, app App) *cobra.Command {
 	cmd.Flags().Lookup("timeline").Usage = "Timeline `name|id` to export; repeat to overlay several (json, jsonl, md, mermaid and html only)"
 	addOverlayFlag(cmd.Flags())
 	addEventFilterFlags(cmd.Flags())
-	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc|desc}"
+	cmd.Flags().Lookup("order").Usage = "Keep the earliest or latest events when --limit cuts the export, as an `order`: {asc | desc}"
 	cmd.Flags().Lookup("limit").Usage = "Export at most this `number` of events (default: every one)"
-	cmd.Flags().String("group-by", "", "Section Markdown events by a `field`: {source|tag} (experimental)")
+	cmd.Flags().String("group-by", "", "Section Markdown events by a `field`: {source | tag} (experimental)")
 	cmd.Flags().Bool("include-raw", false, "Add each event's time as it was given (--format md only)")
 	cmd.Flags().Bool("diagram", false, "Append a Mermaid gantt diagram of the events (--format md only)")
 	cmd.Flags().StringP("output", "o", "-", "Write the export to this `path`, to stdout when it is -, or, for md and jsonl, into a directory with its attachments")
@@ -128,15 +128,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	var input exportInput
 	var page store.EventPage
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		err = sel.checkFormat(o.format)
-		if err != nil {
-			return err
-		}
-		timelines, err := sel.all(ctx, s)
+		timelines, err := selectAll(ctx, s, inv.timelines, app.LookupEnv, o.format)
 		if err != nil {
 			return err
 		}
@@ -203,24 +195,29 @@ func readExport(
 ) (exportInput, store.EventPage, error) {
 	filter.TimelineIDs = timelineIDs(timelines)
 	input := exportInput{timelines: timelines, filter: filter}
-	page, err := s.ListEvents(ctx, filter)
-	if err != nil {
-		return input, page, err
-	}
-	input.events = page.Events
-	input.annotations, err = readEach(timelines, func(id string) ([]timeline.Annotation, error) { return s.Annotations(ctx, id) })
-	if err != nil {
-		return input, page, err
-	}
-	input.attachments, err = readEach(timelines, func(id string) ([]timeline.Attachment, error) { return s.TimelineAttachments(ctx, id) })
-	if err != nil {
-		return input, page, err
-	}
-	input.links, err = readEach(timelines, func(id string) ([]timeline.Link, error) { return s.TimelineLinks(ctx, id) })
-	if err != nil {
-		return input, page, err
-	}
-	input.sources, err = s.Sources(ctx)
+	var page store.EventPage
+	err := s.Read(ctx, func(tx *store.Tx) error {
+		var err error
+		page, err = tx.ListEvents(ctx, filter)
+		if err != nil {
+			return err
+		}
+		input.events = page.Events
+		input.annotations, err = readEach(timelines, func(id string) ([]timeline.Annotation, error) { return tx.Annotations(ctx, id) })
+		if err != nil {
+			return err
+		}
+		input.attachments, err = readEach(timelines, func(id string) ([]timeline.Attachment, error) { return tx.TimelineAttachments(ctx, id) })
+		if err != nil {
+			return err
+		}
+		input.links, err = readEach(timelines, func(id string) ([]timeline.Link, error) { return tx.TimelineLinks(ctx, id) })
+		if err != nil {
+			return err
+		}
+		input.sources, err = tx.Sources(ctx)
+		return err
+	})
 
 	return input, page, err
 }
@@ -376,12 +373,7 @@ func copyFiles(files fileSystem, dir string, copies []fileCopy) error {
 
 // notifyCopied says how many attachment files copies wrote, and where.
 func notifyCopied(o output, copies []fileCopy) error {
-	noun := "files"
-	if len(copies) == 1 {
-		noun = "file"
-	}
-
-	return o.notify("Wrote %d attachment %s to %s", len(copies), noun, filepath.Dir(copies[0].to))
+	return o.notify("Wrote %d attachment %s to %s", len(copies), pluralNoun(len(copies), "file"), filepath.Dir(copies[0].to))
 }
 
 // blobLink returns where Markdown written to path links the blob at blob: relative to path's

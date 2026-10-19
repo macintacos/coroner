@@ -5,8 +5,4 @@
 
 set -euo pipefail
 
-if [ -n "${usage_focus:-}" ]; then
-	go tool ginkgo --focus "${usage_focus}" "${usage_pkg:-./...}"
-else
-	go tool ginkgo "${usage_pkg:-./...}"
-fi
+go tool ginkgo ${usage_focus:+--focus "$usage_focus"} "${usage_pkg:-./...}"

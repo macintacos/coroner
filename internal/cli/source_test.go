@@ -22,20 +22,7 @@ var _ = Describe("source list", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, cli.App{
-			Args: append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			Out:  &out,
-			Err:  &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				if key == "HOME" {
-					return home, true
-				}
-				return "", false
-			},
-			ReadFile:  readNoFile,
-			Now:       func() time.Time { return time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC) },
-			OpenStore: store.Open,
-		})
+		return cli.Run(ctx, harness{home: home, db: filepath.Join(home, "coroner.db"), out: &out, errOut: &errOut}.app(args...))
 	}
 
 	// No command yet leaves a source without events, so the store seeds one.

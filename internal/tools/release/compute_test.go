@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -25,6 +26,11 @@ diff --git a/internal/cli/deprecation.go b/internal/cli/deprecation.go
 +++ b/internal/cli/deprecation.go
 @@ -1,0 +2 @@
 +func deprecateFlag(flags *pflag.FlagSet, name string) {
+diff --git a/internal/cli/legacy.go b/internal/cli/legacy.go
+--- a/internal/cli/legacy.go
++++ /dev/null
+@@ -5 +4,0 @@
+-	deprecateCommand(cmd, "legacy",
 `
 
 // computeFake answers a compute run over one PR and one stray commit, with the given tags
@@ -84,6 +90,7 @@ var _ = Describe("compute", func() {
 				"deprecations": []any{
 					map[string]any{"change": "removed", "path": "internal/cli/event.go", "line": "deprecateFlag(cmd.Flags(), \"gone\","},
 					map[string]any{"change": "added", "path": "internal/cli/event.go", "line": "deprecateFlag(cmd.Flags(), \"old\","},
+					map[string]any{"change": "removed", "path": "internal/cli/legacy.go", "line": "deprecateCommand(cmd, \"legacy\","},
 				},
 			},
 		}))
@@ -118,6 +125,12 @@ var _ = Describe("compute", func() {
 
 		Expect(code).To(Equal(0))
 		Expect(got).To(HaveKeyWithValue("commits_without_pr", []any{map[string]any{"sha": "ddd", "subject": "caf�"}}))
+	})
+
+	It("exits 1 when its object cannot be written", func() {
+		code := runCommand(context.Background(), computeFake("", emptyTree).system(), []string{"compute", "minor", "--sha", "HEAD"}, failingWriter{})
+
+		Expect(code).To(Equal(1))
 	})
 
 	It("names an unknown flag in its usage error", func() {
@@ -155,6 +168,12 @@ var _ = Describe("stability", func() {
 		Entry("unfilled", "- [ ] No contract change, or `stability:` ___ (`breaking`, `additive` or `experimental`)", "unfilled"),
 		Entry("none when the box is checked", "- [x] No contract change, or `stability:` ___ (`breaking`, `additive` or `experimental`)", "none"),
 		Entry("missing", "Just a description.", "missing"),
+		Entry("checked, a comma after the word", "- [x] No contract change, or `stability:` breaking, removes `--old`", "breaking"),
+		Entry("checked, a colon after the word", "- [x] No contract change, or `stability:` additive: new flags", "additive"),
+		Entry("checked, the word in bold", "- [x] No contract change, or `stability:` **breaking**", "breaking"),
+		Entry("unchecked, a full stop after the word", "- [ ] No contract change, or `stability:` breaking.", "breaking"),
+		Entry("checked, a dash after the word", "- [x] No contract change, or `stability:` additive — new command", "additive"),
+		Entry("a word that only starts like one", "- [ ] No contract change, or `stability:` additively", "unfilled"),
 		Entry("the checkbox after a prose mention", "Reads each PR's `stability:` line.\n- [ ] No contract change, or `stability:` additive", "additive"),
 	)
 })

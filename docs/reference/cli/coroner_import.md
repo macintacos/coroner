@@ -45,7 +45,7 @@ coroner import {<file> | -} [flags]
 
 ```
       --dry-run              Show what the import would change, and write nothing
-      --on-conflict policy   What to do with a record stored with different content, as a policy: {fail|skip|replace} (default "fail")
+      --on-conflict policy   What to do with a record stored with different content, as a policy: {fail | skip | replace} (default "fail")
   -t, --timeline name|id     Timeline name|id to act on
 ```
 
@@ -55,7 +55,7 @@ coroner import {<file> | -} [flags]
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)

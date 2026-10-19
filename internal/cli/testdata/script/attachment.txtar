@@ -16,6 +16,12 @@ exec coroner annotation add 'Same panel' -e 1 --kind evidence --attach p99.gif
 exec coroner attachment list
 stdout '\A[0-9a-f-]{36}\t#1\tp99\.gif\t25 B\timage/gif\n[0-9a-f-]{36}\t#1\ttrace\.pdf\t24 B\tapplication/pdf\n[0-9a-f-]{36}\t[0-9a-f-]{36}\tp99\.gif\t25 B\timage/gif\n\z'
 
+# An id prefix several attachments share names them, and deletes none.
+exits 2 coroner attachment delete 01a09862
+stderr '^Error: more than one attachment has an id starting 01a09862'
+stderr '^  01a09862-b1c0-7000-8000-000000000003  p99\.gif$'
+stderr '^Pass more of the id\.$'
+
 # export says where it wrote the file.
 exec coroner attachment export 01a09862-b1c0-7000-8000-000000000003 -o p99-copy.gif
 stderr '^Wrote p99-copy\.gif$'

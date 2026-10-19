@@ -213,6 +213,8 @@ var _ = Describe("checkInvocation", func() {
 		Entry("a format its command does not print", "coroner version --format jsonl", "cannot print --format jsonl"),
 		Entry("--json with another --format", "coroner timeline create x --json --format text", "--json conflicts"),
 		Entry("help naming neither a help topic nor a command", "coroner help nosuch", `unknown help topic or command "nosuch"`),
+		Entry("-t twice to a one-timeline command", "coroner event add x -t a -t b", "-t"),
+		Entry("-t beside a positional timeline", "coroner timeline view mongo -t other", "-t"),
 	)
 
 	DescribeTable("rejects a command line its commands' declarations forbid, saying why",
@@ -418,8 +420,10 @@ func checkLines(lines []exampleLine, newRoot func() *cobra.Command) exampleRepor
 
 // checkInvocation reports why args, a coroner command line whose args[0] is the word coroner,
 // would not reach its command's body, without running it: the checks cobra makes before
-// running a command, a deprecated command or flag, coroner's --format and --json check, and
-// that help names a help topic or a command.
+// running a command, a deprecated command or flag, checkCommandLine's --format, --json, -t,
+// --overlay and positional timeline checks, and that help names a help topic or a command.
+// Checks that need the environment or the database, such as which timeline is current, are
+// not made.
 func checkInvocation(root *cobra.Command, args []string) error {
 	// Find matches whole names only (H-7): no prefix matching.
 	cmd, rest, err := root.Find(args[1:])
@@ -470,15 +474,15 @@ func deprecations(cmd *cobra.Command) error {
 	return errors.Join(found...)
 }
 
-// coronerChecks makes the checks coroner adds before a command's body: help's target, or the
-// --format and --json check on any other command with a RunE.
+// coronerChecks makes the checks coroner adds before a command's body: help's target, or
+// checkCommandLine on any other command with a RunE.
 func coronerChecks(root, cmd *cobra.Command, positionals []string) error {
 	switch {
-	// NewRoot adds help after wrapRunErrors, so help ignores --format and --json.
+	// NewRoot adds help after wrapRunErrors, so help skips checkCommandLine.
 	case cmd.Parent() == root && cmd.Name() == "help":
 		return helpTarget(root, positionals)
 	case cmd.RunE != nil:
-		return cli.OutputFormat(cmd)
+		return cli.CheckCommandLine(cmd, positionals)
 	}
 
 	return nil

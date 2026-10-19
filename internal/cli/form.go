@@ -28,8 +28,7 @@ type formChoices struct {
 func (d definition) formValues(fields []huh.Field) fieldValues {
 	values := fieldValues{}
 	for _, formField := range fields {
-		i := slices.IndexFunc(d.fields, func(f field) bool { return f.name == formField.GetKey() })
-		given := d.fields[i].formValue(formField.GetValue())
+		given := d.fields[d.fieldIndex(formField.GetKey())].formValue(formField.GetValue())
 		if len(given) > 0 {
 			values[formField.GetKey()] = given
 		}
@@ -75,7 +74,7 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 		choices: choices,
 		in:      in,
 	}
-	tz := slices.IndexFunc(d.fields, func(f field) bool { return f.name == "tz" })
+	tz := d.fieldIndex("tz")
 	for i, f := range d.fields {
 		// A description re-renders when its own value or the zone its times are read in changes.
 		bindings := []*string{bound[i]}
@@ -98,7 +97,7 @@ type fieldForm struct {
 
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
 func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
-	i := slices.IndexFunc(d.fields, func(f field) bool { return f.name == "tz" })
+	i := d.fieldIndex("tz")
 	if i == -1 {
 		return env
 	}

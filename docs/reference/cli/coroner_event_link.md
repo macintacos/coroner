@@ -45,7 +45,7 @@ coroner event link <from-event> <to-event> --kind {led_to | same_as | copied_fro
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)

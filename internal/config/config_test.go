@@ -81,6 +81,12 @@ var _ = Describe("Resolve", func() {
 				files: map[string]string{userConfig: `db = "/file.db"`},
 			},
 			"/file.db"),
+		Entry("an empty CORONER_CONFIG counts as unset",
+			input{
+				env:   map[string]string{"HOME": home, "CORONER_CONFIG": ""},
+				files: map[string]string{userConfig: `db = "/file.db"`},
+			},
+			"/file.db"),
 		Entry("an absolute XDG_DATA_HOME holds the default",
 			input{env: map[string]string{"HOME": home, "XDG_DATA_HOME": "/xdg/data"}},
 			"/xdg/data/coroner/coroner.db"),

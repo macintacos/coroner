@@ -40,7 +40,7 @@ coroner event list [flags]
 ```
       --contains text   Keep events whose text contains this text, ignoring case
       --limit number    Show at most this number of events (default: every one)
-      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc|desc} (default "asc")
+      --order order     Order by occurred at, then timeline id, then seq, as an order: {asc | desc} (default "asc")
       --overlay name    Read the timelines of the overlay called name, instead of -t
       --since time      Keep events at or after this time
       --source source   Keep events from this source; repeat to match any of several
@@ -54,7 +54,7 @@ coroner event list [flags]
       --config path        Config file path (env: CORONER_CONFIG)
       --db path            Database file path (env: CORONER_DB)
       --debug              Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format      Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format      Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help               Show help for a command
       --json               Short for --format json
       --no-color           Disable color (env: NO_COLOR, CORONER_NO_COLOR)

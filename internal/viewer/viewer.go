@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,10 +45,11 @@ type Options struct {
 	// Load reads the timeline again under a match. It validates the match, opens and closes
 	// the database itself, and returns errors whose text is ready to show.
 	Load func(Match) (Snapshot, error)
-	// Image reads an image attachment and returns its image: decoded for a terminal that shows
-	// images, or only its size in pixels otherwise. The viewer calls it in a command, never while
-	// rendering, and shows an attachment it cannot read as its placeholder.
-	Image func(timeline.Attachment) (graphics.Image, error)
+	// Image reads an image attachment's content. The viewer calls it in a command, never while
+	// rendering, and shows an attachment it cannot read or decode as its placeholder.
+	Image func(timeline.Attachment) ([]byte, error)
+	// Log takes debug detail on why an image attachment is not shown; nil logs nothing.
+	Log *slog.Logger
 	// Location is the zone times show in, and typed times are read in.
 	Location  *time.Location
 	ZoneLabel string // shown verbatim in the header, e.g. "America/New_York" or "local"
@@ -65,6 +67,9 @@ type Terminal struct {
 	// Graphics is how the terminal shows images. NoColor shows none: Kitty graphics name an image
 	// by the color of the cells it shows through.
 	Graphics graphics.Protocol
+	// Env is the terminal's environment, as KEY=value entries, which bubbletea reads in place of
+	// the process's.
+	Env []string
 }
 
 // Run shows the viewer on term until q, which returns nil, Ctrl-C, which returns ErrInterrupted,
@@ -92,10 +97,11 @@ func onTerminal(term Terminal, m Model) Model {
 // program runs model on term until it quits, returning its final state, or ErrInterrupted on
 // Ctrl-C.
 func program(ctx context.Context, term Terminal, model tea.Model) (tea.Model, error) {
-	// The caller's context already ends on a signal, and the profile is pinned so bubbletea never
-	// reads the process environment to pick one.
+	// The caller's context already ends on a signal. A nil environment would make bubbletea read
+	// the process's.
 	final, err := tea.NewProgram(model, tea.WithContext(ctx), tea.WithInput(term.In), tea.WithOutput(term.Out),
-		tea.WithColorProfile(colorProfile(term)), tea.WithoutSignalHandler()).Run()
+		tea.WithColorProfile(colorProfile(term)), tea.WithEnvironment(append([]string{}, term.Env...)),
+		tea.WithoutSignalHandler()).Run()
 	if errors.Is(err, tea.ErrInterrupted) {
 		return final, ErrInterrupted
 	}

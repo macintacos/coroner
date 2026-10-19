@@ -14,9 +14,7 @@ func newAgentCommand(app App) *cobra.Command {
 			"JSON. 'coroner agent skill' prints the one this binary was built with.",
 		GroupID: additionalCommands,
 		Example: "  $ coroner agent skill",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE:    runNoun,
 	}
 
 	cmd.AddCommand(newAgentSkillCommand(app))

@@ -21,7 +21,7 @@ const skillDir = "../../skills/coroner"
 var _ = Describe("agent skill", func() {
 	It("prints skills/coroner/SKILL.md byte for byte without opening the database", func(ctx SpecContext) {
 		var out, errOut bytes.Buffer
-		want, err := os.ReadFile("../../skills/coroner/SKILL.md")
+		want, err := os.ReadFile(filepath.Join(skillDir, "SKILL.md"))
 		Expect(err).NotTo(HaveOccurred())
 
 		// No OpenStore: calling it would panic, and Run would exit 1.
@@ -51,7 +51,7 @@ var _ = Describe("agent skill", func() {
 		Expect(len(fields["compatibility"])).To(BeNumerically("<=", 500))
 	})
 
-	It("links only reference files that exist", func() {
+	It("links only files that exist", func() {
 		references, err := filepath.Glob(filepath.Join(skillDir, "references", "*.md"))
 		Expect(err).NotTo(HaveOccurred())
 		pages := append([]string{filepath.Join(skillDir, "SKILL.md")}, references...)
@@ -59,7 +59,7 @@ var _ = Describe("agent skill", func() {
 		for _, page := range pages {
 			doc, err := os.ReadFile(filepath.Clean(page))
 			Expect(err).NotTo(HaveOccurred())
-			for _, target := range relativeMarkdownLinks(string(doc)) {
+			for _, target := range relativeLinks(string(doc)) {
 				Expect(filepath.Join(filepath.Dir(page), target)).To(BeAnExistingFile(), "linked from %s", page)
 			}
 		}
@@ -77,12 +77,13 @@ func frontMatter(doc string) map[string]string {
 	return fields
 }
 
-var markdownLink = regexp.MustCompile(`\]\(([^)#\s]+\.md)(?:#[^)]*)?\)`)
+var markdownLink = regexp.MustCompile(`\]\(([^)#\s]+)(?:#[^)]*)?\)`)
 
-func relativeMarkdownLinks(doc string) []string {
+// relativeLinks returns the target of each link in doc that names a file beside it, not a URL.
+func relativeLinks(doc string) []string {
 	var targets []string
 	for _, match := range markdownLink.FindAllStringSubmatch(doc, -1) {
-		if !strings.Contains(match[1], "://") {
+		if !strings.Contains(match[1], ":") {
 			targets = append(targets, match[1])
 		}
 	}

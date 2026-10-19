@@ -15,8 +15,8 @@ var (
 	ErrConflict = errors.New("already exists")
 	// ErrBusy means another writer held the database for every attempt.
 	ErrBusy = errors.New("database is busy")
-	// ErrForeignDatabase means the path holds a directory or a SQLite database some other
-	// program wrote.
+	// ErrForeignDatabase means the path holds a directory, a file that is not SQLite, or a
+	// SQLite database some other program wrote.
 	ErrForeignDatabase = errors.New("not a coroner database")
 	// ErrDatabaseTooNew means a newer coroner migrated the database past the schemas this
 	// build knows.
@@ -39,6 +39,16 @@ func translate(err error) error {
 		return fmt.Errorf("%w: %w", ErrConflict, err)
 	case isBusy(code):
 		return fmt.Errorf("%w: %w", ErrBusy, err)
+	}
+
+	return err
+}
+
+// missingReference wraps a foreign-key failure from an insert in ErrNotFound: the row it names
+// does not exist. Not in translate, where a delete a reference blocks fails the same way.
+func missingReference(err error) error {
+	if resultCode(err) == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
+		return fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
 
 	return err

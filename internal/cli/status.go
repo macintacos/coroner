@@ -58,21 +58,16 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 		return err
 	}
 
-	s, err := app.OpenStoreReadOnly(ctx, inv.cfg.DBPath)
+	var report statusJSON
+	err = withStoreOpenedBy(ctx, app.OpenStoreReadOnly, inv.cfg.DBPath, func(s *store.Store) error {
+		var err error
+		report, err = readStatus(ctx, s, inv.timelines, app.LookupEnv)
+		return err
+	})
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return writeStatus(inv.out, statusJSON{DBPath: inv.cfg.DBPath})
 	case err != nil:
-		return storeError(err, inv.cfg.DBPath)
-	}
-
-	report, err := readStatus(ctx, s, inv.timelines, app.LookupEnv)
-	err = storeError(err, inv.cfg.DBPath)
-	closeErr := s.Close()
-	if closeErr != nil {
-		return errors.Join(err, closeErr)
-	}
-	if err != nil {
 		return err
 	}
 

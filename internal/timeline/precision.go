@@ -1,6 +1,9 @@
 package timeline
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Precision is how exact an event's occurred at is.
 type Precision string
@@ -16,15 +19,17 @@ const (
 	PrecisionNanosecond  Precision = "nanosecond"
 )
 
+// precisions lists every Precision, coarsest first.
+func precisions() []Precision {
+	return []Precision{
+		PrecisionDay, PrecisionHour, PrecisionMinute, PrecisionSecond,
+		PrecisionMillisecond, PrecisionMicrosecond, PrecisionNanosecond,
+	}
+}
+
 // Valid reports whether p is a known precision.
 func (p Precision) Valid() bool {
-	switch p {
-	case PrecisionDay, PrecisionHour, PrecisionMinute, PrecisionSecond,
-		PrecisionMillisecond, PrecisionMicrosecond, PrecisionNanosecond:
-		return true
-	}
-
-	return false
+	return slices.Contains(precisions(), p)
 }
 
 // Truncate returns the start of t's precision window, measured in t's own offset and

@@ -51,8 +51,7 @@ var _ = Describe("Links", func() {
 		Expect(s.EventLinks(ctx, p99.ID)).To(Equal([]timeline.Link{ledTo}))
 	})
 
-	It("finds a link by id, and by its events and kind", func(ctx SpecContext) {
-		Expect(s.Link(ctx, ledTo.ID)).To(Equal(ledTo))
+	It("finds a link by its events and kind", func(ctx SpecContext) {
 		Expect(s.LinkBetween(ctx, stepDown.ID, p99.ID, timeline.LinkLedTo)).To(Equal(ledTo))
 		Expect(s.LinkBetween(ctx, p99.ID, stepDown.ID, timeline.LinkLedTo)).Error().To(MatchError(store.ErrNotFound))
 	})

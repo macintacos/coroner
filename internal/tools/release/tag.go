@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"io"
 	"os"
@@ -69,8 +70,8 @@ func tag(ctx context.Context, sys system, args []string) (any, error) {
 	}
 	_, err = git(ctx, sys, "push", "origin", "refs/tags/"+*name)
 	if err != nil {
-		_, _ = git(ctx, sys, "tag", "-d", *name)
-		return nil, &toolError{Code: "push_failed", Message: err.Error()}
+		_, deleteErr := git(ctx, sys, "tag", "-d", *name)
+		return nil, &toolError{Code: "push_failed", Message: errors.Join(err, deleteErr).Error()}
 	}
 	result.Pushed = true
 

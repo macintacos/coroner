@@ -1,7 +1,7 @@
 name: Docs
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', '!v*-*']
 permissions:
   contents: read
 concurrency:
@@ -28,7 +28,7 @@ jobs:
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           # mise.lock pins every tool but mise itself.
-          # Keep in sync with ci.yml.
+          # Keep in sync with ci.yml and release.yml.
           version: 2026.9.6
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

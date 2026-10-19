@@ -55,7 +55,7 @@ func completeTimelineNames(ctx context.Context, app App) cobra.CompletionFunc {
 		var completions []cobra.Completion
 		for _, t := range timelines {
 			if strings.HasPrefix(t.Name, toComplete) {
-				completions = append(completions, cobra.CompletionWithDesc(t.Name, t.Title))
+				completions = append(completions, cobra.CompletionWithDesc(t.Name, pickerLabel(t.Title)))
 			}
 		}
 

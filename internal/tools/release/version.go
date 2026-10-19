@@ -7,12 +7,15 @@ import (
 	"strconv"
 )
 
-// versionTag matches the only tags the tool does version math on: vX.Y.Z and vX.Y.Z-rc.N.
-var versionTag = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$`)
+// versionTag matches the only tags the tool does version math on: vX.Y.Z and vX.Y.Z-rc.N,
+// without leading zeros, as semver and goreleaser require.
+var versionTag = regexp.MustCompile(`^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.(0|[1-9]\d*))?$`)
 
+// version is vX.Y.Z, or vX.Y.Z-rc.N when isRC; the zero value is v0.0.0.
 type version struct {
 	major, minor, patch int
-	rc                  int // -1 on a final version
+	isRC                bool
+	rc                  int
 }
 
 func parseTag(tag string) (version, bool) {
@@ -21,11 +24,12 @@ func parseTag(tag string) (version, bool) {
 		return version{}, false
 	}
 
-	v := version{rc: -1}
+	var v version
 	v.major, _ = strconv.Atoi(m[1])
 	v.minor, _ = strconv.Atoi(m[2])
 	v.patch, _ = strconv.Atoi(m[3])
 	if m[4] != "" {
+		v.isRC = true
 		v.rc, _ = strconv.Atoi(m[4])
 	}
 
@@ -34,14 +38,14 @@ func parseTag(tag string) (version, bool) {
 
 func (v version) String() string {
 	s := fmt.Sprintf("v%d.%d.%d", v.major, v.minor, v.patch)
-	if v.rc >= 0 {
+	if v.isRC {
 		s += fmt.Sprintf("-rc.%d", v.rc)
 	}
 
 	return s
 }
 
-func (v version) core() version { return version{v.major, v.minor, v.patch, -1} }
+func (v version) core() version { return version{major: v.major, minor: v.minor, patch: v.patch} }
 
 func compareCore(a, b version) int {
 	return cmp.Or(cmp.Compare(a.major, b.major), cmp.Compare(a.minor, b.minor), cmp.Compare(a.patch, b.patch))
@@ -53,7 +57,7 @@ func latestFinal(tags []string) (version, bool) {
 	found := false
 	for _, tag := range tags {
 		v, ok := parseTag(tag)
-		if ok && v.rc < 0 && (!found || compareCore(v, latest) > 0) {
+		if ok && !v.isRC && (!found || compareCore(v, latest) > 0) {
 			latest, found = v, true
 		}
 	}
@@ -61,32 +65,37 @@ func latestFinal(tags []string) (version, bool) {
 	return latest, found
 }
 
-// nextTag bumps the latest final tag among tags, or v0.0.0 when there is none; with rc it
-// appends -rc.N, one past the highest existing rc of that version.
-func nextTag(tags []string, bump string, rc bool) (string, error) {
-	latest, _ := latestFinal(tags)
+// bump turns a final version into the next one.
+type bump func(version) version
 
-	var next version
-	switch bump {
+func parseBump(name string) (bump, error) {
+	switch name {
 	case "major":
-		next = version{latest.major + 1, 0, 0, -1}
+		return func(v version) version { return version{major: v.major + 1} }, nil
 	case "minor":
-		next = version{latest.major, latest.minor + 1, 0, -1}
+		return func(v version) version { return version{major: v.major, minor: v.minor + 1} }, nil
 	case "patch":
-		next = version{latest.major, latest.minor, latest.patch + 1, -1}
-	default:
-		return "", fmt.Errorf("unknown bump %q", bump)
+		return func(v version) version { return version{major: v.major, minor: v.minor, patch: v.patch + 1} }, nil
 	}
 
+	return nil, fmt.Errorf("unknown bump %q", name)
+}
+
+// nextTag bumps the latest final tag among tags, or v0.0.0 when there is none; with rc it
+// appends -rc.N, one past the highest existing rc of that version.
+func nextTag(tags []string, next bump, rc bool) string {
+	latest, _ := latestFinal(tags)
+	v := next(latest)
+
 	if rc {
-		next.rc = 0
+		v.isRC = true
 		for _, tag := range tags {
-			v, ok := parseTag(tag)
-			if ok && v.rc >= next.rc && v.core() == next.core() {
-				next.rc = v.rc + 1
+			t, ok := parseTag(tag)
+			if ok && t.isRC && t.rc >= v.rc && t.core() == v.core() {
+				v.rc = t.rc + 1
 			}
 		}
 	}
 
-	return next.String(), nil
+	return v.String()
 }

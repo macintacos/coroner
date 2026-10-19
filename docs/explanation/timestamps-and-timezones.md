@@ -29,8 +29,8 @@ keeps its occurred offset: the input's offset from UTC in seconds, as `+02:00` g
 An `--at` offset more than a day from UTC is rejected as `invalid_time`: real zones span
 −12:00 to +14:00, so the database stores only offsets within a day of UTC.
 
-The offset is null when the input was `Z`, `-00:00`, `UTC` or an epoch. Those say when
-something happened but nothing about the local time where it happened, and
+The offset is null when the input was `Z`, `-00:00`, `-0000`, `UTC` or an epoch. Those say
+when something happened but nothing about the local time where it happened, and
 [RFC 9557](https://www.rfc-editor.org/rfc/rfc9557.html) gives `Z` exactly that meaning. A
 stored zero would claim the source was in a UTC+0 zone, which none of them said.
 
