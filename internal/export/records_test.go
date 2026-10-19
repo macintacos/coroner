@@ -90,10 +90,10 @@ var _ = Describe("NewAttachment", func() {
 
 var _ = Describe("Records", func() {
 	event := func(id string, seq int64, occurred time.Time) export.Event {
-		return export.Event{ID: id, Seq: &seq, OccurredAt: export.Instant(occurred)}
+		return export.Event{ID: id, TimelineID: "t1", Seq: &seq, OccurredAt: export.Instant(occurred)}
 	}
 	annotation := func(id string, eventID *string, created time.Time) export.Annotation {
-		return export.Annotation{ID: id, EventID: eventID, CreatedAt: export.Instant(created)}
+		return export.Annotation{ID: id, TimelineID: "t1", EventID: eventID, CreatedAt: export.Instant(created)}
 	}
 	attachment := func(id string, owner timeline.AttachmentOwner, created time.Time) export.Attachment {
 		return export.Attachment{ID: id, EventID: owner.EventID, AnnotationID: owner.AnnotationID, CreatedAt: export.Instant(created)}
@@ -128,6 +128,7 @@ var _ = Describe("Records", func() {
 
 	It("follows each event and annotation with its attachments, by created at then id", func() {
 		env := export.NewEnvelope("0.1.0", at(9, 0))
+		env.Timelines = []export.Timeline{{ID: "t1"}}
 		env.Events = []export.Event{event("e2", 2, at(3, 15)), event("e1", 1, at(3, 14))}
 		env.Annotations = []export.Annotation{annotation("a-t", nil, at(10, 0)), annotation("a-e1", new("e1"), at(10, 0))}
 		env.Attachments = []export.Attachment{
@@ -143,7 +144,7 @@ var _ = Describe("Records", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(labels(records)).To(Equal([]string{
-			"header", "annotation a-t", "attachment f-a-t", "event e1", "attachment z-e1-early", "attachment f-e1-late",
+			"header", "timeline t1", "annotation a-t", "attachment f-a-t", "event e1", "attachment z-e1-early", "attachment f-e1-late",
 			"annotation a-e1", "attachment f-a-e1", "event e2", "attachment f-e2",
 		}))
 	})
@@ -162,17 +163,19 @@ var _ = Describe("Records", func() {
 		env := export.NewEnvelope("0.1.0", at(9, 0))
 		b1, a2, a1 := event("b1", 1, at(3, 14)), event("a2", 2, at(3, 14)), event("a1", 1, at(3, 14))
 		b1.TimelineID, a2.TimelineID, a1.TimelineID = "tb", "ta", "ta"
+		env.Timelines = []export.Timeline{{ID: "ta", Name: "a"}, {ID: "tb", Name: "b"}}
 		env.Events = []export.Event{b1, a2, a1}
 
 		records, err := export.Records(env)
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(labels(records)).To(Equal([]string{"header", "event a1", "event a2", "event b1"}))
+		Expect(labels(records)).To(Equal([]string{"header", "timeline ta", "timeline tb", "event a1", "event a2", "event b1"}))
 	})
 
 	DescribeTable("orders events tying on occurred at and seq by id, whatever their input order",
 		func(ids ...string) {
 			env := export.NewEnvelope("0.1.0", at(9, 0))
+			env.Timelines = []export.Timeline{{ID: "t1"}}
 			for _, id := range ids {
 				env.Events = append(env.Events, event(id, 1, at(3, 14)))
 			}
@@ -180,34 +183,10 @@ var _ = Describe("Records", func() {
 			records, err := export.Records(env)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(labels(records)).To(Equal([]string{"header", "event e1", "event e2"}))
+			Expect(labels(records)).To(Equal([]string{"header", "timeline t1", "event e1", "event e2"}))
 		},
 		Entry("in id order", "e1", "e2"),
 		Entry("in reverse id order", "e2", "e1"),
-	)
-
-	It("fails naming an annotation whose event is not in the export", func() {
-		env := export.NewEnvelope("0.1.0", at(9, 0))
-		env.Annotations = []export.Annotation{annotation("a1", new("gone"), at(10, 0))}
-
-		_, err := export.Records(env)
-
-		Expect(err).To(MatchError(And(ContainSubstring("a1"), ContainSubstring("gone"))))
-	})
-
-	DescribeTable("fails naming an attachment whose owner is not in the export",
-		func(owner timeline.AttachmentOwner) {
-			env := export.NewEnvelope("0.1.0", at(9, 0))
-			env.Events = []export.Event{event("e1", 1, at(3, 14))}
-			env.Annotations = []export.Annotation{annotation("a1", new("e1"), at(10, 0))}
-			env.Attachments = []export.Attachment{attachment("f1", owner, at(11, 0))}
-
-			_, err := export.Records(env)
-
-			Expect(err).To(MatchError(And(ContainSubstring("f1"), ContainSubstring("gone"))))
-		},
-		Entry("an event", timeline.AttachmentOwner{EventID: new("gone")}),
-		Entry("an annotation", timeline.AttachmentOwner{AnnotationID: new("gone")}),
 	)
 
 	link := func(id, from, to string, created time.Time) export.Link {
@@ -218,8 +197,11 @@ var _ = Describe("Records", func() {
 		env := export.NewEnvelope("0.1.0", at(9, 0))
 		b1, a1 := event("b1", 1, at(3, 15)), event("a1", 1, at(3, 14))
 		b1.TimelineID, a1.TimelineID = "tb", "ta"
+		env.Timelines = []export.Timeline{{ID: "ta", Name: "a"}, {ID: "tb", Name: "b"}}
 		env.Events = []export.Event{b1, a1}
-		env.Annotations = []export.Annotation{annotation("n-b1", new("b1"), at(10, 0))}
+		nb1 := annotation("n-b1", new("b1"), at(10, 0))
+		nb1.TimelineID = "tb"
+		env.Annotations = []export.Annotation{nb1}
 		env.Links = []export.Link{
 			link("l-late", "b1", "a1", at(12, 0)),
 			link("l-cross", "a1", "b1", at(11, 0)),
@@ -231,23 +213,9 @@ var _ = Describe("Records", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(labels(records)).To(Equal([]string{
-			"header", "event a1", "event b1", "annotation n-b1", "link l-cross", "link z-early", "link l-late",
+			"header", "timeline ta", "timeline tb", "event a1", "event b1", "annotation n-b1", "link l-cross", "link z-early", "link l-late",
 		}))
 	})
-
-	DescribeTable("fails naming a link whose event is not in the export",
-		func(from, to string) {
-			env := export.NewEnvelope("0.1.0", at(9, 0))
-			env.Events = []export.Event{event("e1", 1, at(3, 14))}
-			env.Links = []export.Link{link("l1", from, to, at(11, 0))}
-
-			_, err := export.Records(env)
-
-			Expect(err).To(MatchError(And(ContainSubstring("l1"), ContainSubstring("gone"))))
-		},
-		Entry("the event it leaves", "gone", "e1"),
-		Entry("the event it reaches", "e1", "gone"),
-	)
 })
 
 var _ = Describe("WriteRecords", func() {

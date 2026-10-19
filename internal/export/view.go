@@ -1,6 +1,7 @@
 package export
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -121,6 +122,52 @@ func splitAnnotations(annotations []Annotation, events []Event) ([]Annotation, m
 	}
 
 	return onTimeline, byEvent, nil
+}
+
+// groupAttachments returns env's attachments by created at then id, keyed by the id of the
+// event or annotation that keeps each, and fails naming the first whose owner is not in env.
+func groupAttachments(env Envelope) (map[string][]Attachment, error) {
+	events, annotations := map[string]bool{}, map[string]bool{}
+	for _, e := range env.Events {
+		events[e.ID] = true
+	}
+	for _, a := range env.Annotations {
+		annotations[a.ID] = true
+	}
+
+	byOwner := map[string][]Attachment{}
+	for _, f := range slices.SortedFunc(slices.Values(env.Attachments), compareAttachments) {
+		switch {
+		case f.EventID != nil && !events[*f.EventID]:
+			return nil, fmt.Errorf("attachment %s: its event %s is not in the export", f.ID, *f.EventID)
+		case f.AnnotationID != nil && !annotations[*f.AnnotationID]:
+			return nil, fmt.Errorf("attachment %s: its annotation %s is not in the export", f.ID, *f.AnnotationID)
+		}
+		ownerID := deref(cmp.Or(f.EventID, f.AnnotationID))
+		byOwner[ownerID] = append(byOwner[ownerID], f)
+	}
+
+	return byOwner, nil
+}
+
+// sortedLinks returns env's links by created at then id, and fails naming the first whose event
+// is not in env.
+func sortedLinks(env Envelope) ([]Link, error) {
+	events := map[string]bool{}
+	for _, e := range env.Events {
+		events[e.ID] = true
+	}
+
+	links := slices.SortedFunc(slices.Values(env.Links), compareLinks)
+	for _, l := range links {
+		for _, id := range []string{l.FromEventID, l.ToEventID} {
+			if !events[id] {
+				return nil, fmt.Errorf("link %s: its event %s is not in the export", l.ID, id)
+			}
+		}
+	}
+
+	return links, nil
 }
 
 // title returns one timeline's title and name, or "" and an overlay's names joined by " + ".

@@ -193,5 +193,9 @@ var _ = Describe("prepare", func() {
 			err := WriteSVG(&b, env, time.UTC)
 			return b.Len(), err
 		}),
+		Entry("Records", func(env Envelope) (int, error) {
+			records, err := Records(env)
+			return len(records), err
+		}),
 	)
 })
