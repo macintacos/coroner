@@ -33,7 +33,6 @@ digraph coroner_docs_router {
     "Regenerate docs/reference/cli/" [shape=box];
     "Edit docs/reference/export-format.md" [shape=box];
     "Edit docs/reference/configuration.md" [shape=box];
-    "Regenerate CHANGELOG.md (committed by the first release)" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
     "Edit skills/coroner/ (SKILL.md and references/)" [shape=box];
 
@@ -54,7 +53,6 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
     "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
     "Which doc does the change affect?" -> "Edit docs/reference/configuration.md" [label="a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule"];
-    "Which doc does the change affect?" -> "Regenerate CHANGELOG.md (committed by the first release)" [label="a release: regenerate from the commit history with git-cliff, never hand-edit"];
     "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site"];
     "Which doc does the change affect?" -> "Edit skills/coroner/ (SKILL.md and references/)" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed"];
 }
@@ -80,6 +78,10 @@ digraph coroner_docs_router {
 - **[`docs/contributing/releasing.md`](../docs/contributing/releasing.md)** (maintainers)
   — the release checklist: the one-time tap and token setup, the checks before a `v*` tag,
   the checks after the release workflow publishes it, and what a rebuilt tag reproduces.
+- **[`.claude/skills/release-coroner/SKILL.md`](../.claude/skills/release-coroner/SKILL.md)**
+  (the maintainer's agent) — the `/release-coroner` skill that runs a release through
+  `internal/tools/release`. It and `releasing.md` describe the same flow, so they change
+  together, and both change with the tool's subcommands and JSON keys.
 - **[`docs/how-to/install.md`](../docs/how-to/install.md)** (human-facing) — installing,
   upgrading and removing coroner with `go install`, Homebrew or a release archive, what an
   archive holds, and the macOS signing decision.
@@ -143,10 +145,6 @@ digraph coroner_docs_router {
   environment variables, the config file and the database, what the file rejects, and the
   blob directory rule. A spec in `internal/config` fails when the page misses a key the
   config file accepts, so a new config key updates it in the same change.
-- **`CHANGELOG.md`** (committed by the first release; human-facing) — every release's
-  changes grouped by commit type, **Breaking** first, written at release by
-  `git cliff --tag vX.Y.Z -o CHANGELOG.md` from [`cliff.toml`](../cliff.toml), per
-  [the release checklist](../docs/contributing/releasing.md). Never hand-edited.
 - **[`internal/cli/topics/*.md`](../internal/cli/topics/)** (humans and agents at the
   terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
   CLI reference pages, which are also the site's Exit codes, Environment variables, Time

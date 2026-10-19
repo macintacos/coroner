@@ -38,8 +38,6 @@ uv   = "latest"
 ruff = "latest"
 ty   = "latest"
 
-git-cliff = "latest" # Changelog generator (config in cliff.toml)
-
 # Release. goreleaser builds and publishes a tag (config in .goreleaser.yaml); syft
 # writes the SBOMs it attaches. goreleaser is pinned, not "latest": .goreleaser.yaml
 # follows its deprecations, so bump it with a `mise run release:check`.

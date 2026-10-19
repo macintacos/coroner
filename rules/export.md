@@ -46,10 +46,10 @@
    Go types and never in the fixture (`AGENTS.md` Rules 2 and 3). A fixture failure that
    is not an export format change, such as renumbered IDs, is fixed in the script, for
    example by giving the new command its own section or pre-seeding that section's counter
-   file, never in the fixture. A format change's new fixture directory or schema diff
-   lands in a commit whose type and subject describe the format change, which is what puts
-   it in the changelog. `testdata/export/compat/` holds hand-written exports of other
-   versions that pin the evolution rules; they are not frozen.
+   file, never in the fixture. A format change reaches the release notes through its pull
+   request's `stability:` line and the release tool's `schema/` contract hint.
+   `testdata/export/compat/` holds hand-written exports of other versions that pin the
+   evolution rules; they are not frozen.
 8. **The Markdown export has one writer:** render it only through `export.WriteMarkdown`,
    from the `Envelope` that `json` and `jsonl` encode, so every format exports the same
    events. Its layout is not a contract (`AGENTS.md` Rule 3), so it changes without a

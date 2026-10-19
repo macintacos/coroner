@@ -26,17 +26,16 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
   warning, such as a broken link between pages, copies the export schema in, and fails
   when a page links a file under `/coroner/schema/` that is not in `site/`.
 - `mise run preflight` runs lint, test, build and docs:build. It is the gate before
-  declaring work done (Rule 7).
+  declaring work done (Rule 6).
 - `mise run release:check` validates [`.goreleaser.yaml`](.goreleaser.yaml), and
   `mise run release:snapshot` builds every release artifact into `dist/` without
-  publishing. [The release checklist](docs/contributing/releasing.md) says when to run
-  them.
+  publishing. `/release-coroner` runs `release:check` and `release:snapshot` as release
+  gates, and [the releasing guide](docs/contributing/releasing.md) describes the flow.
 
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, regenerating the CLI reference when a help topic or the Go code
-it documents changes, and the export schema when the export types change; `commit-msg`
-rejects a message that is not a Conventional Commit (Rule 5); and `pre-push` runs
-`mise run test` when Go files, `go.mod` or `go.sum` change.
+it documents changes, and the export schema when the export types change; and `pre-push`
+runs `mise run test` when Go files, `go.mod` or `go.sum` change.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request and
 push to `main`: `mise run lint`, `mise run test`, `mise run docs:build`, then
@@ -50,8 +49,9 @@ holds the rule and reads changed paths on stdin, and
 [`.github/scripts/docs-gate-test`](.github/scripts/docs-gate-test) checks its cases before
 the gate runs. Pushing a `v*` tag runs two workflows: one deploys the docs site to GitHub
 Pages ([`.github/workflows/docs.yml`](.github/workflows/docs.yml)), and the release
-workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) has git-cliff
-write the release notes, then goreleaser publish the release and update the Homebrew cask.
+workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) reads the
+release notes from the annotated tag's message, then has goreleaser publish the release
+and update the Homebrew cask.
 
 ## Routing
 
@@ -85,7 +85,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md" [label="JSON output, exports or another contract (Rule 3)"];
-    "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 6)"];
+    "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 5)"];
     "What does the change touch?" -> "Load rules/documentation.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a rules/ file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
     "What does the change touch?" -> "Load rules/timeline.md" [label="internal/timeline, or code that stores, orders or validates its types"];
     "What does the change touch?" -> "Load rules/store.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
@@ -113,7 +113,11 @@ digraph coroner_rules_router {
   pure. `main.go` builds `cli.App` from the process; code below it takes everything from
   `cli.App`, never from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen`
   writes the CLI reference, and with `--man <dir>` the man pages a release packs;
-  `schemagen` the export schema; `compatfixture` a release's fixture database).
+  `schemagen` the export schema; `compatfixture` a release's fixture database; `release`
+  the deterministic steps of `/release-coroner`, plus the release workflow's `tag-notes`
+  step). [`.claude/skills/release-coroner/`](.claude/skills/release-coroner/SKILL.md) is
+  the maintainer-only project skill that cuts a release; it ships neither with `skills/`
+  nor in the marketplace.
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`; those pages are
   also the site's reference pages for the topics. Specs fail when `exit-codes` disagrees
@@ -249,15 +253,11 @@ digraph coroner_rules_router {
    `testdata/export/v<MAJOR.MINOR>/` is written for the current `format_version` by
    `go test ./internal/cli -run 'TestScripts/contract$' -update`, which writes only a
    fixture that does not exist yet; before the first release that ships export, a fixture
-   is regenerated by deleting it first. `CHANGELOG.md` (committed by the first release) is
-   written at release by `git cliff --tag vX.Y.Z -o CHANGELOG.md` from
-   [`cliff.toml`](cliff.toml), per
-   [the release checklist](docs/contributing/releasing.md). A release's shell completions
-   and man pages are generated by `.goreleaser.yaml`'s `before` hooks into the ignored
-   `completions/` and `manpages/` and never committed. `uv.lock` is rewritten by
-   `uv lock`, or by `uv add` when a dependency changes; `mise run docs:build` fails when
-   it is stale. Each issue that adds a generated artifact adds its path and how to
-   regenerate it here.
+   is regenerated by deleting it first. A release's shell completions and man pages are
+   generated by `.goreleaser.yaml`'s `before` hooks into the ignored `completions/` and
+   `manpages/` and never committed. `uv.lock` is rewritten by `uv lock`, or by `uv add`
+   when a dependency changes; `mise run docs:build` fails when it is stale. Each issue
+   that adds a generated artifact adds its path and how to regenerate it here.
 3. **JSON output is a contract:** change it by editing the Go types, regenerating the
    schema and adding a fixture; an additive change bumps `format_version` minor, and any
    other change needs the maintainer's explicit approval and a major bump. Export fixtures
@@ -268,15 +268,8 @@ digraph coroner_rules_router {
    reference page, and the stability document when a contract is affected. The docs gate
    is only a backstop for CLI changes; label a pull request `docs-not-needed` only when
    nothing a user sees changed.
-5. **Commit messages are
-   [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):** use `feat!:`
-   or `BREAKING CHANGE:` only with the maintainer's approval. Before 1.0, breaks are
-   listed under a **Breaking** changelog heading. The `commit-msg` hook rejects a
-   non-conventional message (git's own merge, revert and reapply subjects pass; merges are
-   left out of the changelog), and git-cliff builds the changelog from the history, so a
-   commit's type picks its heading.
-6. **Keep the agent skill in sync:** when a command, flag, JSON key or exit code used in
+5. **Keep the agent skill in sync:** when a command, flag, JSON key or exit code used in
    [`skills/coroner/`](skills/coroner/SKILL.md) changes, update the skill in the same PR.
    The examples test catches only a command or flag that no longer parses.
-7. **Run `mise run preflight` before declaring work done:** it runs lint, test, build and
+6. **Run `mise run preflight` before declaring work done:** it runs lint, test, build and
    docs:build ([`.mise/tasks/preflight`](.mise/tasks/preflight)).
