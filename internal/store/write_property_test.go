@@ -71,13 +71,13 @@ func TestEventWritesReadBack(t *testing.T) {
 		updated.CreatedAt = added.CreatedAt
 		readBack("update", sortedTags(updated))
 
-		var stored []string
+		var storedSources []string
 		for _, source := range []*string{added.Source, updated.Source} {
 			if source != nil {
-				stored = append(stored, *source)
+				storedSources = append(storedSources, *source)
 			}
 		}
-		replaced := fullEvent(stored).Draw(t, "replaced")
+		replaced := fullEvent(storedSources).Draw(t, "replaced")
 		replaced.ID, replaced.TimelineID, replaced.Seq = id, tl.ID, added.Seq
 		err = s.Import(ctx, store.ImportRecords{EventReplacements: []timeline.Event{replaced}})
 		if err != nil {
