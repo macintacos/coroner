@@ -353,6 +353,16 @@ type coroner struct {
 // run returns what the command line args wrote to stdout, or an error holding its stderr unless
 // it exited 0.
 func (c coroner) run(ctx context.Context, args ...string) (string, error) {
+	out, errOut, code := c.exec(ctx, args...)
+	if code != 0 {
+		return "", fmt.Errorf("coroner %s exited %d:\n%s", strings.Join(args, " "), code, errOut)
+	}
+
+	return out, nil
+}
+
+// exec returns what the command line args wrote to stdout and stderr, and its exit code.
+func (c coroner) exec(ctx context.Context, args ...string) (string, string, int) {
 	var out, errOut bytes.Buffer
 	var ids uint64
 	code := cli.Run(ctx, cli.App{
@@ -377,11 +387,8 @@ func (c coroner) run(ctx context.Context, args ...string) (string, error) {
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
 	})
-	if code != 0 {
-		return "", fmt.Errorf("coroner %s exited %d:\n%s", strings.Join(args, " "), code, errOut.String())
-	}
 
-	return out.String(), nil
+	return out.String(), errOut.String(), code
 }
 
 // dirDiff returns a diff of every file that is in only one of the directories a and b, or differs
