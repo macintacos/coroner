@@ -12,8 +12,13 @@ import (
 // AddAnnotation adds a with attachments. When no source is called a.Source yet, it creates
 // one with id newSourceID.
 func (s *Store) AddAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(tx *Tx) error {
-		return tx.AddAnnotation(ctx, a, newSourceID)
+	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
+		err := tx.AddAnnotation(ctx, a, newSourceID)
+		if err != nil {
+			return err
+		}
+		tx.Attach(timeline.AttachmentOwner{AnnotationID: new(a.ID)})
+		return nil
 	})
 	return err
 }
@@ -98,8 +103,13 @@ func (tx *Tx) EventAnnotations(ctx context.Context, eventID string) ([]timeline.
 // UpdateAnnotation stores a's kind, body, author, source, URL and updated at, and adds
 // attachments. When no source is called a.Source yet, it creates one with id newSourceID.
 func (s *Store) UpdateAnnotation(ctx context.Context, a timeline.Annotation, newSourceID string, attachments ...NewAttachment) error {
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{AnnotationID: new(a.ID)}, attachments, func(tx *Tx) error {
-		return tx.UpdateAnnotation(ctx, a, newSourceID)
+	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
+		err := tx.UpdateAnnotation(ctx, a, newSourceID)
+		if err != nil {
+			return err
+		}
+		tx.Attach(timeline.AttachmentOwner{AnnotationID: new(a.ID)})
+		return nil
 	})
 	return err
 }
@@ -164,7 +174,7 @@ func (tx *Tx) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit in
 // DeleteAnnotations deletes the annotations with ids, or none of them when any does not
 // exist.
 func (s *Store) DeleteAnnotations(ctx context.Context, ids ...string) error {
-	return s.change(ctx, nil, func(tx *Tx) error { return tx.DeleteAnnotations(ctx, ids...) })
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAnnotations(ctx, ids...) })
 }
 
 // DeleteAnnotations deletes the annotations with ids, or none of them when any does not

@@ -16,10 +16,14 @@ func (s *Store) AddEvent(
 	ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment,
 ) (timeline.Event, error) {
 	var added timeline.Event
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(tx *Tx) error {
+	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
 		var err error
 		added, err = tx.AddEvent(ctx, e, newSourceID)
-		return err
+		if err != nil {
+			return err
+		}
+		tx.Attach(timeline.AttachmentOwner{EventID: new(e.ID)})
+		return nil
 	})
 	if err != nil {
 		return timeline.Event{}, err
@@ -134,8 +138,13 @@ func (tx *Tx) Events(ctx context.Context, timelineID string) ([]timeline.Event, 
 // its tags with e.Tags, and adds attachments. When no source is called e.Source yet, it
 // creates one with id newSourceID.
 func (s *Store) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID string, attachments ...NewAttachment) error {
-	_, err := s.writeWithAttachments(ctx, timeline.AttachmentOwner{EventID: new(e.ID)}, attachments, func(tx *Tx) error {
-		return tx.UpdateEvent(ctx, e, newSourceID)
+	_, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: attachments}, func(tx *Tx) error {
+		err := tx.UpdateEvent(ctx, e, newSourceID)
+		if err != nil {
+			return err
+		}
+		tx.Attach(timeline.AttachmentOwner{EventID: new(e.ID)})
+		return nil
 	})
 	return err
 }
@@ -160,7 +169,7 @@ func (tx *Tx) UpdateEvent(ctx context.Context, e timeline.Event, newSourceID str
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of
 // them when any does not exist. Their seqs are never given to other events.
 func (s *Store) DeleteEvents(ctx context.Context, ids ...string) error {
-	return s.change(ctx, nil, func(tx *Tx) error { return tx.DeleteEvents(ctx, ids...) })
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteEvents(ctx, ids...) })
 }
 
 // DeleteEvents deletes the events with ids, with their tags and annotations, or none of

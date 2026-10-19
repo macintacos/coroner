@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -41,10 +42,15 @@ func (s *Store) AddAttachment(ctx context.Context, a timeline.Attachment, conten
 		return timeline.Attachment{}, err
 	}
 
-	rows, err := s.writeWithAttachments(ctx, a.Owner, []NewAttachment{
+	rows, err := s.Change(ctx, ChangeOptions{Mode: Commit, Attach: []NewAttachment{
 		{ID: a.ID, Filename: a.Filename, CreatedAt: a.CreatedAt, Content: content},
-	}, func(tx *Tx) error {
-		return translate(checkOwner(ctx, tx.q, a.Owner))
+	}}, func(tx *Tx) error {
+		err := checkOwner(ctx, tx.q, a.Owner)
+		if err != nil {
+			return translate(err)
+		}
+		tx.Attach(a.Owner)
+		return nil
 	})
 	if err != nil {
 		return timeline.Attachment{}, err
@@ -145,7 +151,7 @@ func (tx *Tx) AttachmentsByIDPrefix(ctx context.Context, prefix string, limit in
 // DeleteAttachments deletes the attachments with ids, or none of them when any does not
 // exist, leaving their blobs to GarbageCollectBlobs.
 func (s *Store) DeleteAttachments(ctx context.Context, ids ...string) error {
-	return s.change(ctx, nil, func(tx *Tx) error { return tx.DeleteAttachments(ctx, ids...) })
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteAttachments(ctx, ids...) })
 }
 
 // DeleteAttachments deletes the attachments with ids, or none of them when any does not
@@ -174,36 +180,6 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 	return deleted, nil
 }
 
-// writeWithAttachments stages attachments as owner's outside any transaction, then, in one
-// change, runs fn and names their blobs and inserts their rows after it, so a failed fn
-// names no blob. It returns the rows it inserted. It rejects a filename that is not UTF-8
-// before staging anything.
-func (s *Store) writeWithAttachments(
-	ctx context.Context, owner timeline.AttachmentOwner, attachments []NewAttachment, fn func(*Tx) error,
-) ([]timeline.Attachment, error) {
-	err := validateEach(attachments)
-	if err != nil {
-		return nil, err
-	}
-
-	staged, err := stageAttachments(s.blobDir, owner, attachments)
-	if err != nil {
-		return nil, err
-	}
-
-	err = s.change(ctx, staged, fn)
-	if err != nil {
-		return nil, err
-	}
-
-	rows := make([]timeline.Attachment, len(staged))
-	for i, a := range staged {
-		rows[i] = a.attachment
-	}
-
-	return rows, nil
-}
-
 func discardStaged(staged []stagedAttachment) {
 	for _, a := range staged {
 		// Once insertAttachments has renamed or discarded the file, the error is expected.
@@ -211,11 +187,19 @@ func discardStaged(staged []stagedAttachment) {
 	}
 }
 
-// stageAttachments stages the content of each of attachments, owned by owner, outside any
+// owned returns staged with each row's Owner set to owner.
+func owned(staged []stagedAttachment, owner timeline.AttachmentOwner) []stagedAttachment {
+	rows := slices.Clone(staged)
+	for i := range rows {
+		rows[i].attachment.Owner = owner
+	}
+
+	return rows
+}
+
+// stageAttachments stages the content of each of attachments, with no owner yet, outside any
 // transaction, removing what it staged when one fails.
-func stageAttachments(
-	blobDir string, owner timeline.AttachmentOwner, attachments []NewAttachment,
-) ([]stagedAttachment, error) {
+func stageAttachments(blobDir string, attachments []NewAttachment) ([]stagedAttachment, error) {
 	staged := make([]stagedAttachment, 0, len(attachments))
 	for _, a := range attachments {
 		blob, err := stageBlob(blobDir, a.Content)
@@ -225,7 +209,7 @@ func stageAttachments(
 		}
 		staged = append(staged, stagedAttachment{
 			attachment: timeline.Attachment{
-				ID: a.ID, Owner: owner, Filename: a.Filename, MIME: DetectMIME(blob.head, a.Filename),
+				ID: a.ID, Filename: a.Filename, MIME: DetectMIME(blob.head, a.Filename),
 				SHA256: blob.sha256, Size: blob.size, CreatedAt: a.CreatedAt,
 			},
 			blob: blob,

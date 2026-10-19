@@ -47,7 +47,7 @@ func (s *Store) Import(ctx context.Context, records ImportRecords) error {
 		return err
 	}
 
-	return s.change(ctx, staged, func(tx *Tx) error { return tx.Import(ctx, records) })
+	return s.change(ctx, Commit, staged, func(tx *Tx) error { return tx.Import(ctx, records) })
 }
 
 // Import writes records as Store.Import does, except that it inserts no attachment that

@@ -10,7 +10,7 @@ import (
 // CreateOverlay saves o with its timelines, kept in the order given. It returns an error
 // wrapping ErrConflict when another overlay has o's name.
 func (s *Store) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
-	return s.change(ctx, nil, func(tx *Tx) error { return tx.CreateOverlay(ctx, o) })
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.CreateOverlay(ctx, o) })
 }
 
 // CreateOverlay saves o with its timelines, kept in the order given. It returns an error

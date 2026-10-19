@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 const (
@@ -16,16 +17,86 @@ const (
 	firstBackoff  = 20 * time.Millisecond
 )
 
+// Mode says whether a Change commits or rolls back.
+type Mode int
+
+const (
+	// Commit keeps what the change wrote.
+	Commit Mode = iota
+	// Rollback runs the change in full, then undoes it: a dry run. It names no blob.
+	Rollback
+)
+
+// ChangeOptions says how a Change ends and what content it may attach.
+type ChangeOptions struct {
+	Mode Mode
+	// Attach is content staged before the transaction begins, because a reader cannot be read
+	// twice. fn attaches it to one owner with Tx.Attach; content fn never attaches is discarded.
+	Attach []NewAttachment
+}
+
+var errRollback = errors.New("rolled back")
+
 // Tx is one transaction's view of the database. Its methods translate their own errors, so a
-// caller can branch on ErrNotFound and ErrConflict inside a transaction and keep going.
+// caller can branch on ErrNotFound and ErrConflict inside a Change and keep going.
 type Tx struct {
 	q       *sqlcgen.Queries
-	db      sqlcgen.DBTX // hand-written SQL (SourceUsages, ListEvents, TagUsages)
-	blobDir string       // Import's stored-blob check
+	db      sqlcgen.DBTX              // hand-written SQL (SourceUsages, ListEvents, TagUsages)
+	blobDir string                    // Import's stored-blob check, and naming staged blobs
+	owner   *timeline.AttachmentOwner // set by Attach
 }
 
 func newTx(db sqlcgen.DBTX, blobDir string) *Tx {
 	return &Tx{q: sqlcgen.New(db), db: db, blobDir: blobDir}
+}
+
+// Attach attaches the Change's staged content to owner when fn returns. A Change whose fn never
+// calls it attaches nothing.
+func (tx *Tx) Attach(owner timeline.AttachmentOwner) {
+	tx.owner = &owner
+}
+
+// Change runs fn in one immediate transaction, then names and inserts the content fn attached,
+// then commits, or rolls back under Rollback. fn may run more than once and must use only tx. It
+// returns the attachment rows it inserted (none under Rollback).
+func (s *Store) Change(ctx context.Context, opts ChangeOptions, fn func(*Tx) error) ([]timeline.Attachment, error) {
+	err := validateEach(opts.Attach)
+	if err != nil {
+		return nil, err
+	}
+
+	staged, err := stageAttachments(s.blobDir, opts.Attach)
+	if err != nil {
+		return nil, err
+	}
+	defer discardStaged(staged)
+
+	var inserted []stagedAttachment
+	err = s.change(ctx, opts.Mode, nil, func(tx *Tx) error {
+		inserted = nil
+		err := fn(tx)
+		if err != nil || tx.owner == nil || opts.Mode == Rollback {
+			return err
+		}
+		inserted = owned(staged, *tx.owner)
+		return insertAttachments(ctx, tx.q, tx.blobDir, inserted)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows []timeline.Attachment
+	for _, a := range inserted {
+		rows = append(rows, a.attachment)
+	}
+
+	return rows, nil
+}
+
+// Read runs fn in one deferred read-only transaction. fn must use only tx.
+func (s *Store) Read(ctx context.Context, fn func(*Tx) error) error {
+	_, err := readIn(ctx, s, func(tx *Tx) (struct{}, error) { return struct{}{}, fn(tx) })
+	return err
 }
 
 // readIn runs fn in one read transaction and returns what it produced. fn must only use tx.
@@ -113,22 +184,31 @@ func (s *Store) write(ctx context.Context, fn func(*sqlcgen.Queries) error) erro
 
 // change runs fn, then names each staged blob and inserts its row after it, in one
 // immediate transaction retried whole while another writer holds the database, so a failed
-// fn names no blob. fn may run more than once and must only use tx. change removes whatever
-// staged file it did not name.
-func (s *Store) change(ctx context.Context, staged []stagedAttachment, fn func(*Tx) error) error {
+// fn names no blob. Under Rollback it names none and undoes fn's writes. fn may run more than
+// once and must only use tx. change removes whatever staged file it did not name.
+func (s *Store) change(ctx context.Context, mode Mode, staged []stagedAttachment, fn func(*Tx) error) error {
 	defer discardStaged(staged)
 
-	return translate(retryBusy(ctx, writeAttempts, func() error {
+	err := retryBusy(ctx, writeAttempts, func() error {
 		return s.inTx(ctx, nil, func(db sqlcgen.DBTX) error {
 			tx := newTx(db, s.blobDir)
 			err := fn(tx)
 			if err != nil {
 				return err
 			}
+			if mode == Rollback {
+				return errRollback
+			}
 
 			return insertAttachments(ctx, tx.q, tx.blobDir, staged)
 		})
-	}))
+	})
+	// A failed ROLLBACK joined to errRollback still committed nothing.
+	if errors.Is(err, errRollback) {
+		return nil
+	}
+
+	return translate(err)
 }
 
 func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.DBTX) error) error {

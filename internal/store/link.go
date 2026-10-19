@@ -10,7 +10,7 @@ import (
 // AddLink adds l. It returns an error wrapping ErrConflict when a link of l's kind already
 // leads from l's from event to its to event.
 func (s *Store) AddLink(ctx context.Context, l timeline.Link) error {
-	return s.change(ctx, nil, func(tx *Tx) error { return tx.AddLink(ctx, l) })
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.AddLink(ctx, l) })
 }
 
 // AddLink adds l. It returns an error wrapping ErrConflict when a link of l's kind already
@@ -100,7 +100,7 @@ func (tx *Tx) TimelineLinks(ctx context.Context, timelineID string) ([]timeline.
 
 // DeleteLink deletes the link with id.
 func (s *Store) DeleteLink(ctx context.Context, id string) error {
-	return s.change(ctx, nil, func(tx *Tx) error { return tx.DeleteLink(ctx, id) })
+	return s.change(ctx, Commit, nil, func(tx *Tx) error { return tx.DeleteLink(ctx, id) })
 }
 
 // DeleteLink deletes the link with id.

@@ -5,9 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 // codedError carries a SQLite result code the way the driver's *sqlite.Error does.
@@ -77,6 +81,30 @@ var _ = Describe("retryBusy", func() {
 
 		Expect(err).To(MatchError(context.Canceled))
 		Expect(calls).To(Equal(1))
+	})
+})
+
+var _ = Describe("Change", func() {
+	It("re-runs fn whole on busy", func(ctx SpecContext) {
+		s, err := Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"))
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+		at := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
+		calls := 0
+
+		_, err = s.Change(ctx, ChangeOptions{Mode: Commit}, func(tx *Tx) error {
+			calls++
+			if calls == 1 {
+				return errBusy
+			}
+			return tx.CreateTimeline(ctx, timeline.Timeline{
+				ID: "0199a1b2-0000-7000-8000-000000000001", Name: "inc-465", Refs: []string{}, CreatedAt: at, UpdatedAt: at,
+			})
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(calls).To(Equal(2))
+		Expect(s.Timelines(ctx)).To(HaveLen(1))
 	})
 })
 
