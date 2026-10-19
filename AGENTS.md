@@ -18,9 +18,12 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run lint` runs the linters without writing, then fails if the CLI reference or the
   export schema is stale. It does not check YAML, TOML, shell, Pkl or Python formatting,
   `go mod tidy` or `sqlc generate`; only `mise run format` and `pre-commit` apply those.
-- `mise run test` runs the Ginkgo suites, and through them the testscript end-to-end
-  scripts and the rapid properties; a package pattern narrows it, and `--focus <regexp>`
-  narrows Ginkgo specs only, so plain `Test*` functions such as `TestScripts` still run.
+- `mise run test` runs `go test` through gotestsum, which prints each test as it finishes,
+  and so the Ginkgo suites, the testscript end-to-end scripts and the rapid properties,
+  reusing a package's cached result while its code and the files its tests read are
+  unchanged (`go test -count=1 ./...` reruns everything); a package pattern narrows it,
+  and `--focus <regexp>` narrows Ginkgo specs only, so plain `Test*` functions such as
+  `TestScripts` still run.
 - `mise run docs:serve` serves the docs site locally and rebuilds it on change.
   `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing on any
   warning, such as a broken link between pages, copies the export schema in, and fails

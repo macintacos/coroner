@@ -40,6 +40,7 @@ const exportFixtures = "../../testdata/export"
 
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 func TestExportImportRoundTrip(t *testing.T) {
+	t.Parallel()
 	runs := t.TempDir()
 	seen := map[string]bool{}
 
@@ -93,6 +94,7 @@ type importResult struct {
 }
 
 func TestImportTwiceChangesNothing(t *testing.T) {
+	t.Parallel()
 	runs := t.TempDir()
 
 	rapid.Check(t, checkInRun(runs, func(t *rapid.T, dir string) error {
@@ -140,6 +142,7 @@ func checkImportTwice(ctx context.Context, dir string, m model) error {
 }
 
 func TestReplaceThenExportEqualsReplacingFile(t *testing.T) {
+	t.Parallel()
 	runs := t.TempDir()
 
 	rapid.Check(t, checkInRun(runs, func(t *rapid.T, dir string) error {

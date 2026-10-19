@@ -25,6 +25,7 @@ rumdl                 = "latest" # Markdown lint + format (config in .rumdl.toml
 go            = "latest"
 golangci-lint = "latest"
 sqlc          = "latest"
+gotestsum     = "latest"
 
 # Python. uv installs and runs Zensical from pyproject.toml and uv.lock; ruff and
 # ty check any Python that lands.

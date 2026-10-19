@@ -50,6 +50,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
+	t.Parallel()
 	update := flag.Lookup(updateFlag).Value.String() == "true"
 	fixturesDir := filepath.Join("..", "..", "testdata", "export", "v"+export.FormatVersion)
 	params := testscript.Params{

@@ -24,6 +24,7 @@ import (
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 // Races and --id conflicts are excluded: each check runs alone against its own database.
 func TestDryRunMeansWrite(t *testing.T) {
+	t.Parallel()
 	runs := t.TempDir()
 	check := func(t interface{ Context() context.Context }, args []string) (dryRunOutcome, error) {
 		dir, err := os.MkdirTemp(runs, "run")
