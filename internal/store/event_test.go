@@ -176,13 +176,20 @@ var _ = Describe("Events", func() {
 		Expect(s.Sources(ctx)).To(Equal([]timeline.Source{{ID: uuid(20), Name: "slack", CreatedAt: created}}))
 	})
 
-	It("updates an event, replacing its tags and source", func(ctx SpecContext) {
+	It("updates every field of an event but its timeline, seq and created at", func(ctx SpecContext) {
 		pager := newEvent(10, quarterPast)
 		pager.Source = new("slack")
 		pager.Tags = []string{"phase:detect", "team:db"}
 		pager, err := s.AddEvent(ctx, pager, uuid(20))
 		Expect(err).NotTo(HaveOccurred())
 
+		pager.OccurredAt = quarterPast.Add(30 * time.Second)
+		pager.Precision = timeline.PrecisionSecond
+		pager.OccurredOffset = new(-4 * 3600)
+		pager.Approximate = true
+		pager.OccurredRaw = new("around 10:15:30")
+		pager.URL = new("https://example.com/incidents/465")
+		pager.Author = new("julian")
 		pager.Text = "Pager fires for db-2 and db-3"
 		pager.EndedAt = new(quarterPast.Add(time.Hour))
 		pager.Source = new("pagerduty")
@@ -191,6 +198,18 @@ var _ = Describe("Events", func() {
 		Expect(s.UpdateEvent(ctx, pager, uuid(21))).To(Succeed())
 
 		Expect(s.Event(ctx, pager.ID)).To(Equal(pager))
+	})
+
+	It("UpdateEvent keeps created at, even when handed a record with another created at", func(ctx SpecContext) {
+		pager, err := s.AddEvent(ctx, newEvent(10, quarterPast), uuid(20))
+		Expect(err).NotTo(HaveOccurred())
+
+		edited := pager
+		edited.CreatedAt = created.Add(time.Hour)
+		edited.UpdatedAt = created.Add(time.Hour)
+		Expect(s.UpdateEvent(ctx, edited, uuid(21))).To(Succeed())
+
+		Expect(s.Event(ctx, pager.ID)).To(HaveField("CreatedAt", created))
 	})
 
 	It("writes nothing, not even a seq, when part of an add fails", func(ctx SpecContext) {

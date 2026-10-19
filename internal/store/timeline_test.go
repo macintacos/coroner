@@ -72,6 +72,17 @@ var _ = Describe("Timelines", func() {
 		Expect(s.Timeline(ctx, incident.ID)).To(Equal(incident))
 	})
 
+	It("UpdateTimeline keeps created at, even when handed a record with another created at", func(ctx SpecContext) {
+		Expect(s.CreateTimeline(ctx, incident)).To(Succeed())
+		edited := incident
+		edited.CreatedAt = created.Add(time.Hour)
+		edited.UpdatedAt = created.Add(time.Hour)
+
+		Expect(s.UpdateTimeline(ctx, edited)).To(Succeed())
+
+		Expect(s.Timeline(ctx, incident.ID)).To(HaveField("CreatedAt", created))
+	})
+
 	It("deletes a timeline", func(ctx SpecContext) {
 		Expect(s.CreateTimeline(ctx, incident)).To(Succeed())
 
