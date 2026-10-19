@@ -49,7 +49,13 @@
 4. **sqlc generates static CRUD only:** a filter that varies with its input,
    `sqlc.narg(x) IS NULL OR …`, `sqlc.slice()`, `group_concat` and FTS5 are hand-written
    SQL, because sqlc's SQLite support mistypes or rejects them. Hand-written SQL lives in
-   `internal/store`, outside `queries/`, where sqlc compiles every file.
+   `internal/store`, outside `queries/`, where sqlc compiles every file. The exception is
+   an `UPDATE` that keeps a column unless given a value,
+   `col = COALESCE(sqlc.narg(col), col)`, as each record type's one `Overwrite*`
+   statement, shared by its `Update*` method and import's replace, keeps `created_at` on
+   an edit; it is allowed only when every parameter of the statement is named, because
+   sqlc numbers a `narg` mixed with bare `?`s so that SQLite binds it to the wrong
+   argument.
 5. **Generated models never become JSON:** `emit_json_tags` stays off in `sqlc.yaml`, and
    nothing marshals an `internal/store/sqlcgen` type to JSON, because JSON output is a
    contract (`AGENTS.md` Rule 3) and a generated model changes whenever the schema does.
