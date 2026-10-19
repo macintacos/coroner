@@ -257,6 +257,29 @@ var _ = Describe("Schema", func() {
 		}),
 	)
 
+	const nulLed = " \u0000abc"
+	DescribeTable("rejects NUL-led text in both the not-blank CHECK and validation",
+		func(ctx SpecContext, write func(context.Context) error, validationErr error) {
+			Expect(write(ctx)).To(MatchError(ContainSubstring("CHECK constraint failed")))
+			Expect(validationErr).To(HaveOccurred())
+		},
+		Entry("event text", func(ctx context.Context) error {
+			params := eventParams(10, 2)
+			params.Text = nulLed
+			_, err := queries.CreateEvent(ctx, params)
+			return err
+		}, timeline.ValidateText("text", nulLed)),
+		Entry("annotation body", func(ctx context.Context) error {
+			params := annotationParams(10, incident.ID, nil)
+			params.Body = nulLed
+			_, err := queries.CreateAnnotation(ctx, params)
+			return err
+		}, timeline.ValidateText("body", nulLed)),
+		Entry("timeline ref", func(ctx context.Context) error {
+			return queries.AddTimelineRef(ctx, sqlcgen.AddTimelineRefParams{TimelineID: incident.ID, Ref: nulLed})
+		}, timeline.Timeline{Name: "inc-465", Refs: []string{nulLed}}.Validate()),
+	)
+
 	checkFailed := ContainSubstring("CHECK constraint failed")
 	expectCheckAgrees := func(err, validationErr error) {
 		GinkgoHelper()

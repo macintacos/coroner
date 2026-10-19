@@ -147,51 +147,6 @@ func (q *Queries) GetEventBySeq(ctx context.Context, arg GetEventBySeqParams) (E
 	return i, err
 }
 
-const listEvents = `-- name: ListEvents :many
-SELECT id, timeline_id, seq, occurred_at, occurred_offset, occurred_precision, approximate, occurred_raw, ended_at, source_id, text, url, author, created_at, updated_at FROM event
-WHERE timeline_id = ?
-ORDER BY occurred_at, seq
-`
-
-func (q *Queries) ListEvents(ctx context.Context, timelineID string) ([]Event, error) {
-	rows, err := q.db.QueryContext(ctx, listEvents, timelineID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Event{}
-	for rows.Next() {
-		var i Event
-		if err := rows.Scan(
-			&i.ID,
-			&i.TimelineID,
-			&i.Seq,
-			&i.OccurredAt,
-			&i.OccurredOffset,
-			&i.OccurredPrecision,
-			&i.Approximate,
-			&i.OccurredRaw,
-			&i.EndedAt,
-			&i.SourceID,
-			&i.Text,
-			&i.Url,
-			&i.Author,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listEventsByIDPrefix = `-- name: ListEventsByIDPrefix :many
 SELECT id, timeline_id, seq, occurred_at, occurred_offset, occurred_precision, approximate, occurred_raw, ended_at, source_id, text, url, author, created_at, updated_at FROM event
 WHERE id GLOB ?

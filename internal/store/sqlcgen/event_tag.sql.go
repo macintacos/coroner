@@ -29,18 +29,13 @@ func (q *Queries) AddEventTag(ctx context.Context, arg AddEventTagParams) error 
 	return err
 }
 
-const deleteEventTag = `-- name: DeleteEventTag :exec
+const deleteEventTags = `-- name: DeleteEventTags :exec
 DELETE FROM event_tag
-WHERE event_id = ? AND tag = ?
+WHERE event_id = ?
 `
 
-type DeleteEventTagParams struct {
-	EventID string
-	Tag     string
-}
-
-func (q *Queries) DeleteEventTag(ctx context.Context, arg DeleteEventTagParams) error {
-	_, err := q.db.ExecContext(ctx, deleteEventTag, arg.EventID, arg.Tag)
+func (q *Queries) DeleteEventTags(ctx context.Context, eventID string) error {
+	_, err := q.db.ExecContext(ctx, deleteEventTags, eventID)
 	return err
 }
 

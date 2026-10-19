@@ -13,7 +13,7 @@ func (s *Store) AddLink(ctx context.Context, l timeline.Link) error {
 }
 
 // AddLink adds l. It returns an error wrapping ErrConflict when a link of l's kind already
-// leads from l's from event to its to event.
+// leads from l's from event to its to event, and ErrNotFound when either event is missing.
 func (tx *Tx) AddLink(ctx context.Context, l timeline.Link) error {
 	err := l.Validate()
 	if err != nil {
@@ -21,11 +21,6 @@ func (tx *Tx) AddLink(ctx context.Context, l timeline.Link) error {
 	}
 
 	return tx.atomic(ctx, func() error { return createLink(ctx, tx.q, l) })
-}
-
-// Link is Tx.Link in its own Read.
-func (s *Store) Link(ctx context.Context, id string) (timeline.Link, error) {
-	return readIn(ctx, s, func(tx *Tx) (timeline.Link, error) { return tx.Link(ctx, id) })
 }
 
 // Link returns the link with id.
@@ -120,7 +115,7 @@ func createLink(ctx context.Context, q *sqlcgen.Queries, l timeline.Link) error 
 		CreatedAt:   timeline.FormatInstant(l.CreatedAt),
 		Author:      l.Author,
 	})
-	return err
+	return missingReference(err)
 }
 
 func linkFromRow(row sqlcgen.EventLink) (timeline.Link, error) {

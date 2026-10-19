@@ -13,7 +13,8 @@ func (s *Store) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
 }
 
 // CreateOverlay saves o with its timelines, kept in the order given. It returns an error
-// wrapping ErrConflict when another overlay has o's name.
+// wrapping ErrConflict when another overlay has o's name or o names a timeline twice, and
+// ErrNotFound when one of its timelines is missing.
 func (tx *Tx) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
 	err := o.Validate()
 	if err != nil {
@@ -30,7 +31,7 @@ func (tx *Tx) CreateOverlay(ctx context.Context, o timeline.Overlay) error {
 		for i, timelineID := range o.TimelineIDs {
 			err = tx.q.AddOverlayTimeline(ctx, sqlcgen.AddOverlayTimelineParams{OverlayID: o.ID, TimelineID: timelineID, Position: int64(i + 1)})
 			if err != nil {
-				return err
+				return missingReference(err)
 			}
 		}
 

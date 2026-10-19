@@ -29,18 +29,13 @@ func (q *Queries) AddTimelineRef(ctx context.Context, arg AddTimelineRefParams) 
 	return err
 }
 
-const deleteTimelineRef = `-- name: DeleteTimelineRef :exec
+const deleteTimelineRefs = `-- name: DeleteTimelineRefs :exec
 DELETE FROM timeline_ref
-WHERE timeline_id = ? AND ref = ?
+WHERE timeline_id = ?
 `
 
-type DeleteTimelineRefParams struct {
-	TimelineID string
-	Ref        string
-}
-
-func (q *Queries) DeleteTimelineRef(ctx context.Context, arg DeleteTimelineRefParams) error {
-	_, err := q.db.ExecContext(ctx, deleteTimelineRef, arg.TimelineID, arg.Ref)
+func (q *Queries) DeleteTimelineRefs(ctx context.Context, timelineID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTimelineRefs, timelineID)
 	return err
 }
 

@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -102,12 +100,13 @@ func (s *Store) EventsByIDPrefix(ctx context.Context, prefix string, limit int) 
 // prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase hex
 // and dashes: *, ? and [ are patterns, and ids are lowercase.
 func (tx *Tx) EventsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Event, error) {
-	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
-		return nil, fmt.Errorf("event id prefix %q is not lowercase hex and dashes", prefix)
+	pattern, err := globPrefix("event", prefix)
+	if err != nil {
+		return nil, err
 	}
 
 	return translated(func() ([]timeline.Event, error) {
-		rows, err := tx.q.ListEventsByIDPrefix(ctx, sqlcgen.ListEventsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
+		rows, err := tx.q.ListEventsByIDPrefix(ctx, sqlcgen.ListEventsByIDPrefixParams{ID: pattern, Limit: int64(limit)})
 		if err != nil {
 			return nil, err
 		}
@@ -124,14 +123,8 @@ func (s *Store) Events(ctx context.Context, timelineID string) ([]timeline.Event
 // Events returns the events of the timeline with timelineID, ordered by occurred at, then
 // seq.
 func (tx *Tx) Events(ctx context.Context, timelineID string) ([]timeline.Event, error) {
-	return translated(func() ([]timeline.Event, error) {
-		rows, err := tx.q.ListEvents(ctx, timelineID)
-		if err != nil {
-			return nil, err
-		}
-
-		return loadAll(rows, func(r sqlcgen.Event) (timeline.Event, error) { return loadEvent(ctx, tx.q, r) })
-	})
+	page, err := tx.ListEvents(ctx, EventFilter{TimelineIDs: []string{timelineID}})
+	return page.Events, err
 }
 
 // UpdateEvent is Tx.UpdateEvent in its own Change, attaching attachments to the event.
@@ -298,15 +291,9 @@ func addTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []str
 }
 
 func replaceTags(ctx context.Context, q *sqlcgen.Queries, eventID string, tags []string) error {
-	stored, err := q.ListEventTags(ctx, eventID)
+	err := q.DeleteEventTags(ctx, eventID)
 	if err != nil {
 		return err
-	}
-	for _, tag := range stored {
-		err = q.DeleteEventTag(ctx, sqlcgen.DeleteEventTagParams{EventID: eventID, Tag: tag})
-		if err != nil {
-			return err
-		}
 	}
 
 	return addTags(ctx, q, eventID, tags)

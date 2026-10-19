@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -154,12 +153,13 @@ func (s *Store) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit 
 // with prefix, ordered by id. prefix is matched with GLOB, so it must be non-empty lowercase
 // hex and dashes: *, ? and [ are patterns, and ids are lowercase.
 func (tx *Tx) AnnotationsByIDPrefix(ctx context.Context, prefix string, limit int) ([]timeline.Annotation, error) {
-	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
-		return nil, fmt.Errorf("annotation id prefix %q is not lowercase hex and dashes", prefix)
+	pattern, err := globPrefix("annotation", prefix)
+	if err != nil {
+		return nil, err
 	}
 
 	return translated(func() ([]timeline.Annotation, error) {
-		rows, err := tx.q.ListAnnotationsByIDPrefix(ctx, sqlcgen.ListAnnotationsByIDPrefixParams{ID: prefix + "*", Limit: int64(limit)})
+		rows, err := tx.q.ListAnnotationsByIDPrefix(ctx, sqlcgen.ListAnnotationsByIDPrefixParams{ID: pattern, Limit: int64(limit)})
 		if err != nil {
 			return nil, err
 		}

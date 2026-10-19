@@ -2,11 +2,12 @@ package store
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
-	"math/big"
+	"math/rand/v2"
+	"strings"
 	"time"
 
 	"github.com/macintacos/coroner/internal/store/sqlcgen"
@@ -144,18 +145,25 @@ func translated[T any](fn func() (T, error)) (T, error) {
 // returns what fn produced. Nothing stops fn from writing; use change for that. fn must only
 // use tx: another Store method would run outside this transaction.
 func readTx[T any](ctx context.Context, s *Store, fn func(sqlcgen.DBTX) (T, error)) (T, error) {
-	var result T
-	err := s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, func(tx sqlcgen.DBTX) error {
-		var err error
-		result, err = fn(tx)
-		return err
+	return translated(func() (T, error) {
+		var result T
+		err := s.inTx(ctx, &sql.TxOptions{ReadOnly: true}, func(tx sqlcgen.DBTX) error {
+			var err error
+			result, err = fn(tx)
+			return err
+		})
+		return result, err
 	})
-	if err != nil {
-		var zero T
-		return zero, translate(err)
+}
+
+// globPrefix returns the GLOB pattern matching ids that start with prefix, which must be
+// non-empty lowercase hex and dashes: *, ? and [ are patterns, and ids are lowercase.
+func globPrefix(noun, prefix string) (string, error) {
+	if prefix == "" || strings.Trim(prefix, "0123456789abcdef-") != "" {
+		return "", fmt.Errorf("%s id prefix %q is not lowercase hex and dashes", noun, prefix)
 	}
 
-	return result, nil
+	return prefix + "*", nil
 }
 
 // loadAll maps rows with load, stopping at the first error.
@@ -285,10 +293,5 @@ func retryBusy(ctx context.Context, attempts int, fn func() error) error {
 
 // jitter returns a random duration in [0, d), so writers that collided retry apart.
 func jitter(d time.Duration) time.Duration {
-	n, err := rand.Int(rand.Reader, big.NewInt(int64(d)))
-	if err != nil {
-		return d
-	}
-
-	return time.Duration(n.Int64())
+	return time.Duration(rand.Int64N(int64(d))) //nolint:gosec // backoff jitter is not a secret
 }

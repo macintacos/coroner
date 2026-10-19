@@ -22,6 +22,22 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
+// attach stores content as a, the way a command does: staged by a Change that attaches it
+// to a's owner.
+func attach(ctx context.Context, s *store.Store, a timeline.Attachment, content io.Reader) (timeline.Attachment, error) {
+	rows, err := s.Change(ctx, store.ChangeOptions{Attach: []store.NewAttachment{
+		{ID: a.ID, Filename: a.Filename, CreatedAt: a.CreatedAt, Content: content},
+	}}, func(tx *store.Tx) error {
+		tx.Attach(a.Owner)
+		return nil
+	})
+	if err != nil {
+		return timeline.Attachment{}, err
+	}
+
+	return rows[0], nil
+}
+
 var _ = Describe("Attachments", func() {
 	created := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
 	incident := timeline.Timeline{ID: uuid(1), Name: "inc-465", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
@@ -70,7 +86,7 @@ var _ = Describe("Attachments", func() {
 	}
 	add := func(ctx context.Context, a timeline.Attachment, content []byte) timeline.Attachment {
 		GinkgoHelper()
-		added, err := s.AddAttachment(ctx, a, bytes.NewReader(content))
+		added, err := attach(ctx, s, a, bytes.NewReader(content))
 		Expect(err).NotTo(HaveOccurred())
 		return added
 	}
@@ -154,7 +170,7 @@ var _ = Describe("Attachments", func() {
 			first := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
 			other := []byte("\x89PNG\r\n\x1a\nanother panel")
 
-			_, err := s.AddAttachment(ctx, newAttachment(10, onPager, "other.png"), bytes.NewReader(other))
+			_, err := attach(ctx, s, newAttachment(10, onPager, "other.png"), bytes.NewReader(other))
 
 			Expect(err).To(MatchError(store.ErrConflict))
 			Expect(s.ListAttachments(ctx, onPager)).To(Equal([]timeline.Attachment{first}))
@@ -162,20 +178,11 @@ var _ = Describe("Attachments", func() {
 			Expect(s.GarbageCollectBlobs(ctx)).To(Equal([]string{sha256Hex(other)}))
 		})
 
-	It("reports an owner that does not exist with ErrNotFound, writing no blob", func(ctx SpecContext) {
-		missing := timeline.AttachmentOwner{EventID: new(uuid(99))}
-
-		_, err := s.AddAttachment(ctx, newAttachment(10, missing, "grafana.png"), bytes.NewReader(screenshot))
-
-		Expect(err).To(MatchError(store.ErrNotFound))
-		Expect(os.ReadDir(blobDir)).To(BeEmpty())
-	})
-
 	It("leaves nothing in the blob directory when reading the content fails", func(ctx SpecContext) {
 		boom := errors.New("boom")
 		content := io.MultiReader(bytes.NewReader(screenshot), iotest.ErrReader(boom))
 
-		_, err := s.AddAttachment(ctx, newAttachment(10, onPager, "grafana.png"), content)
+		_, err := attach(ctx, s, newAttachment(10, onPager, "grafana.png"), content)
 
 		Expect(err).To(MatchError(boom))
 		Expect(os.ReadDir(blobDir)).To(BeEmpty())
@@ -423,13 +430,6 @@ var _ = Describe("Attachments", func() {
 			Expect(s.TimelineAttachments(ctx, incident.ID)).To(Equal([]timeline.Attachment{onPagerFile, onEvidenceFile}))
 		})
 
-	It("finds an attachment by its exact id, reporting ErrNotFound for any other", func(ctx SpecContext) {
-		added := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
-
-		Expect(s.Attachment(ctx, added.ID)).To(Equal(added))
-		Expect(s.Attachment(ctx, added.ID[:8])).Error().To(MatchError(store.ErrNotFound))
-	})
-
 	It("finds attachments by id prefix, in id order, up to a limit", func(ctx SpecContext) {
 		first := add(ctx, newAttachment(10, onPager, "grafana.png"), screenshot)
 		second := add(ctx, newAttachment(11, onPager, "trace.png"), screenshot)
@@ -439,13 +439,9 @@ var _ = Describe("Attachments", func() {
 		Expect(s.AttachmentsByIDPrefix(ctx, "*", 10)).Error().To(HaveOccurred())
 	})
 
-	DescribeTable("rejects an owner that is not exactly one event or annotation, writing no blob",
+	DescribeTable("rejects listing by an owner that is not exactly one event or annotation",
 		func(ctx SpecContext, owner timeline.AttachmentOwner) {
-			_, err := s.AddAttachment(ctx, newAttachment(10, owner, "grafana.png"), bytes.NewReader(screenshot))
-			Expect(err).To(MatchError(ContainSubstring("owner")))
-			Expect(blobDir).NotTo(BeADirectory())
-
-			_, err = s.ListAttachments(ctx, owner)
+			_, err := s.ListAttachments(ctx, owner)
 			Expect(err).To(MatchError(ContainSubstring("owner")))
 		},
 		Entry("no owner", timeline.AttachmentOwner{}),

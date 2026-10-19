@@ -54,10 +54,10 @@ var _ = Describe("Open", func() {
 		Expect(info.Mode().Perm()).To(Equal(os.FileMode(0o700)))
 	})
 
-	DescribeTable("refuses a SQLite file coroner did not create, leaving it byte-identical",
-		func(ctx SpecContext, statement string) {
+	DescribeTable("refuses a file coroner did not create, leaving it byte-identical",
+		func(ctx SpecContext, write func(context.Context, string)) {
 			path := filepath.Join(GinkgoT().TempDir(), "other.db")
-			execSQLite(ctx, path, statement)
+			write(ctx, path)
 			before, err := os.ReadFile(filepath.Clean(path))
 			Expect(err).NotTo(HaveOccurred())
 
@@ -66,13 +66,14 @@ var _ = Describe("Open", func() {
 			Expect(err).To(MatchError(store.ErrForeignDatabase))
 			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
 		},
-		Entry("with an unrelated table", "CREATE TABLE contact (name TEXT)"),
-		Entry("with another application id", "PRAGMA application_id = 42"),
-		Entry("with another program's goose_db_version table", `
+		Entry("with an unrelated table", sqliteWith("CREATE TABLE contact (name TEXT)")),
+		Entry("with another application id", sqliteWith("PRAGMA application_id = 42")),
+		Entry("with another program's goose_db_version table", sqliteWith(`
 			CREATE TABLE goose_db_version (id INTEGER PRIMARY KEY AUTOINCREMENT, version_id INTEGER NOT NULL,
 				is_applied INTEGER NOT NULL, tstamp TIMESTAMP DEFAULT (datetime('now')));
 			INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, 1), (1, 1);
-			CREATE TABLE users (name TEXT);`),
+			CREATE TABLE users (name TEXT);`)),
+		Entry("that is not SQLite", writeNotSQLite),
 	)
 
 	It("refuses a directory as not a coroner database, leaving it empty", func(ctx SpecContext) {
@@ -309,14 +310,21 @@ var _ = Describe("OpenReadOnly", func() {
 		Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
 	})
 
-	It("refuses a SQLite file coroner did not create", func(ctx SpecContext) {
-		path := filepath.Join(GinkgoT().TempDir(), "other.db")
-		execSQLite(ctx, path, "CREATE TABLE contact (name TEXT)")
+	DescribeTable("refuses a file coroner did not create, leaving it byte-identical",
+		func(ctx SpecContext, write func(context.Context, string)) {
+			path := filepath.Join(GinkgoT().TempDir(), "other.db")
+			write(ctx, path)
+			before, err := os.ReadFile(filepath.Clean(path))
+			Expect(err).NotTo(HaveOccurred())
 
-		_, err := store.OpenReadOnly(ctx, path)
+			_, err = store.OpenReadOnly(ctx, path)
 
-		Expect(err).To(MatchError(store.ErrForeignDatabase))
-	})
+			Expect(err).To(MatchError(store.ErrForeignDatabase))
+			Expect(os.ReadFile(filepath.Clean(path))).To(Equal(before))
+		},
+		Entry("with an unrelated table", sqliteWith("CREATE TABLE contact (name TEXT)")),
+		Entry("that is not SQLite", writeNotSQLite),
+	)
 
 	It("refuses a directory as not a coroner database", func(ctx SpecContext) {
 		_, err := store.OpenReadOnly(ctx, GinkgoT().TempDir())
@@ -373,6 +381,17 @@ func bumpSchemaVersion(ctx context.Context, path string) {
 }
 
 // execSQLite runs statement on the SQLite file at path without going through the store.
+// sqliteWith returns a writer that creates a SQLite file at path by running statement.
+func sqliteWith(statement string) func(context.Context, string) {
+	return func(ctx context.Context, path string) { execSQLite(ctx, path, statement) }
+}
+
+// writeNotSQLite writes bytes that are not a SQLite file, such as an export, to path.
+func writeNotSQLite(_ context.Context, path string) {
+	GinkgoHelper()
+	Expect(os.WriteFile(path, []byte(`{"format_version":"1.0"}`+"\n"), 0o600)).To(Succeed())
+}
+
 func execSQLite(ctx context.Context, path, statement string) {
 	GinkgoHelper()
 	db, err := sql.Open("sqlite", path)
