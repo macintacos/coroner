@@ -1,7 +1,6 @@
 package store_test
 
 import (
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -17,23 +16,7 @@ import (
 // Plain test, not a Ginkgo spec: rapid keys its repro hint and fail files on the test name.
 func TestEventWritesReadBack(t *testing.T) {
 	ctx := t.Context()
-	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "coroner.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		err := s.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	})
-
-	// One store for every run, so each run gets a timeline and ids no earlier run used.
-	n := 0
-	nextID := func() string {
-		n++
-		return uuid(n)
-	}
+	s, nextID := openPropertyStore(t)
 
 	rapid.Check(t, func(t *rapid.T) {
 		created := time.Date(2026, 9, 13, 9, 0, 0, 0, time.UTC)
