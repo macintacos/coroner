@@ -16,7 +16,7 @@ import (
 
 const (
 	repo      = "macintacos/coroner"
-	usageLine = "usage: go run ./internal/tools/release gates | compute <patch|minor|major> [--rc] --sha <rev> | tag --tag <tag> --sha <rev> --notes-file <path> [--dry-run] | tag-notes --tag <tag> --out <path>"
+	usageLine = "usage: go run ./internal/tools/release gates | compute <patch|minor|major> [--rc] --sha <rev> | tag --tag <tag> --sha <rev> --notes-file <path> [--dry-run] | tag-notes --tag <tag> --out <path> | watch --tag <tag> --sha <rev> | verify --tag <tag>"
 )
 
 func main() {
@@ -70,6 +70,10 @@ func dispatch(ctx context.Context, sys system, args []string) (any, error) {
 		return tag(ctx, sys, args[1:])
 	case "tag-notes":
 		return tagNotes(ctx, sys, args[1:])
+	case "verify":
+		return verify(ctx, sys, args[1:])
+	case "watch":
+		return watch(ctx, sys, args[1:])
 	}
 
 	return nil, usageError("unknown subcommand %q; %s", args[0], usageLine)

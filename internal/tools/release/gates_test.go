@@ -71,9 +71,9 @@ var _ = Describe("gates", func() {
 		Entry("no CI run", func(f *fakeSystem) { f.answers[ciCmd] = `[]` }, "ci_not_green"),
 		Entry("CI running", func(f *fakeSystem) { f.answers[ciCmd] = `[{"status":"in_progress","conclusion":""}]` }, "ci_not_green"),
 		Entry("CI failed", func(f *fakeSystem) { f.answers[ciCmd] = `[{"status":"completed","conclusion":"failure"}]` }, "ci_not_green"),
-		Entry("preflight failing", func(f *fakeSystem) { f.failing["mise run preflight"] = true }, "preflight_failed"),
-		Entry("release:check failing", func(f *fakeSystem) { f.failing["mise run release:check"] = true }, "release_check_failed"),
-		Entry("release:snapshot failing", func(f *fakeSystem) { f.failing["mise run release:snapshot"] = true }, "release_snapshot_failed"),
+		Entry("preflight failing", func(f *fakeSystem) { f.failing["mise run preflight"] = errFailed }, "preflight_failed"),
+		Entry("release:check failing", func(f *fakeSystem) { f.failing["mise run release:check"] = errFailed }, "release_check_failed"),
+		Entry("release:snapshot failing", func(f *fakeSystem) { f.failing["mise run release:snapshot"] = errFailed }, "release_snapshot_failed"),
 	)
 
 	It("runs no mise task once an earlier gate fails", func() {

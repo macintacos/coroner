@@ -5,24 +5,33 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	. "github.com/onsi/gomega"
 )
 
 // fakeSystem answers each command from a map keyed on its joined command line, and records
-// every call. A command it has no answer for fails. run succeeds unless its command line is
-// in failing.
+// every call and sleep. A command it has no answer for fails, unless respond handles it. run
+// returns the error failing holds for its command line, or nil. It reports darwin/arm64 unless
+// goos and goarch are set.
 type fakeSystem struct {
 	answers map[string]string
-	failing map[string]bool
+	failing map[string]error
+	respond func(name string, args []string) (string, bool)
 	calls   []string
+	sleeps  []time.Duration
+	goos    string
+	goarch  string
 }
 
+var errFailed = errors.New("fake: failed")
+
 func newFake() *fakeSystem {
-	return &fakeSystem{answers: map[string]string{}, failing: map[string]bool{}}
+	return &fakeSystem{answers: map[string]string{}, failing: map[string]error{}, goos: "darwin", goarch: "arm64"}
 }
 
 func (f *fakeSystem) system() system {
@@ -30,6 +39,11 @@ func (f *fakeSystem) system() system {
 		output: func(_ context.Context, name string, args ...string) (string, error) {
 			line := strings.Join(append([]string{name}, args...), " ")
 			f.calls = append(f.calls, line)
+			if f.respond != nil {
+				if out, ok := f.respond(name, args); ok {
+					return out, nil
+				}
+			}
 			out, ok := f.answers[line]
 			if !ok {
 				return "", fmt.Errorf("fake: no answer for %q", line)
@@ -40,12 +54,12 @@ func (f *fakeSystem) system() system {
 		run: func(_ context.Context, name string, args ...string) error {
 			line := strings.Join(append([]string{name}, args...), " ")
 			f.calls = append(f.calls, line)
-			if f.failing[line] {
-				return fmt.Errorf("fake: %q failed", line)
-			}
 
-			return nil
+			return f.failing[line]
 		},
+		sleep:  func(d time.Duration) { f.sleeps = append(f.sleeps, d) },
+		goos:   f.goos,
+		goarch: f.goarch,
 	}
 }
 

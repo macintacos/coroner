@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"runtime"
 	"strings"
+	"time"
 )
 
 // system is how the tool reaches git and gh, injected so specs can script it.
@@ -16,11 +18,17 @@ type system struct {
 	output func(ctx context.Context, name string, args ...string) (string, error)
 	// run runs a command with its stdout and stderr both going to the tool's stderr, keeping
 	// the tool's stdout for its one JSON object.
-	run func(ctx context.Context, name string, args ...string) error
+	run   func(ctx context.Context, name string, args ...string) error
+	sleep func(time.Duration)
+	// goos and goarch name the platform verify downloads and runs the release for.
+	goos, goarch string
 }
 
 func realSystem(stderr io.Writer) system {
 	return system{
+		sleep:  time.Sleep,
+		goos:   runtime.GOOS,
+		goarch: runtime.GOARCH,
 		output: func(ctx context.Context, name string, args ...string) (string, error) {
 			cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // runs git, gh and mise with arguments the tool builds
 			var errOut bytes.Buffer
