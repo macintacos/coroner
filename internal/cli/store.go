@@ -35,6 +35,29 @@ func withStorePath(ctx context.Context, app App, path string, fn func(*store.Sto
 	return withStoreOpenedBy(ctx, app.OpenStore, path, fn)
 }
 
+// withChange opens the database at path and runs fn in one Change.
+func withChange(
+	ctx context.Context, app App, path string, opts store.ChangeOptions, fn func(*store.Tx) error,
+) ([]timeline.Attachment, error) {
+	var rows []timeline.Attachment
+	err := withStorePath(ctx, app, path, func(s *store.Store) error {
+		var err error
+		rows, err = s.Change(ctx, opts, fn)
+		return err
+	})
+
+	return rows, err
+}
+
+// modeFor returns the Change mode --dry-run asks for.
+func modeFor(dryRun bool) store.Mode {
+	if dryRun {
+		return store.Rollback
+	}
+
+	return store.Commit
+}
+
 // withStoreOpenedBy opens the database at path with open, runs fn against it and closes it.
 // Errors from opening the store or from fn pass through storeError.
 func withStoreOpenedBy(

@@ -188,13 +188,6 @@ func describeAttachments(files []attachFile, owner timeline.AttachmentOwner, now
 	return described
 }
 
-// addedAttachments returns the attachments among stored that added gave the store.
-func addedAttachments(stored []timeline.Attachment, added []store.NewAttachment) []timeline.Attachment {
-	return slices.DeleteFunc(slices.Clone(stored), func(a timeline.Attachment) bool {
-		return !slices.ContainsFunc(added, func(n store.NewAttachment) bool { return n.ID == a.ID })
-	})
-}
-
 // attachRequest is what --attach asks an add or edit to attach.
 type attachRequest struct {
 	files []attachFile
@@ -226,17 +219,16 @@ func (r attachRequest) staged(newID func() (uuid.UUID, error), now time.Time) (a
 	return r, err
 }
 
-// result returns what r attached to owner, or would attach, read after the owner's write.
-func (r attachRequest) result(
-	ctx context.Context, s *store.Store, owner timeline.AttachmentOwner, dbPath string,
-) (attachResult, error) {
-	stored, err := s.ListAttachments(ctx, owner)
-	if err != nil {
-		return attachResult{}, err
-	}
-	objects := newAttachmentJSONs(stored, dbPath)
+// result returns what r attached to owner, or would attach: stored is what owner had before,
+// and added the rows the Change inserted.
+func (r attachRequest) result(stored, added []timeline.Attachment, owner timeline.AttachmentOwner, dbPath string) attachResult {
+	all := slices.Concat(stored, added)
+	slices.SortStableFunc(all, func(a, b timeline.Attachment) int {
+		return cmp.Or(a.CreatedAt.Compare(b.CreatedAt), strings.Compare(a.ID, b.ID))
+	})
+	objects := newAttachmentJSONs(all, dbPath)
 	if !r.dryRun {
-		return attachResult{added: addedAttachments(stored, r.toAdd), objects: objects}, nil
+		return attachResult{added: added, objects: objects}
 	}
 
 	described := describeAttachments(r.files, owner, r.now)
@@ -244,7 +236,7 @@ func (r attachRequest) result(
 		objects = append(objects, describedAttachmentJSON(a))
 	}
 
-	return attachResult{added: described, objects: objects, dryRun: true}, nil
+	return attachResult{added: described, objects: objects, dryRun: true}
 }
 
 // attachResult is what an add or edit prints about attachments.

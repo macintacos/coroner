@@ -92,33 +92,38 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	}
 
 	added := annotationAdded{dryRun: req.dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		a := draft.annotation
-		a.TimelineID = t.ID
-		e, err := annotatedEvent(ctx, s, t, ref)
-		if err != nil {
-			return err
-		}
-		if e != nil {
-			a.EventID = &e.ID
-		}
-		added.annotation, added.timeline, added.event = a, t, e
-		if !req.dryRun {
-			err = s.AddAnnotation(ctx, a, draft.newSourceID, req.toAdd...)
+	owner := timeline.AttachmentOwner{AnnotationID: &draft.annotation.ID}
+	var stored []timeline.Attachment
+	rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) error {
+			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return err
 			}
-		}
+			a := draft.annotation
+			a.TimelineID = t.ID
+			e, err := annotatedEvent(ctx, tx, t, ref)
+			if err != nil {
+				return err
+			}
+			if e != nil {
+				a.EventID = &e.ID
+			}
+			added.annotation, added.timeline, added.event = a, t, e
+			err = tx.AddAnnotation(ctx, a, draft.newSourceID)
+			if err != nil {
+				return err
+			}
+			tx.Attach(owner)
+			stored, err = tx.ListAttachments(ctx, owner)
+			return err
+		})
+	if err != nil {
+		return added, err
+	}
+	added.attach = req.result(stored, rows, owner, cfg.DBPath)
 
-		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{AnnotationID: &a.ID}, cfg.DBPath)
-		return err
-	})
-
-	return added, err
+	return added, nil
 }
 
 func (a annotationAdded) render(o output) error {

@@ -163,46 +163,46 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 	}
 
 	added := eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		// ponytail: the timeline is read in its own transaction, so one deleted before AddEvent
-		// fails AllocateSeq as internal; look it up inside AddEvent's write if that matters.
-		t, err := selectOne(ctx, s, timelineInputOf(in), app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		added.timeline = t
-		added.event.TimelineID = t.ID
-		if in.given("id") {
-			added.event, added.existed, err = storedSameEvent(ctx, s, added.event, req.files)
+	owner := timeline.AttachmentOwner{EventID: &draft.event.ID}
+	var stored []timeline.Attachment
+	rows, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
+		func(tx *store.Tx) error {
+			added.event, added.existed = draft.event, false
+			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return err
 			}
-		}
-		switch {
-		case added.existed:
-			// Nothing is attached, so result lists the stored attachments and reports none as added.
-			req = attachRequest{}
-		case !req.dryRun:
-			var stored timeline.Event
-			stored, err = s.AddEvent(ctx, added.event, draft.newSourceID, req.toAdd...)
-			if errors.Is(err, store.ErrConflict) && in.given("id") {
-				conflict := err
-				stored, added.existed, err = storedSameEvent(ctx, s, added.event, req.files)
-				if err == nil && !added.existed {
-					err = conflict
+			added.timeline = t
+			added.event.TimelineID = t.ID
+			if in.given("id") {
+				added.event, added.existed, err = storedSameEvent(ctx, tx, added.event, req.files)
+				if err != nil {
+					return err
 				}
 			}
-			if err != nil {
-				return err
+			if !added.existed {
+				added.event, err = tx.AddEvent(ctx, added.event, draft.newSourceID)
+				if err != nil {
+					return err
+				}
+				tx.Attach(owner)
 			}
-			added.event = stored
-		}
+			stored, err = tx.ListAttachments(ctx, owner)
+			return err
+		})
+	if err != nil {
+		return added, err
+	}
+	if req.dryRun && !added.existed {
+		added.event.Seq = 0 // A dry run claims no seq.
+	}
+	if added.existed {
+		// Nothing is attached, so result lists the stored attachments and reports none as added.
+		req = attachRequest{}
+	}
+	added.attach = req.result(stored, rows, owner, cfg.DBPath)
 
-		added.attach, err = req.result(ctx, s, timeline.AttachmentOwner{EventID: &added.event.ID}, cfg.DBPath)
-		return err
-	})
-
-	return added, err
+	return added, nil
 }
 
 // storedSameEvent returns the event stored under e's id and true when adding e, with files
