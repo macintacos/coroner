@@ -14,6 +14,9 @@ type system struct {
 	// output runs a command and returns its stdout, trimmed. The child's stderr goes to the
 	// tool's stderr, and a non-zero exit is an error carrying the command and that stderr.
 	output func(ctx context.Context, name string, args ...string) (string, error)
+	// run runs a command with its stdout and stderr both going to the tool's stderr, keeping
+	// the tool's stdout for its one JSON object.
+	run func(ctx context.Context, name string, args ...string) error
 }
 
 func realSystem(stderr io.Writer) system {
@@ -28,6 +31,16 @@ func realSystem(stderr io.Writer) system {
 			}
 
 			return strings.TrimSpace(string(out)), nil
+		},
+		run: func(ctx context.Context, name string, args ...string) error {
+			cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // runs git, gh and mise with arguments the tool builds
+			cmd.Stdout, cmd.Stderr = stderr, stderr
+			err := cmd.Run()
+			if err != nil {
+				return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+			}
+
+			return nil
 		},
 	}
 }

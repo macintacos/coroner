@@ -13,14 +13,16 @@ import (
 )
 
 // fakeSystem answers each command from a map keyed on its joined command line, and records
-// every call. A command it has no answer for fails.
+// every call. A command it has no answer for fails. run succeeds unless its command line is
+// in failing.
 type fakeSystem struct {
 	answers map[string]string
+	failing map[string]bool
 	calls   []string
 }
 
 func newFake() *fakeSystem {
-	return &fakeSystem{answers: map[string]string{}}
+	return &fakeSystem{answers: map[string]string{}, failing: map[string]bool{}}
 }
 
 func (f *fakeSystem) system() system {
@@ -34,6 +36,15 @@ func (f *fakeSystem) system() system {
 			}
 
 			return out, nil
+		},
+		run: func(_ context.Context, name string, args ...string) error {
+			line := strings.Join(append([]string{name}, args...), " ")
+			f.calls = append(f.calls, line)
+			if f.failing[line] {
+				return fmt.Errorf("fake: %q failed", line)
+			}
+
+			return nil
 		},
 	}
 }

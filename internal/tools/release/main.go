@@ -16,7 +16,7 @@ import (
 
 const (
 	repo      = "macintacos/coroner"
-	usageLine = "usage: go run ./internal/tools/release compute <patch|minor|major> [--rc] --sha <rev>"
+	usageLine = "usage: go run ./internal/tools/release gates | compute <patch|minor|major> [--rc] --sha <rev>"
 )
 
 func main() {
@@ -61,8 +61,11 @@ func dispatch(ctx context.Context, sys system, args []string) (any, error) {
 		return nil, usageError("%s", usageLine)
 	}
 
-	if args[0] == "compute" {
+	switch args[0] {
+	case "compute":
 		return compute(ctx, sys, args[1:])
+	case "gates":
+		return gates(ctx, sys, args[1:])
 	}
 
 	return nil, usageError("unknown subcommand %q; %s", args[0], usageLine)
