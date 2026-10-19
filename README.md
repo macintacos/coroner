@@ -45,7 +45,7 @@ On every pull request and push to `main`, CI runs lint and tests, builds the doc
 fails on unformatted or stale generated files. A pull request that changes the CLI's code
 without changing a hand-written page under `docs/` fails unless it has the
 `docs-not-needed` label. Pushing a `v*` tag publishes a release;
-[the release checklist](docs/contributing/releasing.md) covers the steps around it.
+[the releasing guide](docs/contributing/releasing.md) covers the steps around it.
 
 ## Status
 

@@ -2,13 +2,14 @@
 
 *Audience: maintainers cutting a coroner release.*
 
-A release is a pushed `v*` tag. The
+A release is a pushed annotated `v*` tag whose message is the release notes. The
 [Release workflow](https://github.com/macintacos/coroner/blob/main/.github/workflows/release.yml)
-writes the release notes with git-cliff, then runs goreleaser with
+reads the notes from the tag, then runs goreleaser with
 [`.goreleaser.yaml`](https://github.com/macintacos/coroner/blob/main/.goreleaser.yaml).
 goreleaser publishes a GitHub release with an archive and a `.sbom.json` per platform and
-`checksums.txt`, and updates the cask in `macintacos/homebrew-tap`. The steps below check
-locally what the tag will publish before it is pushed, then check the published release.
+`checksums.txt`, and updates the cask in `macintacos/homebrew-tap`. The `/release-coroner`
+Claude Code skill runs the whole release, from the checks before tagging through checking
+the published release.
 
 ## One-time setup
 
@@ -23,41 +24,51 @@ locally what the tag will publish before it is pushed, then check the published 
    section to match. This does not block a release: until the decision, releases ship
    unsigned and that section says what users should expect.
 
-## Before tagging
+## Releasing
 
-1. On an up-to-date `main`, run `mise run preflight`.
-2. Run `mise run release:check`, then `mise run release:snapshot`, which fails if the
-   build leaves a file git sees that was not there before it. Neither checks what `dist/`
-   holds, so check by hand that it holds a `.tar.gz` archive and a `.sbom.json` per
-   platform, `checksums.txt` and `dist/homebrew/Casks/coroner.rb`.
-3. Pick the version, `vX.Y.Z`. A pre-release tag such as `vX.Y.Z-rc.N` publishes a GitHub
-   pre-release and leaves the Homebrew cask alone.
-4. Run `git cliff --tag vX.Y.Z -o CHANGELOG.md` and commit the result as
-   `chore(release): vX.Y.Z`. Never edit `CHANGELOG.md` by hand. Get that commit onto
-   `origin/main`, by pushing it or by merging the pull request that carries it and
-   pulling, then wait for CI on it to pass: the Release workflow runs no checks of its
-   own.
-5. Tag that commit and push the tag:
+In Claude Code, on an up-to-date `main`, type:
 
-   ```sh
-   git tag -a vX.Y.Z -m vX.Y.Z
-   git push origin vX.Y.Z
-   ```
+```text
+/release-coroner <patch|minor|major> [rc] [dry run]
+```
 
-## After the workflow finishes
+The bump picks the next version from the latest final tag, or from `v0.0.0` when there is
+none. `rc` makes a release candidate such as `v0.1.0-rc.0`, which publishes a GitHub
+pre-release and leaves the Homebrew cask alone. `dry run` runs every check, prints the tag
+and the notes, and creates nothing.
 
-1. Open the release on GitHub and check the archives, the SBOMs, `checksums.txt` and the
-   notes.
-2. Download the archive for your machine, check it against `checksums.txt`, and check that
-   `coroner version` prints exactly `vX.Y.Z`.
-3. Run `brew update && brew install --cask macintacos/tap/coroner` (or
-   `brew upgrade --cask coroner`) and check that the installed binary runs. While releases
-   are unsigned macOS may refuse it, as the install page describes; if the install page no
-   longer matches what macOS does, update it.
-4. Add the release's fixture database, following
-   [Adding a release's fixture](migrations.md#adding-a-releases-fixture).
+The skill drives `go run ./internal/tools/release`, which does each step and prints one
+JSON object:
 
-## Rebuilding a tag
+1. **`gates`** checks that you are on `main` with a clean tree level with `origin/main`,
+   that `gh` is logged in, that `HOMEBREW_TAP_GITHUB_TOKEN` is set, and that CI passed on
+   `HEAD`. Then it runs `mise run preflight`, `mise run release:check` and
+   `mise run release:snapshot`.
+2. **`compute`** works out the tag and gathers the pull requests and commits since the
+   latest final tag, each PR's `stability:` line, and any change to the contract scripts,
+   the export schema or a deprecation call.
+3. The skill writes the notes from that data and shows you the tag, the notes, and every
+   PR whose `stability:` line is missing or unfilled. You confirm once, or answer with an
+   edit to the notes.
+4. **`tag`** creates the annotated, unsigned tag with the notes as its message, byte for
+   byte, and pushes it. It refuses a tag that already exists locally or on `origin`.
+5. **`watch`** waits for the Release workflow the tag started, and fails unless it
+   succeeds.
+6. **`verify`** checks the published release: every archive, SBOM and `checksums.txt`, the
+   pre-release flag, the body against the tag's message, your platform's archive against
+   `checksums.txt`, that its `coroner version` prints the tag, and, for a final tag, the
+   version and checksums in the Homebrew cask.
+
+## Recovery
+
+A failed Release workflow is re-run, never re-tagged: the tag already carries the notes.
+Re-run it with `gh run rerun <id> -R macintacos/coroner`, then wait for it again with
+`go run ./internal/tools/release watch --tag <tag> --sha <sha>` and check it with
+`go run ./internal/tools/release verify --tag <tag>`. If the failed run already uploaded
+assets, first delete the release as [Rebuilding a tag](#rebuilding-a-tag) describes. The
+skill names the recovery for every other failure.
+
+### Rebuilding a tag
 
 A tag is built again when its Release workflow is re-run, or when goreleaser builds it
 locally. A re-run cannot repair a release that already has assets: goreleaser uploads the
@@ -71,3 +82,12 @@ re-run the Release workflow.
 with the tools `mise.lock` pins produces byte-identical archives, so compare only the
 archive lines. The SBOM lines change: syft writes a creation time and a random document ID
 into every SBOM.
+
+## After the release
+
+1. Run `brew update && brew install --cask macintacos/tap/coroner` (or
+   `brew upgrade --cask coroner`) and check that the installed binary runs. While releases
+   are unsigned macOS may refuse it, as the install page describes; if the install page no
+   longer matches what macOS does, update it.
+2. Add the release's fixture database, following
+   [Adding a release's fixture](migrations.md#adding-a-releases-fixture).
