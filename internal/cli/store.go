@@ -49,6 +49,14 @@ func withChange(
 	return rows, err
 }
 
+// collectBlobs deletes the blobs no attachment references, after a delete commits.
+func collectBlobs(ctx context.Context, app App, path string) error {
+	return withStorePath(ctx, app, path, func(s *store.Store) error {
+		_, err := s.GarbageCollectBlobs(ctx)
+		return err
+	})
+}
+
 // modeFor returns the Change mode --dry-run asks for.
 func modeFor(dryRun bool) store.Mode {
 	if dryRun {

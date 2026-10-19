@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -71,14 +70,14 @@ func deleteAttachments(ctx context.Context, app App, cfg config.Config, in field
 	dryRun, _ := in.boolean("dry-run")
 
 	deleted := attachmentsDeleted{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		attachments, err := findAttachments(ctx, s, prefixes)
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		attachments, err := findAttachments(ctx, tx, prefixes)
 		if err != nil {
 			return err
 		}
 		deleted.attachments = attachments
-		deleted.timelineNames, err = attachmentTimelineNames(ctx, s, attachments)
-		if err != nil || dryRun {
+		deleted.timelineNames, err = attachmentTimelineNames(ctx, tx, attachments)
+		if err != nil {
 			return err
 		}
 
@@ -86,23 +85,17 @@ func deleteAttachments(ctx context.Context, app App, cfg config.Config, in field
 		for _, a := range attachments {
 			ids = append(ids, a.ID)
 		}
-		err = s.DeleteAttachments(ctx, ids...)
-		if errors.Is(err, store.ErrNotFound) {
-			return &Error{
-				Kind: KindAttachmentNotFound, Message: "an attachment was deleted by another command first, so none were",
-				Hint: listAttachmentsHint, Err: err,
-			}
-		}
-		if err != nil {
-			return err
-		}
-		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
-
-		return nil
+		return tx.DeleteAttachments(ctx, ids...)
 	})
 	deleted.objects = newAttachmentJSONs(deleted.attachments, cfg.DBPath)
+	if err != nil {
+		return deleted, err
+	}
+	if !dryRun {
+		deleted.blobsErr = collectBlobs(ctx, app, cfg.DBPath)
+	}
 
-	return deleted, err
+	return deleted, nil
 }
 
 // render prints the attachments as JSON, or says for each what was, or would be, deleted, then

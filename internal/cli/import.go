@@ -143,10 +143,10 @@ func planUnstoredImport(in importInput, guard timelineInput) (importPlan, error)
 	return planImport(in)
 }
 
-// importWriteError returns id_conflict when another write added a record the import holds, and
-// any other error as it is.
+// importWriteError returns id_conflict when another write added or deleted a record the import
+// holds, and any other error as it is.
 func importWriteError(err error) error {
-	if !errors.Is(err, store.ErrConflict) {
+	if !errors.Is(err, store.ErrConflict) && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
 

@@ -105,6 +105,25 @@ var _ = Describe("a write racing another", func() {
 		}
 	})
 
+	It("gives timeline use racing timeline delete exit 0 or timeline_not_found, never 1", func(ctx SpecContext) {
+		for range rounds {
+			run := realRunner(ctx)
+			created := run("timeline", "create", "outage", "-q")
+			Expect(created.code).To(Equal(0), created.errOut)
+			id := strings.TrimSpace(created.out)
+
+			used, deleted := atOnce(run,
+				[]string{"timeline", "use", id, "--json"},
+				[]string{"timeline", "delete", id, "--yes", "--json"})
+
+			Expect(deleted.code).To(Equal(0), deleted.errOut)
+			if used.code != 0 {
+				Expect(used.code).To(Equal(3), used.errOut)
+				Expect(used.kind()).To(Equal(KindTimelineNotFound))
+			}
+		}
+	})
+
 	It("lets one of two renames of a source win, and gives the other source_not_found", func(ctx SpecContext) {
 		for range rounds {
 			run := realRunner(ctx)

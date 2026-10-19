@@ -43,8 +43,8 @@ func timelineDeleteDefinition() definition {
 }
 
 // timelineDeleted is the timeline delete removed or, with --dry-run, would remove, with the
-// overlays that lose it; only --dry-run counts its events and annotations, and only a delete says
-// why the blobs it left unused were not deleted.
+// overlays that lose it and its counts of events and annotations, which only --dry-run prints, and
+// only a delete says why the blobs it left unused were not deleted.
 type timelineDeleted struct {
 	timeline            timeline.Timeline
 	overlays            []timeline.Overlay
@@ -73,36 +73,36 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	}
 
 	deleted := timelineDeleted{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		t, err := findTimeline(ctx, s, *nameOrID)
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		t, err := findTimeline(ctx, tx, *nameOrID)
 		if err != nil {
 			return err
 		}
 		deleted.timeline = t
-		deleted.overlays, err = s.TimelineOverlays(ctx, t.ID)
+		deleted.overlays, err = tx.TimelineOverlays(ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		if !dryRun {
-			err = s.DeleteTimeline(ctx, t.ID)
-			if err != nil {
-				return err
-			}
-			_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
-			return nil
-		}
-
-		events, err := s.Events(ctx, t.ID)
+		events, err := tx.Events(ctx, t.ID)
 		if err != nil {
 			return err
 		}
-		annotations, err := s.Annotations(ctx, t.ID)
+		annotations, err := tx.Annotations(ctx, t.ID)
+		if err != nil {
+			return err
+		}
 		deleted.events, deleted.annotations = len(events), len(annotations)
 
-		return err
+		return tx.DeleteTimeline(ctx, t.ID)
 	})
+	if err != nil {
+		return deleted, err
+	}
+	if !dryRun {
+		deleted.blobsErr = collectBlobs(ctx, app, cfg.DBPath)
+	}
 
-	return deleted, err
+	return deleted, nil
 }
 
 func (d timelineDeleted) render(o output) error {

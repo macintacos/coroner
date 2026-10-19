@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -72,13 +71,13 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 	dryRun, _ := in.boolean("dry-run")
 
 	deleted := annotationsDeleted{dryRun: dryRun}
-	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		annotations, err := findAnnotations(ctx, s, prefixes)
+	_, err = withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)}, func(tx *store.Tx) error {
+		annotations, err := findAnnotations(ctx, tx, prefixes)
 		if err != nil {
 			return err
 		}
 		deleted.annotations = annotations
-		deleted.timelineNames, err = annotationTimelineNames(ctx, s, annotations)
+		deleted.timelineNames, err = annotationTimelineNames(ctx, tx, annotations)
 		if err != nil {
 			return err
 		}
@@ -88,25 +87,22 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 			ids = append(ids, a.ID)
 			owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
 		}
-		attachments, err := ownersAttachments(ctx, s, owners)
+		attachments, err := ownersAttachments(ctx, tx, owners)
 		deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
-		if err != nil || dryRun {
-			return err
-		}
-
-		err = s.DeleteAnnotations(ctx, ids...)
-		if errors.Is(err, store.ErrNotFound) {
-			return annotationNotFoundError("an annotation was deleted by another command first, so none were", err)
-		}
 		if err != nil {
 			return err
 		}
-		_, deleted.blobsErr = s.GarbageCollectBlobs(ctx)
 
-		return nil
+		return tx.DeleteAnnotations(ctx, ids...)
 	})
+	if err != nil {
+		return deleted, err
+	}
+	if !dryRun {
+		deleted.blobsErr = collectBlobs(ctx, app, cfg.DBPath)
+	}
 
-	return deleted, err
+	return deleted, nil
 }
 
 func (d annotationsDeleted) render(o output) error {
