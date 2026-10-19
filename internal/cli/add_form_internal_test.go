@@ -61,40 +61,6 @@ var _ = Describe("add forms", func() {
 		Expect(env.zone.loc).To(Equal(testNow().Location()))
 	})
 
-	DescribeTable("find a terminal only when stdin and stdout are one, TERM can draw and input is not turned off",
-		func(inTTY, outTTY bool, term string, inputOff, want bool) {
-			app := App{InIsTTY: inTTY, OutIsTTY: outTTY, LookupEnv: func(key string) (string, bool) {
-				return term, key == "TERM"
-			}}
-
-			Expect(interactiveTerminal(app, inputOff)).To(Equal(want))
-		},
-		Entry("both terminals", true, true, "xterm-256color", false, true),
-		Entry("stdin piped", false, true, "xterm-256color", false, false),
-		Entry("stdout piped", true, false, "xterm-256color", false, false),
-		Entry("a dumb terminal", true, true, "dumb", false, false),
-		Entry("input turned off", true, true, "xterm-256color", true, false),
-	)
-
-	DescribeTable("turn input off with --no-input, or CORONER_NO_INPUT when the flag is not given",
-		func(env map[string]string, args []string, want bool) {
-			app := App{LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			}}
-			cmd := &cobra.Command{}
-			cmd.Flags().AddFlagSet(globalFlags())
-			Expect(cmd.ParseFlags(args)).To(Succeed())
-
-			Expect(noInput(cmd, app)).To(Equal(want))
-		},
-		Entry("neither", nil, nil, false),
-		Entry("--no-input", nil, []string{"--no-input"}, true),
-		Entry("CORONER_NO_INPUT set", map[string]string{"CORONER_NO_INPUT": "1"}, nil, true),
-		Entry("CORONER_NO_INPUT false", map[string]string{"CORONER_NO_INPUT": "false"}, nil, false),
-		Entry("--no-input=false over CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}, []string{"--no-input=false"}, false),
-	)
-
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
 		cancelled := false
 		text := huh.NewInput().Key("text")

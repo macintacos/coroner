@@ -168,13 +168,6 @@ func newFormSession(cmd *cobra.Command, app App, forms func(color bool, images g
 	}, nil
 }
 
-// interactiveTerminal reports whether a command may take over app's terminal: input is not turned
-// off, keys can arrive, and the screen is a terminal that can draw (I-1, I-2).
-func interactiveTerminal(app App, inputOff bool) bool {
-	term, _ := app.LookupEnv("TERM")
-	return !inputOff && app.InIsTTY && app.OutIsTTY && term != "dumb"
-}
-
 // noInput reports whether --no-input, or CORONER_NO_INPUT when the flag is not given, turns every
 // form, picker and viewer off.
 func noInput(cmd *cobra.Command, app App) bool {
