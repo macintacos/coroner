@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Format all files (formatters only, write mode)"
+#MISE description="Format all files and regenerate go.mod tidiness, sqlc, the CLI reference and export schema"
 
 set -euo pipefail
 

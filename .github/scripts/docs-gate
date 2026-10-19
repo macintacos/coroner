@@ -11,8 +11,13 @@ if [[ -z $paths ]]; then
 	exit 1
 fi
 
-cli=$(grep -E '^internal/cli/' <<<"$paths" | grep -vE '_test\.go$|/testdata/|^internal/cli/topics/' || true)
-docs=$(grep -E '^docs/' <<<"$paths" | grep -v '^docs/reference/cli/' || true)
+# grep exits 1 on no match, which is a verdict here; 2 is an error.
+match() {
+	grep "$@" || (($? == 1))
+}
+
+cli=$(match -E '^internal/cli/' <<<"$paths" | match -vE '_test\.go$|/testdata/|^internal/cli/topics/')
+docs=$(match -E '^docs/' <<<"$paths" | match -v '^docs/reference/cli/')
 
 if [[ -n $cli && -z $docs ]]; then
 	printf '::error::internal/cli changed but no hand-written page under docs/ did (the generated docs/reference/cli/ does not count): %s. Update the docs page the change affects, or add the docs-not-needed label if nothing user-visible changed.\n' "${cli//$'\n'/, }" >&2

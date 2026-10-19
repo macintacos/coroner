@@ -10,27 +10,21 @@ HK_MISE = 1
 [tools]
 # hk evaluates hk.pkl through pkl, so both are required. pkl also powers the
 # Pkl(Format) / Pkl(Lint) steps (`pkl format` and `pkl eval`).
-hk  = "latest"
+hk  = "1.58.1" # keep in lockstep with hk.pkl's amends/import version
 pkl = "latest"
 
 # The cross-language baseline.
 "aqua:google/yamlfmt" = "latest" # YAML format
 taplo                 = "latest" # TOML format + lint (config in taplo.toml)
 shellcheck            = "latest" # Shell lint
-shfmt                 = "latest" # Shell format (see note below)
+shfmt                 = "latest" # Shell format
 rumdl                 = "latest" # Markdown lint + format (config in .rumdl.toml)
-
-# shfmt: the registry shorthand occasionally resolves the wrong build. If
-# `mise run format` reports an unexpected shfmt version, pin mvdan's shfmt via
-# the go backend instead — replace the `shfmt` line above with:
-#   "go:mvdan.cc/sh/v3/cmd/shfmt" = "latest"
 
 # Go. golangci-lint must be built with a Go at least as new as go.mod's `go`
 # directive — check `golangci-lint --version` when bumping either.
-go                   = "latest"
-golangci-lint        = "latest"
-sqlc                 = "latest"
-"aqua:pressly/goose" = "latest"
+go            = "latest"
+golangci-lint = "latest"
+sqlc          = "latest"
 
 # Python. uv installs and runs Zensical from pyproject.toml and uv.lock; ruff and
 # ty check any Python that lands.

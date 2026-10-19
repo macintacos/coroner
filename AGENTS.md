@@ -35,23 +35,25 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, regenerating the CLI reference when a help topic or the Go code
 it documents changes, and the export schema when the export types change; and `pre-push`
-runs `mise run test` when Go files, `go.mod` or `go.sum` change.
+runs `mise run test` when Go files, `go.mod`, `go.sum` or anything under `internal/`,
+`docs/`, `skills/`, `testdata/` or `schema/` change.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request and
-push to `main`: `mise run lint`, `mise run test`, `mise run docs:build`, then
-`mise run format` failing on any diff, so a commit made with `--no-verify` still gets a
-red check. The docs gate
+push to `main`: [`.github/scripts/docs-gate-test`](.github/scripts/docs-gate-test), which
+checks the docs gate's cases, `mise run lint`, `mise run test`, `mise run docs:build`,
+then `mise run format` failing on any diff, so a commit made with `--no-verify` still gets
+a red check. The docs gate
 ([`.github/workflows/docs-gate.yml`](.github/workflows/docs-gate.yml)) fails a pull
 request that changes a file under `internal/cli/` other than a test, testdata or help
 topic without changing a page under `docs/` outside `docs/reference/cli/`, unless it has
 the `docs-not-needed` label; [`.github/scripts/docs-gate`](.github/scripts/docs-gate)
-holds the rule and reads changed paths on stdin, and
-[`.github/scripts/docs-gate-test`](.github/scripts/docs-gate-test) checks its cases before
-the gate runs. Pushing a `v*` tag runs two workflows: one deploys the docs site to GitHub
-Pages ([`.github/workflows/docs.yml`](.github/workflows/docs.yml)), and the release
-workflow ([`.github/workflows/release.yml`](.github/workflows/release.yml)) reads the
-release notes from the annotated tag's message, then has goreleaser publish the release
-and update the Homebrew cask.
+holds the rule and reads changed paths on stdin. Pushing a `v*` tag runs two workflows:
+one deploys the docs site to GitHub Pages
+([`.github/workflows/docs.yml`](.github/workflows/docs.yml)), for a final tag only, not a
+release candidate such as `v0.1.0-rc.0`, and the release workflow
+([`.github/workflows/release.yml`](.github/workflows/release.yml)) reads the release notes
+from the annotated tag's message, then has goreleaser publish the release and update the
+Homebrew cask.
 
 ## Routing
 

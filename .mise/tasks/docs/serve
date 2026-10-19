@@ -3,4 +3,4 @@
 
 set -euo pipefail
 
-uv run zensical serve
+uv run --locked zensical serve
