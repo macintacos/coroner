@@ -17,6 +17,13 @@ exec coroner timeline create mongo-outage-2026-09-11 --title 'Primary election s
 ! stdout .
 stderr '^Next: coroner timeline use mongo-outage-2026-09-11$'
 exec coroner timeline use mongo-outage-2026-09-11
+! stderr 'CORONER_TIMELINE'
+
+# Using a timeline CORONER_TIMELINE overrides warns that the variable still selects.
+env CORONER_TIMELINE=inc-1
+exec coroner timeline use mongo-outage-2026-09-11
+stderr '^CORONER_TIMELINE="inc-1" still selects the timeline commands act on\. Unset it to act on `mongo-outage-2026-09-11`\.$'
+env CORONER_TIMELINE=
 exec coroner timeline list
 stdout '^\*\tmongo-outage-2026-09-11\tPrimary election storm$'
 exec coroner timeline view

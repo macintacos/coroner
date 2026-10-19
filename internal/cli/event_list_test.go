@@ -3,17 +3,14 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
-	"github.com/macintacos/coroner/internal/store"
 )
 
 var _ = Describe("event list", func() {
@@ -28,20 +25,11 @@ var _ = Describe("event list", func() {
 		errOut.Reset()
 		newYork, err := time.LoadLocation("America/New_York")
 		Expect(err).NotTo(HaveOccurred())
-		return cli.Run(ctx, cli.App{
-			Args:      append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			In:        strings.NewReader(""),
-			Out:       &out,
-			Err:       &errOut,
-			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-			ReadFile:  readNoFile,
-			Now:       func() time.Time { return time.Date(2026, time.September, 12, 21, 30, 0, 0, newYork) },
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore: store.Open,
-		})
+		return cli.Run(ctx, harness{
+			home: home, db: filepath.Join(home, "coroner.db"), out: &out, errOut: &errOut,
+			now:   func() time.Time { return time.Date(2026, time.September, 12, 21, 30, 0, 0, newYork) },
+			newID: countedIDs(&ids),
+		}.app(args...))
 	}
 
 	type page struct {
@@ -60,11 +48,11 @@ var _ = Describe("event list", func() {
 		return p
 	}
 	seqs := func(p page) []int64 {
-		out := []int64{}
+		got := []int64{}
 		for _, e := range p.Events {
-			out = append(out, e.Seq)
+			got = append(got, e.Seq)
 		}
-		return out
+		return got
 	}
 
 	BeforeEach(func(ctx SpecContext) {
@@ -142,10 +130,10 @@ var _ = Describe("event list", func() {
 		Expect(out.String()).To(Equal("#1\t2026-09-10T23:00:00-04:00\tpagerduty\tphase:detect\tPager fires for db-2\n"))
 	})
 
-	It("suggests event add on stderr when the timeline has no events and no filter was given", func(ctx SpecContext) {
+	It("suggests event add on stderr when the timeline has no events and no filter was given, whatever the order or limit", func(ctx SpecContext) {
 		Expect(run(ctx, "timeline", "create", "disk-full")).To(Equal(0), errOut.String())
 
-		Expect(run(ctx, "event", "list", "-t", "disk-full", "--order", "desc")).To(Equal(0))
+		Expect(run(ctx, "event", "list", "-t", "disk-full", "--order", "desc", "--limit", "5")).To(Equal(0))
 
 		Expect(out.String()).To(BeEmpty())
 		Expect(errOut.String()).To(Equal("No events yet. Add one with: coroner event add <text>\n"))

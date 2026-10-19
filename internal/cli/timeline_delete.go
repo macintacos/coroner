@@ -84,15 +84,12 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 			if err != nil {
 				return deleted, err
 			}
-			events, err := tx.Events(ctx, t.ID)
-			if err != nil {
-				return deleted, err
+			if dryRun {
+				deleted.events, deleted.annotations, err = timelineContents(ctx, tx, t.ID)
+				if err != nil {
+					return deleted, err
+				}
 			}
-			annotations, err := tx.Annotations(ctx, t.ID)
-			if err != nil {
-				return deleted, err
-			}
-			deleted.events, deleted.annotations = len(events), len(annotations)
 
 			return deleted, tx.DeleteTimeline(ctx, t.ID)
 		})
@@ -106,6 +103,20 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	return deleted, nil
 }
 
+// timelineContents returns how many events and annotations are in the timeline with id timelineID.
+func timelineContents(ctx context.Context, tx *store.Tx, timelineID string) (int, int, error) {
+	page, err := tx.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{timelineID}, Limit: 1})
+	if err != nil {
+		return 0, 0, err
+	}
+	stored, err := tx.Annotations(ctx, timelineID)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return page.Total, len(stored), nil
+}
+
 func (d timelineDeleted) render(o output) error {
 	err := printTimeline(o, d.timeline)
 	if err != nil {
@@ -116,10 +127,10 @@ func (d timelineDeleted) render(o output) error {
 		if err == nil {
 			err = d.notifyOverlays(o, "Removed")
 		}
-		if err != nil || d.blobsErr == nil {
+		if err != nil {
 			return err
 		}
-		return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
+		return notifyBlobsErr(o, d.blobsErr)
 	}
 
 	summary := fmt.Sprintf("Would delete timeline `%s`: events: %d, annotations: %d", d.timeline.Name, d.events, d.annotations)

@@ -66,8 +66,6 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 	if err != nil {
 		return err
 	}
-	// Read and written only once the store is closed: withStorePath would report a permission
-	// error from either as the database's.
 	content, err := app.ReadFile(store.BlobPath(inv.cfg.DBPath, a.SHA256))
 	if err != nil {
 		return fmt.Errorf("read the blob of attachment %s: %w", a.ID, err)

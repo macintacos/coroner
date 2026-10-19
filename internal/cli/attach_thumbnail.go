@@ -42,7 +42,7 @@ func attachThumbnail(readFile func(string) ([]byte, error), images graphics.Prot
 // and its placeholder text otherwise, captioned as the attachment will be stored.
 func thumbnail(content []byte, filename string, images graphics.Protocol) (string, tea.Cmd) {
 	mime := store.DetectMIME(content, filename)
-	caption := graphics.Caption{Filename: filename, Size: int64(len(content)), Image: strings.HasPrefix(mime, "image/")}
+	caption := graphics.Caption{Filename: filename, Size: int64(len(content)), Image: graphics.IsImage(mime)}
 	if !graphics.Decodable(mime) {
 		return caption.Placeholder(), nil
 	}

@@ -43,8 +43,12 @@ func (k keyMap) FullHelp() [][]key.Binding {
 	contains.SetHelp(contains.Help().Key, "filter by text")
 	jump.SetHelp(jump.Help().Key, "jump to time")
 
+	up, down := k.up, k.down
+	up.SetHelp(up.Help().Key, "up/scroll")
+	down.SetHelp(down.Help().Key, "dn/scroll")
+
 	return [][]key.Binding{
-		{k.up, k.down, k.pageUp, k.pageDown, k.top, k.bottom},
+		{up, down, k.pageUp, k.pageDown, k.top, k.bottom},
 		{k.expand, jump, k.refresh},
 		{source, tag, contains},
 		{k.help, k.cancel, k.quit, k.interrupt},

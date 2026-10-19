@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"image"
 	"image/png"
 	"io/fs"
@@ -14,13 +13,10 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 
-	"github.com/macintacos/coroner/internal/graphics"
-	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/viewer"
 )
 
@@ -70,7 +66,8 @@ var _ = Describe("timelineLoader", func() {
 	}
 
 	shownSeqs := func(m tea.Model) []int64 {
-		seqs := []int64{}
+		GinkgoHelper()
+		var seqs []int64
 		for _, match := range regexp.MustCompile(`#(\d+)\b`).FindAllStringSubmatch(m.View().Content, -1) {
 			seq, err := strconv.ParseInt(match[1], 10, 64)
 			Expect(err).NotTo(HaveOccurred())
@@ -88,7 +85,7 @@ var _ = Describe("timelineLoader", func() {
 			} `json:"events"`
 		}
 		Expect(json.Unmarshal(out.Bytes(), &page)).To(Succeed())
-		seqs := []int64{}
+		var seqs []int64
 		for _, e := range page.Events {
 			seqs = append(seqs, e.Seq)
 		}
@@ -99,19 +96,7 @@ var _ = Describe("timelineLoader", func() {
 		ids = 0
 		home := GinkgoT().TempDir()
 		db = filepath.Join(home, "coroner.db")
-		app = App{
-			Out:       &out,
-			Err:       &errOut,
-			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-			ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-			Now:       func() time.Time { return time.Date(2026, time.September, 12, 21, 30, 0, 0, time.UTC) },
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore:         store.Open,
-			OpenStoreReadOnly: store.OpenReadOnly,
-		}
+		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 
 		for _, args := range [][]string{
 			{"timeline", "create", "mongo-outage"},
@@ -202,22 +187,15 @@ var _ = Describe("timelineLoader", func() {
 			Expect(snapshot.Attachments).To(HaveExactElements(HaveField("Filename", "p99.png")))
 		})
 
-		DescribeTable("reads an attachment's image from its blob",
-			func(ctx SpecContext, protocol graphics.Protocol, wantPNG func(picture []byte) types.GomegaMatcher) {
-				snapshot, err := timelineLoader(ctx, app, db, []string{timelineID})(viewer.Match{})
-				Expect(err).NotTo(HaveOccurred())
-				logger, _ := viewerDiagnostics(false, &errOut)
+		It("reads an attachment's image from its blob", func(ctx SpecContext) {
+			snapshot, err := timelineLoader(ctx, app, db, []string{timelineID})(viewer.Match{})
+			Expect(err).NotTo(HaveOccurred())
 
-				img, err := imageReader(app.ReadFile, db, protocol, logger)(snapshot.Attachments[0])
+			content, err := blobReader(app.ReadFile, db)(snapshot.Attachments[0])
 
-				Expect(err).NotTo(HaveOccurred())
-				Expect(img).To(And(HaveField("Width", 4), HaveField("Height", 3), HaveField("PNG", wantPNG(picture))))
-			},
-			Entry("decoded for a terminal that shows images", graphics.Kitty, func(picture []byte) types.GomegaMatcher {
-				return Equal(picture)
-			}),
-			Entry("only its size for one that does not", graphics.None, func([]byte) types.GomegaMatcher { return BeNil() }),
-		)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(content).To(Equal(picture))
+		})
 
 		DescribeTable("an image it cannot show",
 			func(ctx SpecContext, readFile func(string) ([]byte, error), debug bool, logged func(hash string) types.GomegaMatcher) {
@@ -226,9 +204,20 @@ var _ = Describe("timelineLoader", func() {
 				a := snapshot.Attachments[0]
 				errOut.Reset()
 				logger, flush := viewerDiagnostics(debug, &errOut)
+				m := tea.Model(viewer.New(viewer.Options{
+					Snapshot: snapshot, Image: blobReader(readFile, db), Log: logger, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now,
+				}))
 
-				_, err = imageReader(readFile, db, graphics.Kitty, logger)(a)
-				Expect(err).To(HaveOccurred())
+				var read tea.Cmd
+				for range snapshot.Events {
+					m, read = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+					if read != nil {
+						break
+					}
+					m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+				}
+				Expect(read).NotTo(BeNil())
+				read()
 				Expect(errOut.String()).To(BeEmpty(), "nothing reaches stderr while the viewer holds the screen")
 
 				Expect(flush()).To(Succeed())
@@ -244,6 +233,7 @@ var _ = Describe("timelineLoader", func() {
 		)
 	})
 
+	// Only the race detector catches a missing lock here; without -race this catches a deadlock.
 	It("lets a read still running log while the viewer's diagnostics flush", func(ctx SpecContext) {
 		logger, flush := viewerDiagnostics(true, &errOut)
 		done := make(chan struct{})

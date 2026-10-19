@@ -116,11 +116,11 @@ func (d annotationsDeleted) render(o output) error {
 	default:
 		err = reportAnnotationDeletion(o, d.annotations, d.timelineNames)
 	}
-	if err != nil || d.blobsErr == nil {
+	if err != nil {
 		return err
 	}
 
-	return o.notify("Could not delete the blobs no attachment uses any more, so the next delete will: %v", d.blobsErr)
+	return notifyBlobsErr(o, d.blobsErr)
 }
 
 // findAnnotations returns the annotation each id prefix names, in order and once each.

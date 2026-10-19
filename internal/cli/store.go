@@ -73,7 +73,7 @@ func modeFor(dryRun bool) store.Mode {
 }
 
 // withStoreOpenedBy opens the database at path with open, runs fn against it and closes it.
-// Errors from opening the store or from fn pass through storeError.
+// Errors from opening the store pass through storeError, and fn's through callbackError.
 func withStoreOpenedBy(
 	ctx context.Context, open func(context.Context, string) (*store.Store, error), path string, fn func(*store.Store) error,
 ) error {
@@ -82,7 +82,7 @@ func withStoreOpenedBy(
 		return storeError(err, path)
 	}
 
-	err = storeError(fn(s), path)
+	err = callbackError(fn(s), path)
 	closeErr := s.Close()
 	if closeErr != nil {
 		return errors.Join(err, closeErr)
@@ -115,6 +115,22 @@ func changedString(flags *pflag.FlagSet, name string) *string {
 
 	value, _ := flags.GetString(name)
 	return &value
+}
+
+// callbackError maps an error from work done against an open store: an *Error stays as it is,
+// and a permission error names the file it is about rather than the database.
+func callbackError(err error, path string) error {
+	if _, ok := errors.AsType[*Error](err); ok {
+		return err
+	}
+	if pathErr, ok := errors.AsType[*fs.PathError](err); ok && errors.Is(err, fs.ErrPermission) {
+		return &Error{
+			Kind: KindDBUnreadable, Message: "permission denied on " + pathErr.Path,
+			Hint: "Check the permissions of that path.", Err: err,
+		}
+	}
+
+	return storeError(err, path)
 }
 
 // storeError gives the database failures a user can fix their kinds and messages, gives a

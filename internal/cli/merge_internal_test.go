@@ -62,7 +62,7 @@ var _ = Describe("merge", func() {
 		}
 	}
 
-	It("plans and writes in one transaction, returning the inserted events with their seqs", func(ctx SpecContext) {
+	It("returns the inserted events with their seqs", func(ctx SpecContext) {
 		stored := planEvent(2, tl.ID, "Primary steps down")
 		stored.Seq = new(int64(1))
 		seed(ctx, stored, nil)
@@ -105,6 +105,8 @@ var _ = Describe("merge", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(other.Close)
 		inside, release, changed := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+		closeRelease := sync.OnceFunc(func() { close(release) })
+		DeferCleanup(closeRelease)
 		go func() {
 			_, err := other.Change(ctx, store.ChangeOptions{Mode: store.Commit}, func(tx *store.Tx) error {
 				err := tx.CreateTimeline(ctx, planTimeline(3, "inc-4822").Domain())
@@ -126,7 +128,7 @@ var _ = Describe("merge", func() {
 		}()
 		var out mergeOutcome
 		Eventually(merged).WithTimeout(time.Second).Should(Receive(&out))
-		close(release)
+		closeRelease()
 		Eventually(ctx, changed).Should(Receive(BeNil()))
 
 		Expect(out.plan.result.Events.Inserted).To(Equal(2))
@@ -170,6 +172,8 @@ var _ = Describe("merge", func() {
 		e.Source = new("pagerduty")
 		in := inputOf(e)
 		inside, release := make(chan struct{}), make(chan struct{})
+		closeRelease := sync.OnceFunc(func() { close(release) })
+		DeferCleanup(closeRelease)
 		var once sync.Once
 		in.newID = func() (uuid.UUID, error) {
 			once.Do(func() { close(inside) })
@@ -187,7 +191,7 @@ var _ = Describe("merge", func() {
 		go func() { created <- other.CreateTimeline(ctx, planTimeline(3, "inc-4822").Domain()) }()
 		Consistently(created).WithTimeout(300 * time.Millisecond).ShouldNot(Receive())
 
-		close(release)
+		closeRelease()
 		Eventually(ctx, merged).Should(Receive(BeNil()))
 		Eventually(ctx, created).Should(Receive(Or(BeNil(), MatchError(store.ErrBusy))))
 	}, SpecTimeout(time.Minute))

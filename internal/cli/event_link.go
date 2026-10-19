@@ -126,7 +126,7 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 	if err != nil {
 		return linkChange{}, err
 	}
-	author, err := eventAuthor(in.value("author"), cfg.Author, app.LookupEnv)
+	author, err := defaultAuthor(in.value("author"), cfg.Author, app.LookupEnv)
 	if err != nil {
 		return linkChange{}, err
 	}
@@ -263,7 +263,7 @@ func linkNotFoundError(ends linkEnds, kind timeline.LinkKind, err error) *Error 
 
 func (c linkChange) render(o output) error {
 	if o.format == formatJSON {
-		err := o.json(newLinkJSON(c.link))
+		err := o.json(export.NewLink(c.link))
 		if err != nil {
 			return err
 		}
@@ -281,8 +281,4 @@ func (c linkChange) render(o output) error {
 	}
 
 	return o.notify("%s `%s` %s `%s` as %s.", did, c.ends.ref(0), c.preposition, c.ends.ref(1), c.link.Kind)
-}
-
-func newLinkJSON(l timeline.Link) export.Link {
-	return export.NewLink(l)
 }

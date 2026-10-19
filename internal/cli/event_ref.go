@@ -16,8 +16,8 @@ const (
 	eventRefHelp = "An event is named by its seq in the current timeline (12), by a timeline and seq\n" +
 		"(mongo-outage#12), or by its id or the start of it, in any timeline. Seqs and id starts\n" +
 		"are for people; scripts pass full ids."
-	// shownCandidates is how many events an ambiguous id prefix lists.
-	shownCandidates = 10
+	// shownMatches is how many records an ambiguous id prefix lists.
+	shownMatches = 10
 )
 
 // eventRef is an event reference as typed: a seq in timeline, or in the selected timeline
@@ -45,13 +45,20 @@ func parseEventRef(ref string) (eventRef, error) {
 		return eventRef{timeline: name, seq: seq}, nil
 	}
 
-	prefix := strings.ToLower(ref)
-	if prefix == "" || !strings.ContainsRune("0123456789abcdef", rune(prefix[0])) ||
-		strings.Trim(prefix, "0123456789abcdef-") != "" {
+	prefix, ok := parseIDPrefix(ref)
+	if !ok {
 		return eventRef{}, badEventRefError(ref)
 	}
 
 	return eventRef{idPrefix: prefix}, nil
+}
+
+// parseIDPrefix returns ref lowercased, and whether that is an id prefix: hex digits and dashes,
+// starting with a hex digit.
+func parseIDPrefix(ref string) (string, bool) {
+	prefix := strings.ToLower(ref)
+	return prefix, prefix != "" && strings.ContainsRune("0123456789abcdef", rune(prefix[0])) &&
+		strings.Trim(prefix, "0123456789abcdef-") == ""
 }
 
 func checkEventRef(ref string) error {
@@ -145,7 +152,7 @@ func eventBySeq(ctx context.Context, s records, t timeline.Timeline, seq int64) 
 
 // findEventByID returns the one event whose id starts with prefix, and its timeline.
 func findEventByID(ctx context.Context, s records, prefix string) (timeline.Event, timeline.Timeline, error) {
-	events, err := s.EventsByIDPrefix(ctx, prefix, shownCandidates+1)
+	events, err := s.EventsByIDPrefix(ctx, prefix, shownMatches+1)
 	switch {
 	case err != nil:
 		return timeline.Event{}, timeline.Timeline{}, err
@@ -168,25 +175,36 @@ func eventNotFoundError(message string, err error) *Error {
 	return &Error{Kind: KindEventNotFound, Message: message, Hint: "Run 'coroner event list' to see a timeline's events.", Err: err}
 }
 
-// ambiguousEventError returns ambiguous_id, listing the first shownCandidates of events as
+// ambiguousEventError returns ambiguous_id, listing the first shownMatches of events as
 // <timeline>#<seq> and id.
 func ambiguousEventError(ctx context.Context, s records, prefix string, events []timeline.Event) error {
-	lines := []string{"It matches:"}
-	for _, e := range events[:min(len(events), shownCandidates)] {
+	var rows []string
+	for _, e := range events[:min(len(events), shownMatches)] {
 		t, err := s.Timeline(ctx, e.TimelineID)
 		if err != nil {
 			return err
 		}
-		lines = append(lines, fmt.Sprintf("  %s#%d  %s", t.Name, e.Seq, e.ID))
+		rows = append(rows, fmt.Sprintf("%s#%d  %s", t.Name, e.Seq, e.ID))
 	}
-	if len(events) > shownCandidates {
+
+	return ambiguousIDError("event", prefix, rows, len(events) > shownMatches)
+}
+
+// ambiguousIDError returns ambiguous_id for the noun records whose ids start with prefix,
+// listing rows, and saying more matched when more did.
+func ambiguousIDError(noun, prefix string, rows []string, more bool) *Error {
+	lines := []string{"It matches:"}
+	for _, row := range rows {
+		lines = append(lines, "  "+row)
+	}
+	if more {
 		lines = append(lines, "  and more")
 	}
 	lines = append(lines, "Pass more of the id.")
 
 	return &Error{
 		Kind:    KindAmbiguousID,
-		Message: "more than one event has an id starting " + prefix,
+		Message: "more than one " + noun + " has an id starting " + prefix,
 		Hint:    strings.Join(lines, "\n"),
 	}
 }

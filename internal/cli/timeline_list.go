@@ -32,7 +32,7 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 			switch {
 			case err != nil:
 				return err
-			case inv.out.format != formatJSON && inv.interactive():
+			case inv.interactive():
 				return pickTimeline(ctx, app, inv)
 			}
 
@@ -70,7 +70,7 @@ func pickTimeline(ctx context.Context, app App, inv invocation) error {
 	}
 
 	picked, ok, err := viewer.Pick(ctx,
-		viewer.Terminal{In: app.In, Out: app.Out, NoColor: !inv.outColor},
+		viewer.Terminal{In: app.In, Out: app.Out, NoColor: !inv.outColor, Env: terminalEnv(app.LookupEnv)},
 		viewer.PickOptions{Rows: rows, Notice: shadowNotice(app.LookupEnv), Location: z.loc})
 	switch {
 	case errors.Is(err, viewer.ErrInterrupted):
@@ -83,16 +83,7 @@ func pickTimeline(ctx context.Context, app App, inv invocation) error {
 	if err != nil {
 		return err
 	}
-	err = used.render(inv.out)
-	if err != nil {
-		return err
-	}
-	warning := shadowWarning(app.LookupEnv, *used.timeline)
-	if warning == "" {
-		return nil
-	}
-
-	return inv.out.notify("%s", warning)
+	return used.render(inv.out)
 }
 
 // readTimelineRows returns listTimelines' timelines with their event counts and last events.

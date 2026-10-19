@@ -20,7 +20,7 @@ type invocation struct {
 	outColor, errColor bool
 	inputOff           bool
 	// terminal is interactiveTerminal's answer: a form may take over the terminal. A viewer or
-	// picker asks interactive() instead, which --format also turns off.
+	// picker asks interactive() instead, which --format and --json also turn off.
 	terminal bool
 	// formatGiven is whether --format changed: plain output even on a terminal (I-1).
 	formatGiven bool
@@ -47,12 +47,8 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	}
 
 	flags := cmd.Flags()
-	inputOff := envTrue(app.LookupEnv, "CORONER_NO_INPUT")
-	if flags.Changed("no-input") {
-		inputOff, _ = flags.GetBool("no-input")
-	}
-	noColor, _ := flags.GetBool("no-color")
-	debug, _ := flags.GetBool("debug")
+	inputOff := flagOrEnv(flags, "no-input", envTrue(app.LookupEnv, "CORONER_NO_INPUT"))
+	noColor, debug := readSwitches(flags, app.LookupEnv)
 	timelines, err := readTimelineInput(flags, flags.Args(), ruleOf(cmd))
 	if err != nil {
 		return invocation{}, err
@@ -65,7 +61,7 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 		inputOff:    inputOff,
 		terminal:    interactiveTerminal(app, inputOff),
 		formatGiven: flags.Changed("format"),
-		debug:       debug || envTrue(app.LookupEnv, "CORONER_DEBUG"),
+		debug:       debug,
 		echoArgs:    givenStoreArgs(flags),
 		timelines:   timelines,
 	}, nil
@@ -90,7 +86,7 @@ func (inv invocation) zone() (zone, error) {
 
 // interactive reports whether a viewer or picker may open (I-1, I-2).
 func (inv invocation) interactive() bool {
-	return inv.terminal && !inv.formatGiven
+	return inv.terminal && !inv.formatGiven && inv.out.format != formatJSON
 }
 
 // interactiveTerminal reports whether a command may take over app's terminal: input is not turned

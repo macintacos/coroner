@@ -164,13 +164,11 @@ func conflictingEventsError(conflicts []importConflict) *Error {
 	if len(conflicts) != 1 {
 		header = fmt.Sprintf("%d events are already stored with different content, so nothing was added:", len(conflicts))
 	}
-	lines := []string{header}
-	for _, c := range conflicts[:min(len(conflicts), shownImportProblems)] {
-		lines = append(lines, fmt.Sprintf("event %s differs in %s", c.ID, strings.Join(c.Fields, ", ")))
+	differences := make([]string, 0, len(conflicts))
+	for _, c := range conflicts {
+		differences = append(differences, fmt.Sprintf("event %s differs in %s", c.ID, strings.Join(c.Fields, ", ")))
 	}
-	if more := len(conflicts) - shownImportProblems; more > 0 {
-		lines = append(lines, fmt.Sprintf("and %d more", more))
-	}
+	lines := append([]string{header}, firstFew(differences, shownImportProblems)...)
 
 	return &Error{
 		Kind: KindIDConflict, Message: strings.Join(lines, "\n"),

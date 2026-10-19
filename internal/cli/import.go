@@ -50,7 +50,7 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 	}
 
 	addTimelineFlag(cmd.Flags())
-	cmd.Flags().String("on-conflict", string(onConflictFail), "What to do with a record stored with different content, as a `policy`: {fail|skip|replace}")
+	cmd.Flags().String("on-conflict", string(onConflictFail), "What to do with a record stored with different content, as a `policy`: {fail | skip | replace}")
 	cmd.Flags().Bool("dry-run", false, "Show what the import would change, and write nothing")
 
 	return cmd
@@ -70,8 +70,6 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	// Read before the store opens: withStoreOpenedBy would report a permission error on either as
-	// the database's.
 	sidecars, err := readSidecars(path, records, app.ReadDir, app.ReadFile)
 	if err != nil {
 		return err
@@ -102,17 +100,20 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	return importBlockedError(plan)
 }
 
-// invalidImportError returns problems as one invalid_input error: a count, the first few, and
+// invalidImportError returns problems as one invalid_input error: how many records they name,
+// each problem's text before its first ": ", then the first few problems and
 // how many more there are, with hint.
 func invalidImportError(problems []string, hint string) *Error {
-	header := fmt.Sprintf("%d records cannot be imported:", len(problems))
-	if len(problems) == 1 {
+	records := map[string]bool{}
+	for _, p := range problems {
+		record, _, _ := strings.Cut(p, ": ")
+		records[record] = true
+	}
+	header := fmt.Sprintf("%d records cannot be imported:", len(records))
+	if len(records) == 1 {
 		header = "1 record cannot be imported:"
 	}
-	lines := append([]string{header}, problems[:min(len(problems), shownImportProblems)]...)
-	if more := len(problems) - shownImportProblems; more > 0 {
-		lines = append(lines, fmt.Sprintf("and %d more", more))
-	}
+	lines := append([]string{header}, firstFew(problems, shownImportProblems)...)
 
 	return &Error{Kind: KindInvalidInput, Message: strings.Join(lines, "\n"), Hint: hint}
 }
@@ -136,13 +137,13 @@ func importBlockedError(plan importPlan) error {
 	case blockConflicts:
 		return &Error{
 			Kind:    KindIDConflict,
-			Message: recordCount(len(plan.result.Conflicts)) + " conflict with what is stored, so nothing was imported",
+			Message: conflictCount(len(plan.result.Conflicts)) + " with what is stored, so nothing was imported",
 			Hint:    "Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's.",
 		}
 	case blockUnreplaceable:
 		return &Error{
 			Kind: KindIDConflict,
-			Message: recordCount(len(plan.unreplaceable)) +
+			Message: fmt.Sprintf("%d %s", len(plan.unreplaceable), pluralNoun(len(plan.unreplaceable), "record")) +
 				" cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
 			Hint: "Pass --on-conflict skip to keep what is stored.",
 		}
@@ -152,20 +153,48 @@ func importBlockedError(plan importPlan) error {
 	return nil
 }
 
-// mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens
-// the database read-only and plans against an empty one when it does not exist yet.
-func mergeImport(ctx context.Context, app App, dbPath string, in mergeInput, dryRun bool) (importPlan, error) {
-	open, mode := app.OpenStore, mergeWrite
-	if dryRun {
-		open, mode = app.OpenStoreReadOnly, mergePlanOnly
+// conflictCount returns "1 record conflicts" or "N records conflict".
+func conflictCount(n int) string {
+	if n == 1 {
+		return "1 record conflicts"
 	}
+
+	return fmt.Sprintf("%d records conflict", n)
+}
+
+// mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens
+// the database read-only, migrating it first only when it is below the latest schema, and
+// plans against an empty one when it does not exist yet.
+func mergeImport(ctx context.Context, app App, dbPath string, in mergeInput, dryRun bool) (importPlan, error) {
 	var out mergeOutcome
-	err := withStoreOpenedBy(ctx, open, dbPath, func(s *store.Store) error {
-		var err error
-		out, err = merge(ctx, s, in, mode)
-		return err
+	mergeInto := func(mode mergeMode) func(*store.Store) error {
+		return func(s *store.Store) error {
+			var err error
+			out, err = merge(ctx, s, in, mode)
+			return err
+		}
+	}
+	if !dryRun {
+		err := withStoreOpenedBy(ctx, app.OpenStore, dbPath, mergeInto(mergeWrite))
+		return out.plan, err
+	}
+
+	migrate := false
+	err := withStoreOpenedBy(ctx, app.OpenStoreReadOnly, dbPath, func(s *store.Store) error {
+		schema, err := s.Schema(ctx)
+		if err != nil {
+			return err
+		}
+		migrate = schema.Version < schema.Latest
+		if migrate {
+			return nil
+		}
+		return mergeInto(mergePlanOnly)(s)
 	})
-	if !dryRun || !errors.Is(err, fs.ErrNotExist) {
+	if err == nil && migrate {
+		err = withStoreOpenedBy(ctx, app.OpenStore, dbPath, mergeInto(mergePlanOnly))
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
 		return out.plan, err
 	}
 	err = in.timelines.withoutStore()
@@ -318,11 +347,7 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 	r := plan.result
 	lines := make([]string, 0, 8+len(r.Conflicts))
 	if n := len(plan.timelineNames); n > 0 {
-		noun := "timelines"
-		if n == 1 {
-			noun = "timeline"
-		}
-		lines = append(lines, fmt.Sprintf("%s into %s `%s`", verb, noun, strings.Join(plan.timelineNames, "`, `")))
+		lines = append(lines, fmt.Sprintf("%s into %s %s", verb, pluralNoun(n, "timeline"), codeList(plan.timelineNames)))
 	}
 	for _, c := range []struct {
 		name   string
@@ -342,13 +367,9 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 		lines = append(lines, fmt.Sprintf("Conflict: %s %s differs in %s", c.Type, c.ID, strings.Join(c.Fields, ", ")))
 	}
 	if n := len(r.MissingAttachments); n > 0 {
-		noun := "attachments"
-		if n == 1 {
-			noun = "attachment"
-		}
 		lines = append(lines, fmt.Sprintf(
 			"Left out %d %s whose files are neither beside the export nor in the database; import an export written with -o <directory>/ to bring them",
-			n, noun))
+			n, pluralNoun(n, "attachment")))
 	}
 
 	for _, line := range lines {

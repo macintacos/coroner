@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/rogpeppe/go-internal/diff"
@@ -107,12 +107,12 @@ func checkImportTwice(ctx context.Context, dir string, m model) error {
 	if err != nil {
 		return err
 	}
-	c := coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
-	jsonl, err := filepath.Glob(filepath.Join(dir, "a", "*.jsonl"))
+	c := pinnedCoroner(dir)
+	jsonl, err := exportedJSONL(filepath.Join(dir, "a"))
 	if err != nil {
 		return err
 	}
-	out, err := c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", jsonl[0], "--json")
+	out, err := c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", jsonl, "--json")
 	if err != nil {
 		return err
 	}
@@ -158,16 +158,16 @@ func TestReplaceThenExportEqualsReplacingFile(t *testing.T) {
 // returns an error unless c.db's export holds b.jsonl's records.
 func checkReplace(t *rapid.T, dir string, names []string) error {
 	ctx := t.Context()
-	c := coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
+	c := pinnedCoroner(dir)
 	_, err := c.run(ctx, exportArgs(filepath.Join(dir, "a.db"), names, filepath.Join(dir, "a")+string(filepath.Separator))...)
 	if err != nil {
 		return err
 	}
-	jsonl, err := filepath.Glob(filepath.Join(dir, "a", "*.jsonl"))
+	jsonl, err := exportedJSONL(filepath.Join(dir, "a"))
 	if err != nil {
 		return err
 	}
-	records, err := decodeFile(jsonl[0])
+	records, err := decodeFile(jsonl)
 	if err != nil {
 		return err
 	}
@@ -197,7 +197,7 @@ func checkReplace(t *rapid.T, dir string, names []string) error {
 	}
 
 	cDB := filepath.Join(dir, "c.db")
-	_, err = c.run(ctx, "--db", cDB, "import", jsonl[0])
+	_, err = c.run(ctx, "--db", cDB, "import", jsonl)
 	if err != nil {
 		return err
 	}
@@ -209,19 +209,27 @@ func checkReplace(t *rapid.T, dir string, names []string) error {
 	if err != nil {
 		return err
 	}
-	cJSONL, err := filepath.Glob(filepath.Join(dir, "c", "*.jsonl"))
+	cJSONL, err := exportedJSONL(filepath.Join(dir, "c"))
 	if err != nil {
 		return err
 	}
-	got, err := decodeFile(cJSONL[0])
+	cData, err := os.ReadFile(filepath.Clean(cJSONL))
 	if err != nil {
 		return err
 	}
-	if !reflect.DeepEqual(withoutHeaders(got), withoutHeaders(records)) {
-		return fmt.Errorf("c.db's export differs from b.jsonl:\n%s", diff.Diff("b.jsonl", b.Bytes(), "c", mustRead(cJSONL[0])))
+	got, err := export.Decode(bytes.NewReader(cData))
+	if err != nil {
+		return err
+	}
+	if differences := cmp.Diff(withoutHeaders(records), withoutHeaders(got), instantsEqual()); differences != "" {
+		return fmt.Errorf("c.db's export differs from b.jsonl (-b.jsonl +c):\n%s", differences)
 	}
 
 	return nil
+}
+
+func instantsEqual() cmp.Option {
+	return cmp.Comparer(func(a, b export.Instant) bool { return time.Time(a).Equal(time.Time(b)) })
 }
 
 func decodeFile(path string) ([]export.Record, error) {
@@ -231,11 +239,6 @@ func decodeFile(path string) ([]export.Record, error) {
 	}
 
 	return export.Decode(bytes.NewReader(data))
-}
-
-func mustRead(path string) []byte {
-	data, _ := os.ReadFile(filepath.Clean(path))
-	return data
 }
 
 func withoutHeaders(records []export.Record) []export.Record {
@@ -484,20 +487,17 @@ func newAttachments(drafts []attachmentDraft) []store.NewAttachment {
 // an empty dir/b.db, and exports b.db into dir/b/. It returns the first export, and an error unless
 // both directories hold the same bytes.
 func roundTrip(ctx context.Context, dir string, names []string) ([]byte, error) {
-	c := coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
+	c := pinnedCoroner(dir)
 
 	_, err := c.run(ctx, exportArgs(filepath.Join(dir, "a.db"), names, filepath.Join(dir, "a")+string(filepath.Separator))...)
 	if err != nil {
 		return nil, err
 	}
-	jsonl, err := filepath.Glob(filepath.Join(dir, "a", "*.jsonl"))
+	jsonl, err := exportedJSONL(filepath.Join(dir, "a"))
 	if err != nil {
 		return nil, err
 	}
-	if len(jsonl) != 1 {
-		return nil, fmt.Errorf("the export wrote %d JSONL files into %s, not one", len(jsonl), filepath.Join(dir, "a"))
-	}
-	_, err = c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", jsonl[0])
+	_, err = c.run(ctx, "--db", filepath.Join(dir, "b.db"), "import", jsonl)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +514,7 @@ func roundTrip(ctx context.Context, dir string, names []string) ([]byte, error) 
 		return nil, fmt.Errorf("the export changed on its way through import:\n%s", differences)
 	}
 
-	return os.ReadFile(filepath.Clean(jsonl[0]))
+	return os.ReadFile(filepath.Clean(jsonl))
 }
 
 func exportArgs(db string, names []string, into string) []string {
@@ -548,31 +548,28 @@ func (c coroner) run(ctx context.Context, args ...string) (string, error) {
 // exec returns what the command line args wrote to stdout and stderr, and its exit code.
 func (c coroner) exec(ctx context.Context, args ...string) (string, string, int) {
 	var out, errOut bytes.Buffer
-	var ids uint64
-	code := cli.Run(ctx, cli.App{
-		Args:       args,
-		In:         strings.NewReader(""),
-		Out:        &out,
-		Err:        &errOut,
-		Version:    c.version,
-		LookupEnv:  func(key string) (string, bool) { return map[string]string{"HOME": c.home}[key], key == "HOME" },
-		ReadFile:   os.ReadFile,
-		WriteFile:  os.WriteFile,
-		OpenFile:   openFile,
-		RemoveFile: os.Remove,
-		ReadDir:    os.ReadDir,
-		Stat:       os.Stat,
-		MkdirAll:   os.MkdirAll,
-		Now:        func() time.Time { return c.now },
-		NewID: func() (uuid.UUID, error) {
-			ids++
-			return testID(c.now.UnixMilli(), ids), nil
-		},
-		OpenStore:         store.Open,
-		OpenStoreReadOnly: store.OpenReadOnly,
-	})
+	code := cli.Run(ctx, harness{
+		home: c.home, out: &out, errOut: &errOut, version: c.version, now: func() time.Time { return c.now },
+	}.app(args...))
 
 	return out.String(), errOut.String(), code
+}
+
+// pinnedCoroner is the coroner the properties run in dir.
+func pinnedCoroner(dir string) coroner {
+	return coroner{home: dir, now: time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC), version: "(devel)"}
+}
+
+// exportedJSONL returns the one JSONL file an export wrote into dir.
+func exportedJSONL(dir string) (string, error) {
+	jsonl, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil {
+		return "", err
+	}
+	if len(jsonl) != 1 {
+		return "", fmt.Errorf("the export wrote %d JSONL files into %s, not one", len(jsonl), dir)
+	}
+	return jsonl[0], nil
 }
 
 // dirDiff returns a diff of every file that is in only one of the directories a and b, or differs
@@ -791,7 +788,7 @@ func event(sources []string) *rapid.Generator[timeline.Event] {
 				timeline.PrecisionDay, timeline.PrecisionHour, timeline.PrecisionMinute, timeline.PrecisionSecond,
 				timeline.PrecisionMillisecond, timeline.PrecisionMicrosecond, timeline.PrecisionNanosecond,
 			}).Draw(t, "precision"),
-			OccurredOffset: rapid.Ptr(rapid.IntRange(-86400, 86400), true).Draw(t, "offset"),
+			OccurredOffset: rapid.Ptr(rapid.IntRange(-timeline.MaxOccurredOffset, timeline.MaxOccurredOffset), true).Draw(t, "offset"),
 			Approximate:    rapid.Bool().Draw(t, "approximate"),
 			OccurredRaw:    rapid.Ptr(blankable(), true).Draw(t, "raw"),
 			Source:         optionalSource(sources).Draw(t, "source"),
@@ -870,18 +867,14 @@ func tag() *rapid.Generator[string] {
 	return rapid.StringMatching(`^[a-z0-9][a-z0-9._:/-]{0,63}$`)
 }
 
-// text draws text the store's not-blank CHECK accepts: any Unicode, text that breaks HTML, lines
+// text draws text timeline.ValidateText, and so the store's not-blank CHECK, accepts: any Unicode, text that breaks HTML, lines
 // or JSON, or a long run.
 func text() *rapid.Generator[string] {
 	return rapid.OneOf(
 		rapid.StringN(1, 32, -1),
 		rapid.SampledFrom([]string{"</script><script>alert(1)</script>", "line one\nline two\r\n", "Réplica caída — 東京 ✓", "a\u2028b\u0000c"}),
 		rapid.StringN(1000, 5000, -1),
-	).Filter(func(s string) bool {
-		// SQLite's length() stops at a NUL, so the CHECK reads text whose trimmed start is NUL as blank.
-		trimmed := strings.TrimSpace(s)
-		return trimmed != "" && trimmed[0] != 0
-	})
+	).Filter(func(s string) bool { return timeline.ValidateText("text", s) == nil })
 }
 
 // blankable draws text for a field with no not-blank rule, often empty or only whitespace.

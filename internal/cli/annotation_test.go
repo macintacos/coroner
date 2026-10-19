@@ -3,14 +3,11 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -39,29 +36,12 @@ var _ = Describe("annotation", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, cli.App{
-			Args:    append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			In:      in,
-			InIsTTY: inIsTTY,
-			Out:     &out,
-			Err:     &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			},
-			ReadFile: func(string) ([]byte, error) {
-				if configFile == "" {
-					return nil, fs.ErrNotExist
-				}
-				return []byte(configFile), nil
-			},
-			Now: func() time.Time { return now },
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore: store.Open,
-		})
+		return cli.Run(ctx, harness{
+			home: home, db: filepath.Join(home, "coroner.db"), env: env, in: in, inIsTTY: inIsTTY,
+			out: &out, errOut: &errOut, config: configFile,
+			now:   func() time.Time { return now },
+			newID: countedIDs(&ids),
+		}.app(args...))
 	}
 
 	storedAnnotations := func(ctx SpecContext, timelineID string) []timeline.Annotation {
@@ -132,13 +112,20 @@ var _ = Describe("annotation", func() {
 			Expect(errOut.String()).To(BeEmpty())
 		})
 
-		It("takes its author from the config file, then USER", func(ctx SpecContext) {
-			configFile = `author = "sam"`
+		DescribeTable("takes its author from --author, then the config file, then USER",
+			func(ctx SpecContext, flag []string, config, user, want string) {
+				configFile, env["USER"] = config, user
 
-			Expect(run(ctx, "annotation", "add", "Election timeout", "--kind", "comment", "--json")).To(Equal(0))
+				Expect(run(ctx, append([]string{"annotation", "add", "Election timeout", "--kind", "comment", "--json"}, flag...)...)).
+					To(Equal(0))
 
-			Expect(out.String()).To(ContainSubstring(`"author":"sam"`))
-		})
+				Expect(out.String()).To(ContainSubstring(`"author":` + want))
+			},
+			Entry("--author first", []string{"--author", "dana"}, `author = "sam"`, "julian", `"dana"`),
+			Entry("then the config file", nil, `author = "sam"`, "julian", `"sam"`),
+			Entry("then USER", nil, "", "julian", `"julian"`),
+			Entry("else none", nil, "", "", `null`),
+		)
 
 		It("adds to the timeline -t names", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "create", "mongo-failover")).To(Equal(0))
@@ -156,7 +143,7 @@ var _ = Describe("annotation", func() {
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 				Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
-				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+				expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 			},
 			Entry(nil, "--url", "https://logs.example.com/\xff"),
 			Entry(nil, "--author", "julian\xff"),
@@ -170,7 +157,7 @@ var _ = Describe("annotation", func() {
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
 			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
-			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 		})
 
 		Describe("its body", func() {
@@ -189,7 +176,7 @@ var _ = Describe("annotation", func() {
 				in = reader
 
 				Expect(run(ctx, "annotation", "add", "Election timeout", "--kind", "comment")).To(Equal(0))
-			})
+			}, SpecTimeout(10*time.Second))
 
 			DescribeTable("exits 2 with kind usage, adding nothing, when it is missing or blank",
 				func(ctx SpecContext, stdin string, stdinIsTTY bool, args ...string) {
@@ -277,7 +264,7 @@ var _ = Describe("annotation", func() {
 				Expect(run(ctx, "annotation", "add", "-", "--kind", "evidence", "-e", "Primary", "--json")).To(Equal(2))
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
-			})
+			}, SpecTimeout(10*time.Second))
 		})
 
 		Describe("--dry-run", func() {
@@ -309,13 +296,13 @@ var _ = Describe("annotation", func() {
 			Expect(json.Unmarshal(out.Bytes(), &body)).To(Succeed())
 			return body.Annotations
 		}
-		listedIDs := func() []any {
+		annotationIDs := func() []any {
 			GinkgoHelper()
-			ids := []any{}
+			got := []any{}
 			for _, a := range listed() {
-				ids = append(ids, a["id"])
+				got = append(got, a["id"])
 			}
-			return ids
+			return got
 		}
 		addAnnotation := func(ctx SpecContext, args ...string) {
 			GinkgoHelper()
@@ -334,7 +321,7 @@ var _ = Describe("annotation", func() {
 
 				Expect(run(ctx, "annotation", "list", "--json")).To(Equal(0))
 
-				Expect(listedIDs()).To(Equal([]any{
+				Expect(annotationIDs()).To(Equal([]any{
 					"0199a1b2-0000-7000-8000-000000000006",
 					"0199a1b2-0000-7000-8000-000000000005",
 					"0199a1b2-0000-7000-8000-000000000007",
@@ -361,7 +348,7 @@ var _ = Describe("annotation", func() {
 
 				Expect(run(ctx, "annotation", "list", "-e", ref, "--json")).To(Equal(0))
 
-				Expect(listedIDs()).To(Equal([]any{"0199a1b2-0000-7000-8000-000000000005"}))
+				Expect(annotationIDs()).To(Equal([]any{"0199a1b2-0000-7000-8000-000000000005"}))
 			},
 			Entry("by seq", "2"),
 			Entry("by timeline and seq", "mongo-outage#2"),
@@ -445,12 +432,31 @@ var _ = Describe("annotation", func() {
 			Expect(out.String()).To(ContainSubstring(`"body":"election log","author":"julian","source":"mongod"`))
 		})
 
+		It("clears the source and URL given none", func(ctx SpecContext) {
+			Expect(run(ctx, "annotation", "edit", electionLogID, "--source", "none", "--url", "none", "--json")).
+				To(Equal(0))
+
+			Expect(out.String()).To(ContainSubstring(`"source":null,"url":null`))
+			Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(SatisfyAll(
+				HaveField("Source", BeNil()), HaveField("URL", BeNil()))))
+		})
+
+		DescribeTable("hints at none on a blank source or URL",
+			func(ctx SpecContext, flag string) {
+				Expect(run(ctx, "annotation", "edit", electionLogID, flag, " ", "--json")).To(Equal(2))
+
+				Expect(errOut.String()).To(ContainSubstring(`"hint":"Pass none to clear it, or leave it out."`))
+			},
+			Entry(nil, "--source"),
+			Entry(nil, "--url"),
+		)
+
 		It("exits 2 with kind usage on a --url that is not UTF-8", func(ctx SpecContext) {
 			Expect(run(ctx, "annotation", "edit", electionLogID, "--url", "https://logs.example.com/\xff", "--json")).
 				To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
-			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 		})
 
 		It("reads --body - from stdin", func(ctx SpecContext) {
@@ -524,12 +530,12 @@ var _ = Describe("annotation", func() {
 				Expect(storedAnnotations(ctx, outageID)).To(ConsistOf(SatisfyAll(
 					HaveField("Kind", timeline.AnnotationEvidence), HaveField("Body", "election log"))))
 			},
-			Entry("no field to edit", "usage", electionLogID),
-			Entry("an unknown kind", "usage", electionLogID, "--kind", "note"),
-			Entry("a blank body", "usage", electionLogID, "--body", " "),
-			Entry("a blank URL", "usage", electionLogID, "--url", ""),
-			Entry("a source outside the grammar", "invalid_name", electionLogID, "--source", "DB 2"),
-			Entry("a ref that is not an id", "usage", "Election", "--body", "-"),
+			Entry("no field to edit", SpecTimeout(10*time.Second), "usage", electionLogID),
+			Entry("an unknown kind", SpecTimeout(10*time.Second), "usage", electionLogID, "--kind", "note"),
+			Entry("a blank body", SpecTimeout(10*time.Second), "usage", electionLogID, "--body", " "),
+			Entry("a blank URL", SpecTimeout(10*time.Second), "usage", electionLogID, "--url", ""),
+			Entry("a source outside the grammar", SpecTimeout(10*time.Second), "invalid_name", electionLogID, "--source", "DB 2"),
+			Entry("a ref that is not an id", SpecTimeout(10*time.Second), "usage", "Election", "--body", "-"),
 		)
 	})
 

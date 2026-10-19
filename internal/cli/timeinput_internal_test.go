@@ -2,7 +2,6 @@ package cli
 
 import (
 	"errors"
-	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -146,8 +145,7 @@ var _ = Describe("time input", func() {
 		func(name, input string, want types.GomegaMatcher) {
 			z, err := timeZone(new("America/New_York"), "local", local)
 			Expect(err).NotTo(HaveOccurred())
-			def := eventAddDefinition()
-			found := def.fields[slices.IndexFunc(def.fields, func(f field) bool { return f.name == name })]
+			found := fieldNamed(eventAddDefinition(), name)
 
 			// testNow is 2026-09-12T17:30:00-04:00.
 			Expect(found.preview(input, checkEnv{now: testNow(), zone: z})).To(want)

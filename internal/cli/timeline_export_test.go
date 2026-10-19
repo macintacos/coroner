@@ -4,21 +4,17 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json/v2"
-	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/export"
-	"github.com/macintacos/coroner/internal/store"
 )
 
 var _ = Describe("timeline export", func() {
@@ -35,35 +31,14 @@ var _ = Describe("timeline export", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, cli.App{
-			Args:      append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			In:        strings.NewReader(""),
-			Out:       &out,
-			Err:       &errOut,
-			OutIsTTY:  outTTY,
-			LookupEnv: func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-			ReadFile: func(name string) ([]byte, error) {
-				if name != filepath.Join(home, ".config", "coroner", "config.toml") {
-					return os.ReadFile(filepath.Clean(name))
-				}
-				if configFile == "" {
-					return nil, fs.ErrNotExist
-				}
-				return []byte(configFile), nil
-			},
-			Stat:     os.Stat,
-			MkdirAll: os.MkdirAll,
-			Now: func() time.Time {
+		return cli.Run(ctx, harness{
+			home: home, db: filepath.Join(home, "coroner.db"), outIsTTY: outTTY, out: &out, errOut: &errOut, config: configFile,
+			now: func() time.Time {
 				now = now.Add(tick)
 				return now
 			},
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore: store.Open,
-			WriteFile: os.WriteFile,
-		})
+			newID: countedIDs(&ids),
+		}.app(args...))
 	}
 	exportAs := func(ctx SpecContext, format string) string {
 		GinkgoHelper()
@@ -323,14 +298,12 @@ var _ = Describe("timeline export", func() {
 		// files returns every file under dir by its path relative to dir.
 		files := func(dir string) map[string]string {
 			GinkgoHelper()
+			tree, err := readTree(dir)
+			Expect(err).NotTo(HaveOccurred())
 			found := map[string]string{}
-			Expect(filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
-				if err == nil && !entry.IsDir() {
-					rel, _ := filepath.Rel(dir, path)
-					found[rel] = readFile(path)
-				}
-				return err
-			})).To(Succeed())
+			for path, data := range tree {
+				found[filepath.FromSlash(path)] = string(data)
+			}
 			return found
 		}
 
@@ -523,11 +496,3 @@ var _ = Describe("timeline export", func() {
 		})
 	})
 })
-
-func readFile(path string) string {
-	GinkgoHelper()
-	b, err := os.ReadFile(filepath.Clean(path))
-	Expect(err).NotTo(HaveOccurred())
-
-	return string(b)
-}

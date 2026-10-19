@@ -44,32 +44,34 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		t, err := selectOne(ctx, s, inv.timelines, app.LookupEnv)
-		if err != nil {
-			return err
-		}
-		attachments, events, err := readAttachments(ctx, s, t, ref)
-		if err != nil {
-			return err
-		}
-		if inv.out.format == formatJSON {
-			return inv.out.json(newAttachmentListJSON(newAttachmentJSONs(attachments, inv.cfg.DBPath)))
-		}
-		if ref == nil && len(attachments) > 0 {
-			events, err = s.Events(ctx, t.ID)
+		return s.Read(ctx, func(tx *store.Tx) error {
+			t, err := selectOne(ctx, tx, inv.timelines, app.LookupEnv)
 			if err != nil {
 				return err
 			}
-		}
+			attachments, events, err := readAttachments(ctx, tx, t, ref)
+			if err != nil {
+				return err
+			}
+			if inv.out.format == formatJSON {
+				return inv.out.json(newAttachmentListJSON(newAttachmentJSONs(attachments, inv.cfg.DBPath)))
+			}
+			if ref == nil && len(attachments) > 0 {
+				events, err = tx.Events(ctx, t.ID)
+				if err != nil {
+					return err
+				}
+			}
 
-		return printAttachments(inv.out, attachments, orderEvents(events))
+			return printAttachments(inv.out, attachments, orderEvents(events))
+		})
 	})
 }
 
 // readAttachments returns the attachments on t's events and annotations or, when ref is set, on
 // the event it names, with that event.
 func readAttachments(
-	ctx context.Context, s *store.Store, t timeline.Timeline, ref *eventRef,
+	ctx context.Context, s *store.Tx, t timeline.Timeline, ref *eventRef,
 ) ([]timeline.Attachment, []timeline.Event, error) {
 	if ref == nil {
 		attachments, err := s.TimelineAttachments(ctx, t.ID)

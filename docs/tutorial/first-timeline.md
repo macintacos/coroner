@@ -109,7 +109,9 @@ coroner timeline view
 The viewer lists the events in the order they happened, grouped by day, with a line
 marking each silence of five minutes or more between events. Those are the stretches your
 timeline does not explain yet. Move with the arrow keys, press `enter` on event 2 to see
-its evidence, press `?` to list every key, and press `q` to quit.
+its evidence, press `?` to list every key, and press `q` to quit. When an event's evidence
+is taller than the screen, the arrow keys scroll through it a line at a time before moving
+to the next event, and `pgup` and `pgdn` move to the first event off screen.
 
 To print the same timeline as plain text instead, add `--format text`:
 
@@ -148,7 +150,7 @@ coroner prints the Markdown, with times in UTC:
 # Checkout latency spike (checkout-latency)
 
 - **Refs:** INC-4821, https://tracker.example.com/INC-4821
-- **Window:** 2026-09-10 23:40:00 → 2026-09-14 02:00:00 UTC
+- **Window:** 2026-09-10 23:40:00 → 2026-09-14 03:00 UTC
 - **Events:** 5 · **Sources:** `deploy-bot`, `grafana`, `mongod`, `support`
 - **Exported:** 2026-09-14 05:11 UTC by coroner v0.0.0-20260914051033-1fde2b657288
 

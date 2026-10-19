@@ -3,8 +3,6 @@ package cli_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
 	"maps"
 	"os"
 	"strings"
@@ -87,7 +85,7 @@ var _ = Describe("Run", func() {
 			code := cli.Run(ctx, app)
 
 			Expect(code).To(Equal(1))
-			envelope := decodeEnvelope(lastLine(errOut.String()))
+			envelope := envelopeOf(errOut.String())
 			Expect(envelope).To(HaveKeyWithValue("kind", "internal"))
 			Expect(envelope).To(HaveKeyWithValue("hint", SatisfyAll(
 				ContainSubstring("--debug"), ContainSubstring("https://github.com/macintacos/coroner/issues"))))
@@ -120,12 +118,33 @@ var _ = Describe("Run", func() {
 
 			Expect(code).To(Equal(2))
 			Expect(out.String()).To(BeEmpty())
-			Expect(decodeEnvelope(lastLine(errOut.String()))).To(HaveKeyWithValue("kind", "usage"))
+			Expect(envelopeOf(errOut.String())).To(HaveKeyWithValue("kind", "usage"))
 		},
 		Entry("--json conflicting with --format", "version", "--json", "--format", "text"),
-		Entry("--json conflicting with --format and no subcommand", "--json", "--format", "text"),
 		Entry("jsonl for version, which prints a single object", "version", "--format", "jsonl"),
 		Entry("json for a command that prints only text", "completion", "bash", "--json"),
+	)
+
+	DescribeTable("prints a command group's help under any format",
+		func(ctx SpecContext, args ...string) {
+			code := cli.Run(ctx, newApp(args...))
+
+			Expect(code).To(Equal(0))
+			Expect(out.String()).To(ContainSubstring("USAGE"))
+		},
+		Entry("root", "--format", "jsonl"),
+		Entry("a noun", "event", "--format", "jsonl"),
+	)
+
+	DescribeTable("names the arguments to pass when a command gets the wrong number",
+		func(ctx SpecContext, usage string, args ...string) {
+			code := cli.Run(ctx, newApp(args...))
+
+			Expect(code).To(Equal(2))
+			Expect(errOut.String()).To(ContainSubstring("Usage: " + usage))
+		},
+		Entry("none", "coroner import {<file> | -}", "import"),
+		Entry("too many", "coroner event view <event>", "event", "view", "a", "b"),
 	)
 
 	It("rejects an unknown format with exit 2", func(ctx SpecContext) {
@@ -242,7 +261,7 @@ var _ = Describe("Run", func() {
 
 			Expect(code).To(Equal(2))
 			Expect(out.String()).To(BeEmpty())
-			envelope := decodeEnvelope(lastLine(errOut.String()))
+			envelope := envelopeOf(errOut.String())
 			Expect(envelope).To(HaveKeyWithValue("kind", "usage"))
 			Expect(envelope).To(HaveKeyWithValue("message", ContainSubstring("--no-such-flag")))
 			Expect(envelope).To(HaveKey("hint"))
@@ -261,7 +280,7 @@ var _ = Describe("Run", func() {
 		code := cli.Run(cancelled, newApp("--json"))
 
 		Expect(code).To(Equal(130))
-		envelope := decodeEnvelope(lastLine(errOut.String()))
+		envelope := envelopeOf(errOut.String())
 		Expect(envelope).To(HaveKeyWithValue("kind", "interrupted"))
 		Expect(envelope).To(HaveKeyWithValue("hint", BeNil()))
 	})
@@ -328,7 +347,16 @@ var _ = Describe("Run", func() {
 			Entry("CORONER_DEBUG empty", map[string]string{"CORONER_DEBUG": ""}),
 			Entry("CORONER_DEBUG=0", map[string]string{"CORONER_DEBUG": "0"}),
 			Entry("CORONER_DEBUG=false", map[string]string{"CORONER_DEBUG": "false"}),
+			Entry("CORONER_DEBUG=off", map[string]string{"CORONER_DEBUG": "off"}),
 		)
+
+		It("prints no log lines under --debug=false, whatever CORONER_DEBUG says", func(ctx SpecContext) {
+			env["CORONER_DEBUG"] = "1"
+
+			cli.Run(ctx, newApp("--debug=false", "--no-such-flag"))
+
+			Expect(errOut.String()).NotTo(ContainSubstring("level="))
+		})
 
 		It("logs the failure's message and the command-line args", func(ctx SpecContext) {
 			cli.Run(ctx, newApp("--debug", "--no-such-flag"))
@@ -353,23 +381,3 @@ var _ = Describe("Run", func() {
 		})
 	})
 })
-
-// lastLine returns the final line of output that ends in a newline.
-func lastLine(output string) string {
-	lines := strings.Split(strings.TrimSuffix(output, "\n"), "\n")
-	return lines[len(lines)-1]
-}
-
-// decodeEnvelope returns the "error" object of a stderr JSON error envelope line.
-func decodeEnvelope(line string) map[string]any {
-	var envelope map[string]map[string]any
-	ExpectWithOffset(1, json.Unmarshal([]byte(line), &envelope)).To(Succeed(), line)
-	ExpectWithOffset(1, envelope).To(HaveLen(1), line)
-	return envelope["error"]
-}
-
-type failingWriter struct{}
-
-func (failingWriter) Write([]byte) (int, error) {
-	return 0, errors.New("broken pipe")
-}

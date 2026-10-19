@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -49,5 +51,27 @@ var _ = Describe("storeError", func() {
 
 		Expect(storeError(err, dbPath)).To(SatisfyAll(
 			HaveField("Kind", KindDBUnreadable), HaveField("Message", err.Error()), HaveField("Hint", BeEmpty())))
+	})
+})
+
+var _ = Describe("withStoreOpenedBy", func() {
+	run := func(fnErr error) error {
+		path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+		return withStoreOpenedBy(context.Background(), store.Open, path, func(*store.Store) error { return fnErr })
+	}
+
+	It("names the file a permission error from the callback is about, not the database", func() {
+		err := run(&fs.PathError{Op: "open", Path: "/data/coroner.db.blobs/ab", Err: fs.ErrPermission})
+
+		Expect(err).To(SatisfyAll(
+			HaveField("Kind", KindDBUnreadable),
+			MatchError(ContainSubstring("/data/coroner.db.blobs/ab")),
+			Not(MatchError(ContainSubstring("opening the database")))))
+	})
+
+	It("returns the callback's own *Error as it is", func() {
+		own := &Error{Kind: KindUsage, Message: "cannot write x", Err: fs.ErrPermission}
+
+		Expect(run(own)).To(BeIdenticalTo(own))
 	})
 })

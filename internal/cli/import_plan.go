@@ -285,7 +285,7 @@ func collectRecords(records []export.Record) (incomingRecords, []string) {
 		}
 	}
 
-	eventsWithoutSeq := func(a, b export.Event) []string { return withoutKey(export.DifferingKeys(a, b), keySeq) }
+	eventsWithoutSeq := func(a, b export.Event) []string { return eventDiff(a.Domain(), b.Domain()) }
 	var idRepeats, nameRepeats, eventRepeats, annotationRepeats, attachmentRepeats, linkRepeats, joinRepeats []string
 	incoming.timelines, idRepeats = uniqueRecords("timeline", incoming.timelines, func(t export.Timeline) string { return t.ID }, export.DifferingKeys)
 	incoming.timelines, nameRepeats = uniqueRecords("timeline", incoming.timelines, func(t export.Timeline) string { return t.Name }, export.DifferingKeys)
@@ -628,13 +628,14 @@ func (p *planner) resolve(counts *importCounts, c importConflict, replaceable bo
 
 func (p *planner) planTimelines(timelines []export.Timeline) {
 	for _, t := range timelines {
-		p.timelineIDs[t.ID] = true
 		stored, ok := p.storedTimelines[t.ID]
 		switch {
 		case !ok:
+			p.timelineIDs[t.ID] = true
 			p.result.Timelines.Inserted++
 			p.write.Timelines = append(p.write.Timelines, t.Domain())
 		case p.resolve(&p.result.Timelines, importConflict{Type: "timeline", ID: t.ID, Fields: export.DifferingKeys(export.NewTimeline(stored), t)}, true):
+			p.timelineIDs[t.ID] = true
 			replacement := t.Domain()
 			replacement.UpdatedAt = p.in.now
 			p.write.TimelineReplacements = append(p.write.TimelineReplacements, replacement)
@@ -821,14 +822,6 @@ func (p *planner) timelineNames() []string {
 	return written
 }
 
-func recordCount(n int) string {
-	if n == 1 {
-		return "1 record"
-	}
-
-	return fmt.Sprintf("%d records", n)
-}
-
 // sourceIndex is the source names and ids that exist once the import has written.
 type sourceIndex struct {
 	names map[string]bool
@@ -853,8 +846,4 @@ func (idx sourceIndex) add(s timeline.Source) {
 	if s.ID != "" {
 		idx.ids[s.ID] = true
 	}
-}
-
-func withoutKey(keys []string, key string) []string {
-	return slices.DeleteFunc(keys, func(k string) bool { return k == key })
 }

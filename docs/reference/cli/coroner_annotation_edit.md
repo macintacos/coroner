@@ -32,8 +32,8 @@ coroner annotation edit <id> [flags]
       --body body       New body, or - to read it from stdin
       --dry-run         Show the edited annotation, and change nothing
       --kind kind       New annotation kind: {evidence | comment}
-      --source source   New source, created on first use
-      --url url         New permalink, as a url
+      --source source   New source, created on first use, or none
+      --url url         New permalink, as a url, or none
 ```
 
 ### Options inherited from parent commands
@@ -42,7 +42,7 @@ coroner annotation edit <id> [flags]
       --config path     Config file path (env: CORONER_CONFIG)
       --db path         Database file path (env: CORONER_DB)
       --debug           Print debug detail on stderr (env: CORONER_DEBUG)
-      --format format   Output format: {text|json|jsonl}, and more on timeline export (default "text")
+      --format format   Output format: {text | json | jsonl}, and more on timeline export (default "text")
   -h, --help            Show help for a command
       --json            Short for --format json
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)

@@ -3,14 +3,10 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
-	"io/fs"
 	"path/filepath"
 	"sync/atomic"
-	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -78,22 +74,8 @@ var _ = Describe("timeline list on a terminal", func() {
 		home := GinkgoT().TempDir()
 		env = map[string]string{"HOME": home, "CORONER_DB": filepath.Join(home, "coroner.db")}
 		terminal = &unreadable{}
-		app = App{
-			In:  terminal,
-			Out: &out, Err: &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			},
-			ReadFile: func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-			Now:      func() time.Time { return time.Date(2026, time.September, 12, 21, 30, 0, 0, time.UTC) },
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore:         store.Open,
-			OpenStoreReadOnly: store.OpenReadOnly,
-		}
+		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
+		app.In, app.LookupEnv = terminal, envOf(env)
 
 		for _, args := range [][]string{
 			{"timeline", "create", "mongo-outage"},
@@ -126,17 +108,20 @@ var _ = Describe("timeline list on a terminal", func() {
 		in, typed := io.Pipe()
 		DeferCleanup(typed.Close)
 		renamer := app
-		renamer.Out, renamer.Err = io.Discard, io.Discard
+		var renameErr bytes.Buffer
+		renamer.Out, renamer.Err = io.Discard, &renameErr
 		renamer.Args = []string{"timeline", "edit", "db-2-disk-full", "--name", "db-2-disk-full-renamed"}
+		renamed := make(chan int, 1)
 		go func() {
 			_, _ = typed.Write([]byte("j"))
-			Run(ctx, renamer)
+			renamed <- Run(ctx, renamer)
 			_, _ = typed.Write([]byte("\r"))
 		}()
 		a := app
 		a.In, a.InIsTTY, a.OutIsTTY = in, true, true
 
 		Expect(run(ctx, a, "timeline", "list")).To(Equal(0), errOut.String())
+		Expect(<-renamed).To(Equal(0), renameErr.String())
 		Expect(current(ctx)).To(Equal("db-2-disk-full-renamed"))
 	})
 

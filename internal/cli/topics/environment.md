@@ -4,7 +4,8 @@
 
 A flag wins over its environment variable, and an environment variable wins over the
 config file. An empty `CORONER_*` variable counts as unset, and so does an `XDG_*`
-variable that is empty or not an absolute path.
+variable that is empty or not an absolute path. A false value is `0`, `f`, `false`, `no`
+or `off`, in any case.
 
 Images show inline only with color on and outside a multiplexer.
 
@@ -13,8 +14,8 @@ Images show inline only with color on and outside a multiplexer.
 | `CORONER_DB` | The database file, as `--db` sets it |
 | `CORONER_CONFIG` | The config file, as `--config` sets it; the file must exist |
 | `CORONER_TIMELINE` | The timeline to act on when `-t` names none; it wins over `coroner timeline use` |
-| `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is a false value such as `0` or `false` |
-| `CORONER_NO_INPUT` | Never open a form, picker or viewer, as `--no-input` does, unless it is a false value such as `0` or `false` |
+| `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is a false value |
+| `CORONER_NO_INPUT` | Never open a form, picker or viewer, as `--no-input` does, unless it is a false value |
 | `NO_COLOR`, `CORONER_NO_COLOR` | Any non-empty value disables color, as `--no-color` does |
 | `TERM` | `dumb` disables color, the forms, the picker and the viewer; `xterm-kitty` or `xterm-ghostty` shows images inline, and a `tmux` or `screen` value shows placeholders instead |
 | `KITTY_WINDOW_ID` | Set by kitty: images show inline |

@@ -1,9 +1,6 @@
 package cli
 
 import (
-	"os/exec"
-	"strings"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -13,11 +10,7 @@ var _ = Describe("equivalent command", func() {
 		func(ctx SpecContext, args []string, want string) {
 			line := shellLine(args)
 			Expect(line).To(Equal(want))
-
-			//nolint:gosec // the spec hands the line to a shell on purpose
-			out, err := exec.CommandContext(ctx, "sh", "-c", `printf '%s\0' `+line).Output()
-			Expect(err).NotTo(HaveOccurred())
-			Expect(string(out)).To(Equal(strings.Join(args, "\x00") + "\x00"))
+			Expect(shellSplit(ctx, line)).To(Equal(args))
 		},
 		Entry("bare words", []string{"coroner", "event", "add", "--at=2026-09-11T03:14:07Z"}, "coroner event add --at=2026-09-11T03:14:07Z"),
 		Entry("spaces", []string{"Primary stepped down"}, "'Primary stepped down'"),

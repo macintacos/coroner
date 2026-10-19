@@ -2,13 +2,11 @@ package cli
 
 import (
 	"bytes"
-	"fmt"
 	"maps"
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
@@ -27,10 +25,7 @@ var _ = Describe("timeline forms", func() {
 
 	// appOn returns a terminal App on home.
 	appOn := func() App {
-		app := scratchApp(home, &out, &errOut, func() (uuid.UUID, error) {
-			ids++
-			return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-		})
+		app := scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 		app.InIsTTY, app.OutIsTTY = true, true
 		return app
 	}
@@ -179,7 +174,7 @@ var _ = Describe("timeline forms", func() {
 
 		It("use the existing timeline for a taken name, printing what --if-not-exists prints", func(ctx SpecContext) {
 			existing(ctx, db)
-			command := create(ctx, answers(named("mongo-outage", "Other title"), accept))
+			command := create(ctx, answers(named("mongo-outage", "Other title"), confirm(true)))
 
 			Expect(runForm(ctx, command, "timeline", "create", "--interactive", "--json")).To(Succeed())
 			used := bytes.Clone(out.Bytes())
@@ -191,7 +186,7 @@ var _ = Describe("timeline forms", func() {
 
 		It("reopen with what was typed when the taken name is not used", func(ctx SpecContext) {
 			existing(ctx, db)
-			command := create(ctx, answers(named("mongo-outage", "Other title", "INC-1"), decline, cancel))
+			command := create(ctx, answers(named("mongo-outage", "Other title", "INC-1"), confirm(false), cancel))
 
 			Expect(runForm(ctx, command, "timeline", "create")).To(Succeed())
 

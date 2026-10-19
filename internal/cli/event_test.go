@@ -2,14 +2,11 @@ package cli_test
 
 import (
 	"bytes"
-	"fmt"
 	"io"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -17,17 +14,6 @@ import (
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
-
-// readCounter counts the reads made of r.
-type readCounter struct {
-	r     io.Reader
-	reads int
-}
-
-func (c *readCounter) Read(p []byte) (int, error) {
-	c.reads++
-	return c.r.Read(p)
-}
 
 var _ = Describe("event add", func() {
 	const timelineID = "0199a1b2-0000-7000-8000-000000000001"
@@ -46,29 +32,12 @@ var _ = Describe("event add", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, cli.App{
-			Args:    append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-			In:      in,
-			InIsTTY: inIsTTY,
-			Out:     &out,
-			Err:     &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			},
-			ReadFile: func(string) ([]byte, error) {
-				if configFile == "" {
-					return nil, fs.ErrNotExist
-				}
-				return []byte(configFile), nil
-			},
-			Now: func() time.Time { return now },
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore: store.Open,
-		})
+		return cli.Run(ctx, harness{
+			home: home, db: filepath.Join(home, "coroner.db"), env: env, in: in, inIsTTY: inIsTTY,
+			out: &out, errOut: &errOut, config: configFile,
+			now:   func() time.Time { return now },
+			newID: countedIDs(&ids),
+		}.app(args...))
 	}
 
 	storedEvents := func(ctx SpecContext) []timeline.Event {
@@ -277,7 +246,7 @@ var _ = Describe("event add", func() {
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 				Expect(storedEvents(ctx)).To(BeEmpty())
-				Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+				expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 			},
 			Entry("--url", "--url", "https://logs.example.com/\xff"),
 			Entry("--author", "--author", "julian\xff"),
@@ -292,7 +261,7 @@ var _ = Describe("event add", func() {
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
 			Expect(storedEvents(ctx)).To(BeEmpty())
-			Expect(run(ctx, "timeline", "export", "--format", "jsonl")).To(Equal(0), errOut.String())
+			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
 		})
 
 		Describe("--dry-run", func() {
@@ -338,7 +307,7 @@ var _ = Describe("event add", func() {
 				in, inIsTTY = reader, true
 
 				Expect(run(ctx, "event", "add", "-")).To(Equal(2))
-				Expect(errOut.String()).To(ContainSubstring("Pipe the text in"))
+				Expect(errOut.String()).To(ContainSubstring("Pipe it in"))
 			}, SpecTimeout(10*time.Second))
 
 			It("is read from stdin only once the flags are valid", func(ctx SpecContext) {
@@ -353,7 +322,7 @@ var _ = Describe("event add", func() {
 				in = strings.NewReader("\n")
 
 				Expect(run(ctx, "event", "add", "-")).To(Equal(2))
-				Expect(errOut.String()).To(ContainSubstring("Pass non-blank text."))
+				Expect(errOut.String()).To(ContainSubstring("Pass non-blank text"))
 			})
 
 			It("exits 2 with kind usage when not UTF-8", func(ctx SpecContext) {
@@ -421,6 +390,12 @@ var _ = Describe("event add", func() {
 			Entry("then USER", nil, "", "julian", `"julian"`),
 			Entry("else none", nil, "", "", `null`),
 		)
+
+		It("exits 2 on --source none, saying why none is no source", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "add", "x", "--source", "none")).To(Equal(2))
+
+			Expect(errOut.String()).To(ContainSubstring("none clears an event's source in event edit"))
+		})
 
 		DescribeTable("exits 2 on a blank flag value",
 			func(ctx SpecContext, flag string) {

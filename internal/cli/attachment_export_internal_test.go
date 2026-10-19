@@ -1,19 +1,14 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/macintacos/coroner/internal/store"
 )
 
 var _ = Describe("newFileWriter", func() {
@@ -51,20 +46,8 @@ var _ = Describe("newFileWriter", func() {
 
 var _ = It("attachment export refuses to write to stdout on a terminal, before opening the store", func(ctx SpecContext) {
 	args := []string{"attachment", "export", "0199a1b2"}
-	app := App{
-		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard, OutIsTTY: true,
-		LookupEnv: func(key string) (string, bool) {
-			value, ok := map[string]string{"HOME": "/nonexistent", "CORONER_DB": "/nonexistent/coroner.db"}[key]
-			return value, ok
-		},
-		ReadFile: func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-		Now:      testNow,
-		NewID:    func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-		OpenStore: func(context.Context, string) (*store.Store, error) {
-			Fail("attachment export opened the store")
-			return nil, errors.New("unreachable")
-		},
-	}
+	app := storelessApp(args)
+	app.OutIsTTY = true
 
 	Expect(executeError(ctx, app, args...)).To(HaveField("Kind", KindUsage))
 })

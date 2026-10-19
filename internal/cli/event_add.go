@@ -49,7 +49,7 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
 			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
 			"opens it, and --no-input never does.",
-		Args:        eventTextArg,
+		Args:        eventTextInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
 			"      --source mongod --tag election\n" +
@@ -82,7 +82,7 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 func eventAddDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
-		{name: "text", arg: true, required: true, perEntry: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(checkTextOrStdin)},
+		{name: "text", arg: true, required: true, perEntry: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(eventTextInput().checkOrStdin)},
 		// Before at, so a form asks for the zone before the times read in it.
 		tzField(),
 		{
@@ -379,77 +379,13 @@ func newEventID(id *string, newID func() (uuid.UUID, error)) (string, error) {
 	return generated.String(), err
 }
 
-// newSourceID returns a new id for source, or "" when no source was given.
-func newSourceID(source *string, newID func() (uuid.UUID, error)) (string, error) {
-	if source == nil {
-		return "", nil
-	}
-
-	id, err := newID()
-	return id.String(), err
-}
-
-// eventTextArg rejects more than one argument, which is most often event text left unquoted.
-func eventTextArg(_ *cobra.Command, args []string) error {
-	if len(args) <= 1 {
-		return nil
-	}
-
-	return &Error{
-		Kind:    KindUsage,
-		Message: fmt.Sprintf("event add takes the event text as one argument, got %d", len(args)),
-		Hint:    "Quote text that has spaces: coroner event add \"Primary stepped down\"",
-	}
-}
-
-// eventText returns the text args give, reading in when that is -. It never reads a terminal.
+// eventText returns the text args give, reading in when that is -.
 func eventText(args []string, in io.Reader, inIsTTY bool) (string, error) {
-	switch {
-	case len(args) == 0:
+	if len(args) == 0 {
 		return "", &Error{Kind: KindUsage, Message: "event add needs the event's text", Hint: missingTextHint}
-	case args[0] != "-":
-		return checkText(args[0])
-	case inIsTTY:
-		return "", &Error{
-			Kind:    KindUsage,
-			Message: "- reads the event text from stdin, which is a terminal",
-			Hint:    "Pipe the text in, as in: pbpaste | coroner event add -",
-		}
 	}
 
-	data, err := io.ReadAll(in)
-	if err != nil {
-		return "", fmt.Errorf("read the event text from stdin: %w", err)
-	}
-
-	return checkText(strings.TrimSuffix(string(data), "\n"))
-}
-
-// checkTextOrStdin checks event text as typed, where - stands for text read from stdin later.
-func checkTextOrStdin(text string) error {
-	if text == "-" {
-		return nil
-	}
-
-	_, err := checkText(text)
-	return err
-}
-
-func checkText(text string) (string, error) {
-	err := timeline.ValidateText("text", text)
-	p, ok := firstProblem(err)
-	switch {
-	case !ok:
-		return text, nil
-	case p.Rule == timeline.RuleBlank:
-		return "", &Error{Kind: KindUsage, Message: "event text must not be blank", Hint: "Pass non-blank text."}
-	case p.Rule == timeline.RuleNotUTF8:
-		return "", &Error{
-			Kind: KindUsage, Message: "event text must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8",
-		}
-	}
-
-	return "", recordError(err, "")
+	return eventTextInput().read(args[0], in, inIsTTY)
 }
 
 // eventFields are the source, tags, URL and author an event's fields give it.
@@ -461,7 +397,7 @@ type eventFields struct {
 // readEventFields returns the event fields in gives, with the author defaulting to
 // configuredAuthor, then USER.
 func readEventFields(in fieldValues, configuredAuthor string, lookupEnv func(string) (string, bool)) (eventFields, error) {
-	author, err := eventAuthor(in.value("author"), configuredAuthor, lookupEnv)
+	author, err := defaultAuthor(in.value("author"), configuredAuthor, lookupEnv)
 
 	return eventFields{
 		source: in.value("source"),
@@ -469,111 +405,6 @@ func readEventFields(in fieldValues, configuredAuthor string, lookupEnv func(str
 		url:    in.value("url"),
 		author: author,
 	}, err
-}
-
-func checkNotBlank(flag string, value *string) error {
-	if value == nil || strings.TrimSpace(*value) != "" {
-		return nil
-	}
-
-	return &Error{Kind: KindUsage, Message: flag + " must not be blank", Hint: "Leave " + flag + " out instead."}
-}
-
-// checkUTF8 returns usage when value of flag is not UTF-8.
-func checkUTF8(flag, value string) error {
-	if timeline.ValidateUTF8(flag, value) == nil {
-		return nil
-	}
-
-	return &Error{Kind: KindUsage, Message: flag + " must be UTF-8", Hint: "Convert it first, as with: iconv -f <encoding> -t UTF-8"}
-}
-
-// utf8Only returns a field check that rejects a value of flag that is not UTF-8.
-func utf8Only(flag string) func(string, checkEnv) error {
-	return withoutEnv(func(value string) error {
-		return checkUTF8(flag, value)
-	})
-}
-
-// freeText returns a field check that rejects a blank value of flag, or one that is not UTF-8.
-func freeText(flag string) func(string, checkEnv) error {
-	return withoutEnv(func(value string) error {
-		err := checkNotBlank(flag, &value)
-		if err != nil {
-			return err
-		}
-
-		return checkUTF8(flag, value)
-	})
-}
-
-// checkSlugs returns invalid_name, with a suggestion, for the first of source and tags that
-// breaks their grammar.
-func checkSlugs(source *string, tags []string) error {
-	if source != nil {
-		err := checkSlug(*source, timeline.ValidateSourceName)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, tag := range tags {
-		err := checkSlug(tag, timeline.ValidateTag)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func checkSource(source string) error {
-	return checkSlug(source, timeline.ValidateSourceName)
-}
-
-func checkTag(tag string) error {
-	return checkSlug(tag, timeline.ValidateTag)
-}
-
-func checkSlug(slug string, validate func(string) error) error {
-	err := validate(slug)
-	if err == nil {
-		return nil
-	}
-
-	hint := "Use lowercase letters, digits, '.', '_', ':', '/' and '-'."
-	if slug == clearKeyword {
-		hint = "none clears an event's source in event edit, so no source can be called it; pick another name."
-	} else if suggestion := suggestSlug(slug, sourceTagPunct, validate); suggestion != "" {
-		hint = fmt.Sprintf("Did you mean `%s`?", suggestion)
-	}
-
-	return &Error{Kind: KindInvalidName, Message: err.Error(), Hint: hint, Err: err}
-}
-
-// eventAuthor returns flag, else configured, else USER, or nil when all are empty, rejecting a
-// defaulted author that is not UTF-8.
-func eventAuthor(flag *string, configured string, lookupEnv func(string) (string, bool)) (*string, error) {
-	if flag != nil {
-		return flag, nil
-	}
-
-	user, _ := lookupEnv("USER")
-	author := cmp.Or(configured, user)
-	if timeline.ValidateUTF8("author", author) != nil {
-		return nil, &Error{
-			Kind:    KindUsage,
-			Message: "the default author, from the config file's author or USER, must be UTF-8",
-			Hint:    "Pass --author, or fix the config author or USER.",
-		}
-	}
-
-	var defaulted *string
-	if author != "" {
-		defaulted = &author
-	}
-
-	return defaulted, nil
 }
 
 // eventTimes are an event's resolved --at and --ended.
@@ -650,12 +481,4 @@ func previewEvent(o output, t timeline.Timeline, e timeline.Event, attachments [
 
 	_, err := io.WriteString(o.out, b.String())
 	return err
-}
-
-func orDash(s *string) string {
-	if s == nil {
-		return "-"
-	}
-
-	return *s
 }

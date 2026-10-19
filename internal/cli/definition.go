@@ -62,6 +62,11 @@ type definition struct {
 	fields []field
 }
 
+// fieldIndex returns the index in d.fields of the field called name, or -1.
+func (d definition) fieldIndex(name string) int {
+	return slices.IndexFunc(d.fields, func(f field) bool { return f.name == name })
+}
+
 // addFlags registers each field the command itself declares as a flag.
 func (d definition) addFlags(flags *pflag.FlagSet) {
 	for _, f := range d.fields {

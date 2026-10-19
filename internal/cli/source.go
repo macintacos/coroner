@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -20,9 +21,7 @@ func newSourceCommand(ctx context.Context, app App) *cobra.Command {
 			"or annotation names one.",
 		Example: "  $ coroner source list\n" +
 			"  $ coroner source edit mongo --name mongodb",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE: runNoun,
 	}
 
 	cmd.AddCommand(newSourceListCommand(ctx, app), newSourceEditCommand(ctx, app))
@@ -30,41 +29,24 @@ func newSourceCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-// sourceJSON is a source's own keys; listedSourceJSON adds its usage.
-type sourceJSON struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"created_at"`
-}
-
 // listedSourceJSON is a source's JSON with its usage, as source list and source edit print it.
 type listedSourceJSON struct {
-	sourceJSON
+	export.Source
 
-	EventCount      int     `json:"event_count"`
-	AnnotationCount int     `json:"annotation_count"`
-	FirstOccurredAt *string `json:"first_occurred_at"`
-	LastOccurredAt  *string `json:"last_occurred_at"`
+	EventCount      int             `json:"event_count"`
+	AnnotationCount int             `json:"annotation_count"`
+	FirstOccurredAt *export.Instant `json:"first_occurred_at"`
+	LastOccurredAt  *export.Instant `json:"last_occurred_at"`
 }
 
 func newListedSourceJSON(u store.SourceUsage) listedSourceJSON {
 	return listedSourceJSON{
-		ID:              u.ID,
-		Name:            u.Name,
-		CreatedAt:       timeline.FormatInstant(u.CreatedAt),
+		Source:          export.NewSource(u.Source),
 		EventCount:      u.EventCount,
 		AnnotationCount: u.AnnotationCount,
-		FirstOccurredAt: formatOptionalInstant(u.FirstOccurredAt),
-		LastOccurredAt:  formatOptionalInstant(u.LastOccurredAt),
+		FirstOccurredAt: (*export.Instant)(u.FirstOccurredAt),
+		LastOccurredAt:  (*export.Instant)(u.LastOccurredAt),
 	}
-}
-
-func formatOptionalInstant(t *time.Time) *string {
-	if t == nil {
-		return nil
-	}
-
-	return new(timeline.FormatInstant(*t))
 }
 
 // displayOptionalInstant renders t in z to the second, or "-" for nil.

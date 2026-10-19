@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"log/slog"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -59,29 +63,29 @@ func pngOf(width, height int) []byte {
 	return b.Bytes()
 }
 
-// blobs is an Image that records the hash of every attachment it reads and decodes content.
+// blobs is an Image that records the hash of every attachment it reads.
 type blobs struct {
 	mu      sync.Mutex
 	read    []string
 	content map[string][]byte
 }
 
-func (b *blobs) image(a timeline.Attachment) (graphics.Image, error) {
+func (b *blobs) image(a timeline.Attachment) ([]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.read = append(b.read, a.SHA256)
 	content, ok := b.content[a.SHA256]
 	if !ok {
-		return graphics.Image{}, errors.New("blob " + a.SHA256 + ": no such file")
+		return nil, errors.New("blob " + a.SHA256 + ": no such file")
 	}
 
-	return graphics.Decode(content)
+	return content, nil
 }
 
 func (b *blobs) reads() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return append([]string{}, b.read...)
+	return slices.Clone(b.read)
 }
 
 // optionsFor shows snapshot, reads it again unchanged and reads attachments from b.
@@ -112,10 +116,15 @@ func openWith(snapshot viewer.Snapshot, b *blobs, protocol graphics.Protocol) te
 	return answered(newOn(viewer.Terminal{Graphics: protocol}, snapshot, b))
 }
 
-// drainMsgs is drain, also returning every message m was handed, in order.
+// drainMsgs hands m every message cmd produces, and then those of the commands m returns, and
+// returns every message m was handed, in order. It stops at a cursor's blink, which re-arms
+// forever.
 func drainMsgs(m tea.Model, cmd tea.Cmd) (tea.Model, []tea.Msg) {
 	var all []tea.Msg
 	for _, msg := range messages(cmd) {
+		if reflect.TypeOf(msg).PkgPath() == reflect.TypeFor[cursor.BlinkMsg]().PkgPath() {
+			continue
+		}
 		var next tea.Cmd
 		m, next = m.Update(msg)
 		var more []tea.Msg
@@ -182,7 +191,35 @@ var _ = Describe("the viewer's attachments", func() {
 
 	It("reads an expanded event's images one at a time", func() {
 		_, cmd := press(openWith(withAttachments(), b, graphics.None), "enter")
-		Expect(cmd()).NotTo(BeAssignableToTypeOf(tea.BatchMsg{}))
+		Expect(cmd()).To(BeAssignableToTypeOf(viewer.ImageMsg{}))
+	})
+
+	It("reads the images of an event expanded while another's are read only after them", func() {
+		s := withAttachments()
+		pager := s.Events[1].ID
+		s.Attachments[1] = timeline.Attachment{
+			ID: "0199a1b2-0000-7000-8000-000000000034", Owner: timeline.AttachmentOwner{EventID: &pager},
+			Filename: "pager.png", MIME: "image/png", SHA256: logSHA, Size: 3_000,
+		}
+		b.content[logSHA] = pngOf(8, 8)
+		m, first := press(openWith(s, b, graphics.None), "enter")
+		m, second := press(m, "j", "enter")
+		Expect(second).To(BeNil())
+
+		m, _ = drainMsgs(m, first)
+		Expect(b.reads()).To(Equal([]string{pngSHA, grafanaSHA, logSHA}))
+		Expect(screen(m)).To(ContainSubstring("[image: pager.png · 8×8 · 3 KB]"))
+	})
+
+	It("logs why an image cannot be shown", func() {
+		b.content[pngSHA] = []byte("GIF89a not really")
+		var logged bytes.Buffer
+		opts := optionsFor(withAttachments(), b)
+		opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		m, cmd := press(answered(viewer.New(opts)), "enter")
+		drainMsgs(m, cmd)
+
+		Expect(logged.String()).To(SatisfyAll(ContainSubstring("attachment image not shown"), ContainSubstring(pngSHA)))
 	})
 
 	It("reads the images an expanded event gains when the timeline is read again", func() {

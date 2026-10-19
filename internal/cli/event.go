@@ -20,9 +20,7 @@ func newEventCommand(ctx context.Context, app App) *cobra.Command {
 			"event's id, from any timeline. list takes -t more than once to overlay several timelines.",
 		Example: "  $ coroner event add \"Primary stepped down\" --at 2026-09-11T03:14:07Z --source mongod\n" +
 			"  $ coroner event list --tag election",
-		// Help and the unknown-verb error print under any format.
-		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl"},
-		RunE:        runNoun,
+		RunE: runNoun,
 	}
 
 	addTimelineFlag(cmd.PersistentFlags())

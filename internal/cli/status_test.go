@@ -2,7 +2,6 @@ package cli_test
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,12 +9,10 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
-	"github.com/macintacos/coroner/internal/store"
 )
 
 var _ = Describe("status", func() {
@@ -40,23 +37,11 @@ var _ = Describe("status", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, cli.App{
-			Args: append([]string{"--db", dbPath}, args...),
-			Out:  &out,
-			Err:  &errOut,
-			LookupEnv: func(key string) (string, bool) {
-				value, ok := env[key]
-				return value, ok
-			},
-			ReadFile: readNoFile,
-			Now:      func() time.Time { return time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC) },
-			NewID: func() (uuid.UUID, error) {
-				ids++
-				return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids))
-			},
-			OpenStore:         store.Open,
-			OpenStoreReadOnly: store.OpenReadOnly,
-		})
+		return cli.Run(ctx, harness{
+			home: env["HOME"], db: dbPath, env: env, out: &out, errOut: &errOut,
+			now:   func() time.Time { return time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC) },
+			newID: countedIDs(&ids),
+		}.app(args...))
 	}
 
 	status := func(ctx SpecContext, args ...string) statusJSON {
@@ -158,13 +143,7 @@ var _ = Describe("status", func() {
 		})
 
 		It("exits 5 with kind db_too_new for a database a newer coroner migrated", func(ctx SpecContext) {
-			db, err := sql.Open("sqlite", dbPath)
-			Expect(err).NotTo(HaveOccurred())
-			DeferCleanup(db.Close)
-			_, err = db.ExecContext(ctx,
-				"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
-			Expect(err).NotTo(HaveOccurred())
-			Expect(db.Close()).To(Succeed())
+			Expect(bumpSchemaVersion(ctx, dbPath)).To(Succeed())
 
 			Expect(run(ctx, "status", "--json")).To(Equal(5))
 

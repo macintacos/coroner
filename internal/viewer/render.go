@@ -338,7 +338,7 @@ func (m Model) attachmentLines(attachments []timeline.Attachment, prefix string)
 	for _, a := range attachments {
 		shown := m.images.shown[a.ID]
 		caption := graphics.Caption{
-			Filename: a.Filename, Size: a.Size, Width: shown.img.Width, Height: shown.img.Height, Image: isImage(a),
+			Filename: a.Filename, Size: a.Size, Width: shown.img.Width, Height: shown.img.Height, Image: graphics.IsImage(a.MIME),
 		}
 		if shown.state != imageSent {
 			lines = append(lines, m.fit(prefix+m.styles.faint.Render(caption.Placeholder())))
@@ -365,10 +365,6 @@ func attachmentIndentWidth(a timeline.Attachment) int {
 	return width
 }
 
-func isImage(a timeline.Attachment) bool {
-	return strings.HasPrefix(a.MIME, "image/")
-}
-
 func attribution(a timeline.Annotation) string {
 	var by []string
 	if a.Source != nil {
@@ -384,10 +380,11 @@ func attribution(a timeline.Annotation) string {
 	return "  (" + strings.Join(by, ", ") + ")"
 }
 
-// printable is s with line endings made \n, tabs made four spaces and every other control
-// character dropped, so stored text cannot move the cursor or send the terminal a sequence.
+// printable is s with escape sequences dropped whole, line endings made \n, tabs made four spaces
+// and every other control character dropped, so stored text cannot move the cursor or send the
+// terminal a sequence.
 func printable(s string) string {
-	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\t", "    ")
+	s = strings.ReplaceAll(strings.ReplaceAll(ansi.Strip(s), "\r\n", "\n"), "\t", "    ")
 	return strings.Map(func(r rune) rune {
 		if r != '\n' && unicode.IsControl(r) {
 			return -1

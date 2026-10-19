@@ -45,6 +45,8 @@ func timelineUseDefinition() definition {
 type timelineUsed struct {
 	timeline *timeline.Timeline
 	dryRun   bool
+	// warning names the CORONER_TIMELINE that still selects another timeline, or is empty.
+	warning string
 }
 
 func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineUsed, error) {
@@ -76,6 +78,7 @@ func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues
 				return used, err
 			}
 			used.timeline = &t
+			used.warning = shadowWarning(app.LookupEnv, t)
 			return used, tx.SetCurrentTimeline(ctx, t.ID)
 		})
 
@@ -99,7 +102,12 @@ func (u timelineUsed) render(o output) error {
 		return o.notify("Would use timeline `%s`.", u.timeline.Name)
 	}
 
-	return o.notify("Now using timeline `%s`.", u.timeline.Name)
+	err := o.notify("Now using timeline `%s`.", u.timeline.Name)
+	if err != nil || u.warning == "" {
+		return err
+	}
+
+	return o.notify("%s", u.warning)
 }
 
 // object returns the timeline's object, or nil, which encodes as null, for --clear.

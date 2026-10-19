@@ -134,16 +134,16 @@ func (o output) json(v any) error {
 }
 
 // rows writes one line per row, aligned on a terminal and tab-separated otherwise. Tabs and
-// line breaks inside a field print escaped, so no field splits a row.
+// line breaks inside a field print escaped, so no field splits a row, and so does every other
+// control character, so stored text cannot drive the terminal.
 func (o output) rows(rows [][]string) error {
-	escape := strings.NewReplacer("\t", `\t`, "\n", `\n`, "\r", `\r`)
 	var b strings.Builder
 	for _, row := range rows {
 		for i, field := range row {
 			if i > 0 {
 				b.WriteByte('\t')
 			}
-			_, _ = escape.WriteString(&b, field)
+			writeEscaped(&b, field)
 		}
 		b.WriteByte('\n')
 	}
@@ -162,6 +162,27 @@ func (o output) rows(rows [][]string) error {
 	return table.Flush()
 }
 
+// writeEscaped writes field to b with tab, LF and CR as \t, \n and \r, and every other C0
+// control, DEL and C1 control as a Go escape.
+func writeEscaped(b *strings.Builder, field string) {
+	for _, r := range field {
+		switch {
+		case r == '\t':
+			b.WriteString(`\t`)
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(b, `\x%02x`, r)
+		case r >= 0x80 && r <= 0x9f:
+			fmt.Fprintf(b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+}
+
 // writeJSON writes v as one JSON document, indented when pretty.
 func writeJSON(w io.Writer, pretty bool, v any) error {
 	encoder := json.NewEncoder(w)
@@ -171,6 +192,16 @@ func writeJSON(w io.Writer, pretty bool, v any) error {
 	}
 
 	return encoder.Encode(v)
+}
+
+// firstFew returns the first shown items, followed by "and N more" when it leaves some out.
+func firstFew(items []string, shown int) []string {
+	few := slices.Clone(items[:min(len(items), shown)])
+	if more := len(items) - shown; more > 0 {
+		few = append(few, fmt.Sprintf("and %d more", more))
+	}
+
+	return few
 }
 
 // codeList returns names as code spans, joined by commas.

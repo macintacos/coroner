@@ -9,13 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
-	"github.com/macintacos/coroner/internal/store"
 )
 
 // noInputScript is the script that runs each interactive command with no terminal.
@@ -42,23 +40,13 @@ var _ = Describe("interactive commands off a terminal", func() {
 			stdin, typed := io.Pipe()
 			DeferCleanup(typed.Close)
 			var errOut bytes.Buffer
-			app := cli.App{
-				Args: append([]string{"--db", filepath.Join(home, "coroner.db")}, args...),
-				In:   stdin, Out: io.Discard, Err: &errOut, OutIsTTY: true,
-				LookupEnv: func(key string) (string, bool) {
-					value, ok := map[string]string{"HOME": home}[key]
-					return value, ok
-				},
-				ReadFile:  readNoFile,
-				Now:       time.Now,
-				NewID:     uuid.NewV7,
-				OpenStore: store.Open,
-			}
+			app := harness{home: home, db: filepath.Join(home, "coroner.db"), in: stdin, errOut: &errOut, outIsTTY: true}.app(args...)
 
 			code := make(chan int, 1)
 			go func() { code <- cli.Run(ctx, app) }()
 
-			Eventually(code).Within(100 * time.Millisecond).Should(Receive(Equal(2)))
+			// The pipe never closes, so any finite wait proves the command does not read it.
+			Eventually(code).Within(5 * time.Second).Should(Receive(Equal(2)))
 			Expect(errOut.String()).To(ContainSubstring(wantStderr))
 		},
 		Entry("event add", "- to read it from stdin", "event", "add"),

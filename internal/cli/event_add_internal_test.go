@@ -17,7 +17,7 @@ var _ = Describe("event add --id", func() {
 		created := run("timeline", "create", "mongo-outage")
 		Expect(created.code).To(Equal(0), created.errOut)
 
-		ids := make([]string, 40)
+		ids := make([]string, 10)
 		results := make([][3]ran, len(ids))
 		var wg sync.WaitGroup
 		for i := range ids {

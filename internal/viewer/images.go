@@ -39,26 +39,43 @@ type inlineImages struct {
 	// shown is by attachment id rather than blob: one blob attached twice sits at two indents, and
 	// one image id holds one placement.
 	shown map[string]shownImage
+	// queue holds the attachments waiting to be read; inFlight is whether one is being read. Reads
+	// run one at a time, since a decode can take hundreds of megabytes.
+	queue    []timeline.Attachment
+	inFlight bool
 }
 
-// toRead marks each of attachments that graphics can decode and that has no state yet as being
-// read, and returns them.
-func (im inlineImages) toRead(attachments []timeline.Attachment) (inlineImages, []timeline.Attachment) {
+// toRead queues each of attachments that graphics can decode and that has no state yet, and
+// returns the next to read, if no read is in flight.
+func (im inlineImages) toRead(attachments []timeline.Attachment) (inlineImages, timeline.Attachment, bool) {
 	im.shown = maps.Clone(im.shown)
-	var reads []timeline.Attachment
 	for _, a := range attachments {
 		if _, ok := im.shown[a.ID]; ok || !graphics.Decodable(a.MIME) {
 			continue
 		}
 		im.shown[a.ID] = shownImage{state: imageReading}
-		reads = append(reads, a)
+		im.queue = append(im.queue, a)
 	}
 
-	return im, reads
+	return im.next()
 }
 
-// read keeps img as the image of the attachment with attachmentID, or marks it failed on err.
+// next takes the first queued attachment to read, and false when there is none or a read is in
+// flight.
+func (im inlineImages) next() (inlineImages, timeline.Attachment, bool) {
+	if im.inFlight || len(im.queue) == 0 {
+		return im, timeline.Attachment{}, false
+	}
+
+	a := im.queue[0]
+	im.queue, im.inFlight = im.queue[1:], true
+	return im, a, true
+}
+
+// read keeps img as the image of the attachment with attachmentID, or marks it failed on err,
+// ending the read in flight.
 func (im inlineImages) read(attachmentID string, img graphics.Image, err error) inlineImages {
+	im.inFlight = false
 	im.shown = maps.Clone(im.shown)
 	im.shown[attachmentID] = shownImage{state: imageRead, img: img}
 	if err != nil {

@@ -45,3 +45,7 @@ the same time in seconds; pass it to `--at` as it is.
 
 Reading the body from stdin keeps the message exactly as it was, quotes and line breaks
 included, without shell quoting; coroner drops only one trailing newline.
+
+A wrong permalink or source can be fixed later with
+`coroner annotation edit <id> --url <url>`, or cleared with `--url none` or
+`--source none`, as on `coroner event edit`.

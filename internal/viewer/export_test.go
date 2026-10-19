@@ -25,3 +25,6 @@ func OnTerminal(term Terminal, m Model) Model {
 func ColorProfile(term Terminal) colorprofile.Profile {
 	return colorProfile(term)
 }
+
+// ImageMsg is the message a read of an image attachment gives.
+type ImageMsg = imageMsg

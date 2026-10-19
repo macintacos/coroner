@@ -102,17 +102,20 @@ type Model struct {
 // New returns the viewer showing opts.Snapshot, sized for an 80 by 24 terminal until the first
 // window size arrives.
 func New(opts Options) Model {
+	s := newStyles()
+	h := help.New()
+	h.Styles = helpStyles(s)
 	m := Model{
 		opts:     opts,
 		expanded: map[string]bool{},
 		images:   inlineImages{shown: map[string]shownImage{}},
 		input:    textinput.New(),
 		keys:     newKeyMap(),
-		help:     help.New(),
+		help:     h,
 		body:     viewport.New(),
 		width:    80,
 		height:   24,
-		styles:   newStyles(),
+		styles:   s,
 	}
 
 	return m.show(opts.Snapshot, opts.Match)
@@ -204,34 +207,61 @@ func (m Model) listKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.render().readImages()
 	}
 
-	return m.moveTo(m.cursor + m.movement(msg)), nil
+	return m.move(msg), nil
 }
 
-// movement returns how many events msg moves the cursor by.
-func (m Model) movement(msg tea.KeyPressMsg) int {
-	page, count := max(m.body.Height(), 1), len(m.snapshot.Events)
-	switch {
-	case key.Matches(msg, m.keys.up):
-		return -1
-	case key.Matches(msg, m.keys.down):
-		return 1
-	case key.Matches(msg, m.keys.pageUp):
-		return -page
-	case key.Matches(msg, m.keys.pageDown):
-		return page
-	case key.Matches(msg, m.keys.top):
-		return -count
-	case key.Matches(msg, m.keys.bottom):
-		return count
+// move scrolls a line through the cursor event's lines while ↑ or ↓ leaves some of them off
+// screen, and otherwise moves the cursor to the event msg names.
+func (m Model) move(msg tea.KeyPressMsg) Model {
+	if len(m.blocks) == 0 {
+		return m
 	}
 
-	return 0
+	cursor, offset := m.blocks[m.cursor], m.body.YOffset()
+	switch {
+	case key.Matches(msg, m.keys.up) && cursor.top < offset:
+		m.body.SetYOffset(offset - 1)
+		return m
+	case key.Matches(msg, m.keys.down) && cursor.bottom >= offset+m.body.Height():
+		m.body.SetYOffset(offset + 1)
+		return m
+	}
+
+	return m.moveTo(m.target(msg))
+}
+
+// target is the event msg moves the cursor to: pgup and pgdn to the nearest event wholly off
+// screen above or below.
+func (m Model) target(msg tea.KeyPressMsg) int {
+	offset := m.body.YOffset()
+	switch {
+	case key.Matches(msg, m.keys.up):
+		return m.cursor - 1
+	case key.Matches(msg, m.keys.down):
+		return m.cursor + 1
+	case key.Matches(msg, m.keys.pageUp):
+		above := slices.IndexFunc(m.blocks, func(b block) bool { return b.row >= offset })
+		return max(above-1, 0)
+	case key.Matches(msg, m.keys.pageDown):
+		below := slices.IndexFunc(m.blocks, func(b block) bool { return b.row >= offset+m.body.Height() })
+		if below < 0 {
+			return len(m.blocks) - 1
+		}
+		return below
+	case key.Matches(msg, m.keys.top):
+		return 0
+	case key.Matches(msg, m.keys.bottom):
+		return len(m.blocks) - 1
+	}
+
+	return m.cursor
 }
 
 func (m Model) openPrompt(p prompt, value string) (tea.Model, tea.Cmd) {
 	m.prompt = p
 	m.problem = ""
 	m.input.Prompt = p.label()
+	m = m.sizeInput()
 	m.input.SetValue(value)
 	m.input.CursorEnd()
 	focus := m.input.Focus()
@@ -258,8 +288,16 @@ func (m Model) promptKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // edit hands msg, such as a key, a paste or a cursor blink, to the open prompt.
 func (m Model) edit(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	m = m.sizeInput()
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
+}
+
+// sizeInput fits the prompt's value, and its cursor's cell, to the window beside its label, so a
+// long value scrolls rather than being cut.
+func (m Model) sizeInput() Model {
+	m.input.SetWidth(max(m.width-lipgloss.Width(m.input.Prompt)-1, 1))
+	return m
 }
 
 func (m Model) submit(p prompt, value string) (tea.Model, tea.Cmd) {
@@ -416,7 +454,8 @@ func (m Model) moveTo(i int) Model {
 }
 
 // scroll sizes the event list to the window and scrolls it so the cursor event, the rules above
-// it and its annotations and attachments show.
+// it and its annotations and attachments show, or, for an event taller than the list, so the list
+// shows nothing but its lines.
 func (m Model) scroll() Model {
 	m.body.SetWidth(m.width)
 	m.body.SetHeight(m.bodyHeight())
@@ -426,11 +465,8 @@ func (m Model) scroll() Model {
 	if len(m.blocks) > 0 {
 		cursor = m.blocks[m.cursor]
 	}
-	offset := m.body.YOffset()
-	if cursor.bottom >= offset+m.body.Height() {
-		offset = cursor.bottom - m.body.Height() + 1
-	}
-	m.body.SetYOffset(min(offset, cursor.top))
+	showsBottom := cursor.bottom - m.body.Height() + 1
+	m.body.SetYOffset(max(min(m.body.YOffset(), max(showsBottom, cursor.top)), min(showsBottom, cursor.top)))
 
 	return m
 }
@@ -440,17 +476,16 @@ func (m Model) bodyHeight() int {
 	return max(m.height-lipgloss.Height(m.header())-lipgloss.Height(m.footer()), 1)
 }
 
-// readImages starts reading, one at a time, each image attachment on an expanded event or its
-// annotations that has not been read yet.
+// readImages queues each image attachment on an expanded event or its annotations that has not
+// been read yet, and starts reading the first unless a read is in flight.
 func (m Model) readImages() (Model, tea.Cmd) {
-	var toRead []timeline.Attachment
-	m.images, toRead = m.images.toRead(m.expandedAttachments())
-	reads := make([]tea.Cmd, 0, len(toRead))
-	for _, a := range toRead {
-		reads = append(reads, readImage(m.opts.Image, a))
+	images, a, ok := m.images.toRead(m.expandedAttachments())
+	m.images = images
+	if !ok {
+		return m, nil
 	}
 
-	return m, tea.Sequence(reads...)
+	return m, m.readImage(a)
 }
 
 // expandedAttachments are the attachments on each expanded event and its annotations, in the order
@@ -470,17 +505,43 @@ func (m Model) expandedAttachments() []timeline.Attachment {
 	return owned
 }
 
-func readImage(image func(timeline.Attachment) (graphics.Image, error), a timeline.Attachment) tea.Cmd {
+// readImage is the command reading a's image: decoded when protocol shows images, or only its size
+// in pixels otherwise.
+func (m Model) readImage(a timeline.Attachment) tea.Cmd {
+	read, protocol, log := m.opts.Image, m.images.protocol, m.opts.Log
 	return func() tea.Msg {
-		img, err := image(a)
+		img, err := decodeImage(read, protocol, a)
+		if err != nil && log != nil {
+			log.Debug("attachment image not shown", "attachment", a.ID, "sha256", a.SHA256, "error", err)
+		}
 		return imageMsg{attachmentID: a.ID, img: img, err: err}
 	}
 }
 
-// imageRead keeps the image msg read, or that it failed, and sends it.
+func decodeImage(read func(timeline.Attachment) ([]byte, error), protocol graphics.Protocol, a timeline.Attachment) (graphics.Image, error) {
+	content, err := read(a)
+	switch {
+	case err != nil:
+		return graphics.Image{}, err
+	case protocol == graphics.Kitty:
+		return graphics.Decode(content)
+	}
+
+	size, err := graphics.DecodeSize(content)
+	return graphics.Image{Width: size.Width, Height: size.Height}, err
+}
+
+// imageRead keeps the image msg read, or that it failed, sends it and starts the next read.
 func (m Model) imageRead(msg imageMsg) (Model, tea.Cmd) {
 	m.images = m.images.read(msg.attachmentID, msg.img, msg.err)
-	return m.sendImages()
+	m, sends := m.sendImages()
+	images, a, ok := m.images.next()
+	m.images = images
+	if !ok {
+		return m, sends
+	}
+
+	return m, tea.Batch(sends, m.readImage(a))
 }
 
 // sendImages rebuilds the event list and, once a terminal that shows images has answered, sends
@@ -509,7 +570,7 @@ func (m Model) placeImages() (Model, tea.Cmd) {
 }
 
 // gridFor is the grid attachment a shows img in: as wide as the window leaves beside its lines'
-// indent, and no taller than half the event list, since no key scrolls within an event's lines.
+// indent, and no taller than half the event list, so it shows whole beside its event's row.
 func (m Model) gridFor(a timeline.Attachment, img graphics.Image) graphics.Grid {
 	bounds := graphics.Grid{Cols: m.width - attachmentIndentWidth(a), Rows: max(m.bodyHeight()/2, 1)}
 	return graphics.Fit(img, bounds, m.images.cell)
