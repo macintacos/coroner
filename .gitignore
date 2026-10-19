@@ -2,6 +2,8 @@
 /site/
 /.cache/
 /.venv/
+# Ginkgo's compiled suites: deleted after a run, left behind when one is interrupted.
+*.test
 # rapid's failing cases, replayed locally; a fix pins its bug with a named spec.
 **/testdata/rapid/
 # goreleaser's output and every path its before hooks write: an untracked file makes Go
