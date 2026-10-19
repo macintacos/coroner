@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io/fs"
+	"maps"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,9 +12,10 @@ import (
 )
 
 var _ = Describe("invocation", func() {
-	// invocationApp is an App on two terminals with env and, when config is not empty, that
-	// config file; it fails the spec if anything opens the store.
+	// invocationApp is an App with stdin, stdout and stderr on terminals, env and, when config
+	// is not empty, that config file; it fails the spec if anything opens the store.
 	invocationApp := func(env map[string]string, config string) App {
+		env = maps.Clone(env)
 		env["HOME"] = "/home/priya"
 		return App{
 			InIsTTY: true, OutIsTTY: true, ErrIsTTY: true,
@@ -69,7 +71,15 @@ var _ = Describe("invocation", func() {
 		Expect(err).To(HaveField("Kind", KindUsage))
 	})
 
-	DescribeTable("turns input off",
+	It("reads a config with a bad default_timezone, and fails only zone()", func(ctx SpecContext) {
+		inv := read(ctx, invocationApp(map[string]string{}, `default_timezone = "Bogus/Zone"`))
+
+		_, err := inv.zone()
+		Expect(err).To(BeAssignableToTypeOf(&Error{}))
+		Expect(err).To(HaveField("Kind", KindUsage))
+	})
+
+	DescribeTable("turns input off, and finds a terminal only when stdin and stdout are one, TERM can draw and input is on",
 		func(ctx SpecContext, app App, args []string, wantOff, wantTerminal bool) {
 			inv := read(ctx, app, args...)
 

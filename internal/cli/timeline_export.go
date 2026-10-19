@@ -262,7 +262,7 @@ func notifyLargeDiagram(o output, env export.Envelope, zone *time.Location) erro
 }
 
 // readMarkdownOptions returns how --format md presents the export.
-func readMarkdownOptions(flags *pflag.FlagSet, chosen format, zone *time.Location) (export.MarkdownOptions, error) {
+func readMarkdownOptions(flags *pflag.FlagSet, chosen format, loc *time.Location) (export.MarkdownOptions, error) {
 	if chosen != formatMarkdown {
 		for _, name := range []string{"group-by", "include-raw", "diagram"} {
 			if flags.Changed(name) {
@@ -275,7 +275,7 @@ func readMarkdownOptions(flags *pflag.FlagSet, chosen format, zone *time.Locatio
 		return export.MarkdownOptions{}, nil
 	}
 
-	opts := export.MarkdownOptions{Zone: zone}
+	opts := export.MarkdownOptions{Zone: loc}
 	opts.IncludeRaw, _ = flags.GetBool("include-raw")
 	opts.Diagram, _ = flags.GetBool("diagram")
 	if groupBy := changedString(flags, "group-by"); groupBy != nil {

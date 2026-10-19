@@ -418,11 +418,10 @@ var _ = Describe("add forms", func() {
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
 				lookupEnv := app.LookupEnv
 				app.LookupEnv = func(key string) (string, bool) {
-					if key == "HOME" {
-						return lookupEnv(key)
+					if value, ok := env[key]; ok {
+						return value, true
 					}
-					value, ok := env[key]
-					return value, ok
+					return lookupEnv(key)
 				}
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add", "Pager fires", "--interactive"}, flags...)...)

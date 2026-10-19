@@ -128,7 +128,7 @@ func interactiveRefusal(cmd *cobra.Command, inputOff bool) error {
 	}
 }
 
-// newFormSession returns the session inv's form runs in, asking through forms.
+// newFormSession returns the session a form runs in under inv, asking through forms.
 func newFormSession(app App, inv invocation, forms func(color bool, images graphics.Protocol) askFunc) formSession {
 	images := graphics.None
 	if inv.outColor {

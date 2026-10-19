@@ -62,15 +62,15 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	inv, err := readInvocation(cmd, app)
-	if err != nil {
-		return err
-	}
 	policy, err := readConflictPolicy(cmd.Flags())
 	if err != nil {
 		return err
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	inv, err := readInvocation(cmd, app)
+	if err != nil {
+		return err
+	}
 	records, err := readImportRecords(path, app.ReadFile, app.In, app.InIsTTY)
 	if err != nil {
 		return err

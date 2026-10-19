@@ -131,8 +131,9 @@ digraph coroner_rules_router {
   page, and any command or flag change rewrites it.
 - Global flags and environment: `readInvocation`
   ([`invocation.go`](internal/cli/invocation.go)) reads them once at the top of a RunE,
-  and resolves `--tz` only when a command asks for the zone; `errorStyleFor` is the one
-  exception, since it runs when cobra failed to parse.
+  and resolves `--tz` only when a command asks for the zone. `agent skill`, `version`,
+  shell completion and `errorStyleFor`, which runs when cobra failed to parse, never call
+  it, so a malformed config file cannot break them.
 - Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
   picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
   is the table. Any other error, or a panic, exits 1 as `internal`. A command declares the

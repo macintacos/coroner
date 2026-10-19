@@ -19,13 +19,13 @@ const fromFileUsage = "Add every event record in this JSONL `file`, or - to read
 // addEventsFromFile adds the event records in --from-file's file, or stdin for -, to the selected
 // timeline in one transaction.
 func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []string) error {
-	inv, err := readInvocation(cmd, app)
+	in := eventAddDefinition().read(cmd.Flags(), args)
+	interactive, _ := cmd.Flags().GetBool("interactive")
+	err := checkFromFileAlone(in, interactive)
 	if err != nil {
 		return err
 	}
-	in := eventAddDefinition().read(cmd.Flags(), args)
-	interactive, _ := cmd.Flags().GetBool("interactive")
-	err = checkFromFileAlone(in, interactive)
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}

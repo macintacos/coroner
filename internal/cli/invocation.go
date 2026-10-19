@@ -12,20 +12,27 @@ import (
 // invocation is how one command line runs: where and how it prints, the configuration, and the
 // terminal it may take over, read once from the global flags, App and the environment.
 type invocation struct {
-	out                output
-	cfg                config.Config
-	tz                 *string // --tz as given; zone() resolves it
+	out output
+	cfg config.Config
+	// tz is --tz as given; zone() resolves it.
+	tz                 *string
 	now                func() time.Time
 	outColor, errColor bool
-	inputOff, terminal bool
-	formatGiven        bool     // --format changed: plain output even on a terminal (I-1)
-	debug              bool     // --debug or CORONER_DEBUG
-	echoArgs           []string // --db and --config as given, which a form's echoed command repeats
+	inputOff           bool
+	// terminal is interactiveTerminal's answer: a form may take over the terminal. A viewer or
+	// picker asks interactive() instead, which --format also turns off.
+	terminal bool
+	// formatGiven is whether --format changed: plain output even on a terminal (I-1).
+	formatGiven bool
+	debug       bool
+	// echoArgs is --db and --config as given, which a form's echoed command repeats.
+	echoArgs []string
 }
 
-// readInvocation reads cmd's command line, app and the environment once, at the top of a RunE. It
-// opens no store and resolves no zone. agent skill, version, shell completion and errorStyleFor
-// never call it, so a malformed config file cannot break them.
+// readInvocation reads cmd's command line, app and the environment once. It opens no store and
+// resolves no zone. A command reads its own flags first, then the invocation, unless a check needs
+// it. Never call it from agent skill, version, shell completion or errorStyleFor, so a malformed
+// config file cannot break them.
 func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	o, err := newOutput(cmd, app)
 	if err != nil {

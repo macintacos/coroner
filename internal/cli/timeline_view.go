@@ -81,11 +81,11 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 func viewTimelines(
 	ctx context.Context, cmd *cobra.Command, app App, lookup func(context.Context, *store.Store) ([]timeline.Timeline, error),
 ) error {
-	inv, err := readInvocation(cmd, app)
+	filter, err := readEventMatch(cmd.Flags())
 	if err != nil {
 		return err
 	}
-	filter, err := readEventMatch(cmd.Flags())
+	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
