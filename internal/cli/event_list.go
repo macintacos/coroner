@@ -66,10 +66,6 @@ func addEventMatchFlags(flags *pflag.FlagSet) {
 }
 
 func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
-	choice, err := readTimelineChoice(cmd.Flags())
-	if err != nil {
-		return err
-	}
 	inv, err := readInvocation(cmd, app)
 	if err != nil {
 		return err
@@ -84,7 +80,11 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		timelines, err := selectChosenTimelines(ctx, s, choice, app.LookupEnv)
+		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		timelines, err := sel.all(ctx, s)
 		if err != nil {
 			return err
 		}

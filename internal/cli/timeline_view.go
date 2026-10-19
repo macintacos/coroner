@@ -49,27 +49,8 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline view --tag election --source mongod\n" +
 			"  $ coroner timeline view -t mongo-failover -t checkout-latency\n" +
 			"  $ coroner timeline view --json",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			names, err := timelineFlags(cmd.Flags())
-			switch {
-			case err != nil:
-				return err
-			case len(args) == 1 && len(names) > 0:
-				return &Error{
-					Kind:    KindUsage,
-					Message: "pass either a timeline name or id, or -t",
-					Hint:    "Run 'coroner timeline view --help' for usage.",
-				}
-			case len(args) == 1:
-				return viewTimelines(ctx, cmd, app, func(ctx context.Context, s *store.Store) ([]timeline.Timeline, error) {
-					t, err := findTimeline(ctx, s, args[0])
-					return []timeline.Timeline{t}, err
-				})
-			}
-
-			return viewTimelines(ctx, cmd, app, func(ctx context.Context, s *store.Store) ([]timeline.Timeline, error) {
-				return selectNamedTimelines(ctx, s, names, app.LookupEnv)
-			})
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return viewTimelines(ctx, cmd, app)
 		},
 	}
 
@@ -80,9 +61,7 @@ func newTimelineViewCommand(ctx context.Context, app App) *cobra.Command {
 	return cmd
 }
 
-func viewTimelines(
-	ctx context.Context, cmd *cobra.Command, app App, lookup func(context.Context, *store.Store) ([]timeline.Timeline, error),
-) error {
+func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 	filter, err := readEventMatch(cmd.Flags())
 	if err != nil {
 		return err
@@ -99,16 +78,18 @@ func viewTimelines(
 
 	var snapshot viewer.Snapshot
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		timelines, err := lookup(ctx, s)
+		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
+		if err != nil {
+			return err
+		}
+		err = sel.checkFormat(o.format)
+		if err != nil {
+			return err
+		}
+		timelines, err := sel.all(ctx, s)
 		switch {
 		case err != nil:
 			return err
-		case o.format == formatJSON && len(timelines) > 1:
-			return &Error{
-				Kind:    KindUsage,
-				Message: fmt.Sprintf("--format json prints one timeline, and -t selects %d", len(timelines)),
-				Hint:    "Pass -t once, or list the timelines' events with 'coroner event list -t <timeline>... --json'.",
-			}
 		case o.format == formatJSON:
 			return o.json(newTimelineJSON(timelines[0]))
 		}

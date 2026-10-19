@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -281,6 +282,21 @@ var _ = Describe("timeline selection", func() {
 		Entry("timeline view --json", []string{"timeline", "view", "--json"}, false),
 		Entry("timeline export --format svg", []string{"timeline", "export", "--format", "svg"}, true),
 	)
+
+	It("refuses svg for several timelines before reading events", func(ctx SpecContext) {
+		run(ctx, "event", "add", "deploy", "-t", "alpha")
+		run(ctx, "event", "add", "rollback", "-t", "beta")
+		raw, err := sql.Open("sqlite", db)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(raw.Close)
+		_, err = raw.ExecContext(ctx, "DROP TABLE event")
+		Expect(err).NotTo(HaveOccurred())
+
+		failure := execute(ctx, app, "--db", db, "timeline", "export", "-t", "alpha", "-t", "beta",
+			"--format", "svg", "-o", filepath.Join(filepath.Dir(db), "x.svg"))
+
+		Expect(failure.Kind).To(Equal(KindUsage))
+	})
 
 	DescribeTable("reads each command's timeline rule from its annotations",
 		func(ctx SpecContext, path string, want timelineRule) {

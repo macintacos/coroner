@@ -276,6 +276,39 @@ func (sel selection) all(ctx context.Context, s *store.Store) ([]timeline.Timeli
 	return sel.timelines, nil
 }
 
+// checkFormat returns usage when sel holds several timelines and f is one of the formats that
+// print one. It runs after the lookup, so a timeline's name and its id count once, and before
+// any read.
+// ponytail: worded by format, since view's one-timeline format (json) and export's (svg) are disjoint; key by command if they ever overlap.
+func (sel selection) checkFormat(f format) error {
+	if len(sel.timelines) <= 1 || !slices.Contains(sel.oneFormats, f) {
+		return nil
+	}
+	if f == formatJSON {
+		return &Error{
+			Kind:    KindUsage,
+			Message: fmt.Sprintf("--format json prints one timeline, and -t selects %d", len(sel.timelines)),
+			Hint:    "Pass -t once, or list the timelines' events with 'coroner event list -t <timeline>... --json'.",
+		}
+	}
+
+	return &Error{
+		Kind:    KindUsage,
+		Message: fmt.Sprintf("--format %s exports one timeline, and -t selects %d", f, len(sel.timelines)),
+		Hint:    "Pass -t once, or overlay the timelines with --format json, jsonl, md, mermaid or html.",
+	}
+}
+
+// withoutStore returns timeline_not_found when in names a timeline in a database that does not
+// exist yet, which holds none, or nil when it names none.
+func (in timelineInput) withoutStore() error {
+	if len(in.names) == 0 {
+		return nil
+	}
+
+	return layerNotFound(fmt.Sprintf("-t %q", in.names[0]), nil)
+}
+
 // namedTimelines returns the timeline each of names selects, each once in the order named.
 func namedTimelines(ctx context.Context, s *store.Store, names []string) ([]timeline.Timeline, error) {
 	var timelines []timeline.Timeline
@@ -395,7 +428,12 @@ func selectTimeline(
 func selectNamedTimelines(
 	ctx context.Context, s *store.Store, names []string, lookupEnv func(string) (string, bool),
 ) ([]timeline.Timeline, error) {
-	return selectChosenTimelines(ctx, s, timelineChoice{names: names}, lookupEnv)
+	sel, err := selectTimelines(ctx, s, timelineInput{names: names, rule: timelineRule{several: true}}, lookupEnv)
+	if err != nil {
+		return nil, err
+	}
+
+	return sel.all(ctx, s)
 }
 
 // timelineRequiredError returns timeline_required, with a hint naming the first few timelines
@@ -454,31 +492,4 @@ func shadowWarning(lookupEnv func(string) (string, bool), picked timeline.Timeli
 // addOverlayFlag declares --overlay, on a command whose -t reads several timelines.
 func addOverlayFlag(flags *pflag.FlagSet) {
 	flags.String("overlay", "", "Read the timelines of the overlay called `name`, instead of -t")
-}
-
-// timelineChoice is what selects a command's timelines: -t's names, or a saved overlay.
-type timelineChoice struct {
-	names   []string
-	overlay *string
-}
-
-// readTimelineChoice returns the timelines -t or --overlay names, or usage when --overlay is
-// empty (A-9) or given with -t. It runs before the store opens.
-func readTimelineChoice(flags *pflag.FlagSet) (timelineChoice, error) {
-	in, err := readTimelineInput(flags, nil, timelineRule{several: true})
-	return timelineChoice{names: in.names, overlay: in.overlay}, err
-}
-
-// selectChosenTimelines returns the timelines choice selects: its overlay's, in the overlay's
-// order, or those selectNamedTimelines selects for its names.
-func selectChosenTimelines(
-	ctx context.Context, s *store.Store, choice timelineChoice, lookupEnv func(string) (string, bool),
-) ([]timeline.Timeline, error) {
-	in := timelineInput{names: choice.names, overlay: choice.overlay, rule: timelineRule{several: true}}
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
-	if err != nil {
-		return nil, err
-	}
-
-	return sel.all(ctx, s)
 }

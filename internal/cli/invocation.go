@@ -27,6 +27,9 @@ type invocation struct {
 	debug       bool
 	// echoArgs is --db and --config as given, which a form's echoed command repeats.
 	echoArgs []string
+	// timelines is the timeline input under the command's rule; wrapRunErrors has already refused
+	// a bad one.
+	timelines timelineInput
 }
 
 // readInvocation reads cmd's command line, app and the environment once. It opens no store and
@@ -50,6 +53,10 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	}
 	noColor, _ := flags.GetBool("no-color")
 	debug, _ := flags.GetBool("debug")
+	timelines, err := readTimelineInput(flags, flags.Args(), ruleOf(cmd))
+	if err != nil {
+		return invocation{}, err
+	}
 
 	return invocation{
 		out: o, cfg: cfg, tz: changedString(flags, "tz"), now: app.Now,
@@ -60,6 +67,7 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 		formatGiven: flags.Changed("format"),
 		debug:       debug || envTrue(app.LookupEnv, "CORONER_DEBUG"),
 		echoArgs:    givenStoreArgs(flags),
+		timelines:   timelines,
 	}, nil
 }
 

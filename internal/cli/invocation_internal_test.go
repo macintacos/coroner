@@ -63,6 +63,15 @@ var _ = Describe("invocation", func() {
 		Entry("neither", "", nil, "local"),
 	)
 
+	It("reads the timeline input with the command's rule", func(ctx SpecContext) {
+		inv := read(ctx, invocationApp(map[string]string{}, ""), "-t", "alpha", "-t", "beta")
+
+		Expect(inv.timelines).To(Equal(timelineInput{
+			names: []string{"alpha", "beta"},
+			rule:  timelineRule{command: "coroner event list", several: true},
+		}))
+	})
+
 	It("reads a command line with a bad --tz, and fails only zone()", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{}, ""), "--tz", "Bogus/Zone")
 
