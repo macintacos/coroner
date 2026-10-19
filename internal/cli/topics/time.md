@@ -34,6 +34,9 @@ was recorded in.
 - **Epochs,** optionally after `@`, whose digit count picks the unit: 10 digits are
   seconds and may carry a fraction, 13 are milliseconds, 16 microseconds and 19
   nanoseconds.
+- A malformed date, time, offset or epoch in one of those forms, such as
+  `2026-02-30T10:00:00Z` or `2026-09-12T14:05:03+5:30`, is rejected as `invalid_time`,
+  never read as natural language.
 - **Natural language, which is experimental:** `yesterday 14:05`, `3 hours ago` or
   `friday 9am`. It never resolves to the future, and what a phrase means may change when
   coroner's parser changes, so never script it.

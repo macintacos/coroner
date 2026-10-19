@@ -81,6 +81,8 @@ var _ = Describe("Parse golden corpus", func() {
 		// -00:00 states UTC with the local offset unknown, as Z does.
 		Entry(nil, "2026-09-12T14:05:03-00:00",
 			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond)),
+		Entry(nil, "2026-09-12T14:05:03-0000",
+			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond)),
 		// MongoDB's offset without a colon.
 		Entry(nil, "2026-09-12T14:05:03.000-0400",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionMillisecond)),
@@ -211,6 +213,13 @@ var _ = Describe("Parse golden corpus", func() {
 			at("2025-12-03T15:15:00.000000000Z", new(est), timeline.PrecisionMinute)),
 		Entry(nil, "12 September 2026 14:05:03",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		// A zone name is not an offset, so natural language reads it.
+		Entry(nil, "2026-09-12 14:05:03 EDT",
+			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
+		Entry(nil, "14:05:03.250",
+			at("2026-09-12T18:05:03.250000000Z", new(edt), timeline.PrecisionMillisecond)),
+		Entry(nil, "Sep 12 14:05:03.123 UTC",
+			at("2026-09-12T14:05:03.123000000Z", nil, timeline.PrecisionMillisecond)),
 		Entry(nil, "~yesterday 14:05",
 			at("2026-09-11T18:05:00.000000000Z", new(edt), timeline.PrecisionMinute).approximately()),
 		Entry(nil, "around 9am",
@@ -235,6 +244,16 @@ var _ = Describe("Parse golden corpus", func() {
 		Entry(nil, "20260912", timeparse.ErrUnrecognized),
 		// Epoch nanoseconds past 2262-04-11 overflow 64 bits.
 		Entry(nil, "9999999999999999999", timeparse.ErrUnrecognized),
+		// Malformed input in an exact format is rejected, never repaired by natural language.
+		Entry(nil, "2026-13-01T00:00:00Z", timeparse.ErrUnrecognized),
+		Entry(nil, "2026-02-30T10:00:00Z", timeparse.ErrUnrecognized),
+		Entry(nil, "2026-09-12T14:05:03+5:30", timeparse.ErrUnrecognized),
+		Entry(nil, "2026-09-31 10:00", timeparse.ErrUnrecognized),
+		Entry(nil, "Feb 30 10:00:00", timeparse.ErrUnrecognized),
+		Entry(nil, "1789236000123.456", timeparse.ErrUnrecognized),
+		Entry(nil, "1789236000123456.5", timeparse.ErrUnrecognized),
+		Entry(nil, "1789236000.1234567890", timeparse.ErrUnrecognized),
+		Entry(nil, "1789236000.", timeparse.ErrUnrecognized),
 		Entry(nil, "2026-03-08 02:30:00", timeparse.ErrDSTGap),
 		Entry(nil, "2026-11-01 01:30:00", timeparse.ErrDSTFold),
 		Entry(nil, "2026-03-08 02:30", timeparse.ErrDSTGap),
@@ -269,9 +288,10 @@ var _ = Describe("Parse golden corpus", func() {
 		// A relative time takes the zone's offset.
 		Entry(nil, "Asia/Kolkata", "10 minutes ago",
 			at("2026-09-13T01:20:00.000000000Z", new(ist), timeline.PrecisionMinute)),
-		// Santiago's clocks spring forward at midnight, so the day has no 00:00.
+		// Santiago's clocks spring forward at midnight, so the day starts at the 00:00 before
+		// the change.
 		Entry(nil, "America/Santiago", "2026-09-06",
-			at("2026-09-06T03:00:00.000000000Z", new(-3*60*60), timeline.PrecisionDay)),
+			at("2026-09-06T04:00:00.000000000Z", new(-4*60*60), timeline.PrecisionDay)),
 	)
 
 	DescribeTable("resolves at its own now",

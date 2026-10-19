@@ -174,7 +174,8 @@ func validateUTF8(field, what, s string) error {
 }
 
 func validateNotBlank(field, what, s string) error {
-	if strings.TrimSpace(s) == "" {
+	// SQLite's length() stops at the first NUL, so the store's CHECK reads NUL-led text as empty.
+	if trimmed := strings.TrimSpace(s); trimmed == "" || trimmed[0] == 0 {
 		return problem(field, RuleBlank, "%s: must not be blank", what)
 	}
 
@@ -202,11 +203,17 @@ func validatePrecision(precision Precision) error {
 		return nil
 	}
 
-	return problem("precision", RuleUnknown, "precision %q: must be day, hour, minute, second, millisecond, microsecond or nanosecond", precision)
+	names := make([]string, len(precisions()))
+	for i, p := range precisions() {
+		names[i] = string(p)
+	}
+	last := len(names) - 1
+
+	return problem("precision", RuleUnknown, "precision %q: must be %s or %s", precision, strings.Join(names[:last], ", "), names[last])
 }
 
 func validateOccurredAt(at time.Time, offset *int, precision Precision) error {
-	err := validateInstantRange("occurred_at", "occurred at", at)
+	err := ValidateInstantRange("occurred_at", "occurred at", at)
 	if err != nil || !precision.Valid() {
 		return err
 	}
@@ -251,7 +258,7 @@ func ValidateEndedAt(ended *time.Time, occurred time.Time) error {
 		return nil
 	}
 
-	err := validateInstantRange("ended_at", "ended at", *ended)
+	err := ValidateInstantRange("ended_at", "ended at", *ended)
 	if err != nil {
 		return err
 	}
@@ -262,7 +269,9 @@ func ValidateEndedAt(ended *time.Time, occurred time.Time) error {
 	return nil
 }
 
-func validateInstantRange(field, what string, t time.Time) error {
+// ValidateInstantRange reports t, the value of field, when its UTC year is outside
+// 0000–9999, which the canonical instant cannot render, or nil.
+func ValidateInstantRange(field, what string, t time.Time) error {
 	if year := t.UTC().Year(); year < 0 || year > 9999 {
 		return problem(field, RuleYearRange, "%s: year %d is outside 0000–9999", what, year)
 	}

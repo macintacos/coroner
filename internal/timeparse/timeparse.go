@@ -5,6 +5,7 @@ package timeparse
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,10 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-const digits = "0123456789"
+const (
+	digits = "0123456789"
+	hint   = "use RFC 3339, such as 2026-09-12T14:05:03Z"
+)
 
 // Resolved is a typed time resolved to an instant.
 type Resolved struct {
@@ -63,8 +67,6 @@ type layer func(text string, now time.Time, loc *time.Location) (Resolved, error
 // input is read in loc; an input that states an offset or zone is read in that. Every
 // error is a *ParseError.
 func Parse(input string, now time.Time, loc *time.Location) (Resolved, error) {
-	const hint = "use RFC 3339, such as 2026-09-12T14:05:03Z"
-
 	text, approximate := cutApproximate(strings.TrimSpace(input))
 
 	for _, parse := range []layer{parseEpoch, parseLayout, parseNaive, parseSyslog, parseNatural} {
@@ -112,9 +114,12 @@ func cutApproximate(text string) (string, bool) {
 func parseEpoch(text string, _ time.Time, _ *time.Location) (Resolved, error) {
 	whole, fraction, fractional := strings.Cut(strings.TrimPrefix(text, "@"), ".")
 	// Four digits or fewer is a year for natural language.
-	if len(whole) <= 4 || !isDigits(whole) ||
-		fractional && (len(whole) != 10 || len(fraction) > 9 || !isDigits(fraction)) {
+	if len(whole) <= 4 || !isDigits(whole) {
 		return Resolved{}, errNoMatch
+	}
+
+	if fractional && (len(whole) != 10 || len(fraction) > 9 || !isDigits(fraction)) {
+		return Resolved{}, &ParseError{Err: ErrUnrecognized, Hint: "only epoch seconds take a fraction, of 1 to 9 digits"}
 	}
 
 	epoch, err := strconv.ParseInt(whole, 10, 64)
@@ -160,7 +165,7 @@ func parseLayout(text string, _ time.Time, _ *time.Location) (Resolved, error) {
 
 		var offset *int
 		// ParseInLocation reads +00:00 as time.UTC too, so only the text tells Z apart.
-		if !strings.HasSuffix(text, "Z") && !strings.HasSuffix(text, "-00:00") {
+		if !strings.HasSuffix(text, "Z") && !strings.HasSuffix(text, "-00:00") && !strings.HasSuffix(text, "-0000") {
 			_, seconds := t.Zone()
 			offset = &seconds
 		}
@@ -171,7 +176,12 @@ func parseLayout(text string, _ time.Time, _ *time.Location) (Resolved, error) {
 	return Resolved{}, errNoMatch
 }
 
-// parseNaive reads a date and time with no offset as a wall clock in loc.
+// exactShape is a date and time with an optional fraction and numeric offset: the shape
+// parseLayout and parseNaive claim, so a malformed one never reaches natural language.
+var exactShape = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d+:\d+(:\d+([.,]\d*)?)?(Z|[+-][\d:]*)?$`)
+
+// parseNaive reads a date and time with no offset as a wall clock in loc, and rejects an
+// input of exactShape that neither it nor parseLayout read.
 func parseNaive(text string, _ time.Time, loc *time.Location) (Resolved, error) {
 	text = strings.ToUpper(text)
 
@@ -182,6 +192,10 @@ func parseNaive(text string, _ time.Time, loc *time.Location) (Resolved, error) 
 		}
 	}
 
+	if exactShape.MatchString(text) {
+		return Resolved{}, &ParseError{Err: ErrUnrecognized, Hint: hint}
+	}
+
 	return Resolved{}, errNoMatch
 }
 
@@ -189,6 +203,12 @@ func parseNaive(text string, _ time.Time, loc *time.Location) (Resolved, error) 
 // puts it on a real date no later than now.
 func parseSyslog(text string, now time.Time, loc *time.Location) (Resolved, error) {
 	stamp, err := time.ParseInLocation(time.Stamp, text, time.UTC)
+	// A stamp with an impossible value, such as Feb 30, is syslog's to reject.
+	failed, ok := errors.AsType[*time.ParseError](err)
+	if ok && strings.HasSuffix(failed.Message, "out of range") {
+		return Resolved{}, &ParseError{Err: fmt.Errorf("%w: %w", ErrUnrecognized, err), Hint: hint}
+	}
+
 	if err != nil {
 		return Resolved{}, errNoMatch
 	}

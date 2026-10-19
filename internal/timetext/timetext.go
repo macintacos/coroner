@@ -47,11 +47,53 @@ func Read(e timeline.Event, zone *time.Location) Reading {
 		Precision:   e.Precision,
 	}
 	if e.EndedAt != nil {
-		end := part(e.EndedAt.In(loc), e.Precision, inOwnOffset)
+		local := e.EndedAt.In(loc)
+		end := part(local, exactPrecision(local, e.Precision), inOwnOffset)
 		r.End = &end
 	}
 
 	return r
+}
+
+// Window is the span a set of events covers as people see it in a zone.
+type Window struct {
+	// Start is the earliest event's start, read as Read reads it.
+	Start Part
+	// Reach is the furthest any event's interval or precision window reaches, on the zone's
+	// wall clock to the precision that shows it exactly, and at least to the minute.
+	Reach Part
+}
+
+// ReadWindow returns the window events cover in zone; events must not be empty.
+func ReadWindow(events []timeline.Event, zone *time.Location) Window {
+	reach := slices.MaxFunc(events, func(a, b timeline.Event) int { return reachOf(a).Compare(reachOf(b)) })
+	local := reachOf(reach).In(zone)
+
+	return Window{
+		Start: Read(slices.MinFunc(events, timeline.CompareEvents), zone).Start,
+		Reach: part(local, exactPrecision(local, timeline.PrecisionMinute), false),
+	}
+}
+
+// reachOf is the furthest e reaches: its interval's end or its precision window's.
+func reachOf(e timeline.Event) time.Time {
+	var length time.Duration
+	switch e.Precision {
+	case timeline.PrecisionDay:
+		length = 24 * time.Hour
+	case timeline.PrecisionHour:
+		length = time.Hour
+	case timeline.PrecisionMinute:
+		length = time.Minute
+	case timeline.PrecisionSecond, timeline.PrecisionMillisecond, timeline.PrecisionMicrosecond, timeline.PrecisionNanosecond:
+	}
+
+	reach := e.OccurredAt.Add(length)
+	if e.EndedAt != nil && e.EndedAt.After(reach) {
+		return *e.EndedAt
+	}
+
+	return reach
 }
 
 // DayZone returns the abbreviations of a day's parts that have a clock read in the zone, in
@@ -129,6 +171,27 @@ func part(t time.Time, precision timeline.Precision, inOwnOffset bool) Part {
 		Offset:       t.Format("-07:00"),
 		OwnOffset:    inOwnOffset,
 	}
+}
+
+// exactPrecision is the finer of floor and the coarsest precision that shows t exactly, so an
+// end typed finer than its start keeps its digits; an unknown floor is kept.
+func exactPrecision(t time.Time, floor timeline.Precision) timeline.Precision {
+	coarsestFirst := []timeline.Precision{
+		timeline.PrecisionDay, timeline.PrecisionHour, timeline.PrecisionMinute, timeline.PrecisionSecond,
+		timeline.PrecisionMillisecond, timeline.PrecisionMicrosecond, timeline.PrecisionNanosecond,
+	}
+	at := slices.Index(coarsestFirst, floor)
+	if at < 0 {
+		return floor
+	}
+
+	for _, p := range coarsestFirst[at:] {
+		if p.Truncate(t).Equal(t) {
+			return p
+		}
+	}
+
+	return floor
 }
 
 // clockText returns t's wall clock to precision; a day has none.

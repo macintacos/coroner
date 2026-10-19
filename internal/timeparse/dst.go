@@ -15,8 +15,7 @@ func resolveWall(wall wallTime, loc *time.Location) (time.Time, error) {
 	var candidates, found []time.Time
 
 	for _, probe := range []time.Duration{-24 * time.Hour, 24 * time.Hour} {
-		_, offset := wall.t.Add(probe).In(loc).Zone()
-		candidate := wall.t.Add(-time.Duration(offset) * time.Second).In(time.FixedZone("", offset))
+		candidate := readInOffsetAt(wall, loc, probe)
 		candidates = append(candidates, candidate)
 
 		if wallClock(candidate.In(loc)).t.Equal(wall.t) && !slices.ContainsFunc(found, candidate.Equal) {
@@ -38,6 +37,13 @@ func resolveWall(wall wallTime, loc *time.Location) (time.Time, error) {
 	return time.Time{}, &ParseError{Err: kind, Hint: fmt.Sprintf("%s %s %s; state the offset you mean, such as %s or %s",
 		wall.t.Format("2006-01-02 15:04:05.999999999"), happens, loc,
 		candidates[0].Format(layout), candidates[1].Format(layout))}
+}
+
+// readInOffsetAt reads wall in the offset loc has probe away from it.
+func readInOffsetAt(wall wallTime, loc *time.Location, probe time.Duration) time.Time {
+	_, offset := wall.t.Add(probe).In(loc).Zone()
+
+	return wall.t.Add(-time.Duration(offset) * time.Second).In(time.FixedZone("", offset))
 }
 
 // wallClock reads t's wall clock in t's own location.

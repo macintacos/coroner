@@ -31,6 +31,8 @@ func TestResolveWallFindsTheInstantOrRejectsARepeatedWallClock(t *testing.T) {
 		got, err := resolveWall(wallClock(instant.In(loc)), loc)
 
 		switch {
+		case errors.Is(err, ErrDSTGap):
+			t.Fatalf("resolveWall(%v in %s) = %v; the wall clock is an instant's", instant.In(loc), zone, err)
 		case repeated(instant, loc) != errors.Is(err, ErrDSTFold):
 			t.Fatalf("resolveWall(%v in %s) = %v; repeated is %v", instant.In(loc), zone, err, repeated(instant, loc))
 		case err == nil && !got.Equal(instant):
