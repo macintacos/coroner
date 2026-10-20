@@ -162,14 +162,14 @@ var _ = Describe("event view, edit and delete", func() {
 					EventID: &eventID, Kind: timeline.AnnotationEvidence, Body: "replSetStepDown", CreatedAt: now, UpdatedAt: now,
 				}, "0199a1c1-0000-7000-8000-000000000000")).To(Succeed())
 
-				Expect(run(ctx, "event", "view", "1")).To(Equal(0))
+				Expect(run(ctx, "event", "view", "1", "--tz", "America/New_York")).To(Equal(0))
 
 				Expect(out.String()).To(HavePrefix("Event #1 in timeline `mongo-outage`\n"))
-				Expect(out.String()).To(MatchRegexp(`(?m)^Occurred: +2026-09-11T03:14:07\.412Z \(millisecond\)$`))
+				Expect(out.String()).To(MatchRegexp(`(?m)^Occurred: +2026-09-10T23:14:07\.412-04:00 \(millisecond\)$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Source: +mongod$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Text: +Primary stepped down$`))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Annotations: +1$`))
-				Expect(out.String()).To(MatchRegexp(`(?m)^evidence\t2026-09-13T01:30:00Z\t-\t-\treplSetStepDown$`))
+				Expect(out.String()).To(MatchRegexp(`(?m)^evidence\t2026-09-12T21:30:00-04:00\t-\t-\treplSetStepDown$`))
 			})
 	})
 

@@ -57,11 +57,16 @@ var _ = Describe("add forms", func() {
 		Entry("an error of no kind", errors.New("disk full"), false),
 	)
 
-	It("read times in the local zone when the config file's default_timezone is unknown", func() {
-		env := baseCheckEnv(formSession{app: App{Now: testNow}, inv: invocation{cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}}})
+	DescribeTable("read times in UTC, not the clock's zone, when the config file's default_timezone is UTC or unknown",
+		func(defaultTimezone string) {
+			now := func() time.Time { return testNow().In(time.FixedZone("Test/Local", -3*3600)) }
+			env := baseCheckEnv(formSession{app: App{Now: now}, inv: invocation{cfg: config.Config{DefaultTimezone: defaultTimezone}}})
 
-		Expect(env.zone.loc).To(Equal(testNow().Location()))
-	})
+			Expect(env.zone).To(Equal(zone{loc: time.UTC, label: "UTC"}))
+		},
+		Entry("UTC", "UTC"),
+		Entry("unknown", "Mars/Olympus_Mons"),
+	)
 
 	It("read times in --tz over the config file's default_timezone", func() {
 		tz := "UTC"
