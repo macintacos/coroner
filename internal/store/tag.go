@@ -14,7 +14,9 @@ type TagUsage struct {
 	FirstOccurredAt, LastOccurredAt time.Time
 }
 
-// tagUsageQuery is hand-written: sqlc cannot type MIN or MAX.
+// tagUsageQuery returns TagUsages' SQL and args: every tag by name, or, given timelineIDs, only
+// those timelines' tags, the one on the latest event first. Hand-written: sqlc cannot type MIN
+// or MAX, nor bind a variable IN list.
 func tagUsageQuery(timelineIDs []string) (string, []any) {
 	const selectFrom = `SELECT t.tag, COUNT(*), MIN(e.occurred_at), MAX(e.occurred_at)
 FROM event_tag t JOIN event e ON e.id = t.event_id
@@ -37,7 +39,7 @@ func (s *Store) TagUsages(ctx context.Context, timelineIDs ...string) ([]TagUsag
 }
 
 // TagUsages returns every tag an event carries, with its usage, ordered by name. Given
-// timelineIDs, it counts only those timelines' events, the most recently used tag first.
+// timelineIDs, it counts only those timelines' events, the tag on the latest event first.
 func (tx *Tx) TagUsages(ctx context.Context, timelineIDs ...string) ([]TagUsage, error) {
 	query, args := tagUsageQuery(timelineIDs)
 

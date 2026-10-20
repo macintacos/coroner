@@ -48,8 +48,8 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"same file again adds nothing.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for the text, time, source,\n" +
 			"tags and files, and keeps the other flags under More options, which opens by itself when one\n" +
-			"of them holds a value. It suggests the sources and tags the timeline used most recently\n" +
-			"first, previews the time as you type it, and prints the command each entry equals.\n" +
+			"of them holds a value. It suggests sources and tags, the ones on the timeline's latest\n" +
+			"events first, previews the time as you type it, and prints the command each entry equals.\n" +
 			"Under --json only --interactive opens it, and --no-input never does.",
 		Args:        eventTextInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},

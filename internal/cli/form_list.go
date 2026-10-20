@@ -12,9 +12,8 @@ import (
 
 // listField is the form field of a repeatable field that takes its values one at a time: enter adds
 // what is typed, up and down pick a value while nothing is typed, else cycle the matches of its
-// suggestions, and backspace removes the picked one. Its value is its
-// values, a []string. Changing them asks for the window size, since huh fits a form's height to
-// its fields only when one arrives.
+// suggestions, and backspace removes the picked one. Its value is its values, a []string. Changing
+// them asks for the window size, since huh fits a form's height to its fields only when one arrives.
 type listField struct {
 	*huh.Input
 	help   string
@@ -27,12 +26,12 @@ type listField struct {
 	// the command the terminal needs to show it; send holds that command until the next update.
 	thumbnail func(value string) (string, tea.Cmd)
 	send      tea.Cmd
-	// row, when set, shows the suggestions what is typed matches.
+	// row, when set, is the match row of its suggestions.
 	row *matchRow
 }
 
-// listShown is how many values a list field shows at once, so a long list never pushes its typing
-// line off the screen.
+// listShown is how many values a list field, or a match row, shows at once, so a long list never
+// pushes its typing line off the screen.
 const listShown = 5
 
 // listKeys are the keys a list field reads before its Input does; up and down only while nothing is
@@ -198,6 +197,7 @@ func (l *listField) addTyped() tea.Cmd {
 	if l.row != nil {
 		// SetValue leaves textinput's matches for what was typed; SetSuggestions recomputes them.
 		l.Suggestions(l.row.suggestions)
+		l.row.follow(tea.KeyPressMsg{}, "")
 	}
 	l.show()
 

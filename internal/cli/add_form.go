@@ -502,8 +502,8 @@ func eventAddForm() addForm[eventAdded] {
 	}
 }
 
-// eventChoices suggests sources as sourceChoices does, and t's tags, the most recently used first,
-// then every other tag there is.
+// eventChoices suggests sources as sourceChoices does, and t's tags, ordered by their latest event's
+// occurred at, latest first, then every other tag there is.
 func eventChoices(ctx context.Context, s *store.Store, t timeline.Timeline, _ zone) (formChoices, error) {
 	choices, err := sourceChoices(ctx, s, t)
 	if err != nil {
@@ -514,9 +514,12 @@ func eventChoices(ctx context.Context, s *store.Store, t timeline.Timeline, _ zo
 		return formChoices{}, err
 	}
 	all, err := s.TagUsages(ctx)
+	if err != nil {
+		return formChoices{}, err
+	}
 	choices.suggestions["tag"] = appendUnique(tagNames(own), tagNames(all)...)
 
-	return choices, err
+	return choices, nil
 }
 
 func tagNames(usages []store.TagUsage) []string {
@@ -534,17 +537,20 @@ func annotationAddForm() addForm[annotationAdded] {
 	}
 }
 
-// sourceChoices suggests t's sources for the source field, the most recently used first, then every
-// other source there is.
+// sourceChoices suggests t's sources for the source field, the one on its latest event first, then
+// every other source there is.
 func sourceChoices(ctx context.Context, s *store.Store, t timeline.Timeline) (formChoices, error) {
 	own, err := s.TimelineSources(ctx, t.ID)
 	if err != nil {
 		return formChoices{}, err
 	}
 	all, err := s.Sources(ctx)
+	if err != nil {
+		return formChoices{}, err
+	}
 	names := appendUnique(sourceNames(own), sourceNames(all)...)
 
-	return formChoices{suggestions: map[string][]string{"source": names}}, err
+	return formChoices{suggestions: map[string][]string{"source": names}}, nil
 }
 
 func sourceNames(sources []timeline.Source) []string {

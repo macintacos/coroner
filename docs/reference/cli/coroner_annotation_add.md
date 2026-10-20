@@ -18,8 +18,9 @@ unique id prefix. The event must be in the timeline the annotation goes to.
 Each --attach copies a file, such as a screenshot, into the blob directory beside the
 database, and prints its id, sha256, size and type.
 
-On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks
-the event from the timeline, and prints the command each entry equals. Under --json only
+On a terminal, with no body or --kind, or with --interactive, a form asks for each flag,
+suggests sources, the ones on the timeline's latest events first, picks the event from the
+timeline, and prints the command each entry equals. Under --json only
 --interactive opens it, and --no-input never does.
 
 ```

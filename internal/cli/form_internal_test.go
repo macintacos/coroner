@@ -412,11 +412,32 @@ var _ = Describe("form fields", func() {
 			ctrlE(down)
 			Expect(down.GetValue()).To(Equal("db-1"))
 
-			up := sourceWith("db-1", "db-2", "db-3")
+			up := sourceWith(seven...)
 			typeText(up, "db")
 			press(up, tea.KeyUp)
+			Expect(fieldView(up)).To(ContainSubstring("↳ db-3  db-4  db-5  db-6  db-7"))
 			ctrlE(up)
-			Expect(up.GetValue()).To(Equal("db-3"))
+			Expect(up.GetValue()).To(Equal("db-7"))
+		})
+
+		It("shows the first five suggestions again once a list field adds what was typed on leaving", func() {
+			choices := formChoices{suggestions: map[string][]string{"tag": {"election", "escalation", "edge"}}}
+			tag := namedField(eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "tag")
+			tag.WithKeyMap(huh.NewDefaultKeyMap())
+			tag.Focus()
+			typeText(tag, "el")
+
+			tag.Blur()
+
+			Expect(fieldView(tag)).To(ContainSubstring("↳ election  escalation  edge"))
+		})
+
+		It("opens a suggested field that comes before the tz field", func() {
+			source := field{name: "source", usage: "System it came from", check: withoutEnv(checkSource)}
+			def := definition{fields: []field{source, tzField()}}
+			choices := formChoices{suggestions: map[string][]string{"source": {"mongod"}}}
+
+			Expect(func() { def.formFields(formCheckEnv(), fieldValues{}, choices) }).NotTo(Panic())
 		})
 
 		It("shows no row when nothing matches", func() {

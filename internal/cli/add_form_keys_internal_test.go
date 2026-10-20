@@ -69,8 +69,7 @@ func namedKey(name string) tea.KeyPressMsg {
 
 // keyedForms returns forms that press script's keys through each form terminalForms would run,
 // at size, calling check, when non-nil, after each counted key and each typed step. It must run
-// inside a synctest
-// bubble.
+// inside a synctest bubble.
 func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*huh.Form)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
 		return func(_ context.Context, groups ...formGroup) (bool, error) {
@@ -431,7 +430,7 @@ func testCycleAndPick(t *testing.T) {
 	script := tagsEntry().
 		typed("e").press("down", "ctrl+e", "enter").
 		press("up", "backspace").
-		typed("e").press("ctrl+n", "ctrl+e", "enter").
+		typed("e").press("ctrl+n", "ctrl+n", "ctrl+e", "enter").
 		press("enter", "enter", "enter", "n")
 	var typingHelp, pickHelp []string
 	check := func(form *huh.Form) {
@@ -453,8 +452,8 @@ func testCycleAndPick(t *testing.T) {
 	if !slices.Contains(pickHelp, "↑/↓ pick") {
 		t.Errorf("help after adding a tag is %v; want ↑/↓ pick", pickHelp)
 	}
-	if tags := addedTags(t, app); !slices.Equal(tags, []string{"escalation"}) {
-		t.Errorf("stored tags %v; want escalation", tags)
+	if tags := addedTags(t, app); !slices.Equal(tags, []string{"edge"}) {
+		t.Errorf("stored tags %v; want edge", tags)
 	}
 }
 

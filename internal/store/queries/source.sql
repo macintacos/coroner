@@ -28,6 +28,12 @@ WHERE name = ?;
 SELECT * FROM source
 ORDER BY name;
 
+-- name: ListTimelineSources :many
+SELECT s.* FROM source s JOIN event e ON e.source_id = s.id
+WHERE e.timeline_id = ?
+GROUP BY s.id
+ORDER BY MAX(e.occurred_at) DESC, s.name;
+
 -- name: UpdateSource :one
 UPDATE source
 SET name = ?

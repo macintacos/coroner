@@ -30,7 +30,7 @@ func newMatchRow(suggestions []string, typed string) *matchRow {
 	return r
 }
 
-// follow updates r for press, which the Input has taken and now holds typed, and reports whether
+// follow updates r for press, after the field has handled it, leaving typed, and reports whether
 // its line changed.
 func (r *matchRow) follow(press tea.KeyPressMsg, typed string) bool {
 	before := r.line()

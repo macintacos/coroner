@@ -171,7 +171,7 @@ func zonePreview(check func(string, checkEnv) error, preview func(string, checkE
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
 func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 	i := d.fieldIndex("tz")
-	if i == -1 {
+	if i == -1 || fields[i] == nil {
 		return env
 	}
 	tz := fmt.Sprint(fields[i].GetValue())

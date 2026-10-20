@@ -26,37 +26,22 @@ func (tx *Tx) Sources(ctx context.Context) ([]timeline.Source, error) {
 	})
 }
 
-// timelineSourceQuery is hand-written: sqlc cannot type MAX.
-const timelineSourceQuery = `SELECT s.id, s.name, s.created_at
-FROM source s JOIN event e ON e.source_id = s.id
-WHERE e.timeline_id = ?
-GROUP BY s.id
-ORDER BY MAX(e.occurred_at) DESC, s.name`
-
 // TimelineSources is Tx.TimelineSources in its own Read.
 func (s *Store) TimelineSources(ctx context.Context, timelineID string) ([]timeline.Source, error) {
 	return readIn(ctx, s, func(tx *Tx) ([]timeline.Source, error) { return tx.TimelineSources(ctx, timelineID) })
 }
 
-// TimelineSources returns the sources the timeline's events name, the most recently used first.
+// TimelineSources returns the sources the timeline's events name, the one on its latest event
+// first.
 func (tx *Tx) TimelineSources(ctx context.Context, timelineID string) ([]timeline.Source, error) {
 	return translated(func() ([]timeline.Source, error) {
-		return queryAll(ctx, tx.db, timelineSourceQuery, []any{timelineID}, scanSource)
+		rows, err := tx.q.ListTimelineSources(ctx, timelineID)
+		if err != nil {
+			return nil, err
+		}
+
+		return loadAll(rows, loadSource)
 	})
-}
-
-// scanSource reads a row of timelineSourceQuery; keep it in step with that column order.
-func scanSource(rows *sql.Rows) (timeline.Source, error) {
-	var id, name, createdAt string
-	err := rows.Scan(&id, &name, &createdAt)
-	if err != nil {
-		return timeline.Source{}, err
-	}
-
-	var p instants
-	source := timeline.Source{ID: id, Name: name, CreatedAt: p.parse(createdAt)}
-
-	return source, p.err
 }
 
 // SourceUsage is a source with how many events and annotations name it, and when its events
