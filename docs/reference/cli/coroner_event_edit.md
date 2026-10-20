@@ -60,7 +60,7 @@ coroner event edit <event> [flags]
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ```
 
 ### SEE ALSO

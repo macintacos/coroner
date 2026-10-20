@@ -18,7 +18,7 @@ overlay saved with 'coroner overlay create' holds, in place of -t.
 
 --since is inclusive and --until exclusive. Repeated --source flags match any of them,
 and repeated --tag flags must all match. Times with no offset are read, and times print,
-in --tz, then the config file's default_timezone, then the local zone. Piped, the
+in --tz, then the config file's default_timezone, then UTC. Piped, the
 fields are tab-separated.
 
 ```
@@ -61,7 +61,7 @@ coroner event list [flags]
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ```
 
 ### SEE ALSO

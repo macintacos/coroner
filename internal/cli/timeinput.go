@@ -19,7 +19,7 @@ type zone struct {
 	label string
 }
 
-const tzUsage = "Time `zone` for this invocation (default: config default_timezone, then TZ)"
+const tzUsage = "Time `zone` for this invocation (default: config default_timezone, then UTC)"
 
 // tzField is --tz, which root registers, as the field of a command that reads time input.
 func tzField() field {

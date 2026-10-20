@@ -51,7 +51,7 @@ coroner timeline create <name> [flags]
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ```
 
 ### SEE ALSO
