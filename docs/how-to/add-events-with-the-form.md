@@ -104,10 +104,11 @@ body.
 ```text
 Equivalent command: coroner event add 'Election timeout on db-3' -t inc-4821 --at 2026-10-20T16:05:00Z
 
-Added 2 events to timeline `inc-4821`:
+✓ Added 2 events to timeline `inc-4821`
   #3  2026-10-20T16:00:00Z  Primary stepped down
   #4  2026-10-20T16:05:00Z  Election timeout on db-3
-View the timeline: coroner timeline view -t inc-4821
+
+  View the timeline: coroner timeline view -t inc-4821
 ```
 
 ## Repeat an entry from a script
