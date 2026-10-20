@@ -34,9 +34,10 @@ before each field's title. It first asks for the five fields most events use:
 - **Tags:** keywords such as `phase:detect`, added one at a time with `enter`.
 - **Files:** files to attach, such as screenshots, one path at a time.
 
-Source and Tags show a row of the values on the timeline's latest events first, then every
-other one. Once you type, the row shows the ones that start with what you typed, beside
-the inline suggestion `ctrl+e` takes.
+Source and Tags show a `💡 Suggestions:` row of the values on the timeline's latest events
+first, then every other one, while the values a field already holds are each marked `✓`.
+Once you type, the row shows the ones that start with what you typed, beside the inline
+suggestion `ctrl+e` takes.
 
 Files completes the path you type. Once you type, the row lists the entries of the typed
 path's directory, relative to where you run coroner, absolute, or in your home directory
