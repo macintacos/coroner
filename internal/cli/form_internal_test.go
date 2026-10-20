@@ -103,6 +103,16 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("clip a line wider than the frame's inside, so the frame keeps the rows the form planned", func() {
+		lines := strings.Split(ansi.Strip(frame("📝 New event", strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
+
+		Expect(lines).To(HaveLen(4))
+		Expect(lines[2]).To(HavePrefix("│ > typed"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(40), line)
+		}
+	})
+
 	It("frame a form at most 80 cells wide on a wider terminal", func() {
 		form := newForm("📝 New event", formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
 

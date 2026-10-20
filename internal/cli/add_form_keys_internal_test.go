@@ -131,6 +131,9 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 			check(d.form)
 		}
 	}
+	if view := d.form.View().Content; view != "" {
+		t.Errorf("the form still draws once it ends, so the terminal keeps it:\n%s", view)
+	}
 	close(d.done)
 	// Moves fake time past every pending blink, so the bubble ends with no goroutine blocked.
 	time.Sleep(time.Second)

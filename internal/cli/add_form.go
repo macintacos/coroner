@@ -114,10 +114,16 @@ func frameBox() lipgloss.Style {
 		BorderForeground(lipgloss.BrightBlack)
 }
 
-// frame returns body in a rounded frame width cells wide, or as wide as body when width is 0, with
-// title set into its top edge.
+// frame returns body in a rounded frame width cells wide, clipping a wider line, or as wide as body
+// when width is 0, with title set into its top edge.
 func frame(title, body string, width int) string {
-	box := frameBox().Width(width).Render(body)
+	inside := lipgloss.NewStyle()
+	if width > 0 {
+		// huh can draw a line wider than it was told, as its help does; wrapping it would add a row
+		// the form's height never planned for.
+		inside = inside.MaxWidth(width - frameBox().GetHorizontalFrameSize())
+	}
+	box := frameBox().Width(width).Render(inside.Render(body))
 	edge := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
 	rule := strings.Repeat("─", max(0, lipgloss.Width(box)-ansi.StringWidth("╭─ "+title+" ╮")))
 
