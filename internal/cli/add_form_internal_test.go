@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -276,6 +277,18 @@ var _ = Describe("add forms", func() {
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
 				Expect(fieldView(namedField(asked[0], "author"))).To(ContainSubstring("Priya"))
+			})
+
+			It("attach a Files path starting with ~/ from HOME, echoing its full path", func(ctx SpecContext) {
+				home := GinkgoT().TempDir()
+				withEnv(&app, map[string]string{"HOME": home})
+				Expect(os.WriteFile(filepath.Join(home, "log.txt"), []byte("stepdown\n"), 0o600)).To(Succeed())
+				app.ReadFile = os.ReadFile
+				command := eventAdd(ctx, answers(submit(map[string]string{"text": "Primary stepped down", "attach": "~/log.txt"}), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(echoedArgs(ctx, errOut.String())).To(ContainElements("--attach", filepath.Join(home, "log.txt")))
 			})
 
 			It("echo the flags-only command with every field in the flags' order", func(ctx SpecContext) {
