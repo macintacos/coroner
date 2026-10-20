@@ -43,6 +43,8 @@ type field struct {
 	changes bool
 	// perEntry marks a field another add form entry opens without; only an add form reads it.
 	perEntry bool
+	// more marks a field a form asks only behind More options; only a form reads it.
+	more bool
 	// title is what a form calls the field, empty meaning its name; only a form reads it.
 	title string
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
@@ -165,6 +167,12 @@ func changing(f field) field {
 // perEntry returns f marked as a field another form entry opens without.
 func perEntry(f field) field {
 	f.perEntry = true
+	return f
+}
+
+// more returns f marked as a field a form asks only behind More options.
+func more(f field) field {
+	f.more = true
 	return f
 }
 

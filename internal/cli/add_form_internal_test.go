@@ -229,7 +229,7 @@ var _ = Describe("add forms", func() {
 				command := eventAdd(ctx, answers(submit(map[string]string{
 					"text": "Primary stepped down", "tz": "UTC", "at": "2026-09-11T03:14:07Z", "ended": "2026-09-11T03:20:00Z",
 					"approximate": "true", "source": "mongod", "tag": "election\nphase:detect", "url": "https://example.com/log",
-					"author": "Priya", "id": "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2", "dry-run": "true",
+					"author": "Priya", "id": "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2", "dry-run": "true", "more-options": "true",
 				}), confirm(false)))
 
 				// A list field takes its values by keys, so attach is given by its flag.
@@ -299,7 +299,7 @@ var _ = Describe("add forms", func() {
 				func(ctx SpecContext) {
 					entry := map[string]string{
 						"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election",
-						"url": "https://example.com/1",
+						"url": "https://example.com/1", "more-options": "true",
 					}
 					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
 
@@ -313,6 +313,39 @@ var _ = Describe("add forms", func() {
 					Expect(fieldText(second, "url")).To(BeEmpty())
 					Expect(errOut.String()).To(ContainSubstring("-t mongo-outage"))
 				})
+
+			It("open --interactive with More options shown and the url filled", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(cancel, confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage", "--interactive", "--url", "https://e.example")).To(Succeed())
+
+				Expect(fieldText(asked[0], "more-options")).To(Equal("true"))
+				Expect(fieldText(asked[0], "url")).To(Equal("https://e.example"))
+			})
+
+			It("open the next entry with More options shown and dry run Yes after a dry run", func(ctx SpecContext) {
+				entry := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
+				command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(fieldText(asked[2], "more-options")).To(Equal("true"))
+				Expect(fieldText(asked[2], "dry-run")).To(Equal("true"))
+			})
+
+			It("submit none of the fields More options hides when it is No", func(ctx SpecContext) {
+				hidden := map[string]string{"text": "Pager fires", "url": "https://e.example/1", "dry-run": "true"}
+				shown := map[string]string{"text": "Failover", "url": "https://e.example/2", "dry-run": "true", "more-options": "true"}
+				command := eventAdd(ctx, answers(submit(hidden), confirm(true), submit(shown), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+				echoed := errOut.String()
+
+				Expect(echoed).NotTo(ContainSubstring("https://e.example/1"))
+				Expect(echoed).To(ContainSubstring("add Failover --url https://e.example/2 --dry-run"))
+				Expect(run(ctx, "event", "list", "--json")).To(Equal(0), errOut.String())
+				Expect(out.String()).To(SatisfyAll(ContainSubstring("Pager fires"), Not(ContainSubstring("e.example")), Not(ContainSubstring("Failover"))))
+			})
 
 			It("write nothing and report interrupted when Ctrl-C ends the form", func(ctx SpecContext) {
 				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
@@ -337,7 +370,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("ask the entry again, as typed, when the add rejects it", func(ctx SpecContext) {
-				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
+				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
 				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -347,7 +380,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
-				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z"}
+				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
 				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())

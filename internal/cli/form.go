@@ -37,6 +37,55 @@ func (d definition) formValues(fields []huh.Field) fieldValues {
 	return values
 }
 
+// formGroups returns fields, which must come from d.formFields, as the form's pages: one page
+// when no field is marked more, else the unmarked fields closed by a More options confirm, then
+// the marked fields, skipped while it is No. It opens Yes when in gives a marked field, so no
+// such value applies unseen.
+func (d definition) formGroups(fields []huh.Field, in fieldValues) []formGroup {
+	var shown, behind []huh.Field
+	var titles []string
+	open := false
+	for i, f := range d.fields {
+		if !f.more {
+			shown = append(shown, fields[i])
+			continue
+		}
+		behind = append(behind, fields[i])
+		titles = append(titles, f.formTitle())
+		open = open || in.given(f.name)
+	}
+	if len(behind) == 0 {
+		return []formGroup{{fields: fields}}
+	}
+	confirm := huh.NewConfirm().Key("more-options").Title("More options?").
+		Description(strings.Join(titles, ", ")).Value(&open)
+	// Value can rebind the confirm, so read what it holds.
+	hide := func() bool {
+		yes, _ := confirm.GetValue().(bool)
+		return !yes
+	}
+
+	return []formGroup{{fields: append(shown, confirm)}, {fields: behind, hide: hide}}
+}
+
+// shownFields returns the fields of d the form showed: those of groups not hidden, without
+// fields d does not declare, such as the More options confirm.
+func (d definition) shownFields(groups []formGroup) []huh.Field {
+	var shown []huh.Field
+	for _, g := range groups {
+		if g.hide != nil && g.hide() {
+			continue
+		}
+		for _, formField := range g.fields {
+			if d.fieldIndex(formField.GetKey()) != -1 {
+				shown = append(shown, formField)
+			}
+		}
+	}
+
+	return shown
+}
+
 // formValue returns the values a form field holding value gives f.
 func (f field) formValue(value any) []string {
 	switch value := value.(type) {

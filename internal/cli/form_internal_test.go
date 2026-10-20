@@ -74,6 +74,51 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	Describe("event add's groups", func() {
+		def := eventAddDefinition()
+		groupsFor := func(in fieldValues) []formGroup {
+			return def.formGroups(def.formFields(formCheckEnv(), in, formChoices{}), in)
+		}
+
+		It("show the fields most events use first, and the rest behind More options", func() {
+			groups := groupsFor(fieldValues{})
+
+			Expect(groups).To(HaveLen(2))
+			Expect(fieldKeys(groups[0].fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
+			Expect(fieldKeys(groups[1].fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "id", "dry-run"}))
+			Expect(fieldView(namedField(groups[0].fields, "more-options"))).To(
+				ContainSubstring("tz, ended, approximate, url, author, id, dry-run"))
+		})
+
+		It("hide the More options fields until it is Yes", func() {
+			groups := groupsFor(fieldValues{})
+			Expect(groups[1].hide()).To(BeTrue())
+
+			fill(groups[0].fields, map[string]string{"more-options": "true"})
+
+			Expect(groups[1].hide()).To(BeFalse())
+		})
+
+		It("open More options when a field behind it holds a value", func() {
+			groups := groupsFor(fieldValues{"url": {"https://e.example"}})
+
+			Expect(namedField(groups[0].fields, "more-options").GetValue()).To(BeTrue())
+			Expect(groups[1].hide()).To(BeFalse())
+		})
+	})
+
+	It("keep one group for annotation add, timeline create and timeline edit", func() {
+		for _, def := range []definition{annotationAddDefinition(), timelineCreateDefinition(), timelineEditDefinition()} {
+			fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+			groups := def.formGroups(fields, fieldValues{})
+
+			Expect(groups).To(HaveLen(1))
+			Expect(groups[0].fields).To(Equal(fields))
+			Expect(groups[0].hide).To(BeNil())
+		}
+	})
+
 	It("read a line holding only spaces as no value, and check only the others", func() {
 		def := eventAddDefinition()
 		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
@@ -349,6 +394,16 @@ func namedField(fields []huh.Field, name string) huh.Field {
 
 	Fail("no form field " + name)
 	return nil
+}
+
+// fieldKeys returns each form field's key, in order.
+func fieldKeys(fields []huh.Field) []string {
+	keys := make([]string, len(fields))
+	for i, formField := range fields {
+		keys[i] = formField.GetKey()
+	}
+
+	return keys
 }
 
 // typeInto sets the text formField holds, as a fake form fills it.

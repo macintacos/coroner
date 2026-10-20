@@ -299,7 +299,8 @@ func (s formSession) askUntil(
 	choices.thumbnails = s.thumbnails
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
-		submitted, err := s.ask(ctx, formGroup{fields: fields})
+		groups := def.formGroups(fields, in)
+		submitted, err := s.ask(ctx, groups...)
 		switch {
 		case err != nil:
 			return in, askError(err)
@@ -307,7 +308,7 @@ func (s formSession) askUntil(
 			return in, nil
 		}
 
-		typed := def.formValues(fields)
+		typed := def.formValues(def.shownFields(groups))
 		err = submit(typed)
 		rejected, _ := errors.AsType[*Error](err)
 		switch {
