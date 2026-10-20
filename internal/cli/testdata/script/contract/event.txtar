@@ -90,6 +90,12 @@ exits 2 coroner event add 'Pager fires' --id 3b241101-e2bb-4255-8caf-4136c566a96
 ! stdout .
 stderr '^\{"error":\{"kind":"usage",[^\n]+\}\}\n\z'
 
+# With no --tz and no default_timezone, a time with no offset is read in UTC, not the zone TZ
+# sets, and stores no offset.
+exits 0 coroner event add 'Failover' --at 2026-09-11T14:00:00 --dry-run --json
+jsonvalid stdout
+stdout '"occurred_at":"2026-09-11T14:00:00\.000000000Z","occurred_offset":null,'
+
 -- rs-status.txt --
 db-3 SECONDARY, db-2 PRIMARY
 -- with-id.json --
