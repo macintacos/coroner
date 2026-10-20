@@ -229,6 +229,32 @@ var _ = Describe("add forms", func() {
 				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
 			})
 
+			It("show the resolved author as a placeholder", func(ctx SpecContext) {
+				withEnv(&app, map[string]string{"USER": "sre"})
+				command := eventAdd(ctx, answers(cancel, confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
+
+				Expect(fieldView(namedField(asked[0], "author"))).To(ContainSubstring("sre"))
+				Expect(fieldText(asked[0], "author")).To(BeEmpty())
+			})
+
+			It("show the config author as the placeholder when one is set", func(ctx SpecContext) {
+				withEnv(&app, map[string]string{"USER": "sre"})
+				config := filepath.Join(filepath.Dir(db), ".config", "coroner", "config.toml")
+				app.ReadFile = func(name string) ([]byte, error) {
+					if name != config {
+						return nil, fs.ErrNotExist
+					}
+					return []byte("author = \"Priya\"\n"), nil
+				}
+				command := eventAdd(ctx, answers(cancel, confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
+
+				Expect(fieldView(namedField(asked[0], "author"))).To(ContainSubstring("Priya"))
+			})
+
 			It("echo the flags-only command with every field in the flags' order", func(ctx SpecContext) {
 				app.ReadFile = func(name string) ([]byte, error) {
 					if name != "log.txt" {

@@ -79,6 +79,8 @@ type formSession struct {
 	ask askFunc
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
+	// placeholders are what the form's empty fields show as their default, by field name.
+	placeholders map[string]string
 }
 
 const interactiveUsage = "Open a form to fill in, prefilled from the other flags (needs a terminal)"
@@ -165,9 +167,16 @@ func newFormSession(app App, inv invocation, forms func(color bool, images graph
 		images = graphics.Detect(app.LookupEnv)
 	}
 
+	placeholders := map[string]string{}
+	author, err := defaultAuthor(nil, inv.cfg.Author, app.LookupEnv)
+	if err == nil && author != nil {
+		placeholders["author"] = *author
+	}
+
 	return formSession{
 		app: app, inv: inv, ask: forms(inv.outColor, images),
-		thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
+		thumbnails:   map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
+		placeholders: placeholders,
 	}
 }
 
@@ -297,6 +306,7 @@ func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
 ) (fieldValues, error) {
 	choices.thumbnails = s.thumbnails
+	choices.placeholders = s.placeholders
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
 		groups := def.formGroups(fields, in)

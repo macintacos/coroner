@@ -21,6 +21,8 @@ type formChoices struct {
 	// thumbnails return the lines shown under a list field's value, and a command the terminal
 	// needs to show them.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
+	// placeholders are shown in an empty Input and are not its value.
+	placeholders map[string]string
 }
 
 // formValues is the submit adapter: the fieldValues a form's fields hold, where an empty value,
@@ -219,7 +221,7 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	}
 
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).
-		Suggestions(form.choices.suggestions[f.name]).Validate(check)
+		Suggestions(form.choices.suggestions[f.name]).Placeholder(form.choices.placeholders[f.name]).Validate(check)
 	input.DescriptionFunc(func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
 	}, bindings)
