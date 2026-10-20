@@ -519,6 +519,26 @@ var _ = Describe("add forms", func() {
 				Expect(fieldView(source)).To(ContainSubstring("↳ cassandra  cloudflare"))
 			})
 
+			It("mark the source typed as one already stored, or as a new one submitting creates", func(ctx SpecContext) {
+				var source huh.Field
+				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+					source = namedField(fields, "source")
+					return false, nil
+				}, confirm(false)))
+				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
+				source.WithKeyMap(huh.NewDefaultKeyMap())
+				source.Focus()
+
+				typeText(source, "cassandra")
+				Expect(fieldView(source)).To(ContainSubstring("Existing source"))
+
+				typeText(source, "-ring")
+				Expect(fieldView(source)).To(ContainSubstring("New source"))
+
+				typeText(source, "!")
+				Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("Did you mean `cassandra-ring`?"), Not(ContainSubstring("New source"))))
+			})
+
 			It("scope annotation add's source suggestions to the timeline the same way", func(ctx SpecContext) {
 				choices := annotationAddForm().choices
 				Expect(sourcesFor(ctx, choices, "mongo-outage")).To(Equal([]string{"cassandra", "cloudflare"}))

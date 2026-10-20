@@ -350,7 +350,13 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 		return in, err
 	}
 
-	return s.askUntil(ctx, withoutField(f.def, "timeline"), choices, in, func(typed fieldValues) error {
+	def := withoutField(f.def, "timeline")
+	if i := def.fieldIndex("source"); i != -1 {
+		// sourceChoices suggests every stored source.
+		def.fields[i].preview = sourcePreview(choices.suggestions["source"])
+	}
+
+	return s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
 		if in.given("timeline") {
 			typed["timeline"] = in.values("timeline")
 		}
@@ -589,6 +595,24 @@ func sourceChoices(ctx context.Context, s *store.Store, t timeline.Timeline) (fo
 	names := appendUnique(sourceNames(timelineSources), sourceNames(everySource)...)
 
 	return formChoices{suggestions: map[string][]string{"source": names}}, nil
+}
+
+// sourcePreview returns the source field's preview: the hint of the check a typed source fails, else
+// whether it is one of existing or a new source, which submitting creates.
+func sourcePreview(existing []string) func(string, checkEnv) string {
+	return func(source string, _ checkEnv) string {
+		rejected, ok := errors.AsType[*Error](checkSource(source))
+		switch {
+		case source == "":
+			return ""
+		case ok:
+			return rejected.Hint
+		case slices.Contains(existing, source):
+			return "✅ Existing source"
+		}
+
+		return "✨ New source, created when you submit"
+	}
 }
 
 func sourceNames(sources []timeline.Source) []string {
