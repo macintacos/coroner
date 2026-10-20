@@ -285,6 +285,11 @@ func requiredGiven(d definition, in fieldValues) bool {
 // session asks for entries, prefilled from in, adding each one submitted, until no other is wanted,
 // then summarizes what it added.
 func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) error {
+	// No form field asks the id, so no form could correct a bad one.
+	err := onlyField(f.def, "id").check(in, baseCheckEnv(s))
+	if err != nil {
+		return err
+	}
 	in, chosen, err := chooseTimeline(ctx, s, f.def, in)
 	if err != nil || !chosen {
 		return err

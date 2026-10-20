@@ -748,6 +748,16 @@ var _ = Describe("add forms", func() {
 			Entry("--json", nil, "--json"),
 		)
 
+		It("refuse an invalid --id given with --interactive as usage, before asking anything", func(ctx SpecContext) {
+			entry := submit(map[string]string{"text": "Pager fires"})
+			command := eventAdd(ctx, answers(entry, entry, cancel, confirm(false)))
+
+			err := runForm(ctx, command, "event", "add", "--interactive", "-t", "mongo-outage", "--id", "not-a-uuid")
+
+			Expect(err).To(HaveField("Kind", KindUsage))
+			Expect(asked).To(BeEmpty())
+		})
+
 		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
 				withEnv(&app, env)
