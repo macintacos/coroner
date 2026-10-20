@@ -28,6 +28,8 @@ type listField struct {
 	send      tea.Cmd
 	// row, when set, is the match row of its suggestions.
 	row *matchRow
+	// complete, when set, returns the suggestions for what is typed.
+	complete func(typed string) []string
 }
 
 // listShown is how many values a list field, or a match row, shows at once, so a long list never
@@ -82,11 +84,42 @@ func (l *listField) withSuggestions(suggestions []string) *listField {
 	return l
 }
 
+// withCompletions returns l suggesting what complete returns for what is typed.
+func (l *listField) withCompletions(complete func(typed string) []string) *listField {
+	if complete == nil {
+		return l
+	}
+	l.complete = complete
+	l.row = newMatchRow(nil, "")
+	l.suggest("")
+	l.show()
+
+	return l
+}
+
+// suggest suggests what complete returns for typed, when l completes, else the row's suggestions.
+func (l *listField) suggest(typed string) {
+	if l.complete != nil {
+		l.row.suggestions = l.complete(typed)
+	}
+	if len(l.row.suggestions) == 0 {
+		// textinput keeps its matches when suggestions turn off and ghosts them; "" matches nothing.
+		l.Suggestions([]string{""})
+	}
+	l.Suggestions(l.row.suggestions)
+}
+
 func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	model, cmd := l.update(msg)
-	if press, ok := msg.(tea.KeyPressMsg); ok && l.row != nil && l.row.follow(press, fmt.Sprint(l.Input.GetValue())) {
-		l.show()
-		cmd = tea.Batch(cmd, tea.RequestWindowSize)
+	if press, ok := msg.(tea.KeyPressMsg); ok && l.row != nil {
+		typed, before := fmt.Sprint(l.Input.GetValue()), l.row.line()
+		if l.complete != nil {
+			l.suggest(typed)
+		}
+		if l.row.follow(press, typed) || l.row.line() != before {
+			l.show()
+			cmd = tea.Batch(cmd, tea.RequestWindowSize)
+		}
 	}
 	return model, tea.Batch(cmd, l.takeSend())
 }
@@ -195,8 +228,8 @@ func (l *listField) addTyped() tea.Cmd {
 	l.values = appendUnique(l.values, typed)
 	l.Value(new(""))
 	if l.row != nil {
-		// SetValue leaves textinput's matches for what was typed; SetSuggestions recomputes them.
-		l.Suggestions(l.row.suggestions)
+		// SetValue leaves textinput's matches for what was typed; suggesting again recomputes them.
+		l.suggest("")
 		l.row.follow(tea.KeyPressMsg{}, "")
 	}
 	l.show()

@@ -18,6 +18,9 @@ type formChoices struct {
 	// options makes the field a Select instead of an Input.
 	options     map[string][]huh.Option[string]
 	suggestions map[string][]string
+	// completions are what a list field suggests for what is typed, computed again after every key
+	// in place of fixed suggestions.
+	completions map[string]func(typed string) []string
 	// thumbnails return the lines shown under a list field's value, and a command the terminal
 	// needs to show them.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
@@ -216,7 +219,8 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 		}, bindings)
 	case f.typ == stringsField && f.list:
 		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check).
-			withSuggestions(form.choices.suggestions[f.name]).withThumbnail(form.choices.thumbnails[f.name])
+			withSuggestions(form.choices.suggestions[f.name]).withCompletions(form.choices.completions[f.name]).
+			withThumbnail(form.choices.thumbnails[f.name])
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)

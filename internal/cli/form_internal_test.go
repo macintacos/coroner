@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -378,8 +379,6 @@ var _ = Describe("form fields", func() {
 
 			return source
 		}
-		ctrlE := func(formField huh.Field) { formField.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) }
-
 		It("shows the first five suggestions while nothing is typed", func() {
 			Expect(fieldView(sourceWith(seven...))).To(SatisfyAll(
 				ContainSubstring("↳ db-1  db-2  db-3  db-4  db-5"), Not(ContainSubstring("db-6"))))
@@ -477,6 +476,80 @@ var _ = Describe("form fields", func() {
 		})
 	})
 
+	Describe("a completing list field", func() {
+		listing := map[string][]string{"": {"docs/", "files/"}, "files/": {"files/p99.png", "files/q01.png"}}
+		pathWith := func(listing map[string][]string) huh.Field {
+			GinkgoHelper()
+			complete := func(typed string) []string {
+				dir := typed[:strings.LastIndex(typed, "/")+1]
+				return slices.DeleteFunc(slices.Clone(listing[dir]), func(entry string) bool {
+					return !strings.HasPrefix(entry, typed)
+				})
+			}
+			def := definition{fields: []field{{name: "path", typ: stringsField, list: true, usage: "Files to attach"}}}
+			choices := formChoices{completions: map[string]func(string) []string{"path": complete}}
+			path := namedField(def.formFields(formCheckEnv(), fieldValues{}, choices), "path")
+			path.WithKeyMap(huh.NewDefaultKeyMap())
+			path.Focus()
+
+			return path
+		}
+
+		It("shows what its completion returns for what is typed, in the row and as the ghost", func() {
+			path := pathWith(listing)
+
+			typeText(path, "fi")
+
+			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring("↳ files/"), ContainSubstring("> files/")))
+		})
+
+		It("completes again from what taking the ghost leaves", func() {
+			path := pathWith(listing)
+			typeText(path, "fi")
+
+			ctrlE(path)
+
+			Expect(fieldView(path)).To(SatisfyAll(
+				ContainSubstring("> files/"), ContainSubstring("↳ files/p99.png  files/q01.png")))
+		})
+
+		It("completes the empty input again after an add", func() {
+			path := pathWith(listing)
+			typeText(path, "files/p99.png")
+			press(path, tea.KeyEnter)
+
+			typeText(path, "d")
+
+			Expect(fieldView(path)).To(ContainSubstring("↳ docs/"))
+		})
+
+		It("ghosts nothing over the empty input after an add when nothing completes it", func() {
+			path := pathWith(map[string][]string{"/x/": {"/x/a.png"}})
+			typeText(path, "/x/a")
+
+			press(path, tea.KeyEnter)
+
+			Expect(path.GetValue()).To(Equal([]string{"/x/a"}))
+			Expect(fieldView(path)).NotTo(ContainSubstring(".png"))
+		})
+
+		It("cycles the matches with up and down while text is typed, and picks a value while none is", func() {
+			path := pathWith(listing)
+			typeText(path, "docs/")
+			press(path, tea.KeyEnter)
+
+			typeText(path, "files/")
+			Expect(helpKeys(path)).To(ContainElement("↑/↓ cycle matches"))
+			press(path, tea.KeyDown)
+			Expect(fieldView(path)).To(ContainSubstring("> files/q01.png"))
+
+			for range "files/" {
+				press(path, tea.KeyBackspace)
+			}
+			Expect(helpKeys(path)).To(ContainElement("↑/↓ pick"))
+		})
+	})
+
 	It("replace a rejected value with the one its field suggests on ctrl+e, clearing its error", func() {
 		names := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}}}
 		name := namedField(names.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
@@ -500,6 +573,9 @@ var _ = DescribeTable("suggestName offers a valid timeline name only for a rejec
 	Entry("a valid name", "mongo-outage", ""),
 	Entry("nothing a name can hold", "!!!", ""),
 )
+
+// ctrlE presses ctrl+e in formField.
+func ctrlE(formField huh.Field) { formField.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) }
 
 // press sends formField each key code.
 func press(formField huh.Field, codes ...rune) {
