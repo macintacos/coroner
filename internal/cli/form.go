@@ -71,15 +71,18 @@ func (d definition) formGroups(fields []huh.Field, in fieldValues) []formGroup {
 }
 
 // shownFields returns the fields of d the form showed: those of groups not hidden, without
-// fields d does not declare, such as the More options confirm.
+// fields d does not declare, such as the More options confirm, plus the tz field when hidden.
 func (d definition) shownFields(groups []formGroup) []huh.Field {
 	var shown []huh.Field
 	for _, g := range groups {
-		if g.hide != nil && g.hide() {
-			continue
-		}
+		hidden := g.hide != nil && g.hide()
 		for _, formField := range g.fields {
-			if d.fieldIndex(formField.GetKey()) != -1 {
+			key := formField.GetKey()
+			// Every time the form shows is read in this zone, so it always applies.
+			if hidden && key != "tz" {
+				continue
+			}
+			if d.fieldIndex(key) != -1 {
 				shown = append(shown, formField)
 			}
 		}

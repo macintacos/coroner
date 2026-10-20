@@ -35,12 +35,12 @@ These keys move through the form:
 
 | Key         | What it does                                                   |
 | ----------- | -------------------------------------------------------------- |
-| `enter`     | Go to the next field.                                          |
+| `enter`     | Go to the next field; in Files, add the path typed, or move on from an empty line. |
 | `ctrl+e`    | Take the field's suggestion, such as a source already in use.  |
 | `ctrl+j`    | Start a new line in Tags.                                      |
-| `enter`     | In Files, add the path typed; on an empty line, move on.       |
+| `y` / `n`   | Answer Yes or No, as to More options?                          |
 | `shift+tab` | Go back to the previous field.                                 |
-| `Esc`       | Drop the entry, and add nothing.                               |
+| `esc`       | Drop the entry, and add nothing.                               |
 | `ctrl+c`    | Stop coroner, which exits as interrupted.                      |
 
 ## Use More options
@@ -49,13 +49,14 @@ After Files, the form asks **More options?**, which defaults to No. Its descript
 the fields it holds: tz, ended, approximate, url, author, id and dry-run, the same values
 as the flags of those names.
 
-- Answer Yes to fill them in. The zone field comes first, and previews When's time read in
+- Answer Yes to fill them in. The tz field comes first, and previews When's time read in
   the zone you type.
 - The author field shows your default author, the config file's `author` and then `USER`,
   as a placeholder.
 - When one of those fields already holds a value, from a flag such as `--url` or carried
   from the entry before, More options opens Yes by itself.
-- Answer No to add the event without any of them, even one that held a value.
+- Answer No to add the event without any of them, even one that held a value, except the
+  zone: the times the form shows are already read in it.
 
 ## Add several events in a row
 

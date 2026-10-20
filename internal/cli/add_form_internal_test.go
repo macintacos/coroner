@@ -229,6 +229,28 @@ var _ = Describe("add forms", func() {
 				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
 			})
 
+			It("apply the zone a later entry carries when More options is No", func(ctx SpecContext) {
+				first := map[string]string{"text": "First", "at": "03:25", "tz": "Asia/Tokyo", "more-options": "true"}
+				second := map[string]string{"text": "Second", "at": "03:25", "more-options": "false"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(second), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(ContainSubstring("add Second --tz Asia/Tokyo --at 03:25"))
+				Expect(run(ctx, "event", "list", "--json")).To(Equal(0), errOut.String())
+				Expect(strings.Count(out.String(), "2026-09-12T18:25:00.000000000Z")).To(Equal(2))
+			})
+
+			It("apply --tz when More options is No", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(submit(map[string]string{
+					"text": "Pager fires", "at": "03:25", "more-options": "false",
+				}), confirm(false)))
+
+				Expect(runForm(ctx, command, "--tz", "Asia/Tokyo", "event", "add", "--interactive", "--json")).To(Succeed())
+
+				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
+			})
+
 			It("show the resolved author as a placeholder", func(ctx SpecContext) {
 				withEnv(&app, map[string]string{"USER": "sre"})
 				command := eventAdd(ctx, answers(cancel, confirm(false)))
@@ -369,7 +391,7 @@ var _ = Describe("add forms", func() {
 				Expect(fieldText(asked[2], "dry-run")).To(Equal("true"))
 			})
 
-			It("submit none of the fields More options hides when it is No", func(ctx SpecContext) {
+			It("submit none of the fields More options hides when it is No, except the zone", func(ctx SpecContext) {
 				hidden := map[string]string{"text": "Pager fires", "url": "https://e.example/1", "dry-run": "true"}
 				shown := map[string]string{"text": "Failover", "url": "https://e.example/2", "dry-run": "true", "more-options": "true"}
 				command := eventAdd(ctx, answers(submit(hidden), confirm(true), submit(shown), confirm(false)))

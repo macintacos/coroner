@@ -79,7 +79,7 @@ type formSession struct {
 	ask askFunc
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
-	// placeholders are what the form's empty fields show as their default, by field name.
+	// placeholders are what the form's empty Inputs show as their default, by field name.
 	placeholders map[string]string
 }
 
@@ -168,6 +168,7 @@ func newFormSession(app App, inv invocation, forms func(color bool, images graph
 	}
 
 	placeholders := map[string]string{}
+	// An invalid default author has no placeholder; submitting without an author reports it.
 	author, err := defaultAuthor(nil, inv.cfg.Author, app.LookupEnv)
 	if err == nil && author != nil {
 		placeholders["author"] = *author

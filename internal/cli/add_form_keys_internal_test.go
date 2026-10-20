@@ -99,6 +99,9 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 	d.run(d.form.Init())
 	d.update(d.size)
 	d.settle()
+	if check != nil && d.form.State == huh.StateNormal {
+		check(d.form)
+	}
 	for d.form.State == huh.StateNormal {
 		if len(script.keys) == 0 {
 			t.Fatalf("the form is still asking after %v when the script ends", counted)

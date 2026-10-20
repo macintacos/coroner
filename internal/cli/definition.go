@@ -182,6 +182,7 @@ func titled(f field, title string) field {
 	return f
 }
 
+// formTitle returns what a form calls f.
 func (f field) formTitle() string {
 	return cmp.Or(f.title, f.name)
 }
