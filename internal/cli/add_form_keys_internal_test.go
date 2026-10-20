@@ -356,7 +356,7 @@ func TestEventAddFormKeys(t *testing.T) {
 			press("down", "enter").
 			typed("Failover finished").press("enter", "enter", "enter", "enter", "enter").
 			press("y").
-			typed("Asia/Tokyo").press("enter", "enter", "enter", "enter", "enter", "enter", "enter").
+			typed("Asia/Tokyo").press("enter", "enter", "enter", "enter", "enter", "enter").
 			press("n")
 		// The terminal keeps only a frame's last rows, and a title is a whole line, since
 		// descriptions start with their titles.

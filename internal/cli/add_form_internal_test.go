@@ -288,11 +288,12 @@ var _ = Describe("add forms", func() {
 				command := eventAdd(ctx, answers(submit(map[string]string{
 					"text": "Primary stepped down", "tz": "UTC", "at": "2026-09-11T03:14:07Z", "ended": "2026-09-11T03:20:00Z",
 					"approximate": "true", "source": "mongod", "tag": "election\nphase:detect", "url": "https://example.com/log",
-					"author": "Priya", "id": "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2", "dry-run": "true", "more-options": "true",
+					"author": "Priya", "dry-run": "true", "more-options": "true",
 				}), confirm(false)))
 
-				// A list field takes its values by keys, so attach is given by its flag.
-				Expect(runForm(ctx, command, "event", "add", "--interactive", "--attach", "log.txt")).To(Succeed())
+				// A list field takes its values by keys, and the form asks no id, so both are given by flag.
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--attach", "log.txt",
+					"--id", "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2")).To(Succeed())
 
 				Expect(echoedArgs(ctx, errOut.String())).To(Equal([]string{
 					"coroner", "--db", db, "event", "add", "Primary stepped down", "--tz", "UTC", "--at", "2026-09-11T03:14:07Z",

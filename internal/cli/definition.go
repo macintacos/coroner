@@ -45,6 +45,8 @@ type field struct {
 	perEntry bool
 	// more marks a field a form asks only behind More options; only a form reads it.
 	more bool
+	// unasked marks a field only its flag gives: a form keeps its given value without asking it.
+	unasked bool
 	// title is what a form calls the field, empty meaning its name; only a form reads it.
 	title string
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.

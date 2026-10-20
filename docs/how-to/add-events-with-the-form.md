@@ -65,8 +65,9 @@ These keys move through the form:
 ## Use More options
 
 After Files, the form asks **More options?**, which defaults to No. Its description lists
-the fields it holds: tz, ended, approximate, url, author, id and dry-run, the same values
-as the flags of those names.
+the fields it holds: tz, ended, approximate, url, author and dry-run, the same values as
+the flags of those names. The form never asks for an id; an `--id` given with
+`--interactive` applies to the first entry only.
 
 - Answer Yes to fill them in. The tz field comes first, and previews When's time read in
   the zone you type.
@@ -89,7 +90,7 @@ with these values carried from the last one:
 - the author
 - the dry run
 
-The text, time, end, approximate mark, URL, id and files start empty each time. To drop a
+The text, time, end, approximate mark, URL and files start empty each time. To drop a
 carried tag, pick it with `↑` and press `backspace`.
 
 Answer No, or press `esc`, to stop. Each form clears from the screen when it ends, so only
