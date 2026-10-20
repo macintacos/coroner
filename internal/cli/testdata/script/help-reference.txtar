@@ -669,9 +669,10 @@ use' selects, which every record's timeline_id must name. Every record is checke
 one bad record adds nothing. A record carries its own id and RFC 3339 times, so running the
 same file again adds nothing.
 
-On a terminal, with no text or with --interactive, a form asks for each flag, previews the
-time as you type it, and prints the command each entry equals. Under --json only --interactive
-opens it, and --no-input never does.
+On a terminal, with no text or with --interactive, a form asks for the text, time, source,
+tags and files, and keeps the other flags under More options, which opens by itself when one
+of them holds a value. It previews the time as you type it, and prints the command each entry
+equals. Under --json only --interactive opens it, and --no-input never does.
 ~~~
 
 ~~~text

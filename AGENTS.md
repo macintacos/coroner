@@ -177,9 +177,12 @@ digraph coroner_rules_router {
   ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
   and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). A field also
   marks, with `changes`, whether it changes the record, which an edit needs at least one
-  of, and, with `perEntry`, whether another form entry opens without it. `RunE` reads the
-  definition's values, calls a plain run function that returns a result, and renders it.
-  The run function does its find, apply and write in one `withChange`
+  of, with `perEntry`, whether another form entry opens without it, with `title`, what the
+  form calls it, and with `more`, that the form asks it behind More options.
+  [`add_form_keys_internal_test.go`](internal/cli/add_form_keys_internal_test.go) is the
+  `testing/synctest` spec that presses a form's keys and pins `event add`'s key counts.
+  `RunE` reads the definition's values, calls a plain run function that returns a result,
+  and renders it. The run function does its find, apply and write in one `withChange`
   ([`store.go`](internal/cli/store.go)), and `--dry-run` is that change rolled back;
   `import` and `--from-file` instead merge through `merge`, which plans and writes in one
   `Change` and plans a dry run in one `Read`. Specs in

@@ -34,9 +34,11 @@ it with no terminal. On a terminal, `event add`, `annotation add`, `timeline cre
 `timeline edit` open a form when a required value is missing. A form is a way to fill in
 the same flags, never a second interface: each command declares its flags and their checks
 once, the form is built from that declaration, and a test fails when a flag has no form
-field or the two reject a bad value differently. When a form is submitted, coroner prints
-the flags-only command it equals, so what you did interactively you can repeat in a
-script.
+field or the two reject a bad value differently. `event add`'s form asks for the fields
+most events use first, and keeps the rest under More options, which opens by itself when
+one of them holds a value; every flag still has its field. When a form is submitted,
+coroner prints the flags-only command it equals, so what you did interactively you can
+repeat in a script.
 
 `--no-input` or `CORONER_NO_INPUT` keeps every form, picker and viewer closed, and a
 missing value then exits with a usage error instead of waiting for input that will never
