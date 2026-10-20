@@ -498,10 +498,33 @@ func filtering(formField huh.Field) bool {
 func eventAddForm() addForm[eventAdded] {
 	return addForm[eventAdded]{
 		path: "event add", def: eventAddDefinition(), run: addEvent,
-		choices: func(ctx context.Context, s *store.Store, t timeline.Timeline, _ zone) (formChoices, error) {
-			return sourceChoices(ctx, s, t)
-		},
+		choices: eventChoices,
 	}
+}
+
+// eventChoices suggests sources as sourceChoices does, and t's tags, the most recently used first,
+// then every other tag there is.
+func eventChoices(ctx context.Context, s *store.Store, t timeline.Timeline, _ zone) (formChoices, error) {
+	choices, err := sourceChoices(ctx, s, t)
+	if err != nil {
+		return formChoices{}, err
+	}
+	own, err := s.TagUsages(ctx, t.ID)
+	if err != nil {
+		return formChoices{}, err
+	}
+	all, err := s.TagUsages(ctx)
+	choices.suggestions["tag"] = appendUnique(tagNames(own), tagNames(all)...)
+
+	return choices, err
+}
+
+func tagNames(usages []store.TagUsage) []string {
+	names := make([]string, 0, len(usages))
+	for _, usage := range usages {
+		names = append(names, usage.Name)
+	}
+	return names
 }
 
 func annotationAddForm() addForm[annotationAdded] {

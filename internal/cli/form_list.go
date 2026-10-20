@@ -11,7 +11,8 @@ import (
 )
 
 // listField is the form field of a repeatable field that takes its values one at a time: enter adds
-// what is typed, up and down pick a value, and backspace removes the picked one. Its value is its
+// what is typed, up and down pick a value while nothing is typed, else cycle the matches of its
+// suggestions, and backspace removes the picked one. Its value is its
 // values, a []string. Changing them asks for the window size, since huh fits a form's height to
 // its fields only when one arrives.
 type listField struct {
@@ -26,13 +27,16 @@ type listField struct {
 	// the command the terminal needs to show it; send holds that command until the next update.
 	thumbnail func(value string) (string, tea.Cmd)
 	send      tea.Cmd
+	// row, when set, shows the suggestions what is typed matches.
+	row *matchRow
 }
 
 // listShown is how many values a list field shows at once, so a long list never pushes its typing
 // line off the screen.
 const listShown = 5
 
-// listKeys are the keys a list field reads before its Input does.
+// listKeys are the keys a list field reads before its Input does; up and down only while nothing is
+// typed.
 type listKeys struct {
 	add, up, down, remove key.Binding
 }
@@ -67,8 +71,24 @@ func (l *listField) withThumbnail(thumbnail func(value string) (string, tea.Cmd)
 	return l
 }
 
+// withSuggestions returns l suggesting suggestions, and showing a row of what is typed matches.
+func (l *listField) withSuggestions(suggestions []string) *listField {
+	if len(suggestions) == 0 {
+		return l
+	}
+	l.Suggestions(suggestions)
+	l.row = newMatchRow(suggestions, fmt.Sprint(l.Input.GetValue()))
+	l.show()
+
+	return l
+}
+
 func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	model, cmd := l.update(msg)
+	if press, ok := msg.(tea.KeyPressMsg); ok && l.row != nil && l.row.follow(press, fmt.Sprint(l.Input.GetValue())) {
+		l.show()
+		cmd = tea.Batch(cmd, tea.RequestWindowSize)
+	}
 	return model, tea.Batch(cmd, l.takeSend())
 }
 
@@ -91,10 +111,10 @@ func (l *listField) update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	switch {
 	case key.Matches(press, keys.add) && l.typed() != "":
 		return l, l.addTyped()
-	case key.Matches(press, keys.up) && len(l.values) > 0:
+	case key.Matches(press, keys.up) && l.typed() == "" && len(l.values) > 0:
 		l.pick(true)
 		return l, nil
-	case key.Matches(press, keys.down) && len(l.values) > 0:
+	case key.Matches(press, keys.down) && l.typed() == "" && len(l.values) > 0:
 		l.pick(false)
 		return l, nil
 	case key.Matches(press, keys.remove) && l.picked != -1:
@@ -142,7 +162,10 @@ func (l *listField) KeyBinds() []key.Binding {
 		binds = append(binds, keys.add)
 		input = slices.DeleteFunc(input, func(b key.Binding) bool { return slices.Contains(b.Keys(), "enter") })
 	}
-	if len(l.values) > 0 {
+	if l.typed() != "" && l.row != nil && len(l.row.matches) > 0 {
+		binds = append(binds, cycleKeys()...)
+	}
+	if l.typed() == "" && len(l.values) > 0 {
 		binds = append(binds, keys.up)
 	}
 	if l.picked != -1 {
@@ -172,6 +195,10 @@ func (l *listField) addTyped() tea.Cmd {
 
 	l.values = appendUnique(l.values, typed)
 	l.Value(new(""))
+	if l.row != nil {
+		// SetValue leaves textinput's matches for what was typed; SetSuggestions recomputes them.
+		l.Suggestions(l.row.suggestions)
+	}
 	l.show()
 
 	return tea.RequestWindowSize
@@ -225,6 +252,9 @@ func (l *listField) show() {
 		if lines != "" {
 			b.WriteString("\n" + lines)
 		}
+	}
+	if l.row != nil && l.row.line() != "" {
+		b.WriteString("\n" + l.row.line())
 	}
 
 	l.Description(b.String())

@@ -112,7 +112,7 @@ func eventAddDefinition() definition {
 		},
 		{name: "approximate", typ: boolField, perEntry: true, more: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
 		{name: "source", title: "Source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "tag", typ: stringsField, title: "Tags", usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
+		{name: "tag", typ: stringsField, list: true, title: "Tags", usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
 		{name: "url", perEntry: true, more: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
 		{name: "author", more: true, usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		titled(perEntry(attachField()), "Files"),

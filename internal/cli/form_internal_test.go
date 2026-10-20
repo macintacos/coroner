@@ -121,15 +121,15 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("read a line holding only spaces as no value, and check only the others", func() {
-		def := eventAddDefinition()
+		def := eventEditDefinition()
 		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
-		tag := namedField(fields, "tag")
+		tag := namedField(fields, "add-tag")
 		typeInto(tag, "election\n  ")
 
 		tag.Blur()
 
 		Expect(tag.Error()).NotTo(HaveOccurred())
-		Expect(def.formValues(fields)).To(Equal(fieldValues{"tag": {"election"}}))
+		Expect(def.formValues(fields)).To(HaveKeyWithValue("add-tag", []string{"election"}))
 	})
 
 	It("pick from options in a select, and suggest in an input", func() {
@@ -317,6 +317,43 @@ var _ = Describe("form fields", func() {
 
 			Expect(form.GetString("name")).To(Equal("mongo-outage"))
 			Expect(ansi.Strip(form.View())).To(SatisfyAll(ContainSubstring("… 7 more"), ContainSubstring("TYPING-NOW")))
+		})
+
+		It("suggests nothing for the empty input after an add", func() {
+			choices := formChoices{suggestions: map[string][]string{"ref": {"election", "escalation"}}}
+			fields := refs.formFields(formCheckEnv(), fieldValues{}, choices)
+			ref := namedField(fields, "ref")
+			ref.WithKeyMap(huh.NewDefaultKeyMap())
+			ref.Focus()
+
+			typeText(ref, "e")
+			press(ref, tea.KeyEnter)
+			Expect(fieldView(ref)).NotTo(MatchRegexp(`> +election`))
+
+			ref.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+			press(ref, tea.KeyEnter)
+
+			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"e"}}))
+		})
+
+		It("picks values with up and down only while nothing is typed", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			ref := namedField(fields, "ref")
+			typeInto(ref, "INC-2")
+
+			press(ref, tea.KeyUp)
+
+			Expect(fieldView(ref)).NotTo(ContainSubstring("×"))
+		})
+
+		It("picks timeline create's refs with up and down", func() {
+			def := timelineCreateDefinition()
+			fields := def.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1", "INC-2"}}, formChoices{})
+			ref := namedField(fields, "ref")
+
+			press(ref, tea.KeyUp, tea.KeyBackspace)
+
+			Expect(def.formValues(fields)["ref"]).To(Equal([]string{"INC-1"}))
 		})
 
 		It("refuses a value its check rejects, and adds nothing", func() {

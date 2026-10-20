@@ -50,19 +50,26 @@ func namedKey(name string) tea.KeyPressMsg {
 	switch name {
 	case "enter":
 		return tea.KeyPressMsg{Code: tea.KeyEnter}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
 		return tea.KeyPressMsg{Code: tea.KeyDown}
-	case "ctrl+e":
-		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
-	case "ctrl+j":
-		return tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
+	case "esc":
+		return tea.KeyPressMsg{Code: tea.KeyEscape}
+	case "backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace}
+	case "ctrl+e", "ctrl+n", "ctrl+p":
+		return tea.KeyPressMsg{Code: rune(name[len(name)-1]), Mod: tea.ModCtrl}
 	}
 	r := []rune(name)[0]
 	return tea.KeyPressMsg{Code: r, Text: name}
 }
 
 // keyedForms returns forms that press script's keys through each form terminalForms would run,
-// at size, calling check, when non-nil, after each counted key. It must run inside a synctest
+// at size, calling check, when non-nil, after each counted key and each typed step. It must run
+// inside a synctest
 // bubble.
 func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*huh.Form)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
@@ -112,6 +119,9 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 			for _, r := range key.text {
 				d.update(filter(nil, tea.KeyPressMsg{Code: r, Text: string(r)}))
 				d.settle()
+			}
+			if check != nil && d.form.State == huh.StateNormal {
+				check(d.form.Form)
 			}
 			continue
 		}
@@ -237,6 +247,9 @@ func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
 		{"timeline", "create", "mongo-outage"},
 		{"event", "add", "Primary stepped down", "-t", "mongo-outage", "--source", "mongod"},
 		{"event", "add", "Replica lag", "-t", "mongo-outage", "--source", "mysql"},
+		{"event", "add", "On-call paged", "-t", "mongo-outage", "--tag", "escalation", "--at", "2026-09-11T03:00:00Z"},
+		{"event", "add", "Election started", "-t", "mongo-outage", "--tag", "election", "--at", "2026-09-11T03:10:00Z"},
+		{"event", "add", "Edge slow", "-t", "api-latency", "--tag", "edge"},
 	} {
 		seed := app
 		seed.Args = append([]string{"--db", db}, args...)
@@ -295,7 +308,7 @@ func baselineEntry() *keyScript {
 		typed("Failover finished").press("enter").
 		typed("03:25").press("enter").
 		typed("m").press("ctrl+e", "enter").
-		typed("election").press("ctrl+j").typed("db").press("enter").
+		typed("election").press("enter").typed("db").press("tab").
 		typed("files/p99.png").press("enter", "enter").
 		press("enter")
 }
@@ -377,4 +390,142 @@ func TestEventAddFormKeys(t *testing.T) {
 
 		keyedRun(t, script, check)
 	})
+
+	t.Run("tag suggestion", testTagSuggestion)
+	t.Run("cycle and pick", testCycleAndPick)
+	t.Run("remove carried tag", testRemoveCarriedTag)
+	t.Run("esc in tags", testEscInTags)
+}
+
+func testTagSuggestion(t *testing.T) {
+	script := tagsEntry().typed("e").press("ctrl+e", "enter").press("enter", "enter", "enter", "n")
+	checked := false
+	check := func(form *huh.Form) {
+		t.Helper()
+		if focusedTyped(form) != "e" {
+			return
+		}
+		checked = true
+		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		if !slices.ContainsFunc(lines, func(line string) bool {
+			return strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(line, "┃│")), "↳ election")
+		}) {
+			t.Errorf("no row of matches leading with election:\n%s", strings.Join(lines, "\n"))
+		}
+		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> election") }) {
+			t.Errorf("the input does not ghost election after e:\n%s", strings.Join(lines, "\n"))
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if !checked {
+		t.Fatal("the form never held e in Tags")
+	}
+	if tags := addedTags(t, app); !slices.Equal(tags, []string{"election"}) {
+		t.Errorf("stored tags %v; want election", tags)
+	}
+}
+
+func testCycleAndPick(t *testing.T) {
+	script := tagsEntry().
+		typed("e").press("down", "ctrl+e", "enter").
+		press("up", "backspace").
+		typed("e").press("ctrl+n", "ctrl+e", "enter").
+		press("enter", "enter", "enter", "n")
+	var typingHelp, pickHelp []string
+	check := func(form *huh.Form) {
+		l, ok := form.GetFocusedField().(*listField)
+		switch {
+		case !ok:
+		case typingHelp == nil && l.typed() == "e":
+			typingHelp = helpTexts(l)
+		case pickHelp == nil && l.typed() == "" && len(l.values) == 1:
+			pickHelp = helpTexts(l)
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if !slices.Contains(typingHelp, "↑/↓ cycle matches") || !slices.Contains(typingHelp, "ctrl+n/ctrl+p cycle") {
+		t.Errorf("help while typing e is %v; want the cycle keys", typingHelp)
+	}
+	if !slices.Contains(pickHelp, "↑/↓ pick") {
+		t.Errorf("help after adding a tag is %v; want ↑/↓ pick", pickHelp)
+	}
+	if tags := addedTags(t, app); !slices.Equal(tags, []string{"escalation"}) {
+		t.Errorf("stored tags %v; want escalation", tags)
+	}
+}
+
+func testRemoveCarriedTag(t *testing.T) {
+	script := baselineEntry().press("y").
+		typed("Failover confirmed").press("enter", "enter", "enter", "up", "backspace", "enter", "enter", "enter").
+		press("n")
+
+	app := keyedRun(t, script, nil)
+
+	events := storedEvents(t, app)
+	i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover confirmed" })
+	if i == -1 {
+		t.Fatalf("stored %v; want Failover confirmed", events)
+	}
+	if tags, _ := events[i]["tags"].([]any); len(tags) != 1 {
+		t.Errorf("stored tags %v; want one of the two carried", events[i]["tags"])
+	}
+}
+
+func testEscInTags(t *testing.T) {
+	script := tagsEntry().typed("db").press("esc", "n")
+
+	app := keyedRun(t, script, nil)
+
+	if slices.ContainsFunc(storedEvents(t, app), func(e map[string]any) bool { return e["text"] == "Failover finished" }) {
+		t.Error("stored the entry Esc cancelled")
+	}
+}
+
+// tagsEntry is the start of an entry, up to typing into Tags.
+func tagsEntry() *keyScript {
+	return new(keyScript).
+		press("down", "enter").
+		typed("Failover finished").press("enter", "enter", "enter")
+}
+
+// focusedTyped returns what is typed into the focused list field, or "" when no list field has focus.
+func focusedTyped(form *huh.Form) string {
+	l, ok := form.GetFocusedField().(*listField)
+	if !ok {
+		return ""
+	}
+	return l.typed()
+}
+
+// helpTexts returns the help the field shows for each of its keys, as "key description".
+func helpTexts(f huh.Field) []string {
+	var texts []string
+	for _, b := range f.KeyBinds() {
+		texts = append(texts, b.Help().Key+" "+b.Help().Desc)
+	}
+	return texts
+}
+
+// addedTags returns the tags of the event the form added, Failover finished.
+func addedTags(t *testing.T, app App) []string {
+	t.Helper()
+	events := storedEvents(t, app)
+	i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover finished" })
+	if i == -1 {
+		t.Fatalf("stored %v; want Failover finished", events)
+	}
+	data, err := json.Marshal(events[i]["tags"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tags []string
+	err = json.Unmarshal(data, &tags)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tags
 }

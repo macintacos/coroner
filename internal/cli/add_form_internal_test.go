@@ -365,7 +365,7 @@ var _ = Describe("add forms", func() {
 
 					second := asked[2]
 					Expect(fieldText(second, "source")).To(Equal("mongod"))
-					Expect(fieldText(second, "tag")).To(Equal("election"))
+					Expect(namedField(second, "tag").GetValue()).To(Equal([]string{"election"}))
 					Expect(fieldText(second, "text")).To(BeEmpty())
 					Expect(fieldText(second, "at")).To(BeEmpty())
 					Expect(fieldText(second, "url")).To(BeEmpty())
@@ -488,6 +488,54 @@ var _ = Describe("add forms", func() {
 				Expect(sourcesFor(ctx, choices, "mongo-outage")).To(Equal([]string{"cassandra", "cloudflare"}))
 				Expect(sourcesFor(ctx, choices, "api-latency")).To(Equal([]string{"cloudflare", "cassandra"}))
 			})
+		})
+
+		Describe("tag suggestions", func() {
+			tagsFor := func(ctx SpecContext, name string) []string {
+				GinkgoHelper()
+				var got formChoices
+				Expect(withStorePath(ctx, app, db, func(s *store.Store) error {
+					t, err := s.TimelineByName(ctx, name)
+					if err != nil {
+						return err
+					}
+					got, err = eventAddForm().choices(ctx, s, t, zone{loc: time.UTC, label: "UTC"})
+					return err
+				})).To(Succeed())
+				return got.suggestions["tag"]
+			}
+
+			BeforeEach(func(ctx SpecContext) {
+				Expect(run(ctx, "timeline", "create", "api-latency")).To(Equal(0), errOut.String())
+				Expect(run(ctx, "event", "add", "Paged", "-t", "mongo-outage", "--tag", "escalation", "--at", "2026-09-11T03:00:00Z")).To(Equal(0), errOut.String())
+				Expect(run(ctx, "event", "add", "Election", "-t", "mongo-outage", "--tag", "election", "--at", "2026-09-11T03:10:00Z")).To(Equal(0), errOut.String())
+				Expect(run(ctx, "event", "add", "Edge slow", "-t", "api-latency", "--tag", "edge", "--at", "2026-09-11T03:20:00Z")).To(Equal(0), errOut.String())
+				Expect(run(ctx, "timeline", "create", "empty")).To(Equal(0), errOut.String())
+			})
+
+			It("suggest every stored tag on a timeline with no tags", func(ctx SpecContext) {
+				Expect(tagsFor(ctx, "empty")).To(Equal([]string{"edge", "election", "escalation"}))
+			})
+
+			It("suggest the timeline's tags, the most recently used first, then every other", func(ctx SpecContext) {
+				Expect(tagsFor(ctx, "mongo-outage")).To(Equal([]string{"election", "escalation", "edge"}))
+			})
+		})
+
+		It("echo two tags given to the form as two --tag flags", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
+			command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+				fill(fields, map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"})
+				tag := namedField(fields, "tag")
+				enter(tag, "election")
+				enter(tag, "db")
+				return true, nil
+			}, confirm(false)))
+
+			Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
+
+			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("tags", ConsistOf("election", "db")))
+			Expect(strings.Join(echoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--tag election --tag db"))
 		})
 
 		It("end without asking more when Esc cancels the timeline pick", func(ctx SpecContext) {
@@ -748,6 +796,10 @@ func fill(fields []huh.Field, values map[string]string) {
 		case *huh.Confirm:
 			b := value == "true"
 			f.Value(&b)
+		case *listField:
+			for line := range strings.Lines(value) {
+				enter(f, strings.TrimSuffix(line, "\n"))
+			}
 		default:
 			typeInto(f, value)
 		}
