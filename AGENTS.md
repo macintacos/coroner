@@ -178,7 +178,9 @@ digraph coroner_rules_router {
   and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). A field also
   marks, with `changes`, whether it changes the record, which an edit needs at least one
   of, with `perEntry`, whether another form entry opens without it, with `title`, what the
-  form calls it, and with `more`, that the form asks it behind More options.
+  form calls it, and with `more`, that the form asks it behind More options. `fieldIcon`
+  gives each field name the icon its title shows, and a spec fails when a field of a form
+  command has none.
   [`add_form_keys_internal_test.go`](internal/cli/add_form_keys_internal_test.go) is the
   `testing/synctest` spec that presses a form's keys and pins `event add`'s key counts.
   `RunE` reads the definition's values, calls a plain run function that returns a result,

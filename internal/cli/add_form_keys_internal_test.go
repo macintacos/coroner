@@ -344,9 +344,9 @@ func TestEventAddFormKeys(t *testing.T) {
 	})
 
 	t.Run("more options", func(t *testing.T) {
-		titles := map[string]string{"more-options": "More options?"}
+		titles := map[string]string{"more-options": "🔧 More options?"}
 		for _, f := range eventAddDefinition().fields {
-			titles[f.name] = f.formTitle()
+			titles[f.name] = fieldIcon(f.name) + " " + f.formTitle()
 		}
 		script := new(keyScript).
 			press("down", "enter").

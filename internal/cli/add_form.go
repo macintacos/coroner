@@ -239,7 +239,7 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 		}
 
 		yes := true
-		another := huh.NewConfirm().Title("Add another " + noun + "?").Value(&yes)
+		another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
 		submitted, err := s.ask(ctx, formGroup{fields: []huh.Field{another}})
 		if err != nil {
 			return askError(err)

@@ -62,7 +62,7 @@ func (d definition) formGroups(fields []huh.Field, in fieldValues) []formGroup {
 	if len(behind) == 0 {
 		return []formGroup{{fields: fields}}
 	}
-	confirm := huh.NewConfirm().Key("more-options").Title("More options?").
+	confirm := huh.NewConfirm().Key("more-options").Title("🔧 More options?").
 		Description(strings.Join(titles, ", ")).Value(&open)
 	// Value can rebind the confirm, so read what it holds.
 	hide := func() bool {
@@ -189,7 +189,7 @@ func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
-	title := f.formTitle()
+	title := f.formHeading()
 	if f.required {
 		title += " (required)"
 	}
@@ -241,6 +241,21 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	}
 
 	return input.DescriptionFunc(describe, bindings)
+}
+
+// formHeading returns what a form shows over f: its icon, when it has one, then its title.
+func (f field) formHeading() string {
+	return strings.TrimSpace(fieldIcon(f.name) + " " + f.formTitle())
+}
+
+// fieldIcon returns the icon a form shows before the title of the field called name, or "" for
+// none. Each has emoji presentation, so terminals draw it two cells wide and the titles line up.
+func fieldIcon(name string) string {
+	return map[string]string{
+		"timeline": "📒", "text": "📝", "body": "📝", "at": "🕒", "ended": "⌛", "approximate": "🤔",
+		"tz": "🌐", "source": "📡", "tag": "🔖", "url": "🔗", "author": "👤", "attach": "📎", "id": "🆔",
+		"dry-run": "🧪", "event": "📍", "kind": "🔎", "name": "📛", "title": "📄", "ref": "🎫",
+	}[name]
 }
 
 // suggestingInput is an Input that ctrl+e sets to the valid value suggest offers for what it holds.

@@ -76,6 +76,20 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("head each field of the form commands with an icon before its title", func() {
+		forms := []definition{
+			eventAddDefinition(), annotationAddDefinition(),
+			withoutField(timelineCreateDefinition(), "if-not-exists"), timelineEditFormDefinition(nil),
+		}
+		for _, def := range forms {
+			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
+				f := def.fields[i]
+				Expect(fieldIcon(f.name)).NotTo(BeEmpty(), f.name)
+				Expect(fieldView(formField)).To(ContainSubstring(fieldIcon(f.name)+" "+f.formTitle()), f.name)
+			}
+		}
+	})
+
 	Describe("event add's groups", func() {
 		def := eventAddDefinition()
 		groupsFor := func(in fieldValues) []formGroup {
