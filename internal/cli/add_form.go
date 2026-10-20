@@ -604,7 +604,7 @@ func sourceChoices(ctx context.Context, s *store.Store, t timeline.Timeline) (fo
 }
 
 // sourcePreview returns the source field's preview: the hint of the check a typed source fails, else
-// whether it is one of existing or a new source, which submitting creates.
+// whether it is one of existing or a new source.
 func sourcePreview(existing []string) func(string, checkEnv) string {
 	return func(source string, _ checkEnv) string {
 		rejected, ok := errors.AsType[*Error](checkSource(source))
@@ -617,7 +617,7 @@ func sourcePreview(existing []string) func(string, checkEnv) string {
 			return "✅ Existing source"
 		}
 
-		return "✨ New source, created when you submit"
+		return "✨ New source"
 	}
 }
 

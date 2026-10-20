@@ -29,8 +29,8 @@ before each field's title. It first asks for the five fields most events use:
 - **When:** the time it happened, in any form `coroner help time-input` lists. The form
   previews the time it reads as you type. Leave it empty to mean now.
 - **Source:** the system, service or person it came from. As you type, the form marks the
-  name ✅ Existing source when coroner already has that source, or ✨ New source when it
-  does not, and submitting the entry creates it.
+  name ✅ Existing source when coroner already has that source, or ✨ New source when the
+  event would create it. `annotation add`'s form marks its Source field the same way.
 - **Tags:** keywords such as `phase:detect`, added one at a time with `enter`.
 - **Files:** files to attach, such as screenshots, one path at a time.
 
