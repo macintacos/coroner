@@ -47,58 +47,49 @@ func (d definition) formValues(fields []huh.Field) fieldValues {
 // formGroups returns fields, which must come from d.formFields, as the form's pages: one page
 // when no field is marked more, else the unmarked fields closed by a More options confirm, then
 // the marked fields, skipped while it is No. It opens Yes when in gives a marked field, so no
-// such value applies unseen. Fields marked unasked go on a last page that is always skipped.
+// such value applies unseen.
 func (d definition) formGroups(fields []huh.Field, in fieldValues) []formGroup {
-	var shown, behind, unasked []huh.Field
+	var shown, behind []huh.Field
 	var titles []string
 	open := false
 	for i, f := range d.fields {
-		switch {
-		case f.unasked:
-			unasked = append(unasked, fields[i])
-		case !f.more:
+		if !f.more {
 			shown = append(shown, fields[i])
-		default:
-			behind = append(behind, fields[i])
-			titles = append(titles, f.formTitle())
-			open = open || in.given(f.name)
+			continue
 		}
+		behind = append(behind, fields[i])
+		titles = append(titles, f.formTitle())
+		open = open || in.given(f.name)
 	}
-	if len(behind) == 0 && len(unasked) == 0 {
+	if len(behind) == 0 {
 		return []formGroup{{fields: fields}}
 	}
-	groups := []formGroup{{fields: shown}}
-	if len(behind) > 0 {
-		confirm := huh.NewConfirm().Key("more-options").Title("🔧 More options?").
-			Description(strings.Join(titles, ", ")).Value(&open)
-		// Value can rebind the confirm, so read what it holds.
-		hide := func() bool {
-			yes, _ := confirm.GetValue().(bool)
-			return !yes
-		}
-		groups = []formGroup{{fields: append(shown, confirm)}, {fields: behind, hide: hide}}
-	}
-	if len(unasked) > 0 {
-		groups = append(groups, formGroup{fields: unasked, hide: func() bool { return true }})
+	confirm := huh.NewConfirm().Key("more-options").Title("🔧 More options?").
+		Description(strings.Join(titles, ", ")).Value(&open)
+	// Value can rebind the confirm, so read what it holds.
+	hide := func() bool {
+		yes, _ := confirm.GetValue().(bool)
+		return !yes
 	}
 
-	return groups
+	return []formGroup{{fields: append(shown, confirm)}, {fields: behind, hide: hide}}
 }
 
 // shownFields returns the fields of d the form showed: those of groups not hidden, without
-// fields d does not declare, such as the More options confirm, plus the tz field and unasked fields
-// when hidden.
+// fields d does not declare, such as the More options confirm, plus the tz field when hidden.
 func (d definition) shownFields(groups []formGroup) []huh.Field {
 	var shown []huh.Field
 	for _, g := range groups {
 		hidden := g.hide != nil && g.hide()
 		for _, formField := range g.fields {
-			at := d.fieldIndex(formField.GetKey())
+			key := formField.GetKey()
 			// Every time the form shows is read in this zone, so it always applies.
-			if at == -1 || hidden && d.fields[at].name != "tz" && !d.fields[at].unasked {
+			if hidden && key != "tz" {
 				continue
 			}
-			shown = append(shown, formField)
+			if d.fieldIndex(key) != -1 {
+				shown = append(shown, formField)
+			}
 		}
 	}
 

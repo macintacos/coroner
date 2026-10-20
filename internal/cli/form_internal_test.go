@@ -76,17 +76,14 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
-	It("head each field the form commands ask with an icon before its title", func() {
+	It("head each field of the form commands with an icon before its title", func() {
 		forms := []definition{
-			eventAddDefinition(), annotationAddDefinition(),
+			withoutField(eventAddDefinition(), "id"), annotationAddDefinition(),
 			withoutField(timelineCreateDefinition(), "if-not-exists"), timelineEditFormDefinition(nil),
 		}
 		for _, def := range forms {
 			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
 				f := def.fields[i]
-				if f.unasked {
-					continue
-				}
 				Expect(fieldIcon(f.name)).NotTo(BeEmpty(), f.name)
 				Expect(fieldView(formField)).To(ContainSubstring(fieldIcon(f.name)+" "+f.formTitle()), f.name)
 			}
@@ -137,7 +134,7 @@ var _ = Describe("form fields", func() {
 	})
 
 	Describe("event add's groups", func() {
-		def := eventAddDefinition()
+		def := withoutField(eventAddDefinition(), "id")
 		groupsFor := func(in fieldValues) []formGroup {
 			return def.formGroups(def.formFields(formCheckEnv(), in, formChoices{}), in)
 		}
@@ -145,17 +142,11 @@ var _ = Describe("form fields", func() {
 		It("show the fields most events use first, and the rest behind More options", func() {
 			groups := groupsFor(fieldValues{})
 
-			Expect(groups).To(HaveLen(3))
+			Expect(groups).To(HaveLen(2))
 			Expect(fieldKeys(groups[0].fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
 			Expect(fieldKeys(groups[1].fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "dry-run"}))
 			Expect(fieldView(namedField(groups[0].fields, "more-options"))).To(
 				ContainSubstring("tz, ended, approximate, url, author, dry-run"))
-		})
-
-		It("keep the value given to a field the form does not ask", func() {
-			in := fieldValues{"id": {"01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2"}}
-
-			Expect(def.formValues(def.shownFields(groupsFor(in)))).To(HaveKeyWithValue("id", in["id"]))
 		})
 
 		It("hide the More options fields until it is Yes", func() {

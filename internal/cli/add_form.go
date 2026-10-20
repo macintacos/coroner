@@ -396,7 +396,8 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 		return in, nil, err
 	}
 
-	def := withoutField(f.def, "timeline")
+	// The picker chose the timeline, and an id only a flag gives applies to the first entry.
+	def := withoutField(withoutField(f.def, "timeline"), "id")
 	if i := def.fieldIndex("source"); i != -1 {
 		// sourceChoices suggests every stored source.
 		def.fields[i].preview = sourcePreview(choices.suggestions["source"])
@@ -406,6 +407,9 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 	typed, err := s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
 		if in.given("timeline") {
 			typed["timeline"] = in.values("timeline")
+		}
+		if in.given("id") {
+			typed["id"] = in.values("id")
 		}
 		result, err := f.submit(ctx, s, typed)
 		if err != nil {

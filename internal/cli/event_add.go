@@ -118,7 +118,7 @@ func eventAddDefinition() definition {
 		{name: "author", more: true, usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		titled(perEntry(attachField()), "Files"),
 		{
-			name: "id", perEntry: true, unasked: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
+			name: "id", perEntry: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
 			check: withoutEnv(checkEventID),
 		},
 		{name: "dry-run", typ: boolField, more: true, usage: "Show the event as it would be added, and add nothing"},
