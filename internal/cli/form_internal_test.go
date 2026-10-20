@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -329,6 +330,95 @@ var _ = Describe("form fields", func() {
 		})
 	})
 
+	Describe("a match row", func() {
+		seven := []string{"db-1", "db-2", "db-3", "db-4", "db-5", "db-6", "db-7"}
+		sourceWith := func(suggestions ...string) huh.Field {
+			GinkgoHelper()
+			choices := formChoices{suggestions: map[string][]string{"source": suggestions}}
+			source := namedField(annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "source")
+			source.WithKeyMap(huh.NewDefaultKeyMap())
+			source.Focus()
+
+			return source
+		}
+		ctrlE := func(formField huh.Field) { formField.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) }
+
+		It("shows the first five suggestions while nothing is typed", func() {
+			Expect(fieldView(sourceWith(seven...))).To(SatisfyAll(
+				ContainSubstring("↳ db-1  db-2  db-3  db-4  db-5"), Not(ContainSubstring("db-6"))))
+		})
+
+		It("shows the suggestions typed text starts, in their order, ignoring case", func() {
+			source := sourceWith("Mongod", "slack", "mongos", "db-1")
+
+			typeText(source, "MON")
+
+			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("↳ Mongod  mongos"), Not(ContainSubstring("slack"))))
+		})
+
+		It("keeps the match up and down cycle to in its window", func() {
+			source := sourceWith(seven...)
+			typeText(source, "db")
+
+			press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
+			Expect(fieldView(source)).To(ContainSubstring("↳ db-3  db-4  db-5  db-6  db-7"))
+			ctrlE(source)
+
+			Expect(source.GetValue()).To(Equal("db-7"))
+			Expect(fieldView(source)).To(ContainSubstring("↳ db-7"))
+		})
+
+		It("wraps up and down around the matches, as the inline suggestion does", func() {
+			down := sourceWith("db-1", "db-2", "db-3")
+			typeText(down, "db")
+			press(down, tea.KeyDown, tea.KeyDown, tea.KeyDown)
+			ctrlE(down)
+			Expect(down.GetValue()).To(Equal("db-1"))
+
+			up := sourceWith("db-1", "db-2", "db-3")
+			typeText(up, "db")
+			press(up, tea.KeyUp)
+			ctrlE(up)
+			Expect(up.GetValue()).To(Equal("db-3"))
+		})
+
+		It("shows no row when nothing matches", func() {
+			source := sourceWith(seven...)
+
+			typeText(source, "zz")
+
+			Expect(fieldView(source)).NotTo(ContainSubstring("↳"))
+		})
+
+		It("names the cycling keys in its help only while something matches", func() {
+			source := sourceWith(seven...)
+			typeText(source, "db")
+			Expect(helpKeys(source)).To(ContainElements("↑/↓ cycle matches", "ctrl+n/ctrl+p cycle"))
+
+			typeText(source, "z")
+			Expect(helpKeys(source)).NotTo(ContainElement("↑/↓ cycle matches"))
+		})
+
+		It("binds ctrl+e once on every field of the form commands", func() {
+			choices := formChoices{suggestions: map[string][]string{"source": {"mongod"}, "tag": {"election"}}}
+			for _, def := range []definition{
+				eventAddDefinition(), annotationAddDefinition(), timelineCreateDefinition(), timelineEditDefinition(),
+			} {
+				in := fieldValues{"source": {"mongo"}, "name": {"Mongo Outage"}}
+				for _, formField := range def.formFields(formCheckEnv(), in, choices) {
+					formField.WithKeyMap(huh.NewDefaultKeyMap())
+					bound := 0
+					for _, binding := range formField.KeyBinds() {
+						if slices.Contains(binding.Keys(), "ctrl+e") {
+							bound++
+						}
+					}
+					Expect(bound).To(BeNumerically("<=", 1), formField.GetKey())
+				}
+			}
+		})
+	})
+
 	It("replace a rejected value with the one its field suggests on ctrl+e, clearing its error", func() {
 		names := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}}}
 		name := namedField(names.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
@@ -357,6 +447,13 @@ var _ = DescribeTable("suggestName offers a valid timeline name only for a rejec
 func press(formField huh.Field, codes ...rune) {
 	for _, code := range codes {
 		formField.Update(tea.KeyPressMsg{Code: code})
+	}
+}
+
+// typeText presses a key in formField for each character of text.
+func typeText(formField huh.Field, text string) {
+	for _, r := range text {
+		formField.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 }
 

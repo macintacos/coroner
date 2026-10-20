@@ -223,16 +223,20 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 		})
 	}
 
+	suggestions := form.choices.suggestions[f.name]
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).
-		Suggestions(form.choices.suggestions[f.name]).Placeholder(form.choices.placeholders[f.name]).Validate(check)
-	input.DescriptionFunc(func() string {
+		Suggestions(suggestions).Placeholder(form.choices.placeholders[f.name]).Validate(check)
+	describe := func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
-	}, bindings)
-	if f.suggest == nil {
-		return input
+	}
+	switch {
+	case f.suggest != nil:
+		return suggestingInput{Input: input.DescriptionFunc(describe, bindings), bound: bound, suggest: f.suggest}
+	case len(suggestions) > 0:
+		return newMatchingInput(input, describe, suggestions)
 	}
 
-	return suggestingInput{Input: input, bound: bound, suggest: f.suggest}
+	return input.DescriptionFunc(describe, bindings)
 }
 
 // suggestingInput is an Input that ctrl+e sets to the valid value suggest offers for what it holds.
