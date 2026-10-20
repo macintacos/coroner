@@ -506,7 +506,9 @@ func terminalForms(app App, title string) func(color bool, images graphics.Proto
 			profile := formProfile(color, images, attach)
 			cancelled := false
 			form := newForm(title, groups...)
-			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Interrupt
+			// Not tea.Interrupt for cancel: bubbletea skips an interrupted program's last frame, the
+			// empty one that clears the form.
+			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Quit
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
 			_, err := tea.NewProgram(form, tea.WithContext(ctx), tea.WithInput(app.In), tea.WithOutput(app.Out),

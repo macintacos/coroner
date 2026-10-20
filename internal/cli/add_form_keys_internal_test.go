@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -652,6 +653,145 @@ func addedEvent(t *testing.T, app App) map[string]any {
 		t.Fatalf("stored %v; want Failover finished", events)
 	}
 	return events[i]
+}
+
+func TestTerminalFormClearsWhenItEnds(t *testing.T) {
+	for name, key := range map[string]string{"picked": "\r", "esc": "\x1b"} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				keys, typing := io.Pipe()
+				screen := new(lineTerminal)
+				_, _ = screen.Write([]byte("Equivalent command: coroner event add\n"))
+				go func() {
+					// After bubbletea sends the model its unknown size, a terminal reports its own in band.
+					time.Sleep(time.Millisecond)
+					_, _ = typing.Write([]byte(ansi.WindowOp(8, 24, 100)))
+					time.Sleep(time.Second)
+					_, _ = typing.Write([]byte(key))
+				}()
+				pick := huh.NewSelect[string]().Key("timeline").Options(huh.NewOptions("api-latency", "mongo-outage")...)
+
+				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formGroup{fields: []huh.Field{pick}})
+				_ = typing.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _ = screen.Write([]byte("Added event #3\n"))
+
+				want := []string{"Equivalent command: coroner event add", "Added event #3"}
+				if got := screen.lines(); !slices.Equal(got, want) {
+					t.Errorf("the screen holds %q once the form ends; want %q", got, want)
+				}
+			})
+		})
+	}
+}
+
+// lineTerminal is a terminal of unbounded height that keeps what each cell holds and where the
+// cursor is, as an inline program moves it, and treats \n as \r\n as a tty's output does.
+type lineTerminal struct {
+	rows  [][]string
+	x, y  int
+	state byte
+	p     *ansi.Parser
+}
+
+func (s *lineTerminal) Write(b []byte) (int, error) {
+	if s.p == nil {
+		s.p = ansi.NewParser()
+	}
+	for rest := b; len(rest) > 0; {
+		seq, width, n, state := ansi.DecodeSequence(rest, s.state, s.p)
+		s.state, rest = state, rest[n:]
+		switch {
+		case width > 0:
+			s.put(string(seq), width)
+		case len(seq) == 1:
+			s.control(seq[0])
+		case string(seq) == "\x1bM":
+			s.y--
+		case ansi.HasCsiPrefix(seq):
+			s.csi(ansi.Cmd(s.p.Command()))
+		}
+	}
+	return len(b), nil
+}
+
+func (s *lineTerminal) control(c byte) {
+	switch c {
+	case '\r':
+		s.x = 0
+	case '\n':
+		s.x, s.y = 0, s.y+1
+	case '\b':
+		s.x = max(0, s.x-1)
+	case '\t':
+		s.x = s.x/8*8 + 8
+	}
+}
+
+func (s *lineTerminal) csi(cmd ansi.Cmd) {
+	if cmd.Prefix() != 0 || cmd.Intermediate() != 0 {
+		return
+	}
+	n, _ := s.p.Param(0, 1)
+	row := s.row()
+	switch cmd.Final() {
+	case 'A':
+		s.y = max(0, s.y-n)
+	case 'B':
+		s.y += n
+	case 'C':
+		s.x += n
+	case 'D':
+		s.x = max(0, s.x-n)
+	case 'J':
+		s.rows = s.rows[:s.y+1]
+		s.rows[s.y] = (*row)[:min(s.x, len(*row))]
+	case 'K':
+		*row = (*row)[:min(s.x, len(*row))]
+	case 'X':
+		for i := s.x; i < min(s.x+n, len(*row)); i++ {
+			(*row)[i] = ""
+		}
+	case '@':
+		*row = slices.Insert(*row, min(s.x, len(*row)), make([]string, n)...)
+	case 'P':
+		*row = slices.Delete(*row, min(s.x, len(*row)), min(s.x+n, len(*row)))
+	}
+}
+
+// row returns the cursor's row, adding the rows down to it.
+func (s *lineTerminal) row() *[]string {
+	for len(s.rows) <= s.y {
+		s.rows = append(s.rows, nil)
+	}
+	return &s.rows[s.y]
+}
+
+func (s *lineTerminal) put(grapheme string, width int) {
+	row := s.row()
+	for len(*row) < s.x+width {
+		*row = append(*row, "")
+	}
+	(*row)[s.x] = grapheme
+	s.x += width
+}
+
+// lines returns the screen's rows as text, without trailing blanks or blank rows at the bottom.
+func (s *lineTerminal) lines() []string {
+	var lines []string
+	for _, row := range s.rows {
+		var line strings.Builder
+		for _, cell := range row {
+			line.WriteString(cmp.Or(cell, " "))
+		}
+		lines = append(lines, strings.TrimRight(line.String(), " "))
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 // showsRow reports whether a line of a form's view, inside its frame and huh's border, leads with row.
