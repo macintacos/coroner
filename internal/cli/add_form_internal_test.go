@@ -448,6 +448,48 @@ var _ = Describe("add forms", func() {
 			})
 		})
 
+		Describe("source suggestions", func() {
+			var s *store.Store
+			sourcesFor := func(ctx SpecContext, choices func(context.Context, *store.Store, timeline.Timeline, zone) (formChoices, error), name string) []string {
+				GinkgoHelper()
+				t, err := s.TimelineByName(ctx, name)
+				Expect(err).NotTo(HaveOccurred())
+				got, err := choices(ctx, s, t, zone{loc: time.UTC, label: "UTC"})
+				Expect(err).NotTo(HaveOccurred())
+				return got.suggestions["source"]
+			}
+
+			BeforeEach(func(ctx SpecContext) {
+				Expect(run(ctx, "timeline", "create", "api-latency")).To(Equal(0), errOut.String())
+				Expect(run(ctx, "event", "add", "Node down", "-t", "mongo-outage", "--source", "cassandra")).To(Equal(0), errOut.String())
+				Expect(run(ctx, "event", "add", "Edge slow", "-t", "api-latency", "--source", "cloudflare")).To(Equal(0), errOut.String())
+				var err error
+				s, err = store.Open(ctx, db)
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(s.Close)
+			})
+
+			It("suggest the timeline's own sources first, then every other", func(ctx SpecContext) {
+				choices := eventAddForm().choices
+				mongo := sourcesFor(ctx, choices, "mongo-outage")
+				Expect(mongo).To(Equal([]string{"cassandra", "cloudflare"}))
+				Expect(sourcesFor(ctx, choices, "api-latency")).To(Equal([]string{"cloudflare", "cassandra"}))
+
+				source := namedField(eventAddDefinition().formFields(formCheckEnv(), fieldValues{},
+					formChoices{suggestions: map[string][]string{"source": mongo}}), "source")
+				source.WithKeyMap(huh.NewDefaultKeyMap())
+				source.Focus()
+				typeText(source, "c")
+				Expect(fieldView(source)).To(ContainSubstring("↳ cassandra  cloudflare"))
+			})
+
+			It("scope annotation add's source suggestions to the timeline the same way", func(ctx SpecContext) {
+				choices := annotationAddForm().choices
+				Expect(sourcesFor(ctx, choices, "mongo-outage")).To(Equal([]string{"cassandra", "cloudflare"}))
+				Expect(sourcesFor(ctx, choices, "api-latency")).To(Equal([]string{"cloudflare", "cassandra"}))
+			})
+		})
+
 		It("end without asking more when Esc cancels the timeline pick", func(ctx SpecContext) {
 			command := eventAdd(ctx, answers(cancel))
 
