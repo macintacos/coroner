@@ -23,7 +23,7 @@ stderr '^Added event #2 to timeline `mongo-outage`'
 
 # --dry-run shows the event and adds nothing.
 exec coroner event add 'Deploy started' --at 2026-09-11T14:00:00Z --dry-run
-stdout '^Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z \(\+00:00 UTC: 14:00:00\)$'
+stdout '^Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z$'
 
 # The timeline lists both events in time order, in UTC.
 exec coroner timeline view

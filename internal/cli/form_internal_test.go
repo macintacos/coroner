@@ -233,7 +233,7 @@ var _ = Describe("form fields", func() {
 
 				Expect(renderedDescription(at)).To(SatisfyAll(ContainSubstring("When it happened"), ContainSubstring(want)))
 			},
-			Entry("the base zone with none typed", "", "2026-03-08T02:30:00Z (+00:00 UTC: 02:30:00), minute precision"),
+			Entry("the base zone with none typed", "", "2026-03-08T02:30:00Z, minute precision"),
 			Entry("the gap's hint in a zone that skips it", "America/New_York", "-05:00"),
 		)
 

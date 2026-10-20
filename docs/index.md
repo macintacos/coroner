@@ -33,11 +33,11 @@ Next: coroner timeline use checkout-spike
 $ coroner timeline use checkout-spike
 Now using timeline `checkout-spike`.
 $ coroner event add "checkout p99 is 4s" --at 2026-09-10T23:58:12Z --source slack
-Added event #1 to timeline `checkout-spike` at 2026-09-10T23:58:12Z (+00:00 UTC: 23:58:12)
+Added event #1 to timeline `checkout-spike` at 2026-09-10T23:58:12Z
 $ coroner event add "Replica set has no primary" --at 2026-09-11T00:02:30Z --ended 2026-09-11T00:05:40Z --source mongod
-Added event #2 to timeline `checkout-spike` at 2026-09-11T00:02:30Z (+00:00 UTC: 00:02:30), ended 2026-09-11T00:05:40Z (+00:00 UTC: 00:05:40)
+Added event #2 to timeline `checkout-spike` at 2026-09-11T00:02:30Z, ended 2026-09-11T00:05:40Z
 $ coroner event add "Rolled back deploy 812" --at 2026-09-11T00:07:00Z
-Added event #3 to timeline `checkout-spike` at 2026-09-11T00:07:00Z (+00:00 UTC: 00:07:00)
+Added event #3 to timeline `checkout-spike` at 2026-09-11T00:07:00Z
 $ coroner timeline export --format mermaid > timeline.mmd
 ```
 

@@ -145,16 +145,19 @@ func timePreview(r timeparse.Resolved, err error, z zone) string {
 }
 
 // formatResolved renders r's instant in UTC with the fractional digits its precision states,
-// then its offset, label and wall clock in z.
+// then, unless z is UTC, its offset, label and wall clock in z.
 func formatResolved(r timeparse.Resolved, z zone) string {
 	mark := ""
 	if r.Approximate {
 		mark = "~"
 	}
+	instant := mark + r.Instant.UTC().Format("2006-01-02T15:04:05"+fraction(r.Precision)+"Z")
+	if z.loc == time.UTC {
+		return instant
+	}
 	wall := r.Instant.In(z.loc)
 
-	return fmt.Sprintf("%s%s (%s %s: %s)", mark, r.Instant.UTC().Format("2006-01-02T15:04:05"+fraction(r.Precision)+"Z"),
-		wall.Format("-07:00"), z.label, wall.Format(time.TimeOnly))
+	return fmt.Sprintf("%s (%s %s: %s)", instant, wall.Format("-07:00"), z.label, wall.Format(time.TimeOnly))
 }
 
 // occurredText renders e's occurred at in z to its precision, a day-precision event in its own

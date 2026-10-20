@@ -287,7 +287,7 @@ var _ = Describe("event add", func() {
 				Expect(run(ctx, "event", "add", "Deploy started", "--at", "2026-09-11T14:00:00Z", "--dry-run")).To(Equal(0))
 
 				Expect(out.String()).To(HavePrefix(
-					"Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z (+00:00 UTC: 14:00:00)\n"))
+					"Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z\n"))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Text: +Deploy started$`))
 				Expect(storedEvents(ctx)).To(BeEmpty())
 			})

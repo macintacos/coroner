@@ -99,7 +99,7 @@ var _ = Describe("time input", func() {
 		)
 	})
 
-	DescribeTable("formatResolved shows the UTC instant to its precision, then the wall clock in the zone",
+	DescribeTable("formatResolved shows the UTC instant to its precision, then the wall clock in any zone but UTC",
 		func(r timeparse.Resolved, zoneName, want string) {
 			z, err := timeZone(&zoneName, "local", local)
 			Expect(err).NotTo(HaveOccurred())
@@ -116,8 +116,11 @@ var _ = Describe("time input", func() {
 			resolved(412_000, timeline.PrecisionMicrosecond, false), "local",
 			"2026-09-11T03:14:07.000412Z (-03:00 local: 00:14:07)"),
 		Entry("nanoseconds",
-			resolved(412, timeline.PrecisionNanosecond, false), "UTC",
-			"2026-09-11T03:14:07.000000412Z (+00:00 UTC: 03:14:07)"),
+			resolved(412, timeline.PrecisionNanosecond, false), "local",
+			"2026-09-11T03:14:07.000000412Z (-03:00 local: 00:14:07)"),
+		Entry("in UTC, the instant alone",
+			resolved(0, timeline.PrecisionSecond, true), "UTC",
+			"~2026-09-11T03:14:07Z"),
 		Entry("an approximate time, marked with ~",
 			resolved(0, timeline.PrecisionSecond, true), "local",
 			"~2026-09-11T03:14:07Z (-03:00 local: 00:14:07)"),

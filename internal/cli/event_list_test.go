@@ -158,8 +158,8 @@ var _ = Describe("event list", func() {
 
 	It("says on stderr which times --since and --until resolved to, unless --quiet", func(ctx SpecContext) {
 		Expect(run(ctx, "event", "list", "--since", "2026-09-11 03:00", "--until", "2026-09-11T08:00:00Z")).To(Equal(0))
-		Expect(errOut.String()).To(ContainSubstring("2026-09-11T03:00:00Z (+00:00 UTC: 03:00:00)"))
-		Expect(errOut.String()).To(ContainSubstring("2026-09-11T08:00:00Z (+00:00 UTC: 08:00:00)"))
+		Expect(errOut.String()).To(ContainSubstring("2026-09-11T03:00:00Z"))
+		Expect(errOut.String()).To(ContainSubstring("2026-09-11T08:00:00Z"))
 
 		Expect(run(ctx, "event", "list", "--since", "2026-09-11 03:00", "--quiet")).To(Equal(0))
 		Expect(errOut.String()).To(BeEmpty())

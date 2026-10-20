@@ -213,7 +213,7 @@ var _ = Describe("event view, edit and delete", func() {
 
 				Expect(out.String()).To(HavePrefix("Event #1 in timeline `mongo-outage`\n"))
 				Expect(errOut.String()).To(ContainSubstring(
-					"Would edit event #1 in timeline `mongo-outage` at 2026-09-11T03:01:00Z (+00:00 UTC: 03:01:00)"))
+					"Would edit event #1 in timeline `mongo-outage` at 2026-09-11T03:01:00Z"))
 				Expect(stored(ctx, steppedDown)).To(Equal(before))
 			})
 

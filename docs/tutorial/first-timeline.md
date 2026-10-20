@@ -49,11 +49,11 @@ you about it. Times you copy from a log or a dashboard are exact, so type them i
 
 ```console
 $ coroner event add "Deploy 812 starts rolling out to checkout" --at 2026-09-10T23:40:00Z --source deploy-bot
-Added event #1 to timeline `checkout-latency` at 2026-09-10T23:40:00Z (+00:00 UTC: 23:40:00)
+Added event #1 to timeline `checkout-latency` at 2026-09-10T23:40:00Z
 $ coroner event add "Checkout p99 latency alert fires" --at 2026-09-10T23:58:12Z --source grafana
-Added event #2 to timeline `checkout-latency` at 2026-09-10T23:58:12Z (+00:00 UTC: 23:58:12)
+Added event #2 to timeline `checkout-latency` at 2026-09-10T23:58:12Z
 $ coroner event add "Replica set has no primary" --at 2026-09-11T00:02:30Z --ended 2026-09-11T00:05:40Z --source mongod
-Added event #3 to timeline `checkout-latency` at 2026-09-11T00:02:30Z (+00:00 UTC: 00:02:30), ended 2026-09-11T00:05:40Z (+00:00 UTC: 00:05:40)
+Added event #3 to timeline `checkout-latency` at 2026-09-11T00:02:30Z, ended 2026-09-11T00:05:40Z
 ```
 
 Each line coroner prints is the time it stored, in UTC, then the same time in your local
@@ -64,9 +64,9 @@ Times people tell you are rarely exact. Type those the way you would say them:
 
 ```console
 $ coroner event add "Customer reports checkout is still slow" --at "yesterday 14:05" --source support
-Added event #4 to timeline `checkout-latency` at 2026-09-13T14:05:00Z (+00:00 UTC: 14:05:00)
+Added event #4 to timeline `checkout-latency` at 2026-09-13T14:05:00Z
 $ coroner event add "Rolled back deploy 812" --at "3 hours ago" --source deploy-bot
-Added event #5 to timeline `checkout-latency` at 2026-09-14T02:00:00Z (+00:00 UTC: 02:00:00)
+Added event #5 to timeline `checkout-latency` at 2026-09-14T02:00:00Z
 ```
 
 This page was run on 2026-09-14 at 05:11 UTC, in the UTC zone. "3 hours ago" is precise to
