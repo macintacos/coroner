@@ -150,6 +150,11 @@ func (a annotationAdded) render(o output) error {
 	return o.notify("Added %s annotation %s to %s", a.annotation.Kind, a.annotation.ID, target)
 }
 
+func (a annotationAdded) summary() (summaryLine, bool) {
+	line := string(a.annotation.Kind) + "  " + pickerLabel(a.annotation.Body)
+	return summaryLine{timeline: a.timeline.Name, text: line}, !a.dryRun
+}
+
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.
 func annotatedEvent(
 	ctx context.Context, s records, t timeline.Timeline, ref *eventRef,

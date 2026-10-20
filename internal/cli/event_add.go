@@ -312,6 +312,11 @@ func (a eventAdded) render(o output) error {
 	return o.notify("Added event #%d to timeline `%s` at %s", a.event.Seq, a.timeline.Name, a.when)
 }
 
+func (a eventAdded) summary() (summaryLine, bool) {
+	line := fmt.Sprintf("#%d  %s  %s", a.event.Seq, a.when, pickerLabel(a.event.Text))
+	return summaryLine{timeline: a.timeline.Name, text: line}, !a.dryRun && !a.existed
+}
+
 // eventDraft is an event read from its fields and checked, still without its timeline.
 type eventDraft struct {
 	event timeline.Event

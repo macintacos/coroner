@@ -30,11 +30,23 @@ type formWrite[R renderer] struct {
 }
 
 // addForm is an add command's form: the command it submits to, and what each entry picks from.
-type addForm[R renderer] struct {
+type addForm[R addResult] struct {
 	formWrite[R]
 	// choices reads what the form picks from once the timeline t is known, labelling times in z.
 	choices func(ctx context.Context, s *store.Store, t timeline.Timeline, z zone) (formChoices, error)
 }
+
+// addResult is what an add form's command returns for an entry: rendered once submitted, and listed
+// in the summary that ends the session when the add stored a record.
+type addResult interface {
+	renderer
+	// summary returns how the session's summary lists the record, and whether the add stored it.
+	summary() (summaryLine, bool)
+}
+
+// summaryLine is a record as the summary that ends an add form's session lists it: its timeline's
+// name, and its line under the count.
+type summaryLine struct{ timeline, text string }
 
 // askFunc runs a form of groups and reports whether it was submitted: Esc returns false, Ctrl-C
 // huh.ErrUserAborted.
@@ -265,7 +277,8 @@ func requiredGiven(d definition, in fieldValues) bool {
 	return !slices.ContainsFunc(d.fields, func(f field) bool { return f.required && !in.given(f.name) })
 }
 
-// session asks for entries, prefilled from in, adding each one submitted, until no other is wanted.
+// session asks for entries, prefilled from in, adding each one submitted, until no other is wanted,
+// then summarizes what it added.
 func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) error {
 	in, chosen, err := chooseTimeline(ctx, s, f.def, in)
 	if err != nil || !chosen {
@@ -273,11 +286,13 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	}
 
 	noun, _, _ := strings.Cut(f.path, " ")
+	var added []summaryLine
 	for {
-		typed, err := f.entry(ctx, s, in)
+		typed, entered, err := f.entry(ctx, s, in)
 		if err != nil {
 			return err
 		}
+		added = append(added, entered...)
 
 		yes := true
 		another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
@@ -288,11 +303,30 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 		// Value can rebind the confirm, so read what it holds.
 		accepted, _ := another.GetValue().(bool)
 		if !submitted || !accepted {
-			return nil
+			return s.summarize(noun, added)
 		}
 
 		in = carryForward(typed, f.def)
 	}
+}
+
+// summarize prints how many noun records added lists, to the first one's timeline, a line for
+// each, and the command that views that timeline; nothing when added is empty.
+func (s formSession) summarize(noun string, added []summaryLine) error {
+	if len(added) == 0 {
+		return nil
+	}
+	if len(added) > 1 {
+		noun += "s"
+	}
+	var lines strings.Builder
+	for _, line := range added {
+		lines.WriteString("\n  " + line.text)
+	}
+	name := added[0].timeline
+	view := shellLine(slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view", "-t", name}))
+
+	return s.inv.out.notify("Added %d %s to timeline `%s`:%s\nView the timeline: %s", len(added), noun, name, lines.String(), view)
 }
 
 // chooseTimeline returns in with the timeline the session writes to, asking for one through def's
@@ -350,11 +384,11 @@ func askTimeline(
 }
 
 // entry asks for one entry, prefilled from in, and adds it to in's timeline once submitted. It returns
-// the values last submitted, or in when none was.
-func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, error) {
+// the values last submitted, or in when none was, and the summary's line for the record it stored.
+func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, []summaryLine, error) {
 	choices, err := f.entryChoices(ctx, s, in, baseCheckEnv(s).zone)
 	if err != nil {
-		return in, err
+		return in, nil, err
 	}
 
 	def := withoutField(f.def, "timeline")
@@ -363,12 +397,22 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 		def.fields[i].preview = sourcePreview(choices.suggestions["source"])
 	}
 
-	return s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
+	var added []summaryLine
+	typed, err := s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
 		if in.given("timeline") {
 			typed["timeline"] = in.values("timeline")
 		}
-		return f.submit(ctx, s, typed)
+		result, err := f.submit(ctx, s, typed)
+		if err != nil {
+			return err
+		}
+		if line, stored := result.summary(); stored {
+			added = append(added, line)
+		}
+		return nil
 	})
+
+	return typed, added, err
 }
 
 // askUntil asks def's fields, prefilled from in and picking from choices, and passes what was typed to
@@ -434,18 +478,18 @@ func correctable(err error) bool {
 }
 
 // submit runs values as the command line would, and prints the result and the flags-only command it
-// equals, against the same database.
-func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldValues) error {
+// equals, against the same database. It returns the result.
+func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldValues) (R, error) {
 	result, err := w.run(ctx, s.app, s.inv.cfg, values)
 	if err != nil {
-		return err
+		return result, err
 	}
 	err = result.render(s.inv.out)
 	if err != nil {
-		return err
+		return result, err
 	}
 
-	return s.echo(w.path, w.def, values)
+	return result, s.echo(w.path, w.def, values)
 }
 
 // echo prints the flags-only command that gives values to the command at path, with def's

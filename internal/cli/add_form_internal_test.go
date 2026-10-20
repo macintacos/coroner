@@ -419,6 +419,54 @@ var _ = Describe("add forms", func() {
 				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("total", 0.0))
 			})
 
+			It("end with a summary of the events added and the command that views their timeline", func(ctx SpecContext) {
+				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				second := map[string]string{"text": "Election timeout on db-3", "at": "2026-09-11T03:15:00Z"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(second), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(HaveSuffix("Equivalent command: coroner --db " + db + " event add 'Election timeout on db-3' --at 2026-09-11T03:15:00Z\n" +
+					"Added 2 events to timeline `mongo-outage`:\n" +
+					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+					"  #2  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Election timeout on db-3\n" +
+					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
+			It("count in the summary only the entries that added an event, not a dry run or an --id already stored", func(ctx SpecContext) {
+				id := "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2"
+				Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--id", id)).To(Equal(0), errOut.String())
+				added := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
+				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
+				stored := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "id": id, "more-options": "true", "dry-run": "false"}
+				command := eventAdd(ctx, answers(submit(added), confirm(true), submit(dryRun), confirm(true), submit(stored), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(HaveSuffix("Added 1 event to timeline `mongo-outage`:\n" +
+					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
+			It("print no summary when no entry added an event", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(submit(map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(ContainSubstring("Equivalent command"))
+				Expect(errOut.String()).NotTo(ContainSubstring("View the timeline"))
+			})
+
+			It("end annotation add's session with a summary of the annotations added", func(ctx SpecContext) {
+				command := annotationAdd(ctx, answers(submit(map[string]string{"body": "replSetStepDown", "kind": "evidence"}), confirm(false)))
+
+				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(HaveSuffix("Added 1 annotation to timeline `mongo-outage`:\n" +
+					"  evidence  replSetStepDown\n" +
+					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
 			It("skip an entry Esc cancels and end when no other is wanted", func(ctx SpecContext) {
 				command := eventAdd(ctx, answers(cancel, confirm(false)))
 

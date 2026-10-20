@@ -91,6 +91,20 @@ with these values carried from the last one:
 The text, time, end, approximate mark, URL, id and files start empty each time. To drop a
 carried tag, pick it with `↑` and press `backspace`.
 
+Answer No, or press `esc`, to stop. Each form clears from the screen when it ends, so only
+what coroner prints stays. When you added at least one event, coroner then lists them: the
+timeline, each event's seq, time and text, and the command that shows the timeline. A dry
+run, or an `--id` already stored, adds nothing, so the list leaves it out. `-q` silences
+the list. `annotation add`'s form ends the same way, listing each annotation's kind and
+body.
+
+```text
+Added 2 events to timeline `inc-4821`:
+  #3  2026-10-20T16:00:00Z (-04:00 local: 12:00:00)  Primary stepped down
+  #4  2026-10-20T16:05:00Z (-04:00 local: 12:05:00)  Election timeout on db-3
+View the timeline: coroner timeline view -t inc-4821
+```
+
 ## Repeat an entry from a script
 
 Each entry you submit prints the flags-only command it equals, after

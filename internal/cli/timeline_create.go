@@ -68,7 +68,7 @@ func askTimelineCreate(ctx context.Context, s formSession, create formWrite[time
 		if ifNotExists {
 			typed["if-not-exists"] = []string{"true"}
 		}
-		err := create.submit(ctx, s, typed)
+		_, err := create.submit(ctx, s, typed)
 		rejected, _ := errors.AsType[*Error](err)
 		if rejected != nil && rejected.Kind == KindTimelineExists {
 			return useExisting(ctx, s, create, typed)
@@ -98,7 +98,8 @@ func useExisting(ctx context.Context, s formSession, create formWrite[timelineCr
 	}
 
 	typed["if-not-exists"] = []string{"true"}
-	return create.submit(ctx, s, typed)
+	_, err = create.submit(ctx, s, typed)
+	return err
 }
 
 // timelineNames returns the names of the timelines in the session's database.
