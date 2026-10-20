@@ -219,6 +219,30 @@ var _ = Describe("add forms", func() {
 				Expect(written).To(HaveKeyWithValue("text", "Primary stepped down"))
 			})
 
+			It("echo the flags-only command with every field in the flags' order", func(ctx SpecContext) {
+				app.ReadFile = func(name string) ([]byte, error) {
+					if name != "log.txt" {
+						return nil, fs.ErrNotExist
+					}
+					return []byte("stepdown\n"), nil
+				}
+				command := eventAdd(ctx, answers(submit(map[string]string{
+					"text": "Primary stepped down", "tz": "UTC", "at": "2026-09-11T03:14:07Z", "ended": "2026-09-11T03:20:00Z",
+					"approximate": "true", "source": "mongod", "tag": "election\nphase:detect", "url": "https://example.com/log",
+					"author": "Priya", "id": "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2", "dry-run": "true",
+				}), confirm(false)))
+
+				// A list field takes its values by keys, so attach is given by its flag.
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--attach", "log.txt")).To(Succeed())
+
+				Expect(echoedArgs(ctx, errOut.String())).To(Equal([]string{
+					"coroner", "--db", db, "event", "add", "Primary stepped down", "--tz", "UTC", "--at", "2026-09-11T03:14:07Z",
+					"--ended", "2026-09-11T03:20:00Z", "--approximate", "--source", "mongod", "--tag", "election", "--tag", "phase:detect",
+					"--url", "https://example.com/log", "--author", "Priya", "--attach", "log.txt",
+					"--id", "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2", "--dry-run",
+				}))
+			})
+
 			It("open when a required flag is missing, prefilled from the argument", func(ctx SpecContext) {
 				command := annotationAdd(ctx, answers(cancel, confirm(false)))
 
@@ -547,8 +571,9 @@ func shellSplit(ctx context.Context, line string) []string {
 // what each ask showed to asked.
 func scriptedForms(asked *[][]huh.Field, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, fields ...huh.Field) (bool, error) {
+		return func(_ context.Context, groups ...formGroup) (bool, error) {
 			GinkgoHelper()
+			fields := fieldsOf(groups)
 			*asked = append(*asked, fields)
 			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
 			answer := answers[0]

@@ -35,9 +35,39 @@ type addForm[R renderer] struct {
 	choices func(ctx context.Context, s *store.Store, t timeline.Timeline, z zone) (formChoices, error)
 }
 
-// askFunc runs a form of fields and reports whether it was submitted: Esc returns false, Ctrl-C
+// askFunc runs a form of groups and reports whether it was submitted: Esc returns false, Ctrl-C
 // huh.ErrUserAborted.
-type askFunc func(ctx context.Context, fields ...huh.Field) (bool, error)
+type askFunc func(ctx context.Context, groups ...formGroup) (bool, error)
+
+// formGroup is one page of a form: its fields, which the form skips while hide reports true.
+type formGroup struct {
+	fields []huh.Field
+	// hide reports whether the form skips the group; nil never does.
+	hide func() bool
+}
+
+// fieldsOf returns every field of groups, in order.
+func fieldsOf(groups []formGroup) []huh.Field {
+	var fields []huh.Field
+	for _, g := range groups {
+		fields = append(fields, g.fields...)
+	}
+
+	return fields
+}
+
+// newForm returns the form that asks groups in turn.
+func newForm(groups ...formGroup) *huh.Form {
+	pages := make([]*huh.Group, len(groups))
+	for i, g := range groups {
+		pages[i] = huh.NewGroup(g.fields...)
+		if g.hide != nil {
+			pages[i] = pages[i].WithHideFunc(g.hide)
+		}
+	}
+
+	return huh.NewForm(pages...)
+}
 
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
 var errAskAgain = errors.New("ask the form again")
@@ -176,7 +206,7 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 
 		yes := true
 		another := huh.NewConfirm().Title("Add another " + noun + "?").Value(&yes)
-		submitted, err := s.ask(ctx, another)
+		submitted, err := s.ask(ctx, formGroup{fields: []huh.Field{another}})
 		if err != nil {
 			return askError(err)
 		}
@@ -230,7 +260,7 @@ func askTimeline(
 	pick := onlyField(def, "timeline")
 	fields := pick.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
-	submitted, err := s.ask(ctx, fields...)
+	submitted, err := s.ask(ctx, formGroup{fields: fields})
 	switch {
 	case err != nil:
 		return in, false, askError(err)
@@ -269,7 +299,7 @@ func (s formSession) askUntil(
 	choices.thumbnails = s.thumbnails
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
-		submitted, err := s.ask(ctx, fields...)
+		submitted, err := s.ask(ctx, formGroup{fields: fields})
 		switch {
 		case err != nil:
 			return in, askError(err)
@@ -387,13 +417,14 @@ func onlyField(d definition, name string) definition {
 // is true, in the profile an attach field needs for the images the terminal shows.
 func terminalForms(app App) func(color bool, images graphics.Protocol) askFunc {
 	return func(color bool, images graphics.Protocol) askFunc {
-		return func(ctx context.Context, fields ...huh.Field) (bool, error) {
+		return func(ctx context.Context, groups ...formGroup) (bool, error) {
+			fields := fieldsOf(groups)
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
 			cancelled := false
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
-			err := huh.NewForm(huh.NewGroup(fields...)).WithInput(app.In).WithOutput(app.Out).
+			err := newForm(groups...).WithInput(app.In).WithOutput(app.Out).
 				WithProgramOptions(tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).
 				RunWithContext(ctx)
 			if cancelled {
