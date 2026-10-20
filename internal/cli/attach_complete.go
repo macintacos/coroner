@@ -10,7 +10,7 @@ import (
 // entries of its directory, read through readDir, a directory ending in /. It matches
 // case-sensitively because ctrl+e appends the rest of a match to what is typed. A name starting
 // with . waits for a typed . and ~/ completes nothing, since the form passes it on unexpanded.
-// ponytail: reads the directory on every key; cache by directory if typing misses R-2's 100 ms.
+// ponytail: reads the directory on every key; cache by directory if a key takes over 100 ms.
 func attachCompletions(readDir func(string) ([]fs.DirEntry, error)) func(typed string) []string {
 	return func(typed string) []string {
 		if typed == "" || strings.HasPrefix(typed, "~/") {
