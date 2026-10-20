@@ -124,7 +124,7 @@ type Event struct {
 	// precision window.
 	OccurredAt Instant `json:"occurred_at"`
 	// OccurredOffset is the input's offset from UTC in seconds, positive east; null when the
-	// input was Z or an epoch, which say nothing about a local offset.
+	// input was Z or an epoch, or was read in UTC, which say nothing about a local offset.
 	OccurredOffset *int `json:"occurred_offset" jsonschema:"nullable"`
 	// Precision is how exact occurred_at is, from day to nanosecond. Consumers must accept
 	// values they do not know.

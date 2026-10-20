@@ -29,8 +29,10 @@ keeps its occurred offset: the input's offset from UTC in seconds, as `+02:00` g
 An `--at` offset more than a day from UTC is rejected as `invalid_time`: real zones span
 −12:00 to +14:00, so the database stores only offsets within a day of UTC.
 
-The offset is null when the input was `Z`, `-00:00`, `-0000`, `UTC` or an epoch. Those say
-when something happened but nothing about the local time where it happened, and
+The offset is null when the input was `Z`, `-00:00`, `-0000`, `UTC` or an epoch; a time
+read in UTC stores null too (see
+[Reading the zone of a typed time](#reading-the-zone-of-a-typed-time)). Those say when
+something happened but nothing about the local time where it happened, and
 [RFC 9557](https://www.rfc-editor.org/rfc/rfc9557.html) gives `Z` exactly that meaning. A
 stored zero would claim the source was in a UTC+0 zone, which none of them said.
 
@@ -71,10 +73,10 @@ you usually are. UTC comes last, rather than the zone of the machine coroner run
 the same command reads the same time on a laptop, a server and CI; `local` asks for the
 machine's zone by name.
 
-A time read in UTC, whether UTC came from the default, `default_timezone` or `--tz`,
-stores a null offset, like `Z`: reading it in UTC says nothing about the source's offset.
-A named zone that sits at +00:00, such as `Atlantic/Reykjavik`, or a typed `+00:00`,
-stores 0.
+A time read in the zone `UTC`, in any case, whether it came from the default,
+`default_timezone` or `--tz`, stores a null offset, like `Z`: reading it in UTC says
+nothing about the source's offset. Any other zone name stores 0, even one always at
++00:00, such as `Etc/UTC` or `Atlantic/Reykjavik`, and so does a typed `+00:00`.
 
 A wall-clock time that a daylight saving change skips or repeats in its zone is rejected,
 with an error that names the zone and suggests the time written with the offset in force

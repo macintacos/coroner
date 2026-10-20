@@ -234,7 +234,7 @@ func resolveLocal(wall wallTime, loc *time.Location, precision timeline.Precisio
 }
 
 // OffsetIn is the offset of t, a time read in loc, as Resolved.Offset states it: nil when loc
-// is UTC.
+// is time.UTC.
 func OffsetIn(t time.Time, loc *time.Location) *int {
 	if loc == time.UTC {
 		return nil
