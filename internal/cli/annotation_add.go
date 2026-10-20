@@ -40,7 +40,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner annotation add --interactive -e 12",
 	}
 
-	return annotationAddForm().attach(ctx, cmd, app, terminalForms(app))
+	return annotationAddForm().attach(ctx, cmd, app, terminalForms(app, "💬 New annotation"))
 }
 
 func annotationAddDefinition() definition {

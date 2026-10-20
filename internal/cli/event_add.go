@@ -65,7 +65,7 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner event add --interactive --source mongod",
 	}
 
-	eventAddForm().attach(ctx, cmd, app, terminalForms(app))
+	eventAddForm().attach(ctx, cmd, app, terminalForms(app, "📝 New event"))
 	cmd.Flags().String("from-file", "", fromFileUsage)
 	// A file of records needs no form, so --from-file branches before the form gate and stays
 	// outside the definition.

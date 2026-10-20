@@ -31,7 +31,7 @@ func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline create --interactive",
 	}
 
-	return timelineCreateForm(ctx, app).attach(cmd, app, terminalForms(app))
+	return timelineCreateForm(ctx, app).attach(cmd, app, terminalForms(app, "📒 New timeline"))
 }
 
 // timelineCreateForm is timeline create with its form, which opens on a terminal when the name is

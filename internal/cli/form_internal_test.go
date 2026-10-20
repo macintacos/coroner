@@ -90,6 +90,29 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("frame a form's view in a border as wide as asked, with its title set into the top edge", func() {
+		lines := strings.Split(ansi.Strip(frame("📝 New event", "What happened\n> Primary stepped down", 40)), "\n")
+
+		Expect(lines).To(HaveLen(4))
+		Expect(lines[0]).To(HavePrefix("╭─ 📝 New event ─"))
+		Expect(lines[1]).To(HavePrefix("│ What happened"))
+		Expect(lines[2]).To(HavePrefix("│ > Primary stepped down"))
+		Expect(lines[3]).To(HavePrefix("╰─"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(40), line)
+		}
+	})
+
+	It("frame a form at most 80 cells wide on a wider terminal", func() {
+		form := newForm("📝 New event", formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+
+		form.Update(tea.WindowSizeMsg{Width: 200, Height: 20})
+
+		for line := range strings.SplitSeq(ansi.Strip(form.View().Content), "\n") {
+			Expect(ansi.StringWidth(line)).To(Equal(80), line)
+		}
+	})
+
 	Describe("event add's groups", func() {
 		def := eventAddDefinition()
 		groupsFor := func(in fieldValues) []formGroup {

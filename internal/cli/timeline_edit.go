@@ -35,7 +35,7 @@ func newTimelineEditCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline edit mongo-failover --interactive",
 	}
 
-	return timelineEditForm(ctx, app).attach(cmd, app, terminalForms(app))
+	return timelineEditForm(ctx, app).attach(cmd, app, terminalForms(app, "📒 Edit timeline"))
 }
 
 // timelineEditForm is timeline edit with its form, which opens on a terminal when no change is

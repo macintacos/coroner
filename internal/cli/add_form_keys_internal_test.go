@@ -70,10 +70,10 @@ func namedKey(name string) tea.KeyPressMsg {
 // keyedForms returns forms that press script's keys through each form terminalForms would run,
 // at size, calling check, when non-nil, after each counted key and each typed step. It must run
 // inside a synctest bubble.
-func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*huh.Form)) func(bool, graphics.Protocol) askFunc {
+func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*fittedForm)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
 		return func(_ context.Context, groups ...formGroup) (bool, error) {
-			d := keyDriver{form: newForm(groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
+			d := keyDriver{form: newForm("📝 New event", groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
 			cancelled := false
 			keys := d.press(t, script, escCancels(&cancelled, fieldsOf(groups)), check)
 			script.asks = append(script.asks, keys)
@@ -90,7 +90,7 @@ func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check f
 
 // keyDriver runs a form as bubbletea would: each command in a goroutine, its message fed back.
 type keyDriver struct {
-	form    fittedForm
+	form    *fittedForm
 	size    tea.WindowSizeMsg
 	pending chan tea.Msg
 	// done ends every command still waiting to deliver its message.
@@ -99,14 +99,14 @@ type keyDriver struct {
 
 // press presses script's keys into the form, through filter, until the form ends, and returns the
 // counted keys it took.
-func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model, tea.Msg) tea.Msg, check func(*huh.Form)) []string {
+func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model, tea.Msg) tea.Msg, check func(*fittedForm)) []string {
 	t.Helper()
 	var counted []string
 	d.run(d.form.Init())
 	d.update(d.size)
 	d.settle()
 	if check != nil && d.form.State == huh.StateNormal {
-		check(d.form.Form)
+		check(d.form)
 	}
 	for d.form.State == huh.StateNormal {
 		if len(script.keys) == 0 {
@@ -120,7 +120,7 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 				d.settle()
 			}
 			if check != nil && d.form.State == huh.StateNormal {
-				check(d.form.Form)
+				check(d.form)
 			}
 			continue
 		}
@@ -128,7 +128,7 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 		d.update(filter(nil, namedKey(key.name)))
 		d.settle()
 		if check != nil && d.form.State == huh.StateNormal {
-			check(d.form.Form)
+			check(d.form)
 		}
 	}
 	close(d.done)
@@ -222,7 +222,7 @@ func formSize() tea.WindowSizeMsg { return tea.WindowSizeMsg{Width: 60, Height: 
 // keyedRun runs event add with no arguments against a scratch database, in a working directory
 // holding files/p99.png, files/q01.png and docs/r1.txt, through forms that press script's keys at
 // 60×20.
-func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
+func keyedRun(t *testing.T, script *keyScript, check func(*fittedForm)) App {
 	t.Helper()
 	home := t.TempDir()
 	db := filepath.Join(home, "coroner.db")
@@ -356,21 +356,24 @@ func TestEventAddFormKeys(t *testing.T) {
 			press("n")
 		// The terminal keeps only a frame's last rows, and a title is a whole line, since
 		// descriptions start with their titles.
-		check := func(form *huh.Form) {
+		check := func(form *fittedForm) {
 			t.Helper()
 			title, ok := titles[form.GetFocusedField().GetKey()]
 			if !ok {
 				return
 			}
-			frame := ansi.Strip(form.View())
+			frame := ansi.Strip(form.View().Content)
 			lines := strings.Split(frame, "\n")
 			height := formSize().Height
 			if len(lines) > height {
 				t.Errorf("the frame is %d lines at 60×20:\n%s", len(lines), frame)
 			}
+			if wide := slices.IndexFunc(lines, func(line string) bool { return ansi.StringWidth(line) > formSize().Width }); wide != -1 {
+				t.Errorf("line %d of the frame is wider than 60 cells:\n%s", wide, frame)
+			}
 			shown := lines[max(0, len(lines)-height):]
 			if !slices.ContainsFunc(shown, func(line string) bool {
-				line = strings.TrimSpace(strings.TrimLeft(line, "┃│"))
+				line = inFrame(line)
 				return line == title || line == title+" (required)"
 			}) {
 				t.Errorf("%s is not shown at 60×20:\n%s", title, frame)
@@ -396,7 +399,7 @@ func testAttachDirectories(t *testing.T) {
 		press("enter", "enter", "n")
 	rows := map[string]string{"fi": "↳ files/", "files/": "↳ files/p99.png  files/q01.png", "docs/": "↳ docs/r1.txt"}
 	seen := map[string]bool{}
-	check := func(form *huh.Form) {
+	check := func(form *fittedForm) {
 		t.Helper()
 		typed := focusedTyped(form)
 		row, ok := rows[typed]
@@ -404,7 +407,7 @@ func testAttachDirectories(t *testing.T) {
 			return
 		}
 		seen[typed] = true
-		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
 		if !showsRow(lines, row) {
 			t.Errorf("no row of matches leading with %q after %s:\n%s", row, typed, strings.Join(lines, "\n"))
 		}
@@ -429,7 +432,7 @@ func testAttachCycleAndPick(t *testing.T) {
 		typed("files/").press("down", "ctrl+e", "enter").
 		press("enter", "enter", "n")
 	var typingHelp, pickHelp []string
-	check := func(form *huh.Form) {
+	check := func(form *fittedForm) {
 		l, ok := form.GetFocusedField().(*listField)
 		switch {
 		case !ok:
@@ -477,13 +480,13 @@ func addedAttachments(t *testing.T, app App) []string {
 func testAttachCompletion(t *testing.T) {
 	script := filesEntry().typed("files/p").press("ctrl+e", "enter").press("enter", "enter", "n")
 	checked := false
-	check := func(form *huh.Form) {
+	check := func(form *fittedForm) {
 		t.Helper()
 		if focusedTyped(form) != "files/p" {
 			return
 		}
 		checked = true
-		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
 		if !showsRow(lines, "↳ files/p99.png") {
 			t.Errorf("no row of matches leading with files/p99.png:\n%s", strings.Join(lines, "\n"))
 		}
@@ -514,13 +517,13 @@ func filesEntry() *keyScript {
 func testTagSuggestion(t *testing.T) {
 	script := tagsEntry().typed("e").press("ctrl+e", "enter").press("enter", "enter", "enter", "n")
 	checked := false
-	check := func(form *huh.Form) {
+	check := func(form *fittedForm) {
 		t.Helper()
 		if focusedTyped(form) != "e" {
 			return
 		}
 		checked = true
-		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
 		if !showsRow(lines, "↳ election") {
 			t.Errorf("no row of matches leading with election:\n%s", strings.Join(lines, "\n"))
 		}
@@ -546,7 +549,7 @@ func testCycleAndPick(t *testing.T) {
 		typed("e").press("ctrl+n", "ctrl+n", "ctrl+e", "enter").
 		press("enter", "enter", "enter", "n")
 	var typingHelp, pickHelp []string
-	check := func(form *huh.Form) {
+	check := func(form *fittedForm) {
 		l, ok := form.GetFocusedField().(*listField)
 		switch {
 		case !ok:
@@ -605,7 +608,7 @@ func tagsEntry() *keyScript {
 }
 
 // focusedTyped returns what is typed into the focused list field, or "" when no list field has focus.
-func focusedTyped(form *huh.Form) string {
+func focusedTyped(form *fittedForm) string {
 	l, ok := form.GetFocusedField().(*listField)
 	if !ok {
 		return ""
@@ -648,9 +651,12 @@ func addedEvent(t *testing.T, app App) map[string]any {
 	return events[i]
 }
 
-// showsRow reports whether a line of a form's view, inside huh's border, leads with row.
+// showsRow reports whether a line of a form's view, inside its frame and huh's border, leads with row.
 func showsRow(lines []string, row string) bool {
-	return slices.ContainsFunc(lines, func(line string) bool {
-		return strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(line, "┃│")), row)
-	})
+	return slices.ContainsFunc(lines, func(line string) bool { return strings.HasPrefix(inFrame(line), row) })
+}
+
+// inFrame returns what a line of a form's view holds inside its frame and huh's border.
+func inFrame(line string) string {
+	return strings.Trim(line, " │┃")
 }

@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
@@ -56,8 +57,8 @@ func fieldsOf(groups []formGroup) []huh.Field {
 	return fields
 }
 
-// newForm returns the form that asks groups in turn.
-func newForm(groups ...formGroup) fittedForm {
+// newForm returns the form, framed under title, that asks groups in turn.
+func newForm(title string, groups ...formGroup) *fittedForm {
 	pages := make([]*huh.Group, len(groups))
 	for i, g := range groups {
 		pages[i] = huh.NewGroup(g.fields...)
@@ -66,16 +67,28 @@ func newForm(groups ...formGroup) fittedForm {
 		}
 	}
 
-	return fittedForm{huh.NewForm(pages...)}
+	return &fittedForm{Form: huh.NewForm(pages...), title: title}
 }
 
-// fittedForm is a form told its terminal is a row shorter, since huh sizes a group's help as one
-// row but draws a blank row above it, and the terminal drops a taller frame's top row.
-type fittedForm struct{ *huh.Form }
+// formWidth is the widest a form's frame grows, so a wide terminal shows it as a card.
+const formWidth = 80
 
-func (f fittedForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// fittedForm is a form drawn in a frame headed by its title. It tells huh its terminal is the
+// inside of the frame, and a row shorter still, since huh sizes a group's help as one row but draws
+// a blank row above it, and the terminal drops a taller frame's top row.
+type fittedForm struct {
+	*huh.Form
+	title string
+	// width is the frame's, which the last window size sets.
+	width int
+}
+
+func (f *fittedForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
-		size.Height--
+		f.width = min(size.Width, formWidth)
+		size.Width = f.width - frameBox().GetHorizontalFrameSize()
+		// The top edge frame draws, then huh's blank row.
+		size.Height -= frameBox().GetVerticalFrameSize() + 2
 		msg = size
 	}
 	_, cmd := f.Form.Update(msg)
@@ -83,11 +96,32 @@ func (f fittedForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return f, cmd
 }
 
-func (f fittedForm) View() tea.View {
-	v := tea.NewView(f.Form.View())
+func (f *fittedForm) View() tea.View {
+	body := f.Form.View()
+	// huh draws nothing once the form ends, which clears it from the screen.
+	if body != "" {
+		body = frame(f.title, body, f.width)
+	}
+	v := tea.NewView(body)
 	v.ReportFocus = true
 
 	return v
+}
+
+// frameBox is a form frame's sides and bottom edge; frame draws its top edge.
+func frameBox() lipgloss.Style {
+	return lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.RoundedBorder(), false, true, true).
+		BorderForeground(lipgloss.BrightBlack)
+}
+
+// frame returns body in a rounded frame width cells wide, or as wide as body when width is 0, with
+// title set into its top edge.
+func frame(title, body string, width int) string {
+	box := frameBox().Width(width).Render(body)
+	edge := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	rule := strings.Repeat("─", max(0, lipgloss.Width(box)-ansi.StringWidth("╭─ "+title+" ╮")))
+
+	return edge.Render("╭─ ") + lipgloss.NewStyle().Bold(true).Render(title) + edge.Render(" "+rule+"╮") + "\n" + box
 }
 
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
@@ -450,16 +484,16 @@ func onlyField(d definition, name string) definition {
 	return definition{fields: slices.DeleteFunc(slices.Clone(d.fields), func(f field) bool { return f.name != name })}
 }
 
-// terminalForms returns the askFunc that runs forms on app's terminal, drawing in color when color
-// is true, in the profile an attach field needs for the images the terminal shows.
-func terminalForms(app App) func(color bool, images graphics.Protocol) askFunc {
+// terminalForms returns the askFunc that runs forms framed under title on app's terminal, drawing in
+// color when color is true, in the profile an attach field needs for the images the terminal shows.
+func terminalForms(app App, title string) func(color bool, images graphics.Protocol) askFunc {
 	return func(color bool, images graphics.Protocol) askFunc {
 		return func(ctx context.Context, groups ...formGroup) (bool, error) {
 			fields := fieldsOf(groups)
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
 			cancelled := false
-			form := newForm(groups...)
+			form := newForm(title, groups...)
 			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Interrupt
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
