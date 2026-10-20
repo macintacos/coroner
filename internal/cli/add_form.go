@@ -331,7 +331,7 @@ func (s formSession) summarize(noun string, added []summaryLine) error {
 	name := added[0].timeline
 	view := shellLine(slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view", "-t", name}))
 
-	return s.inv.out.notify("Added %d %s to timeline `%s`:%s\nView the timeline: %s", len(added), noun, name, lines.String(), view)
+	return s.inv.out.notify("\nAdded %d %s to timeline `%s`:%s\nView the timeline: %s", len(added), noun, name, lines.String(), view)
 }
 
 // chooseTimeline returns in with the timeline the session writes to, asking for one through def's

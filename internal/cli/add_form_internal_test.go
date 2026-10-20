@@ -428,6 +428,7 @@ var _ = Describe("add forms", func() {
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 				Expect(errOut.String()).To(HaveSuffix("Equivalent command: coroner --db " + db + " event add 'Election timeout on db-3' --at 2026-09-11T03:15:00Z\n" +
+					"\n" +
 					"Added 2 events to timeline `mongo-outage`:\n" +
 					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
 					"  #2  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Election timeout on db-3\n" +

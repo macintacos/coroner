@@ -101,6 +101,8 @@ the list. `annotation add`'s form ends the same way, listing each annotation's k
 body.
 
 ```text
+Equivalent command: coroner event add 'Election timeout on db-3' -t inc-4821 --at 2026-10-20T16:05:00Z
+
 Added 2 events to timeline `inc-4821`:
   #3  2026-10-20T16:00:00Z (-04:00 local: 12:00:00)  Primary stepped down
   #4  2026-10-20T16:05:00Z (-04:00 local: 12:05:00)  Election timeout on db-3
