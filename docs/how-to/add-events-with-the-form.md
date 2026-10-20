@@ -22,12 +22,15 @@ under `--no-input` or `CORONER_NO_INPUT`. Under `--json` only `--interactive` op
 
 ## Fill in the fields
 
-The form first asks for the five fields most events use:
+The form draws in a frame titled 📝 New event, at most 80 columns wide, and puts an icon
+before each field's title. It first asks for the five fields most events use:
 
 - **What happened:** the event's text.
 - **When:** the time it happened, in any form `coroner help time-input` lists. The form
   previews the time it reads as you type. Leave it empty to mean now.
-- **Source:** the system, service or person it came from.
+- **Source:** the system, service or person it came from. As you type, the form marks the
+  name ✅ Existing source when coroner already has that source, or ✨ New source when it
+  does not, and submitting the entry creates it.
 - **Tags:** keywords such as `phase:detect`, added one at a time with `enter`.
 - **Files:** files to attach, such as screenshots, one path at a time.
 
