@@ -21,7 +21,9 @@ type listField struct {
 	// picked is the index of the value up and down picked, or -1 while typing.
 	picked int
 	check  func(string) error
-	err    error
+	// path, when set, turns what is typed into the value added.
+	path func(typed string) string
+	err  error
 	// thumbnail, when set, returns what shows under the picked value, or the last one added, and
 	// the command the terminal needs to show it; send holds that command until the next update.
 	thumbnail func(value string) (string, tea.Cmd)
@@ -68,6 +70,13 @@ func (l *listField) withThumbnail(thumbnail func(value string) (string, tea.Cmd)
 	}
 	l.thumbnail = thumbnail
 	l.show()
+
+	return l
+}
+
+// withPath returns l adding what path turns typed values into.
+func (l *listField) withPath(path func(typed string) string) *listField {
+	l.path = path
 
 	return l
 }
@@ -222,6 +231,9 @@ func (l *listField) typed() string {
 // addTyped adds what is typed, when check accepts it, and clears it.
 func (l *listField) addTyped() tea.Cmd {
 	typed := l.typed()
+	if l.path != nil {
+		typed = l.path(typed)
+	}
 	l.err = l.check(typed)
 	if l.err != nil {
 		return nil
