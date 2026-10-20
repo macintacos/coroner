@@ -20,9 +20,8 @@ func attachCompletions(readDir func(string) ([]fs.DirEntry, error), home string)
 		}
 		completions := pathCompletions(readDir, path)
 		if path != typed {
-			expanded := len(path) - len(typed) + len("~")
 			for i, completion := range completions {
-				completions[i] = "~" + completion[expanded:]
+				completions[i] = "~" + strings.TrimPrefix(completion, strings.TrimSuffix(home, "/"))
 			}
 		}
 

@@ -445,7 +445,7 @@ var _ = Describe("form fields", func() {
 
 			return tag
 		}
-		It("shows the first five suggestions while nothing is typed", func() {
+		It("shows the first five suggestions under their label while nothing is typed", func() {
 			Expect(fieldView(sourceWith(seven...))).To(SatisfyAll(
 				ContainSubstring("💡 Suggestions: db-1 · db-2 · db-3 · db-4 · db-5"), Not(ContainSubstring("db-6"))))
 		})
@@ -455,7 +455,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(source, "MON")
 
-			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("💡 Suggestions: Mongod · mongos"), Not(ContainSubstring("slack"))))
+			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring(suggestionsLabel+"Mongod · mongos"), Not(ContainSubstring("slack"))))
 		})
 
 		It("keeps the match up and down cycle to in its window", func() {
@@ -463,11 +463,11 @@ var _ = Describe("form fields", func() {
 			typeText(source, "db")
 
 			press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
-			Expect(fieldView(source)).To(ContainSubstring("💡 Suggestions: db-3 · db-4 · db-5 · db-6 · db-7"))
+			Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
 			ctrlE(source)
 
 			Expect(source.GetValue()).To(Equal("db-7"))
-			Expect(fieldView(source)).To(ContainSubstring("💡 Suggestions: db-7"))
+			Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "db-7"))
 		})
 
 		It("wraps up and down around the matches, as the inline suggestion does", func() {
@@ -480,7 +480,7 @@ var _ = Describe("form fields", func() {
 			up := sourceWith(seven...)
 			typeText(up, "db")
 			press(up, tea.KeyUp)
-			Expect(fieldView(up)).To(ContainSubstring("💡 Suggestions: db-3 · db-4 · db-5 · db-6 · db-7"))
+			Expect(fieldView(up)).To(ContainSubstring(suggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
 			ctrlE(up)
 			Expect(up.GetValue()).To(Equal("db-7"))
 		})
@@ -494,7 +494,7 @@ var _ = Describe("form fields", func() {
 
 			tag.Blur()
 
-			Expect(fieldView(tag)).To(ContainSubstring("💡 Suggestions: election · escalation · edge"))
+			Expect(fieldView(tag)).To(ContainSubstring(suggestionsLabel + "election · escalation · edge"))
 		})
 
 		It("matches what a paste leaves in a list field", func() {
@@ -532,7 +532,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(source, "zz")
 
-			Expect(fieldView(source)).NotTo(ContainSubstring("💡 Suggestions:"))
+			Expect(fieldView(source)).NotTo(ContainSubstring(suggestionsLabel))
 		})
 
 		It("names the cycling keys in its help only while something matches", func() {
@@ -588,7 +588,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(path, "fi")
 
-			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring("💡 Suggestions: files/"), ContainSubstring("> files/")))
+			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring(suggestionsLabel+"files/"), ContainSubstring("> files/")))
 		})
 
 		It("completes what a paste leaves", func() {
@@ -634,7 +634,7 @@ var _ = Describe("form fields", func() {
 			ctrlE(path)
 
 			Expect(fieldView(path)).To(SatisfyAll(
-				ContainSubstring("> files/"), ContainSubstring("💡 Suggestions: files/p99.png · files/q01.png")))
+				ContainSubstring("> files/"), ContainSubstring(suggestionsLabel+"files/p99.png · files/q01.png")))
 		})
 
 		It("completes the empty input again after an add", func() {
@@ -644,7 +644,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(path, "d")
 
-			Expect(fieldView(path)).To(ContainSubstring("💡 Suggestions: docs/"))
+			Expect(fieldView(path)).To(ContainSubstring(suggestionsLabel + "docs/"))
 		})
 
 		It("ghosts nothing over the empty input after an add when nothing completes it", func() {
