@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"testing/fstest"
 
 	"charm.land/huh/v2"
 	. "github.com/onsi/ginkgo/v2"
@@ -23,11 +24,7 @@ var _ = Describe("the attach field's completions", func() {
 	BeforeEach(func() {
 		dir = GinkgoT().TempDir()
 		read = nil
-		for _, name := range []string{"files/p99.png", "files/q01.png", "files/.keep", "docs/r1.txt"} {
-			path := filepath.Join(dir, name)
-			Expect(os.MkdirAll(filepath.Dir(path), 0o700)).To(Succeed())
-			Expect(os.WriteFile(path, nil, 0o600)).To(Succeed())
-		}
+		Expect(os.CopyFS(dir, fstest.MapFS{"files/p99.png": {}, "files/q01.png": {}, "files/.keep": {}, "docs/r1.txt": {}})).To(Succeed())
 	})
 
 	It("lists the entries of the typed path's directory that start with the typed name", func() {
@@ -37,6 +34,19 @@ var _ = Describe("the attach field's completions", func() {
 
 	It("ends a directory with /", func() {
 		Expect(attachCompletions(rooted)("fi")).To(Equal([]string{"files/"}))
+	})
+
+	It("ends a symlink to a directory with /, and not one to a file", func() {
+		Expect(os.Symlink("files", filepath.Join(dir, "linked"))).To(Succeed())
+		Expect(os.Symlink("docs/r1.txt", filepath.Join(dir, "lnfile"))).To(Succeed())
+		Expect(attachCompletions(rooted)("l")).To(Equal([]string{"linked/", "lnfile"}))
+	})
+
+	It("matches the typed name case-sensitively", func() {
+		fsys := fstest.MapFS{"Files/p99.png": {}}
+		readDir := func(name string) ([]fs.DirEntry, error) { return fs.ReadDir(fsys, name) }
+		Expect(attachCompletions(readDir)("fi")).To(BeEmpty())
+		Expect(attachCompletions(readDir)("Fi")).To(Equal([]string{"Files/"}))
 	})
 
 	It("completes an absolute path the same way", func() {

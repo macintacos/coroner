@@ -26,9 +26,9 @@ type listField struct {
 	// the command the terminal needs to show it; send holds that command until the next update.
 	thumbnail func(value string) (string, tea.Cmd)
 	send      tea.Cmd
-	// row, when set, is the match row of its suggestions.
-	row *matchRow
-	// complete, when set, returns the suggestions for what is typed.
+	// row and complete, when set, are the match row of its suggestions and what returns them for
+	// what is typed.
+	row      *matchRow
 	complete func(typed string) []string
 }
 
@@ -77,31 +77,29 @@ func (l *listField) withSuggestions(suggestions []string) *listField {
 	if len(suggestions) == 0 {
 		return l
 	}
-	l.Suggestions(suggestions)
-	l.row = newMatchRow(suggestions, fmt.Sprint(l.Input.GetValue()))
-	l.show()
 
-	return l
+	return l.withCompletions(func(string) []string { return suggestions })
 }
 
-// withCompletions returns l suggesting what complete returns for what is typed.
+// withCompletions returns l suggesting what complete returns for what is typed, and showing a row of
+// what is typed matches.
 func (l *listField) withCompletions(complete func(typed string) []string) *listField {
 	if complete == nil {
 		return l
 	}
+	typed := fmt.Sprint(l.Input.GetValue())
 	l.complete = complete
-	l.row = newMatchRow(nil, "")
-	l.suggest("")
+	l.row = newMatchRow(nil, typed)
+	l.refreshSuggestions(typed)
+	l.row.follow(tea.KeyPressMsg{}, typed)
 	l.show()
 
 	return l
 }
 
-// suggest suggests what complete returns for typed, when l completes, else the row's suggestions.
-func (l *listField) suggest(typed string) {
-	if l.complete != nil {
-		l.row.suggestions = l.complete(typed)
-	}
+// refreshSuggestions sets the suggestions complete returns for typed.
+func (l *listField) refreshSuggestions(typed string) {
+	l.row.suggestions = l.complete(typed)
 	if len(l.row.suggestions) == 0 {
 		// textinput keeps its matches when suggestions turn off and ghosts them; "" matches nothing.
 		l.Suggestions([]string{""})
@@ -109,14 +107,18 @@ func (l *listField) suggest(typed string) {
 	l.Suggestions(l.row.suggestions)
 }
 
+// Update refreshes the suggestions after a key or a paste, which textinput inserts without
+// matching it.
 func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	model, cmd := l.update(msg)
-	if press, ok := msg.(tea.KeyPressMsg); ok && l.row != nil {
+	press, isPress := msg.(tea.KeyPressMsg)
+	if _, pasted := msg.(tea.PasteMsg); (isPress || pasted) && l.row != nil {
 		typed, before := fmt.Sprint(l.Input.GetValue()), l.row.line()
-		if l.complete != nil {
-			l.suggest(typed)
+		if typed != l.row.typed {
+			l.refreshSuggestions(typed)
 		}
-		if l.row.follow(press, typed) || l.row.line() != before {
+		l.row.follow(press, typed)
+		if l.row.line() != before {
 			l.show()
 			cmd = tea.Batch(cmd, tea.RequestWindowSize)
 		}
@@ -229,7 +231,7 @@ func (l *listField) addTyped() tea.Cmd {
 	l.Value(new(""))
 	if l.row != nil {
 		// SetValue leaves textinput's matches for what was typed; suggesting again recomputes them.
-		l.suggest("")
+		l.refreshSuggestions("")
 		l.row.follow(tea.KeyPressMsg{}, "")
 	}
 	l.show()

@@ -36,12 +36,13 @@ other one. Once you type, the row shows the ones that start with what you typed,
 the inline suggestion `ctrl+e` takes.
 
 Files completes the path you type. Once you type, the row lists the entries of the typed
-path's folder, relative to where you run coroner or absolute, that start with the typed
-name, and a folder ends in `/`. `ctrl+e` takes the inline one, so you can keep completing
-inside a folder. Names starting with `.` show once you type the `.`. A path starting with
-`~/` completes nothing and is not expanded, so type the full path. A file that does not
-exist is reported when you submit, as `--attach` reports it, and the form asks the entry
-again. The form `annotation add` opens completes its Files field the same way.
+path's directory, relative to where you run coroner or absolute, that start with the typed
+name, matching case, and a directory ends in `/`. `ctrl+e` takes the inline one, so you
+can keep completing inside a directory. Names starting with `.` show once you type the
+`.`. A path starting with `~/` completes nothing and is not expanded, so type the full
+path. A file that does not exist is reported when you submit, as `--attach` reports it,
+and the form asks the entry again. `annotation add`'s form completes its attach field the
+same way.
 
 These keys move through the form:
 
