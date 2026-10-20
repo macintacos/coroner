@@ -438,12 +438,16 @@ var _ = Describe("add forms", func() {
 			It("count in the summary only the entries that added an event, not a dry run or an --id already stored", func(ctx SpecContext) {
 				id := "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2"
 				Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--id", id)).To(Equal(0), errOut.String())
-				added := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
+				stored := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
 				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
-				stored := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "id": id, "more-options": "true", "dry-run": "false"}
-				command := eventAdd(ctx, answers(submit(added), confirm(true), submit(dryRun), confirm(true), submit(stored), confirm(false)))
+				added := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
+				command := eventAdd(ctx, answers(submit(stored), confirm(true), submit(added), confirm(true), submit(dryRun), confirm(false)))
 
-				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+				Expect(runForm(ctx, command, "event", "add", "--id", id)).To(Succeed())
+
+				echoes := strings.Split(errOut.String(), "Equivalent command: ")
+				Expect(echoes).To(HaveLen(4))
+				Expect(echoes[2]).NotTo(ContainSubstring("--id"))
 
 				Expect(errOut.String()).To(HaveSuffix("Added 1 event to timeline `mongo-outage`:\n" +
 					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
