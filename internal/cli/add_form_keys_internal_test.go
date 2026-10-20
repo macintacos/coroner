@@ -679,7 +679,7 @@ func TestTerminalFormClearsWhenItEnds(t *testing.T) {
 				_, _ = screen.Write([]byte("Added event #3\n"))
 
 				want := []string{"Equivalent command: coroner event add", "Added event #3"}
-				if got := screen.lines(); !slices.Equal(got, want) {
+				if got := screen.lines(t); !slices.Equal(got, want) {
 					t.Errorf("the screen holds %q once the form ends; want %q", got, want)
 				}
 			})
@@ -688,12 +688,14 @@ func TestTerminalFormClearsWhenItEnds(t *testing.T) {
 }
 
 // lineTerminal is a terminal of unbounded height that keeps what each cell holds and where the
-// cursor is, as an inline program moves it, and treats \n as \r\n as a tty's output does.
+// cursor is, as an inline program moves it, and treats \n as \r\n as a tty's output does. It models
+// only the sequences bubbletea's renderer sends a form, and lines fails the test on any other.
 type lineTerminal struct {
-	rows  [][]string
-	x, y  int
-	state byte
-	p     *ansi.Parser
+	rows       [][]string
+	x, y       int
+	state      byte
+	p          *ansi.Parser
+	unmodelled []string
 }
 
 func (s *lineTerminal) Write(b []byte) (int, error) {
@@ -706,58 +708,47 @@ func (s *lineTerminal) Write(b []byte) (int, error) {
 		switch {
 		case width > 0:
 			s.put(string(seq), width)
-		case len(seq) == 1:
-			s.control(seq[0])
-		case string(seq) == "\x1bM":
-			s.y--
+		case string(seq) == "\r":
+			s.x = 0
+		case string(seq) == "\n":
+			s.x, s.y = 0, s.y+1
 		case ansi.HasCsiPrefix(seq):
-			s.csi(ansi.Cmd(s.p.Command()))
+			s.csi(string(seq), ansi.Cmd(s.p.Command()))
+		default:
+			s.unmodelled = append(s.unmodelled, string(seq))
 		}
 	}
 	return len(b), nil
 }
 
-func (s *lineTerminal) control(c byte) {
-	switch c {
-	case '\r':
-		s.x = 0
-	case '\n':
-		s.x, s.y = 0, s.y+1
-	case '\b':
-		s.x = max(0, s.x-1)
-	case '\t':
-		s.x = s.x/8*8 + 8
-	}
-}
-
-func (s *lineTerminal) csi(cmd ansi.Cmd) {
+// csi applies the CSI sequence seq, or records it as unmodelled. One with a private prefix or an
+// intermediate byte sets a mode or asks a query, which changes no cell.
+func (s *lineTerminal) csi(seq string, cmd ansi.Cmd) {
 	if cmd.Prefix() != 0 || cmd.Intermediate() != 0 {
 		return
 	}
 	n, _ := s.p.Param(0, 1)
+	erase, _ := s.p.Param(0, 0)
 	row := s.row()
-	switch cmd.Final() {
-	case 'A':
+	switch final := cmd.Final(); {
+	case final == 'm': // Style, which the model drops.
+	case final == 'A':
 		s.y = max(0, s.y-n)
-	case 'B':
-		s.y += n
-	case 'C':
+	case final == 'C':
 		s.x += n
-	case 'D':
-		s.x = max(0, s.x-n)
-	case 'J':
+	case final == 'G':
+		s.x = n - 1
+	case final == 'J' && erase == 0:
 		s.rows = s.rows[:s.y+1]
 		s.rows[s.y] = (*row)[:min(s.x, len(*row))]
-	case 'K':
+	case final == 'K' && erase == 0:
 		*row = (*row)[:min(s.x, len(*row))]
-	case 'X':
+	case final == 'X':
 		for i := s.x; i < min(s.x+n, len(*row)); i++ {
 			(*row)[i] = ""
 		}
-	case '@':
-		*row = slices.Insert(*row, min(s.x, len(*row)), make([]string, n)...)
-	case 'P':
-		*row = slices.Delete(*row, min(s.x, len(*row)), min(s.x+n, len(*row)))
+	default:
+		s.unmodelled = append(s.unmodelled, seq)
 	}
 }
 
@@ -779,7 +770,11 @@ func (s *lineTerminal) put(grapheme string, width int) {
 }
 
 // lines returns the screen's rows as text, without trailing blanks or blank rows at the bottom.
-func (s *lineTerminal) lines() []string {
+func (s *lineTerminal) lines(t *testing.T) []string {
+	t.Helper()
+	if len(s.unmodelled) > 0 {
+		t.Fatalf("the program wrote %q, which lineTerminal does not model", s.unmodelled)
+	}
 	var lines []string
 	for _, row := range s.rows {
 		var line strings.Builder
