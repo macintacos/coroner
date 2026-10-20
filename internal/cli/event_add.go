@@ -314,8 +314,8 @@ func (a eventAdded) render(o output) error {
 }
 
 func (a eventAdded) summary() (summaryLine, bool) {
-	line := fmt.Sprintf("#%d  %s  %s", a.event.Seq, a.when, pickerLabel(a.event.Text))
-	return summaryLine{timeline: a.timeline.Name, text: line}, !a.dryRun && !a.existed
+	cells := []string{fmt.Sprintf("#%d", a.event.Seq), a.when, pickerLabel(a.event.Text)}
+	return summaryLine{timeline: a.timeline.Name, cells: cells}, !a.dryRun && !a.existed
 }
 
 // eventDraft is an event read from its fields and checked, still without its timeline.

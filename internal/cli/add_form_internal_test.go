@@ -18,6 +18,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -109,6 +110,15 @@ var _ = Describe("add forms", func() {
 			"timeline": {"mongo-outage"}, "source": {"mongod"}, "tag": {"election"}, "author": {"sre"}, "tz": {"UTC"},
 		}))
 		Expect(values).To(HaveKey("text"))
+	})
+
+	It("align a summary's columns to their widest cell", func() {
+		rows := summaryRows([]summaryLine{
+			{cells: []string{"#9", "03:14:07Z", "Primary stepped down"}},
+			{cells: []string{"#10", "03:15:00Z", "Election timeout on db-3"}},
+		}, lipgloss.NewStyle())
+
+		Expect(rows).To(Equal("  #9   03:14:07Z  Primary stepped down\n  #10  03:15:00Z  Election timeout on db-3"))
 	})
 
 	Describe("session", func() {
@@ -442,10 +452,11 @@ var _ = Describe("add forms", func() {
 
 				Expect(errOut.String()).To(HaveSuffix("Equivalent command: coroner --db " + db + " event add 'Election timeout on db-3' --at 2026-09-11T03:15:00Z\n" +
 					"\n" +
-					"Added 2 events to timeline `mongo-outage`:\n" +
+					"✓ Added 2 events to timeline `mongo-outage`\n" +
 					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
 					"  #2  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Election timeout on db-3\n" +
-					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
 			It("count in the summary only the entries that added an event, not a dry run or an --id already stored", func(ctx SpecContext) {
@@ -462,9 +473,10 @@ var _ = Describe("add forms", func() {
 				Expect(echoes).To(HaveLen(4))
 				Expect(echoes[2]).NotTo(ContainSubstring("--id"))
 
-				Expect(errOut.String()).To(HaveSuffix("Added 1 event to timeline `mongo-outage`:\n" +
+				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 event to timeline `mongo-outage`\n" +
 					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
-					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
 			It("print no summary when no entry added an event", func(ctx SpecContext) {
@@ -481,9 +493,10 @@ var _ = Describe("add forms", func() {
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
-				Expect(errOut.String()).To(HaveSuffix("Added 1 annotation to timeline `mongo-outage`:\n" +
+				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 annotation to timeline `mongo-outage`\n" +
 					"  evidence  replSetStepDown\n" +
-					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
 			It("skip an entry Esc cancels and end when no other is wanted", func(ctx SpecContext) {

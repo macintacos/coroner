@@ -45,8 +45,11 @@ type addResult interface {
 }
 
 // summaryLine is a record as the summary that ends an add form's session lists it: its timeline's
-// name, and its line under the count.
-type summaryLine struct{ timeline, text string }
+// name, and the cells of its row under the count, its text last.
+type summaryLine struct {
+	timeline string
+	cells    []string
+}
 
 // askFunc runs a form of groups and reports whether it was submitted: Esc returns false, Ctrl-C
 // huh.ErrUserAborted.
@@ -320,23 +323,55 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	}
 }
 
-// summarize prints how many noun records added lists, to the first one's timeline, a line for
-// each, and the command that views that timeline; nothing when added is empty.
+// summarize prints a heading counting the noun records added lists, to the first one's timeline, a
+// row for each, and the command that views that timeline; nothing when added is empty.
 func (s formSession) summarize(noun string, added []summaryLine) error {
 	if len(added) == 0 {
 		return nil
 	}
-	if len(added) > 1 {
-		noun += "s"
-	}
-	var lines strings.Builder
-	for _, line := range added {
-		lines.WriteString("\n  " + line.text)
-	}
+	styles := newNoteStyles(s.inv.errColor)
 	name := added[0].timeline
 	view := shellLine(slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view", "-t", name}))
 
-	return s.inv.out.notify("\nAdded %d %s to timeline `%s`:%s\nView the timeline: %s", len(added), noun, name, lines.String(), view)
+	return s.inv.out.notify("\n%s Added %d %s to timeline %s\n%s\n\n  %s %s",
+		styles.done.Render("✓"), len(added), pluralNoun(len(added), noun), styles.name.Render(name),
+		summaryRows(added, styles.faint), styles.faint.Render("View the timeline:"), view)
+}
+
+// summaryRows returns added's rows, two spaces in, with each cell before the text drawn in lead and
+// padded to its column's widest, so the texts line up.
+func summaryRows(added []summaryLine, lead lipgloss.Style) string {
+	widths := make([]int, len(added[0].cells)-1)
+	for _, line := range added {
+		for i := range widths {
+			widths[i] = max(widths[i], ansi.StringWidth(line.cells[i]))
+		}
+	}
+	rows := make([]string, 0, len(added))
+	for _, line := range added {
+		var row strings.Builder
+		row.WriteString("  ")
+		for i, width := range widths {
+			row.WriteString(lead.Render(line.cells[i]) + strings.Repeat(" ", width-ansi.StringWidth(line.cells[i])+2))
+		}
+		rows = append(rows, row.String()+line.cells[len(widths)])
+	}
+
+	return strings.Join(rows, "\n")
+}
+
+// noteStyles are how a form session's notes draw in the terminal's own colors: faint for what
+// supports a line, and a green mark and bold name for the summary's heading. Without color they are
+// plain, with the name in backticks.
+type noteStyles struct{ faint, done, name lipgloss.Style }
+
+func newNoteStyles(color bool) noteStyles {
+	s := lipgloss.NewStyle()
+	if !color {
+		return noteStyles{faint: s, done: s, name: s.Transform(func(name string) string { return "`" + name + "`" })}
+	}
+
+	return noteStyles{faint: s.Faint(true), done: s.Foreground(lipgloss.Green), name: s.Bold(true)}
 }
 
 // chooseTimeline returns in with the timeline the session writes to, asking for one through def's
@@ -511,7 +546,9 @@ func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldVal
 // fields, against the same database.
 func (s formSession) echo(path string, def definition, values fieldValues) error {
 	args := commandArgs(path, def, values)
-	return s.inv.out.notify("Equivalent command: %s", shellLine(slices.Concat(args[:1], s.inv.echoArgs, args[1:])))
+	label := newNoteStyles(s.inv.errColor).faint.Render("Equivalent command:")
+
+	return s.inv.out.notify("%s %s", label, shellLine(slices.Concat(args[:1], s.inv.echoArgs, args[1:])))
 }
 
 // baseCheckEnv is what a form's checks read time input against before a zone is typed into it:

@@ -151,8 +151,8 @@ func (a annotationAdded) render(o output) error {
 }
 
 func (a annotationAdded) summary() (summaryLine, bool) {
-	line := string(a.annotation.Kind) + "  " + pickerLabel(a.annotation.Body)
-	return summaryLine{timeline: a.timeline.Name, text: line}, !a.dryRun
+	cells := []string{string(a.annotation.Kind), pickerLabel(a.annotation.Body)}
+	return summaryLine{timeline: a.timeline.Name, cells: cells}, !a.dryRun
 }
 
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.
