@@ -51,4 +51,22 @@ var _ = Describe("TagUsages", func() {
 			{Name: "phase:detect", EventCount: 2, FirstOccurredAt: at(5), LastOccurredAt: at(20)},
 		}))
 	})
+
+	It("counts only the timelines given, the most recently used tag first", func(ctx SpecContext) {
+		Expect(s.AddEvent(ctx, newEvent(10, incident.ID, at(10), "election"), "")).Error().NotTo(HaveOccurred())
+		Expect(s.AddEvent(ctx, newEvent(11, incident.ID, at(20), "phase:detect"), "")).Error().NotTo(HaveOccurred())
+		Expect(s.AddEvent(ctx, newEvent(12, other.ID, at(30), "phase:detect", "cloudflare"), "")).Error().NotTo(HaveOccurred())
+
+		Expect(s.TagUsages(ctx, incident.ID)).To(Equal([]store.TagUsage{
+			{Name: "phase:detect", EventCount: 1, FirstOccurredAt: at(20), LastOccurredAt: at(20)},
+			{Name: "election", EventCount: 1, FirstOccurredAt: at(10), LastOccurredAt: at(10)},
+		}))
+	})
+
+	It("returns an empty, non-nil slice for a timeline whose events carry no tag", func(ctx SpecContext) {
+		Expect(s.AddEvent(ctx, newEvent(10, other.ID, at(10), "election"), "")).Error().NotTo(HaveOccurred())
+		Expect(s.AddEvent(ctx, newEvent(11, incident.ID, at(20)), "")).Error().NotTo(HaveOccurred())
+
+		Expect(s.TagUsages(ctx, incident.ID)).To(And(Not(BeNil()), BeEmpty()))
+	})
 })

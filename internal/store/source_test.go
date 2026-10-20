@@ -73,6 +73,31 @@ var _ = Describe("Sources", func() {
 		})
 	})
 
+	Describe("TimelineSources", func() {
+		It("returns the sources the timeline's events name, the most recently used first", func(ctx SpecContext) {
+			other := timeline.Timeline{ID: uuid(2), Name: "inc-466", Refs: []string{}, CreatedAt: created, UpdatedAt: created}
+			Expect(s.CreateTimeline(ctx, other)).To(Succeed())
+			elsewhere := newEvent(13, at(30), "cloudflare")
+			elsewhere.TimelineID = other.ID
+
+			Expect(s.AddEvent(ctx, newEvent(10, at(5), "mongod"), uuid(20))).Error().NotTo(HaveOccurred())
+			Expect(s.AddEvent(ctx, newEvent(11, at(20), "slack"), uuid(21))).Error().NotTo(HaveOccurred())
+			Expect(s.AddEvent(ctx, newEvent(12, at(10), "mongod"), uuid(22))).Error().NotTo(HaveOccurred())
+			Expect(s.AddEvent(ctx, elsewhere, uuid(23))).Error().NotTo(HaveOccurred())
+			Expect(s.AddEvent(ctx, newEvent(14, at(40), "pager"), uuid(24))).Error().NotTo(HaveOccurred())
+			Expect(s.DeleteEvents(ctx, uuid(14))).To(Succeed())
+
+			Expect(s.TimelineSources(ctx, incident.ID)).To(Equal([]timeline.Source{
+				{ID: uuid(21), Name: "slack", CreatedAt: created},
+				{ID: uuid(20), Name: "mongod", CreatedAt: created},
+			}))
+		})
+
+		It("returns an empty, non-nil slice for a timeline whose events name no source", func(ctx SpecContext) {
+			Expect(s.TimelineSources(ctx, incident.ID)).To(And(Not(BeNil()), BeEmpty()))
+		})
+	})
+
 	Describe("RenameSource", func() {
 		BeforeEach(func(ctx SpecContext) {
 			Expect(s.AddEvent(ctx, newEvent(10, at(20), "mongo"), uuid(20))).Error().NotTo(HaveOccurred())

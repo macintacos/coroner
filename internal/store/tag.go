@@ -15,20 +15,34 @@ type TagUsage struct {
 }
 
 // tagUsageQuery is hand-written: sqlc cannot type MIN or MAX.
-const tagUsageQuery = `SELECT t.tag, COUNT(*), MIN(e.occurred_at), MAX(e.occurred_at)
+func tagUsageQuery(timelineIDs []string) (string, []any) {
+	const selectFrom = `SELECT t.tag, COUNT(*), MIN(e.occurred_at), MAX(e.occurred_at)
 FROM event_tag t JOIN event e ON e.id = t.event_id
-GROUP BY t.tag
-ORDER BY t.tag`
+`
+	if len(timelineIDs) == 0 {
+		return selectFrom + `GROUP BY t.tag
+ORDER BY t.tag`, nil
+	}
 
-// TagUsages is Tx.TagUsages in its own Read.
-func (s *Store) TagUsages(ctx context.Context) ([]TagUsage, error) {
-	return readIn(ctx, s, func(tx *Tx) ([]TagUsage, error) { return tx.TagUsages(ctx) })
+	in, args := inList(timelineIDs)
+
+	return selectFrom + `WHERE e.timeline_id ` + in + `
+GROUP BY t.tag
+ORDER BY MAX(e.occurred_at) DESC, t.tag`, args
 }
 
-// TagUsages returns every tag an event carries, with its usage, ordered by name.
-func (tx *Tx) TagUsages(ctx context.Context) ([]TagUsage, error) {
+// TagUsages is Tx.TagUsages in its own Read.
+func (s *Store) TagUsages(ctx context.Context, timelineIDs ...string) ([]TagUsage, error) {
+	return readIn(ctx, s, func(tx *Tx) ([]TagUsage, error) { return tx.TagUsages(ctx, timelineIDs...) })
+}
+
+// TagUsages returns every tag an event carries, with its usage, ordered by name. Given
+// timelineIDs, it counts only those timelines' events, the most recently used tag first.
+func (tx *Tx) TagUsages(ctx context.Context, timelineIDs ...string) ([]TagUsage, error) {
+	query, args := tagUsageQuery(timelineIDs)
+
 	return translated(func() ([]TagUsage, error) {
-		return queryAll(ctx, tx.db, tagUsageQuery, nil, scanTagUsage)
+		return queryAll(ctx, tx.db, query, args, scanTagUsage)
 	})
 }
 
