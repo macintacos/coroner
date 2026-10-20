@@ -102,9 +102,10 @@ func timeZone(tz *string, defaultTimezone string, local *time.Location) (zone, e
 func resolveTime(flag string, input *string, now time.Time, loc *time.Location) (timeparse.Resolved, error) {
 	if input == nil {
 		wall := now.In(loc)
-		_, offset := wall.Zone()
 		return timeparse.Resolved{
-			Instant: timeline.PrecisionSecond.Truncate(wall), Offset: &offset, Precision: timeline.PrecisionSecond,
+			Instant:   timeline.PrecisionSecond.Truncate(wall),
+			Offset:    timeparse.OffsetIn(wall, loc),
+			Precision: timeline.PrecisionSecond,
 		}, nil
 	}
 

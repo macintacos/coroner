@@ -137,8 +137,15 @@ var _ = Describe("event add", func() {
 			Expect(run(ctx, "event", "add", "Primary stepped down", "--json")).To(Equal(0))
 
 			Expect(out.String()).To(ContainSubstring(
-				`"occurred_at":"2026-09-13T01:30:05.000000000Z","occurred_offset":0,"precision":"second"`))
+				`"occurred_at":"2026-09-13T01:30:05.000000000Z","occurred_offset":null,"precision":"second"`))
 			Expect(out.String()).To(ContainSubstring(`"occurred_raw":null`))
+		})
+
+		It("reads a time with no offset in UTC, storing no offset, when no zone is configured", func(ctx SpecContext) {
+			Expect(run(ctx, "event", "add", "Failover", "--at", "2026-09-11 14:00", "--json")).To(Equal(0))
+
+			Expect(out.String()).To(ContainSubstring(
+				`"occurred_at":"2026-09-11T14:00:00.000000000Z","occurred_offset":null,"precision":"minute"`))
 		})
 
 		It("reads a time with no offset in --tz", func(ctx SpecContext) {

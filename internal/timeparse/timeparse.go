@@ -24,8 +24,8 @@ type Resolved struct {
 	// Instant is the start of its Precision window, measured in the offset Offset states
 	// (UTC when nil).
 	Instant time.Time
-	// Offset is seconds east of UTC; nil when the input was Z, -00:00, UTC or an epoch,
-	// which say nothing about the local offset.
+	// Offset is seconds east of UTC; nil when the input was Z, -00:00, UTC or an epoch, or
+	// was read in the UTC location, which say nothing about the local offset.
 	Offset *int
 	// Precision is the finest unit the input stated.
 	Precision timeline.Precision
@@ -230,9 +230,18 @@ func resolveLocal(wall wallTime, loc *time.Location, precision timeline.Precisio
 		return Resolved{}, err
 	}
 
+	return resolve(t, OffsetIn(t, loc), precision), nil
+}
+
+// OffsetIn is the offset of t, a time read in loc, as Resolved.Offset states it: nil when loc
+// is UTC.
+func OffsetIn(t time.Time, loc *time.Location) *int {
+	if loc == time.UTC {
+		return nil
+	}
 	_, offset := t.Zone()
 
-	return resolve(t, &offset, precision), nil
+	return &offset
 }
 
 func layoutPrecision(layout, text string) timeline.Precision {
