@@ -140,7 +140,7 @@ var _ = Describe("Resolve", func() {
 			config.Config{
 				DBPath:          defaultData,
 				ConfigPath:      userConfig,
-				DefaultTimezone: "local",
+				DefaultTimezone: "UTC",
 			}),
 		Entry("the file sets default_timezone and author",
 			input{
@@ -213,7 +213,7 @@ var _ = Describe("Resolve", func() {
 		Expect(cfg).To(Equal(config.Config{
 			DBPath:          "/flag.db",
 			ConfigPath:      "/flag.toml",
-			DefaultTimezone: "local",
+			DefaultTimezone: "UTC",
 		}))
 	})
 

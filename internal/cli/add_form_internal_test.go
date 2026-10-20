@@ -443,8 +443,8 @@ var _ = Describe("add forms", func() {
 				Expect(errOut.String()).To(HaveSuffix("Equivalent command: coroner --db " + db + " event add 'Election timeout on db-3' --at 2026-09-11T03:15:00Z\n" +
 					"\n" +
 					"Added 2 events to timeline `mongo-outage`:\n" +
-					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
-					"  #2  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Election timeout on db-3\n" +
+					"  #1  2026-09-11T03:14:07Z (+00:00 UTC: 03:14:07)  Primary stepped down\n" +
+					"  #2  2026-09-11T03:15:00Z (+00:00 UTC: 03:15:00)  Election timeout on db-3\n" +
 					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
@@ -463,7 +463,7 @@ var _ = Describe("add forms", func() {
 				Expect(echoes[2]).NotTo(ContainSubstring("--id"))
 
 				Expect(errOut.String()).To(HaveSuffix("Added 1 event to timeline `mongo-outage`:\n" +
-					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+					"  #2  2026-09-11T03:20:00Z (+00:00 UTC: 03:20:00)  Failover\n" +
 					"View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 

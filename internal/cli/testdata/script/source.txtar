@@ -14,14 +14,14 @@ exec coroner tag list
 ! stdout .
 stderr 'coroner event add'
 
-# Piped, each row's fields are tab-separated, with times in the local zone.
+# Piped, each row's fields are tab-separated, with times in UTC.
 exec coroner timeline create mongo-outage
 exec coroner timeline use mongo-outage
 exec coroner event add 'Primary stepped down' --at 2026-09-11T03:14:07Z --source mongo --tag phase:detect
 exec coroner source list
-stdout '^mongo\t1\t0\t2026-09-10T23:14:07-04:00\t2026-09-10T23:14:07-04:00$'
+stdout '^mongo\t1\t0\t2026-09-11T03:14:07Z\t2026-09-11T03:14:07Z$'
 exec coroner tag list
-stdout '^phase:detect\t1\t2026-09-10T23:14:07-04:00\t2026-09-10T23:14:07-04:00$'
+stdout '^phase:detect\t1\t2026-09-11T03:14:07Z\t2026-09-11T03:14:07Z$'
 
 # --dry-run says what a rename would touch, and renames nothing.
 exec coroner source edit mongo --name mongodb --dry-run

@@ -46,8 +46,8 @@ type App struct {
 	Stat func(name string) (fs.FileInfo, error)
 	// MkdirAll creates the directory at path and any missing parents, as os.MkdirAll does.
 	MkdirAll func(path string, perm fs.FileMode) error
-	// Now returns the time in the local zone, which is where time input with no zone is read
-	// when neither --tz nor the config file names one.
+	// Now returns the time in the local zone, which --tz local and default_timezone = "local"
+	// name.
 	Now func() time.Time
 	// NewID returns the ID for a new record, a UUIDv7 in main.go.
 	NewID func() (uuid.UUID, error)

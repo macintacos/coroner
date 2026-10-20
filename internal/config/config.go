@@ -28,7 +28,7 @@ type Flags struct {
 // there; Author is empty when unset.
 type Config struct {
 	DBPath, ConfigPath string
-	// DefaultTimezone is the file's default_timezone, unvalidated, or "local" when unset.
+	// DefaultTimezone is the file's default_timezone, unvalidated, or "UTC" when unset.
 	DefaultTimezone string
 	Author          string
 }
@@ -73,7 +73,7 @@ func Resolve(
 	return Config{
 		DBPath:          dbPath,
 		ConfigPath:      configPath,
-		DefaultTimezone: cmp.Or(file.DefaultTimezone, "local"),
+		DefaultTimezone: cmp.Or(file.DefaultTimezone, "UTC"),
 		Author:          file.Author,
 	}, nil
 }

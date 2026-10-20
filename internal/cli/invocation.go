@@ -79,7 +79,7 @@ func givenStoreArgs(flags *pflag.FlagSet) []string {
 	return args
 }
 
-// zone returns the zone times read and print in: --tz, else default_timezone, else local.
+// zone returns the zone times read and print in: --tz, else default_timezone, else UTC.
 func (inv invocation) zone() (zone, error) {
 	return timeZone(inv.tz, inv.cfg.DefaultTimezone, inv.now().Location())
 }
