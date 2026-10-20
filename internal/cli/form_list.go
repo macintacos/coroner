@@ -113,12 +113,12 @@ func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	model, cmd := l.update(msg)
 	press, isPress := msg.(tea.KeyPressMsg)
 	if _, pasted := msg.(tea.PasteMsg); (isPress || pasted) && l.row != nil {
-		typed, before := fmt.Sprint(l.Input.GetValue()), l.row.line()
+		typed, shownRow := fmt.Sprint(l.Input.GetValue()), l.row.line()
 		if typed != l.row.typed {
 			l.refreshSuggestions(typed)
 		}
 		l.row.follow(press, typed)
-		if l.row.line() != before {
+		if l.row.line() != shownRow {
 			l.show()
 			cmd = tea.Batch(cmd, tea.RequestWindowSize)
 		}

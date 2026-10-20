@@ -16,15 +16,15 @@ func attachCompletions(readDir func(string) ([]fs.DirEntry, error)) func(typed s
 		if typed == "" || strings.HasPrefix(typed, "~/") {
 			return nil
 		}
-		dir, name := filepath.Split(typed)
+		dir, typedName := filepath.Split(typed)
 		entries, err := readDir(filepath.Clean(dir))
 		if err != nil {
 			return nil
 		}
 		var completions []string
 		for _, entry := range entries {
-			hidden := strings.HasPrefix(entry.Name(), ".") && !strings.HasPrefix(name, ".")
-			if hidden || !strings.HasPrefix(entry.Name(), name) {
+			hidden := strings.HasPrefix(entry.Name(), ".") && !strings.HasPrefix(typedName, ".")
+			if hidden || !strings.HasPrefix(entry.Name(), typedName) {
 				continue
 			}
 			completion := dir + entry.Name()

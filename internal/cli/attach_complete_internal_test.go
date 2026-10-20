@@ -12,19 +12,19 @@ import (
 )
 
 var _ = Describe("the attach field's completions", func() {
-	var dir string
-	var read []string
-	rooted := func(name string) ([]fs.DirEntry, error) { return os.ReadDir(filepath.Join(dir, name)) }
+	var root string
+	var dirsRead []string
+	rooted := func(name string) ([]fs.DirEntry, error) { return os.ReadDir(filepath.Join(root, name)) }
 	spy := func(name string) ([]fs.DirEntry, error) {
-		read = append(read, name)
+		dirsRead = append(dirsRead, name)
 		return rooted(name)
 	}
 	failing := func(string) ([]fs.DirEntry, error) { return nil, fs.ErrPermission }
 
 	BeforeEach(func() {
-		dir = GinkgoT().TempDir()
-		read = nil
-		Expect(os.CopyFS(dir, fstest.MapFS{"files/p99.png": {}, "files/q01.png": {}, "files/.keep": {}, "docs/r1.txt": {}})).To(Succeed())
+		root = GinkgoT().TempDir()
+		dirsRead = nil
+		Expect(os.CopyFS(root, fstest.MapFS{"files/p99.png": {}, "files/q01.png": {}, "files/.keep": {}, "docs/r1.txt": {}})).To(Succeed())
 	})
 
 	It("lists the entries of the typed path's directory that start with the typed name", func() {
@@ -37,8 +37,8 @@ var _ = Describe("the attach field's completions", func() {
 	})
 
 	It("ends a symlink to a directory with /, and not one to a file", func() {
-		Expect(os.Symlink("files", filepath.Join(dir, "linked"))).To(Succeed())
-		Expect(os.Symlink("docs/r1.txt", filepath.Join(dir, "lnfile"))).To(Succeed())
+		Expect(os.Symlink("files", filepath.Join(root, "linked"))).To(Succeed())
+		Expect(os.Symlink("docs/r1.txt", filepath.Join(root, "lnfile"))).To(Succeed())
 		Expect(attachCompletions(rooted)("l")).To(Equal([]string{"linked/", "lnfile"}))
 	})
 
@@ -50,7 +50,7 @@ var _ = Describe("the attach field's completions", func() {
 	})
 
 	It("completes an absolute path the same way", func() {
-		Expect(attachCompletions(os.ReadDir)(dir + "/files/p")).To(Equal([]string{dir + "/files/p99.png"}))
+		Expect(attachCompletions(os.ReadDir)(root + "/files/p")).To(Equal([]string{root + "/files/p99.png"}))
 	})
 
 	It("leaves out a name starting with . until one is typed", func() {
@@ -60,24 +60,24 @@ var _ = Describe("the attach field's completions", func() {
 
 	It("suggests nothing until something is typed, and reads no directory", func() {
 		Expect(attachCompletions(spy)("")).To(BeEmpty())
-		Expect(read).To(BeEmpty())
+		Expect(dirsRead).To(BeEmpty())
 	})
 
 	It("suggests nothing for a path starting with ~/, and reads no directory", func() {
 		Expect(attachCompletions(spy)("~/fi")).To(BeEmpty())
-		Expect(read).To(BeEmpty())
+		Expect(dirsRead).To(BeEmpty())
 	})
 
 	It("suggests nothing, and no error, for a directory it cannot read", func() {
 		Expect(attachCompletions(failing)("files/p")).To(BeEmpty())
 
 		choices := formChoices{completions: map[string]func(string) []string{"attach": attachCompletions(failing)}}
-		f := namedField(definition{fields: []field{attachField()}}.formFields(formCheckEnv(), fieldValues{}, choices), "attach")
-		f.WithKeyMap(huh.NewDefaultKeyMap())
-		f.Focus()
-		typeText(f, "files/p")
+		attach := namedField(definition{fields: []field{attachField()}}.formFields(formCheckEnv(), fieldValues{}, choices), "attach")
+		attach.WithKeyMap(huh.NewDefaultKeyMap())
+		attach.Focus()
+		typeText(attach, "files/p")
 
-		Expect(f.Error()).NotTo(HaveOccurred())
-		Expect(fieldView(f)).NotTo(ContainSubstring("↳"))
+		Expect(attach.Error()).NotTo(HaveOccurred())
+		Expect(fieldView(attach)).NotTo(ContainSubstring("↳"))
 	})
 })
