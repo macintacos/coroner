@@ -84,7 +84,7 @@ func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check f
 
 // keyDriver runs a form as bubbletea would: each command in a goroutine, its message fed back.
 type keyDriver struct {
-	form    *huh.Form
+	form    fittedForm
 	size    tea.WindowSizeMsg
 	pending chan tea.Msg
 	// done ends every command still waiting to deliver its message.
@@ -100,7 +100,7 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 	d.update(d.size)
 	d.settle()
 	if check != nil && d.form.State == huh.StateNormal {
-		check(d.form)
+		check(d.form.Form)
 	}
 	for d.form.State == huh.StateNormal {
 		if len(script.keys) == 0 {
@@ -119,7 +119,7 @@ func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model,
 		d.update(filter(nil, namedKey(key.name)))
 		d.settle()
 		if check != nil && d.form.State == huh.StateNormal {
-			check(d.form)
+			check(d.form.Form)
 		}
 	}
 	close(d.done)
@@ -207,6 +207,9 @@ func sequenced(msg tea.Msg) ([]tea.Cmd, bool) {
 	return cmds, true
 }
 
+// formSize is the terminal the forms are pressed in.
+func formSize() tea.WindowSizeMsg { return tea.WindowSizeMsg{Width: 60, Height: 20} }
+
 // keyedRun runs event add with no arguments against a scratch database through forms that press
 // script's keys at 60×20.
 func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
@@ -247,7 +250,7 @@ func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
 		event := &cobra.Command{Use: "event"}
 		addTimelineFlag(event.PersistentFlags())
 		add := &cobra.Command{Use: "add", Annotations: map[string]string{formatsAnnotation: "text,json"}}
-		event.AddCommand(eventAddForm().attach(t.Context(), add, app, keyedForms(t, tea.WindowSizeMsg{Width: 60, Height: 20}, script, check)))
+		event.AddCommand(eventAddForm().attach(t.Context(), add, app, keyedForms(t, formSize(), script, check)))
 		root := &cobra.Command{Use: "coroner", SilenceErrors: true, SilenceUsage: true}
 		root.PersistentFlags().AddFlagSet(globalFlags())
 		root.AddCommand(event)
@@ -349,18 +352,26 @@ func TestEventAddFormKeys(t *testing.T) {
 			press("y").
 			typed("Asia/Tokyo").press("enter", "enter", "enter", "enter", "enter", "enter", "enter").
 			press("n")
-		// A title must lead a line, since names such as at and url also occur inside descriptions.
+		// The terminal keeps only a frame's last rows, and a title is a whole line, since
+		// descriptions start with their titles.
 		check := func(form *huh.Form) {
 			t.Helper()
 			title, ok := titles[form.GetFocusedField().GetKey()]
 			if !ok {
 				return
 			}
-			lines := strings.Split(ansi.Strip(form.View()), "\n")
-			if !slices.ContainsFunc(lines, func(line string) bool {
-				return strings.HasPrefix(strings.TrimLeft(line, "┃│ "), title)
+			frame := ansi.Strip(form.View())
+			lines := strings.Split(frame, "\n")
+			height := formSize().Height
+			if len(lines) > height {
+				t.Errorf("the frame is %d lines at 60×20:\n%s", len(lines), frame)
+			}
+			shown := lines[max(0, len(lines)-height):]
+			if !slices.ContainsFunc(shown, func(line string) bool {
+				line = strings.TrimSpace(strings.TrimLeft(line, "┃│"))
+				return line == title || line == title+" (required)"
 			}) {
-				t.Errorf("%s is not shown at 60×20:\n%s", title, ansi.Strip(form.View()))
+				t.Errorf("%s is not shown at 60×20:\n%s", title, frame)
 			}
 		}
 

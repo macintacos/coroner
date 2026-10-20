@@ -57,7 +57,7 @@ func fieldsOf(groups []formGroup) []huh.Field {
 }
 
 // newForm returns the form that asks groups in turn.
-func newForm(groups ...formGroup) *huh.Form {
+func newForm(groups ...formGroup) fittedForm {
 	pages := make([]*huh.Group, len(groups))
 	for i, g := range groups {
 		pages[i] = huh.NewGroup(g.fields...)
@@ -66,7 +66,28 @@ func newForm(groups ...formGroup) *huh.Form {
 		}
 	}
 
-	return huh.NewForm(pages...)
+	return fittedForm{huh.NewForm(pages...)}
+}
+
+// fittedForm is a form told its terminal is a row shorter, since huh sizes a group's help as one
+// row but draws a blank row above it, and the terminal drops a taller frame's top row.
+type fittedForm struct{ *huh.Form }
+
+func (f fittedForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		size.Height--
+		msg = size
+	}
+	_, cmd := f.Form.Update(msg)
+
+	return f, cmd
+}
+
+func (f fittedForm) View() tea.View {
+	v := tea.NewView(f.Form.View())
+	v.ReportFocus = true
+
+	return v
 }
 
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
@@ -434,13 +455,17 @@ func terminalForms(app App) func(color bool, images graphics.Protocol) askFunc {
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
 			cancelled := false
+			form := newForm(groups...)
+			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Interrupt
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
-			err := newForm(groups...).WithInput(app.In).WithOutput(app.Out).
-				WithProgramOptions(tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).
-				RunWithContext(ctx)
-			if cancelled {
+			_, err := tea.NewProgram(form, tea.WithContext(ctx), tea.WithInput(app.In), tea.WithOutput(app.Out),
+				tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
+			switch {
+			case cancelled:
 				return false, nil
+			case form.State == huh.StateAborted:
+				return false, huh.ErrUserAborted
 			}
 
 			return err == nil, err
