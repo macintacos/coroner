@@ -121,9 +121,9 @@ func (f *fittedForm) View() tea.View {
 	return v
 }
 
-// frameBox is a form frame's sides and bottom edge; frame draws its top edge.
+// frameBox is a form frame's sides and bottom edge, with a blank row under the top edge frame draws.
 func frameBox() lipgloss.Style {
-	return lipgloss.NewStyle().Padding(0, 1).Border(lipgloss.RoundedBorder(), false, true, true).
+	return lipgloss.NewStyle().Padding(1, 1, 0).Border(lipgloss.RoundedBorder(), false, true, true).
 		BorderForeground(lipgloss.BrightBlack)
 }
 

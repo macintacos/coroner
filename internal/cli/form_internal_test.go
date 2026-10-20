@@ -90,14 +90,15 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
-	It("frame a form's view in a border as wide as asked, with its title set into the top edge", func() {
+	It("frame a form's view in a border as wide as asked, with its title set into the top edge and a blank row under it", func() {
 		lines := strings.Split(ansi.Strip(frame("📝 New event", "What happened\n> Primary stepped down", 40)), "\n")
 
-		Expect(lines).To(HaveLen(4))
+		Expect(lines).To(HaveLen(5))
 		Expect(lines[0]).To(HavePrefix("╭─ 📝 New event ─"))
-		Expect(lines[1]).To(HavePrefix("│ What happened"))
-		Expect(lines[2]).To(HavePrefix("│ > Primary stepped down"))
-		Expect(lines[3]).To(HavePrefix("╰─"))
+		Expect(lines[1]).To(MatchRegexp(`^│ +│$`))
+		Expect(lines[2]).To(HavePrefix("│ What happened"))
+		Expect(lines[3]).To(HavePrefix("│ > Primary stepped down"))
+		Expect(lines[4]).To(HavePrefix("╰─"))
 		for _, line := range lines {
 			Expect(ansi.StringWidth(line)).To(Equal(40), line)
 		}
@@ -106,8 +107,8 @@ var _ = Describe("form fields", func() {
 	It("clip a line wider than the frame's inside, so the frame keeps the rows the form planned", func() {
 		lines := strings.Split(ansi.Strip(frame("📝 New event", strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
 
-		Expect(lines).To(HaveLen(4))
-		Expect(lines[2]).To(HavePrefix("│ > typed"))
+		Expect(lines).To(HaveLen(5))
+		Expect(lines[3]).To(HavePrefix("│ > typed"))
 		for _, line := range lines {
 			Expect(ansi.StringWidth(line)).To(Equal(40), line)
 		}
