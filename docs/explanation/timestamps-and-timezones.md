@@ -71,6 +71,11 @@ you usually are. UTC comes last, rather than the zone of the machine coroner run
 the same command reads the same time on a laptop, a server and CI; `local` asks for the
 machine's zone by name.
 
+A time read in UTC, whether UTC came from the default, `default_timezone` or `--tz`,
+stores a null offset, like `Z`: reading it in UTC says nothing about the source's offset.
+A named zone that sits at +00:00, such as `Atlantic/Reykjavik`, or a typed `+00:00`,
+stores 0.
+
 A wall-clock time that a daylight saving change skips or repeats in its zone is rejected,
 with an error that names the zone and suggests the time written with the offset in force
 before the change and with the one after it. `01:30` on the night clocks go back happens

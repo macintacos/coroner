@@ -56,9 +56,10 @@ $ coroner event add "Replica set has no primary" --at 2026-09-11T00:02:30Z --end
 Added event #3 to timeline `checkout-latency` at 2026-09-11T00:02:30Z, ended 2026-09-11T00:05:40Z
 ```
 
-Each line coroner prints is the time it stored, in UTC, then the same time in your local
-zone. The third event lasted just over three minutes, so it has an end as well as a start.
-`#1`, `#2` and `#3` are the events' seqs: the numbers you use to refer to them later.
+Each line coroner prints is the time it stored, in UTC; set `--tz` or `default_timezone`
+to also see it in your own zone. The third event lasted just over three minutes, so it has
+an end as well as a start. `#1`, `#2` and `#3` are the events' seqs: the numbers you use
+to refer to them later.
 
 Times people tell you are rarely exact. Type those the way you would say them:
 
@@ -69,12 +70,12 @@ $ coroner event add "Rolled back deploy 812" --at "3 hours ago" --source deploy-
 Added event #5 to timeline `checkout-latency` at 2026-09-14T02:00:00Z
 ```
 
-This page was run on 2026-09-14 at 05:11 UTC, in the UTC zone. "3 hours ago" is precise to
-the hour, so coroner stored the start of that hour, which is why the echo shows 02:00:00
-and not 02:11:00. Your dates for these two events are yesterday and three hours before you
-ran the command, shown in UTC unless you set `--tz` or `default_timezone`. Check the
-echoed time each time you type one like this: it is how you catch a phrase that meant
-something other than you intended.
+This page was run on 2026-09-14 at 05:11 UTC. "3 hours ago" is precise to the hour, so
+coroner stored the start of that hour, which is why the echo shows 02:00:00 and not
+02:11:00. Your dates for these two events are yesterday and three hours before you ran the
+command, shown in UTC unless you set `--tz` or `default_timezone`. Check the echoed time
+each time you type one like this: it is how you catch a phrase that meant something other
+than you intended.
 
 ## Attach evidence and a comment
 
