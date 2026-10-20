@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -656,7 +657,11 @@ func addedEvent(t *testing.T, app App) map[string]any {
 }
 
 func TestTerminalFormClearsWhenItEnds(t *testing.T) {
-	for name, key := range map[string]string{"picked": "\r", "esc": "\x1b"} {
+	ends := map[string]struct {
+		key  string
+		want error
+	}{"picked": {"\r", nil}, "esc": {"\x1b", nil}, "ctrl+c": {"\x03", huh.ErrUserAborted}}
+	for name, end := range ends {
 		t.Run(name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				keys, typing := io.Pipe()
@@ -667,14 +672,14 @@ func TestTerminalFormClearsWhenItEnds(t *testing.T) {
 					time.Sleep(time.Millisecond)
 					_, _ = typing.Write([]byte(ansi.WindowOp(8, 24, 100)))
 					time.Sleep(time.Second)
-					_, _ = typing.Write([]byte(key))
+					_, _ = typing.Write([]byte(end.key))
 				}()
 				pick := huh.NewSelect[string]().Key("timeline").Options(huh.NewOptions("api-latency", "mongo-outage")...)
 
 				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formGroup{fields: []huh.Field{pick}})
 				_ = typing.Close()
-				if err != nil {
-					t.Fatal(err)
+				if !errors.Is(err, end.want) {
+					t.Fatalf("the form ended with %v; want %v", err, end.want)
 				}
 				_, _ = screen.Write([]byte("Added event #3\n"))
 
