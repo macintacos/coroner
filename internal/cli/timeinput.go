@@ -71,7 +71,7 @@ func resolveEnded(input string, env checkEnv, hint string) (timeparse.Resolved, 
 
 // timeZone returns the zone naive time input is read in: tz, the --tz flag (nil when not
 // given), else the config file's defaultTimezone, which config.Resolve defaults to UTC.
-// Either may say local, in any case, for the zone of local.
+// Either may say local, in any case, for the zone local holds, or UTC, in any case.
 func timeZone(tz *string, defaultTimezone string, local *time.Location) (zone, error) {
 	name, source := defaultTimezone, "the config file's default_timezone"
 	if tz != nil {
@@ -81,6 +81,10 @@ func timeZone(tz *string, defaultTimezone string, local *time.Location) (zone, e
 	// LoadLocation reads "Local" as the process's time.Local, not local.
 	if strings.EqualFold(name, "local") {
 		return zone{loc: local, label: "local"}, nil
+	}
+	// LoadLocation finds "utc" only on a case-insensitive filesystem, as its own location.
+	if strings.EqualFold(name, "UTC") {
+		return zone{loc: time.UTC, label: "UTC"}, nil
 	}
 	// LoadLocation reads "" as UTC.
 	if name == "" {

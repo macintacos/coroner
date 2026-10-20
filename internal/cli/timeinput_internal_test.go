@@ -37,6 +37,10 @@ var _ = Describe("time input", func() {
 		Entry("local in any case", new("Local"), "Asia/Tokyo", "Test/Local", "local"),
 	)
 
+	It("timeZone reads UTC in any case as time.UTC, labelled UTC", func() {
+		Expect(timeZone(new("utc"), "local", local)).To(Equal(zone{loc: time.UTC, label: "UTC"}))
+	})
+
 	DescribeTable("timeZone rejects a zone it cannot load as usage, naming where the zone came from",
 		func(tz *string, defaultTimezone, source string) {
 			_, err := timeZone(tz, defaultTimezone, local)
