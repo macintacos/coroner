@@ -512,7 +512,7 @@ var _ = Describe("add forms", func() {
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
-				Expect(view).To(ContainSubstring("↳ files/p99.png"))
+				Expect(view).To(ContainSubstring("💡 Suggestions: files/p99.png"))
 			})
 
 			It("reject an attach path that does not exist as --attach does", func(ctx SpecContext) {
@@ -564,7 +564,7 @@ var _ = Describe("add forms", func() {
 				source.WithKeyMap(huh.NewDefaultKeyMap())
 				source.Focus()
 				typeText(source, "c")
-				Expect(fieldView(source)).To(ContainSubstring("↳ cassandra  cloudflare"))
+				Expect(fieldView(source)).To(ContainSubstring("💡 Suggestions: cassandra · cloudflare"))
 			})
 
 			It("mark the source typed as one already stored, or as a new one submitting creates", func(ctx SpecContext) {

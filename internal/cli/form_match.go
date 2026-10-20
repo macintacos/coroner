@@ -74,7 +74,7 @@ func (r *matchRow) line() string {
 		labels[i] = pickerLabel(value)
 	}
 
-	return "↳ " + strings.Join(labels, "  ")
+	return "💡 Suggestions: " + strings.Join(labels, " · ")
 }
 
 func cycleKeys() []key.Binding {

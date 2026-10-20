@@ -78,6 +78,6 @@ var _ = Describe("the attach field's completions", func() {
 		typeText(attach, "files/p")
 
 		Expect(attach.Error()).NotTo(HaveOccurred())
-		Expect(fieldView(attach)).NotTo(ContainSubstring("↳"))
+		Expect(fieldView(attach)).NotTo(ContainSubstring("💡 Suggestions:"))
 	})
 })

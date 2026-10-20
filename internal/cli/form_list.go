@@ -256,8 +256,9 @@ func (l *listField) pick(up bool) {
 }
 
 // show puts under the help at most listShown values, the last ones or a window holding the picked
-// one, after how many more there are, then the thumbnail of the picked value or the last one. The
-// picked one is marked ×, which backspace removes (> would read as the Input's prompt).
+// one, after how many more there are, then the thumbnail of the picked value or the last one. Each
+// value is marked ✓, so it never reads as a suggestion, and the picked one ×, which backspace
+// removes (> would read as the Input's prompt).
 func (l *listField) show() {
 	first := max(0, len(l.values)-listShown)
 	if l.picked != -1 {
@@ -271,7 +272,7 @@ func (l *listField) show() {
 		fmt.Fprintf(&b, "\n  … %d more", hidden)
 	}
 	for i, value := range shown {
-		marker := "  "
+		marker := "✓ "
 		if first+i == l.picked {
 			marker = "× "
 		}

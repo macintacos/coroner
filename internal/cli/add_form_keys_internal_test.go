@@ -401,7 +401,7 @@ func testAttachDirectories(t *testing.T) {
 		typed("fi").press("ctrl+e").typed("p").press("ctrl+e", "enter").
 		typed("do").press("ctrl+e", "ctrl+e", "enter").
 		press("enter", "enter", "n")
-	rows := map[string]string{"fi": "↳ files/", "files/": "↳ files/p99.png  files/q01.png", "docs/": "↳ docs/r1.txt"}
+	rows := map[string]string{"fi": "💡 Suggestions: files/", "files/": "💡 Suggestions: files/p99.png · files/q01.png", "docs/": "💡 Suggestions: docs/r1.txt"}
 	seen := map[string]bool{}
 	check := func(form *fittedForm) {
 		t.Helper()
@@ -491,7 +491,7 @@ func testAttachCompletion(t *testing.T) {
 		}
 		checked = true
 		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
-		if !showsRow(lines, "↳ files/p99.png") {
+		if !showsRow(lines, "💡 Suggestions: files/p99.png") {
 			t.Errorf("no row of matches leading with files/p99.png:\n%s", strings.Join(lines, "\n"))
 		}
 		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> files/p99.png") }) {
@@ -528,7 +528,7 @@ func testTagSuggestion(t *testing.T) {
 		}
 		checked = true
 		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
-		if !showsRow(lines, "↳ election") {
+		if !showsRow(lines, "💡 Suggestions: election") {
 			t.Errorf("no row of matches leading with election:\n%s", strings.Join(lines, "\n"))
 		}
 		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> election") }) {
