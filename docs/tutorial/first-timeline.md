@@ -49,11 +49,11 @@ you about it. Times you copy from a log or a dashboard are exact, so type them i
 
 ```console
 $ coroner event add "Deploy 812 starts rolling out to checkout" --at 2026-09-10T23:40:00Z --source deploy-bot
-Added event #1 to timeline `checkout-latency` at 2026-09-10T23:40:00Z (+00:00 local: 23:40:00)
+Added event #1 to timeline `checkout-latency` at 2026-09-10T23:40:00Z (+00:00 UTC: 23:40:00)
 $ coroner event add "Checkout p99 latency alert fires" --at 2026-09-10T23:58:12Z --source grafana
-Added event #2 to timeline `checkout-latency` at 2026-09-10T23:58:12Z (+00:00 local: 23:58:12)
+Added event #2 to timeline `checkout-latency` at 2026-09-10T23:58:12Z (+00:00 UTC: 23:58:12)
 $ coroner event add "Replica set has no primary" --at 2026-09-11T00:02:30Z --ended 2026-09-11T00:05:40Z --source mongod
-Added event #3 to timeline `checkout-latency` at 2026-09-11T00:02:30Z (+00:00 local: 00:02:30), ended 2026-09-11T00:05:40Z (+00:00 local: 00:05:40)
+Added event #3 to timeline `checkout-latency` at 2026-09-11T00:02:30Z (+00:00 UTC: 00:02:30), ended 2026-09-11T00:05:40Z (+00:00 UTC: 00:05:40)
 ```
 
 Each line coroner prints is the time it stored, in UTC, then the same time in your local
@@ -64,17 +64,17 @@ Times people tell you are rarely exact. Type those the way you would say them:
 
 ```console
 $ coroner event add "Customer reports checkout is still slow" --at "yesterday 14:05" --source support
-Added event #4 to timeline `checkout-latency` at 2026-09-13T14:05:00Z (+00:00 local: 14:05:00)
+Added event #4 to timeline `checkout-latency` at 2026-09-13T14:05:00Z (+00:00 UTC: 14:05:00)
 $ coroner event add "Rolled back deploy 812" --at "3 hours ago" --source deploy-bot
-Added event #5 to timeline `checkout-latency` at 2026-09-14T02:00:00Z (+00:00 local: 02:00:00)
+Added event #5 to timeline `checkout-latency` at 2026-09-14T02:00:00Z (+00:00 UTC: 02:00:00)
 ```
 
 This page was run on 2026-09-14 at 05:11 UTC, in the UTC zone. "3 hours ago" is precise to
 the hour, so coroner stored the start of that hour, which is why the echo shows 02:00:00
 and not 02:11:00. Your dates for these two events are yesterday and three hours before you
-ran the command, and your local times are in your own zone. Check the echoed time each
-time you type one like this: it is how you catch a phrase that meant something other than
-you intended.
+ran the command, shown in UTC unless you set `--tz` or `default_timezone`. Check the
+echoed time each time you type one like this: it is how you catch a phrase that meant
+something other than you intended.
 
 ## Attach evidence and a comment
 

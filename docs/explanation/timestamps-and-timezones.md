@@ -64,10 +64,12 @@ since evidence is often found long after it happened.
 
 A time without an offset is a wall-clock time, and coroner needs a zone to place it. It
 takes the first of: the offset or zone in the input, `--tz`, `default_timezone` in the
-[config file](../reference/configuration.md), then the local zone. The input comes first
-because a copied log line that states its offset is the most exact evidence there is.
-`--tz` beats the config file because it describes this one input, and the config file only
-says where you usually are.
+[config file](../reference/configuration.md), then UTC. The input comes first because a
+copied log line that states its offset is the most exact evidence there is. `--tz` beats
+the config file because it describes this one input, and the config file only says where
+you usually are. UTC comes last, rather than the zone of the machine coroner runs on, so
+the same command reads the same time on a laptop, a server and CI; `local` asks for the
+machine's zone by name.
 
 A wall-clock time that a daylight saving change skips or repeats in its zone is rejected,
 with an error that names the zone and suggests the time written with the offset in force
@@ -81,10 +83,10 @@ timeline, so every command that writes a time echoes what it resolved, as
 
 ## Showing times
 
-Text output shows times in the zone of `--tz`, `default_timezone` or the local zone, with
-the offset written out. Exports are for other people in other zones, so the Markdown,
-Mermaid, HTML and SVG exports show times in UTC unless `--tz` names a zone, and say which
-zone they show. JSON is always UTC.
+Text output shows times in the zone of `--tz`, `default_timezone` or UTC, with the offset
+written out. Exports are for other people in other zones, so the Markdown, Mermaid, HTML
+and SVG exports show times in UTC unless `--tz` names a zone, and say which zone they
+show. JSON is always UTC.
 
 A coarse time's window does not always line up in the zone it is shown in. An hour
 recorded at `+05:30` starts at half past the hour in UTC, so writing it as `04:--` there
