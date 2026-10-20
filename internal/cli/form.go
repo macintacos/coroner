@@ -123,12 +123,17 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 		choices: choices,
 		in:      in,
 	}
-	tz := d.fieldIndex("tz")
+	tz, at := d.fieldIndex("tz"), d.fieldIndex("at")
+	previewsAt := tz != -1 && at != -1 && d.fields[at].preview != nil
 	for i, f := range d.fields {
 		// A description re-renders when its own value or the zone its times are read in changes.
 		bindings := []*string{bound[i]}
 		if tz != -1 {
 			bindings = append(bindings, bound[tz])
+		}
+		if i == tz && previewsAt {
+			f.preview = zonePreview(f.check, d.fields[at].preview, func() string { return fmt.Sprint(fields[at].GetValue()) })
+			bindings = append(bindings, bound[at])
 		}
 		fields[i] = f.formField(bound[i], bindings, form)
 	}
@@ -142,6 +147,20 @@ type fieldForm struct {
 	choices formChoices
 	// in is the values the form opens with.
 	in fieldValues
+}
+
+// zonePreview returns the tz field's preview: at's value previewed in the zone typed, or the hint
+// of the check that zone fails.
+func zonePreview(check func(string, checkEnv) error, preview func(string, checkEnv) string, at func() string) func(string, checkEnv) string {
+	return func(value string, env checkEnv) string {
+		if check != nil && value != "" {
+			if failure, ok := errors.AsType[*Error](check(value, env)); ok {
+				return failure.Hint
+			}
+		}
+
+		return preview(at(), env)
+	}
 }
 
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.

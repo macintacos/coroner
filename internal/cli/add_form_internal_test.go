@@ -219,6 +219,16 @@ var _ = Describe("add forms", func() {
 				Expect(written).To(HaveKeyWithValue("text", "Primary stepped down"))
 			})
 
+			It("store the time typed in the zone typed under More options", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(submit(map[string]string{
+					"text": "Pager fires", "at": "03:25", "tz": "Asia/Tokyo", "more-options": "true",
+				}), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
+
+				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
+			})
+
 			It("echo the flags-only command with every field in the flags' order", func(ctx SpecContext) {
 				app.ReadFile = func(name string) ([]byte, error) {
 					if name != "log.txt" {

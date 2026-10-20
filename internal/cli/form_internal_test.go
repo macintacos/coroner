@@ -178,6 +178,19 @@ var _ = Describe("form fields", func() {
 			Entry("the gap's hint in a zone that skips it", "America/New_York", "-05:00"),
 		)
 
+		It("preview the time in the zone typed into the zone field", func() {
+			fields := eventAddDefinition().formFields(utc, fieldValues{}, formChoices{})
+			typeInto(namedField(fields, "at"), "03:25")
+			tz := namedField(fields, "tz")
+			typeInto(tz, "Asia/Tokyo")
+
+			Expect(renderedDescription(tz)).To(ContainSubstring("(+09:00 Asia/Tokyo: 03:25:00)"))
+
+			unknown := namedField(eventAddDefinition().formFields(utc, fieldValues{}, formChoices{}), "tz")
+			typeInto(unknown, "Mars/Olympus")
+			Expect(renderedDescription(unknown)).To(ContainSubstring(zoneHint))
+		})
+
 		It("shows a failing check's hint under the help of a field with no preview", func() {
 			source := namedField(eventAddDefinition().formFields(utc, fieldValues{}, formChoices{}), "source")
 			typeInto(source, "DB 2")
