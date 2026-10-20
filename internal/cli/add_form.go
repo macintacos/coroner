@@ -100,6 +100,8 @@ type formSession struct {
 	ask askFunc
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
+	// completions are what the form's list fields complete typed text to, by field name.
+	completions map[string]func(typed string) []string
 	// placeholders are what the form's empty Inputs show as their default, by field name.
 	placeholders map[string]string
 }
@@ -198,6 +200,7 @@ func newFormSession(app App, inv invocation, forms func(color bool, images graph
 	return formSession{
 		app: app, inv: inv, ask: forms(inv.outColor, images),
 		thumbnails:   map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
+		completions:  map[string]func(string) []string{"attach": attachCompletions(app.ReadDir)},
 		placeholders: placeholders,
 	}
 }
@@ -328,6 +331,7 @@ func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
 ) (fieldValues, error) {
 	choices.thumbnails = s.thumbnails
+	choices.completions = s.completions
 	choices.placeholders = s.placeholders
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)

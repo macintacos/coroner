@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -235,12 +234,19 @@ func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
 	}
 	ids := 0
 	app := scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
-	app.ReadFile = func(name string) ([]byte, error) {
-		if !strings.HasPrefix(name, "files/") {
-			return nil, fs.ErrNotExist
+	work := t.TempDir()
+	for name, content := range map[string]string{"files/p99.png": "\x89PNG\r\n", "files/q01.png": "", "docs/r1.txt": ""} {
+		path := filepath.Join(work, name)
+		err := os.MkdirAll(filepath.Dir(path), 0o700)
+		if err == nil {
+			err = os.WriteFile(path, []byte(content), 0o600)
 		}
-		return []byte("\x89PNG\r\n"), nil
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
+	t.Chdir(work)
+	app.ReadFile, app.ReadDir = os.ReadFile, os.ReadDir
 	for _, args := range [][]string{
 		{"timeline", "create", "api-latency"},
 		{"timeline", "create", "mongo-outage"},
@@ -394,6 +400,55 @@ func TestEventAddFormKeys(t *testing.T) {
 	t.Run("cycle and pick", testCycleAndPick)
 	t.Run("remove carried tag", testRemoveCarriedTag)
 	t.Run("esc in tags", testEscInTags)
+	t.Run("attach completion", testAttachCompletion)
+}
+
+func testAttachCompletion(t *testing.T) {
+	script := filesEntry().typed("files/p").press("ctrl+e", "enter").press("enter", "enter", "n")
+	checked := false
+	check := func(form *huh.Form) {
+		t.Helper()
+		if focusedTyped(form) != "files/p" {
+			return
+		}
+		checked = true
+		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		if !slices.ContainsFunc(lines, func(line string) bool {
+			return strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(line, "┃│")), "↳ files/p99.png")
+		}) {
+			t.Errorf("no row of matches leading with files/p99.png:\n%s", strings.Join(lines, "\n"))
+		}
+		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> files/p99.png") }) {
+			t.Errorf("the input does not ghost files/p99.png after files/p:\n%s", strings.Join(lines, "\n"))
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if !checked {
+		t.Fatal("the form never held files/p in Files")
+	}
+	events := storedEvents(t, app)
+	i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover finished" })
+	if i == -1 {
+		t.Fatalf("stored %v; want Failover finished", events)
+	}
+	attachments, _ := events[i]["attachments"].([]any)
+	if len(attachments) != 1 {
+		t.Fatalf("stored attachments %v; want one", events[i]["attachments"])
+	}
+	if name, _ := attachments[0].(map[string]any)["filename"].(string); name != "p99.png" {
+		t.Errorf("stored attachment %v; want p99.png", attachments[0])
+	}
+}
+
+// filesEntry is the start of an entry, up to typing into Files.
+func filesEntry() *keyScript {
+	return new(keyScript).press("down", "enter").
+		typed("Failover finished").press("enter").
+		typed("03:25").press("enter").
+		typed("m").press("ctrl+e", "enter").
+		typed("election").press("enter").typed("db").press("tab")
 }
 
 func testTagSuggestion(t *testing.T) {

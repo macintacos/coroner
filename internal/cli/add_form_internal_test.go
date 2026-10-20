@@ -673,6 +673,7 @@ func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, err
 		Out: out, Err: errOut,
 		LookupEnv:         func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
 		ReadFile:          func(string) ([]byte, error) { return nil, fs.ErrNotExist },
+		ReadDir:           func(string) ([]fs.DirEntry, error) { return nil, fs.ErrNotExist },
 		Now:               testNow,
 		NewID:             newID,
 		OpenStore:         store.Open,
