@@ -118,9 +118,19 @@ var _ = Describe("form fields", func() {
 
 		form.Update(tea.WindowSizeMsg{Width: 200, Height: 20})
 
-		for line := range strings.SplitSeq(ansi.Strip(form.View().Content), "\n") {
+		for line := range strings.SplitSeq(strings.TrimLeft(ansi.Strip(form.View().Content), "\n"), "\n") {
 			Expect(ansi.StringWidth(line)).To(Equal(80), line)
 		}
+	})
+
+	It("draw a blank row between the output above a form and its frame", func() {
+		form := newForm("📝 New event", formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+
+		form.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+
+		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
+		Expect(lines[0]).To(BeEmpty())
+		Expect(lines[1]).To(HavePrefix("╭─ 📝 New event"))
 	})
 
 	Describe("event add's groups", func() {

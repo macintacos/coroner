@@ -73,9 +73,10 @@ func newForm(title string, groups ...formGroup) *fittedForm {
 // formWidth is the widest a form's frame grows, so a wide terminal shows it as a card.
 const formWidth = 80
 
-// fittedForm is a form drawn in a frame headed by its title. It tells huh its terminal is the
-// inside of the frame, and a row shorter still, since huh sizes a group's help as one row but draws
-// a blank row above it, and the terminal drops a taller frame's top row.
+// fittedForm is a form drawn in a frame headed by its title, a blank row above it to set it apart
+// from the output above. It tells huh its terminal is the inside of the frame, less that row, and a
+// row shorter still, since huh sizes a group's help as one row but draws a blank row above it, and
+// the terminal drops a taller frame's top row.
 type fittedForm struct {
 	*huh.Form
 	title string
@@ -87,8 +88,8 @@ func (f *fittedForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
 		f.width = min(size.Width, formWidth)
 		size.Width = f.width - frameBox().GetHorizontalFrameSize()
-		// The top edge frame draws, then huh's blank row.
-		size.Height -= frameBox().GetVerticalFrameSize() + 2
+		// The blank row above the frame, the top edge frame draws, then huh's blank row.
+		size.Height -= frameBox().GetVerticalFrameSize() + 3
 		msg = size
 	}
 	_, cmd := f.Form.Update(msg)
@@ -100,7 +101,7 @@ func (f *fittedForm) View() tea.View {
 	body := f.Form.View()
 	// huh draws nothing once the form ends, which clears it from the screen.
 	if body != "" {
-		body = frame(f.title, body, f.width)
+		body = "\n" + frame(f.title, body, f.width)
 	}
 	v := tea.NewView(body)
 	v.ReportFocus = true
