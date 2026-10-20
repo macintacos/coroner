@@ -82,11 +82,11 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 func eventAddDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
-		{name: "text", arg: true, required: true, perEntry: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(eventTextInput().checkOrStdin)},
+		{name: "text", arg: true, required: true, perEntry: true, title: "What happened", usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(eventTextInput().checkOrStdin)},
 		// Before at, so a form asks for the zone before the times read in it.
 		tzField(),
 		{
-			name: "at", perEntry: true, usage: "When it happened, as a `time` (default: now)", check: checkAt,
+			name: "at", perEntry: true, title: "When", usage: "When it happened, as a `time` (default: now)", check: checkAt,
 			preview: func(at string, env checkEnv) string {
 				raw := &at
 				if at == "" {
@@ -111,11 +111,11 @@ func eventAddDefinition() definition {
 			},
 		},
 		{name: "approximate", typ: boolField, perEntry: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
-		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "tag", typ: stringsField, usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
+		{name: "source", title: "Source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
+		{name: "tag", typ: stringsField, title: "Tags", usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
 		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
 		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
-		perEntry(attachField()),
+		titled(perEntry(attachField()), "Files"),
 		{
 			name: "id", perEntry: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
 			check: withoutEnv(checkEventID),

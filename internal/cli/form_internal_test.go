@@ -64,6 +64,16 @@ var _ = Describe("form fields", func() {
 		Expect(fieldView(kind)).To(ContainSubstring("kind (required)"))
 	})
 
+	It("title each event add field for people", func() {
+		fields := eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+		for name, title := range map[string]string{
+			"text": "What happened (required)", "at": "When", "source": "Source", "tag": "Tags", "attach": "Files", "url": "url",
+		} {
+			Expect(fieldView(namedField(fields, name))).To(ContainSubstring(title), name)
+		}
+	})
+
 	It("read a line holding only spaces as no value, and check only the others", func() {
 		def := eventAddDefinition()
 		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})

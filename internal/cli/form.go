@@ -113,7 +113,7 @@ func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
-	title := f.name
+	title := f.formTitle()
 	if f.required {
 		title += " (required)"
 	}

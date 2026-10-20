@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"slices"
 	"strconv"
@@ -42,6 +43,8 @@ type field struct {
 	changes bool
 	// perEntry marks a field another add form entry opens without; only an add form reads it.
 	perEntry bool
+	// title is what a form calls the field, empty meaning its name; only a form reads it.
+	title string
 	// preview renders, under the form field, what value resolves to; nil shows only a failing check's hint.
 	preview func(value string, env checkEnv) string
 	// list makes a repeatable field's form field take its values one at a time instead of one per line.
@@ -163,6 +166,16 @@ func changing(f field) field {
 func perEntry(f field) field {
 	f.perEntry = true
 	return f
+}
+
+// titled returns f with the title a form calls it.
+func titled(f field, title string) field {
+	f.title = title
+	return f
+}
+
+func (f field) formTitle() string {
+	return cmp.Or(f.title, f.name)
 }
 
 // withoutEnv makes check, which reads no time input, a field check.
