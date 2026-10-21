@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"testing/fstest"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -446,6 +447,41 @@ var _ = Describe("add forms", func() {
 				Expect(errOut.String()).To(ContainSubstring("--ended"))
 				Expect(errOut.String()).NotTo(ContainSubstring(`"kind"`))
 			})
+
+			It("complete annotation add's attach paths the same way", func(ctx SpecContext) {
+				fsys := fstest.MapFS{"files/p99.png": {}}
+				app.ReadDir = func(name string) ([]fs.DirEntry, error) { return fs.ReadDir(fsys, name) }
+				Expect(run(ctx, "event", "add", "Primary stepped down")).To(Equal(0), errOut.String())
+				var view string
+				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+					attach := namedField(fields, "attach")
+					attach.WithKeyMap(huh.NewDefaultKeyMap())
+					attach.Focus()
+					typeText(attach, "files/p")
+					view = fieldView(attach)
+					return cancel(fields)
+				}, confirm(false)))
+
+				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
+
+				Expect(view).To(ContainSubstring("↳ files/p99.png"))
+			})
+
+			It("reject an attach path that does not exist as --attach does", func(ctx SpecContext) {
+				Expect(run(ctx, "event", "add", "Deploy", "-t", "mongo-outage", "--attach", "missing.png")).To(Equal(2))
+				Expect(errOut.String()).To(ContainSubstring("cannot read --attach missing.png"))
+				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+					fill(fields, map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z"})
+					enter(namedField(fields, "attach"), "missing.png")
+					return true, nil
+				}, cancel, confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(ContainSubstring("cannot read --attach missing.png"))
+				Expect(errOut.String()).To(ContainSubstring("Pass a file that exists and you can read."))
+				Expect(asked).To(HaveLen(3))
+			})
 		})
 
 		Describe("source suggestions", func() {
@@ -536,6 +572,28 @@ var _ = Describe("add forms", func() {
 
 			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("tags", ConsistOf("election", "db")))
 			Expect(strings.Join(echoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--tag election --tag db"))
+		})
+
+		It("echo three files given to the form as three --attach flags", func(ctx SpecContext) {
+			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
+			app.ReadFile = func(name string) ([]byte, error) {
+				if slices.Contains([]string{"a.txt", "b.txt", "c.txt"}, name) {
+					return []byte(name), nil
+				}
+				return nil, fs.ErrNotExist
+			}
+			command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+				fill(fields, map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"})
+				attach := namedField(fields, "attach")
+				enter(attach, "a.txt")
+				enter(attach, "b.txt")
+				enter(attach, "c.txt")
+				return true, nil
+			}, confirm(false)))
+
+			Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
+
+			Expect(strings.Join(echoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--attach a.txt --attach b.txt --attach c.txt"))
 		})
 
 		It("end without asking more when Esc cancels the timeline pick", func(ctx SpecContext) {
@@ -673,6 +731,7 @@ func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, err
 		Out: out, Err: errOut,
 		LookupEnv:         func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
 		ReadFile:          func(string) ([]byte, error) { return nil, fs.ErrNotExist },
+		ReadDir:           func(string) ([]fs.DirEntry, error) { return nil, fs.ErrNotExist },
 		Now:               testNow,
 		NewID:             newID,
 		OpenStore:         store.Open,

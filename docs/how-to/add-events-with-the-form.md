@@ -35,12 +35,21 @@ Source and Tags show a row of the values on the timeline's latest events first, 
 other one. Once you type, the row shows the ones that start with what you typed, beside
 the inline suggestion `ctrl+e` takes.
 
+Files completes the path you type. Once you type, the row lists the entries of the typed
+path's directory, relative to where you run coroner or absolute, that start with the typed
+name, matching case, and a directory ends in `/`. `ctrl+e` takes the inline one, so you
+can keep completing inside a directory. Names starting with `.` show once you type the
+`.`. A path starting with `~/` completes nothing and is not expanded, so type the full
+path. A file that does not exist is reported when you submit, as `--attach` reports it,
+and the form asks the entry again. `annotation add`'s form completes its attach field the
+same way.
+
 These keys move through the form:
 
 | Key                 | What it does                                                    |
 | ------------------- | --------------------------------------------------------------- |
 | `enter`             | Go to the next field; in Tags or Files, add the value typed, or move on from an empty one. |
-| `ctrl+e`            | Take the field's suggestion, such as a source already in use.   |
+| `ctrl+e`            | Take the field's suggestion, such as a source already in use or a file path. |
 | `↑` / `↓`           | Cycle the matches while you type, or pick a value in Tags or Files while nothing is typed. |
 | `ctrl+n` / `ctrl+p` | Cycle the matches.                                              |
 | `backspace`         | Remove the picked value.                                        |

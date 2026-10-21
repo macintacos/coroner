@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"testing/synctest"
 	"time"
 
@@ -219,8 +219,9 @@ func sequenced(msg tea.Msg) ([]tea.Cmd, bool) {
 // formSize is the terminal the forms are pressed in.
 func formSize() tea.WindowSizeMsg { return tea.WindowSizeMsg{Width: 60, Height: 20} }
 
-// keyedRun runs event add with no arguments against a scratch database through forms that press
-// script's keys at 60×20.
+// keyedRun runs event add with no arguments against a scratch database, in a working directory
+// holding files/p99.png, files/q01.png and docs/r1.txt, through forms that press script's keys at
+// 60×20.
 func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
 	t.Helper()
 	home := t.TempDir()
@@ -235,12 +236,13 @@ func keyedRun(t *testing.T, script *keyScript, check func(*huh.Form)) App {
 	}
 	ids := 0
 	app := scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
-	app.ReadFile = func(name string) ([]byte, error) {
-		if !strings.HasPrefix(name, "files/") {
-			return nil, fs.ErrNotExist
-		}
-		return []byte("\x89PNG\r\n"), nil
+	work := t.TempDir()
+	err = os.CopyFS(work, fstest.MapFS{"files/p99.png": {Data: []byte("\x89PNG\r\n")}, "files/q01.png": {}, "docs/r1.txt": {}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Chdir(work)
+	app.ReadFile, app.ReadDir = os.ReadFile, os.ReadDir
 	for _, args := range [][]string{
 		{"timeline", "create", "api-latency"},
 		{"timeline", "create", "mongo-outage"},
@@ -302,14 +304,7 @@ func storedEvents(t *testing.T, app App) []map[string]any {
 
 // baselineEntry is the issue's typical event, up to the More options answer.
 func baselineEntry() *keyScript {
-	return new(keyScript).
-		press("down", "enter").
-		typed("Failover finished").press("enter").
-		typed("03:25").press("enter").
-		typed("m").press("ctrl+e", "enter").
-		typed("election").press("enter").typed("db").press("tab").
-		typed("files/p99.png").press("enter", "enter").
-		press("enter")
+	return filesEntry().typed("files/p99.png").press("enter", "enter").press("enter")
 }
 
 func TestEventAddFormKeys(t *testing.T) {
@@ -321,12 +316,7 @@ func TestEventAddFormKeys(t *testing.T) {
 		if keys := len(slices.Concat(script.asks...)); keys > 12 {
 			t.Errorf("the baseline took %d keys; want at most 12", keys)
 		}
-		events := storedEvents(t, app)
-		i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover finished" })
-		if i == -1 {
-			t.Fatalf("stored %v; want Failover finished", events)
-		}
-		added := events[i]
+		added := addedEvent(t, app)
 		if added["source"] != "mongod" {
 			t.Errorf("stored %v; want Failover finished from mongod", added)
 		}
@@ -394,6 +384,131 @@ func TestEventAddFormKeys(t *testing.T) {
 	t.Run("cycle and pick", testCycleAndPick)
 	t.Run("remove carried tag", testRemoveCarriedTag)
 	t.Run("esc in tags", testEscInTags)
+	t.Run("attach completion", testAttachCompletion)
+	t.Run("attach directories", testAttachDirectories)
+	t.Run("attach cycle and pick", testAttachCycleAndPick)
+}
+
+func testAttachDirectories(t *testing.T) {
+	script := filesEntry().
+		typed("fi").press("ctrl+e").typed("p").press("ctrl+e", "enter").
+		typed("do").press("ctrl+e", "ctrl+e", "enter").
+		press("enter", "enter", "n")
+	rows := map[string]string{"fi": "↳ files/", "files/": "↳ files/p99.png  files/q01.png", "docs/": "↳ docs/r1.txt"}
+	seen := map[string]bool{}
+	check := func(form *huh.Form) {
+		t.Helper()
+		typed := focusedTyped(form)
+		row, ok := rows[typed]
+		if !ok || seen[typed] {
+			return
+		}
+		seen[typed] = true
+		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		if !showsRow(lines, row) {
+			t.Errorf("no row of matches leading with %q after %s:\n%s", row, typed, strings.Join(lines, "\n"))
+		}
+		if typed == "fi" && !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> files/") }) {
+			t.Errorf("the input does not ghost files/ after fi:\n%s", strings.Join(lines, "\n"))
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if len(seen) != len(rows) {
+		t.Fatalf("the form held %v in Files; want each of fi, files/ and docs/", seen)
+	}
+	if names := addedAttachments(t, app); !slices.Equal(names, []string{"p99.png", "r1.txt"}) {
+		t.Errorf("stored attachments %v; want p99.png and r1.txt", names)
+	}
+}
+
+func testAttachCycleAndPick(t *testing.T) {
+	script := filesEntry().
+		typed("files/p99.png").press("enter").
+		typed("files/").press("down", "ctrl+e", "enter").
+		press("enter", "enter", "n")
+	var typingHelp, pickHelp []string
+	check := func(form *huh.Form) {
+		l, ok := form.GetFocusedField().(*listField)
+		switch {
+		case !ok:
+		case typingHelp == nil && l.typed() == "files/":
+			typingHelp = helpTexts(l)
+		case pickHelp == nil && l.typed() == "" && len(l.values) == 2:
+			pickHelp = helpTexts(l)
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if !slices.Contains(typingHelp, "↑/↓ cycle matches") || !slices.Contains(typingHelp, "ctrl+n/ctrl+p cycle") {
+		t.Errorf("help while typing files/ is %v; want the cycle keys", typingHelp)
+	}
+	if !slices.Contains(pickHelp, "↑/↓ pick") {
+		t.Errorf("help after adding two files is %v; want ↑/↓ pick", pickHelp)
+	}
+	if names := addedAttachments(t, app); !slices.Equal(names, []string{"p99.png", "q01.png"}) {
+		t.Errorf("stored attachments %v; want p99.png and q01.png", names)
+	}
+}
+
+// addedAttachments returns the file names attached to the event the form added, Failover finished.
+func addedAttachments(t *testing.T, app App) []string {
+	t.Helper()
+	data, err := json.Marshal(addedEvent(t, app)["attachments"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var attachments []struct {
+		Filename string `json:"filename"`
+	}
+	err = json.Unmarshal(data, &attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, a := range attachments {
+		names = append(names, a.Filename)
+	}
+	return names
+}
+
+func testAttachCompletion(t *testing.T) {
+	script := filesEntry().typed("files/p").press("ctrl+e", "enter").press("enter", "enter", "n")
+	checked := false
+	check := func(form *huh.Form) {
+		t.Helper()
+		if focusedTyped(form) != "files/p" {
+			return
+		}
+		checked = true
+		lines := strings.Split(ansi.Strip(form.View()), "\n")
+		if !showsRow(lines, "↳ files/p99.png") {
+			t.Errorf("no row of matches leading with files/p99.png:\n%s", strings.Join(lines, "\n"))
+		}
+		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> files/p99.png") }) {
+			t.Errorf("the input does not ghost files/p99.png after files/p:\n%s", strings.Join(lines, "\n"))
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if !checked {
+		t.Fatal("the form never held files/p in Files")
+	}
+	if names := addedAttachments(t, app); !slices.Equal(names, []string{"p99.png"}) {
+		t.Errorf("stored attachments %v; want p99.png", names)
+	}
+}
+
+// filesEntry is the start of an entry, up to typing into Files.
+func filesEntry() *keyScript {
+	return new(keyScript).press("down", "enter").
+		typed("Failover finished").press("enter").
+		typed("03:25").press("enter").
+		typed("m").press("ctrl+e", "enter").
+		typed("election").press("enter").typed("db").press("tab")
 }
 
 func testTagSuggestion(t *testing.T) {
@@ -406,9 +521,7 @@ func testTagSuggestion(t *testing.T) {
 		}
 		checked = true
 		lines := strings.Split(ansi.Strip(form.View()), "\n")
-		if !slices.ContainsFunc(lines, func(line string) bool {
-			return strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(line, "┃│")), "↳ election")
-		}) {
+		if !showsRow(lines, "↳ election") {
 			t.Errorf("no row of matches leading with election:\n%s", strings.Join(lines, "\n"))
 		}
 		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> election") }) {
@@ -512,12 +625,7 @@ func helpTexts(f huh.Field) []string {
 // addedTags returns the tags of the event the form added, Failover finished.
 func addedTags(t *testing.T, app App) []string {
 	t.Helper()
-	events := storedEvents(t, app)
-	i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover finished" })
-	if i == -1 {
-		t.Fatalf("stored %v; want Failover finished", events)
-	}
-	data, err := json.Marshal(events[i]["tags"])
+	data, err := json.Marshal(addedEvent(t, app)["tags"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -527,4 +635,22 @@ func addedTags(t *testing.T, app App) []string {
 		t.Fatal(err)
 	}
 	return tags
+}
+
+// addedEvent returns the event the form added, Failover finished.
+func addedEvent(t *testing.T, app App) map[string]any {
+	t.Helper()
+	events := storedEvents(t, app)
+	i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover finished" })
+	if i == -1 {
+		t.Fatalf("stored %v; want Failover finished", events)
+	}
+	return events[i]
+}
+
+// showsRow reports whether a line of a form's view, inside huh's border, leads with row.
+func showsRow(lines []string, row string) bool {
+	return slices.ContainsFunc(lines, func(line string) bool {
+		return strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(line, "┃│")), row)
+	})
 }
