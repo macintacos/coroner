@@ -240,7 +240,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -269,7 +269,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -296,7 +296,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -329,7 +329,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -381,7 +381,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -411,7 +411,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -448,7 +448,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -481,7 +481,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -515,7 +515,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -545,7 +545,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -576,7 +576,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -607,7 +607,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -640,7 +640,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -686,7 +686,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -723,7 +723,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -757,7 +757,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -805,7 +805,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -846,7 +846,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -854,8 +854,8 @@ LEARN MORE
 -- coroner_event_add.txt --
 Add an event to the current timeline, and print the time it resolved to.
 
-A time with no offset is read in --tz, then the config file's default_timezone, then the
-local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
+A time with no offset is read in --tz, then the config file's default_timezone, then UTC.
+RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
 Run 'coroner help time' for the times you can type.
 
 Pass - to read the text from stdin, which is never read otherwise.
@@ -923,7 +923,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -961,7 +961,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1010,7 +1010,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1051,7 +1051,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1067,7 +1067,7 @@ overlay saved with 'coroner overlay create' holds, in place of -t.
 
 --since is inclusive and --until exclusive. Repeated --source flags match any of them,
 and repeated --tag flags must all match. Times with no offset are read, and times print,
-in --tz, then the config file's default_timezone, then the local zone. Piped, the
+in --tz, then the config file's default_timezone, then UTC. Piped, the
 fields are tab-separated.
 
 USAGE
@@ -1101,7 +1101,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1136,7 +1136,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1167,7 +1167,7 @@ GLOBAL FLAGS
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1194,7 +1194,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1244,7 +1244,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1275,7 +1275,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1308,7 +1308,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1340,7 +1340,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1371,7 +1371,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1398,7 +1398,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1428,7 +1428,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1457,7 +1457,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1483,7 +1483,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1520,7 +1520,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1560,7 +1560,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1593,7 +1593,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1634,7 +1634,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1719,7 +1719,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1750,7 +1750,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1781,7 +1781,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1829,7 +1829,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.
@@ -1854,7 +1854,7 @@ GLOBAL FLAGS
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 
 LEARN MORE
   Use `coroner <command> --help` for more information about a command.

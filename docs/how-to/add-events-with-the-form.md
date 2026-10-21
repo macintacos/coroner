@@ -130,10 +130,10 @@ its timeline, counts and ends the same way, listing each annotation's kind and b
 Equivalent command: coroner event add 'Migration paused' -t db-migration --at 2026-10-20T16:10:00Z
 
 ✓ Added 2 events to timeline `inc-4821`
-  #3  2026-10-20T16:00:00Z (-04:00 local: 12:00:00)  Primary stepped down
-  #4  2026-10-20T16:05:00Z (-04:00 local: 12:05:00)  Election timeout on db-3
+  #3  2026-10-20T16:00:00Z  Primary stepped down
+  #4  2026-10-20T16:05:00Z  Election timeout on db-3
 ✓ Added 1 event to timeline `db-migration`
-  #1  2026-10-20T16:10:00Z (-04:00 local: 12:10:00)  Migration paused
+  #1  2026-10-20T16:10:00Z  Migration paused
 
   View the timelines: coroner timeline view -t inc-4821 -t db-migration
 ```

@@ -22,7 +22,7 @@ Every key is present on every line, and each record sits on a single line:
 | `timeline_id` | The id of the `-t` timeline, which `coroner timeline create <name> --if-not-exists -q` prints. Every record names the same one. |
 | `seq` | `null`. coroner numbers the events in file order. |
 | `occurred_at` | When it happened, in UTC with nine fraction digits: `2026-09-11T04:58:12.000000000Z`. |
-| `occurred_offset` | The offset of the RFC 3339 time you derived, in seconds east of UTC (`-18000` for `-05:00`). `null` only for a `Z` time or an epoch, as `event add --at` stores it. |
+| `occurred_offset` | The offset of the RFC 3339 time you derived, in seconds east of UTC (`-18000` for `-05:00`). `null` for a `Z` time, an epoch, or a time with no offset read in UTC, as `event add --at` stores it. |
 | `precision` | How exact the time is: `day`, `hour`, `minute`, `second`, `millisecond`, `microsecond` or `nanosecond`. Match the digits the source gave. |
 | `approximate` | `true` only when the time is a guess. |
 | `occurred_raw` | The time exactly as the source wrote it, such as `Sep 10 23:58:12` or a Slack `ts`, or `null` when you have none. |

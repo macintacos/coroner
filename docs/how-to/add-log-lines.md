@@ -16,7 +16,7 @@ word for word as evidence.
 
    ```console
    $ coroner event add "Primary steps down on db-2" --at 2026-09-10T20:02:30.412-04:00 --source db-2/mongod --dry-run
-   Would add to timeline `checkout-latency` at 2026-09-11T00:02:30.412Z (+00:00 local: 00:02:30)
+   Would add to timeline `checkout-latency` at 2026-09-11T00:02:30.412Z
    Precision:   millisecond
    Source:      db-2/mongod
    Tags:        -
@@ -29,7 +29,7 @@ word for word as evidence.
 
    ```console
    $ coroner event add "Primary steps down on db-2" --at 2026-09-10T20:02:30.412-04:00 --source db-2/mongod
-   Added event #1 to timeline `checkout-latency` at 2026-09-11T00:02:30.412Z (+00:00 local: 00:02:30)
+   Added event #1 to timeline `checkout-latency` at 2026-09-11T00:02:30.412Z
    ```
 
 4. Pipe the copied line into an evidence annotation on the event:
@@ -109,7 +109,7 @@ needs no `--tz`:
 
 ```console
 $ coroner event add "Worker gives up on payment retry" --at 1789084692123 --source payments-worker
-Added event #4 to timeline `checkout-latency` at 2026-09-10T23:58:12.123Z (+00:00 local: 23:58:12)
+Added event #4 to timeline `checkout-latency` at 2026-09-10T23:58:12.123Z
 ```
 
 ## Times with no zone
@@ -119,7 +119,7 @@ of:
 
 1. `--tz`;
 2. `default_timezone` in the config file;
-3. your local time zone.
+3. UTC.
 
 coroner does not remember a zone per source, so pass `--tz` for every line from a host
 whose zone differs from your default, and check the zone in the time coroner echoes.

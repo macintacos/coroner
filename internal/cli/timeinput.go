@@ -19,7 +19,7 @@ type zone struct {
 	label string
 }
 
-const tzUsage = "Time `zone` for this invocation (default: config default_timezone, then TZ)"
+const tzUsage = "Time `zone` for this invocation (default: config default_timezone, then UTC)"
 
 // tzField is --tz, which root registers, as the field of a command that reads time input.
 func tzField() field {
@@ -70,8 +70,8 @@ func resolveEnded(input string, env checkEnv, hint string) (timeparse.Resolved, 
 }
 
 // timeZone returns the zone naive time input is read in: tz, the --tz flag (nil when not
-// given), else the config file's defaultTimezone, which config.Resolve defaults to local.
-// Either may say local, in any case, for the local zone.
+// given), else the config file's defaultTimezone, which config.Resolve defaults to UTC.
+// Either may say local, in any case, for the zone local holds, or UTC, in any case.
 func timeZone(tz *string, defaultTimezone string, local *time.Location) (zone, error) {
 	name, source := defaultTimezone, "the config file's default_timezone"
 	if tz != nil {
@@ -81,6 +81,10 @@ func timeZone(tz *string, defaultTimezone string, local *time.Location) (zone, e
 	// LoadLocation reads "Local" as the process's time.Local, not local.
 	if strings.EqualFold(name, "local") {
 		return zone{loc: local, label: "local"}, nil
+	}
+	// LoadLocation finds "utc" only on a case-insensitive filesystem, as its own location.
+	if strings.EqualFold(name, "UTC") {
+		return zone{loc: time.UTC, label: "UTC"}, nil
 	}
 	// LoadLocation reads "" as UTC.
 	if name == "" {
@@ -102,9 +106,10 @@ func timeZone(tz *string, defaultTimezone string, local *time.Location) (zone, e
 func resolveTime(flag string, input *string, now time.Time, loc *time.Location) (timeparse.Resolved, error) {
 	if input == nil {
 		wall := now.In(loc)
-		_, offset := wall.Zone()
 		return timeparse.Resolved{
-			Instant: timeline.PrecisionSecond.Truncate(wall), Offset: &offset, Precision: timeline.PrecisionSecond,
+			Instant:   timeline.PrecisionSecond.Truncate(wall),
+			Offset:    timeparse.OffsetIn(wall, loc),
+			Precision: timeline.PrecisionSecond,
 		}, nil
 	}
 
@@ -145,16 +150,19 @@ func timePreview(r timeparse.Resolved, err error, z zone) string {
 }
 
 // formatResolved renders r's instant in UTC with the fractional digits its precision states,
-// then its offset, label and wall clock in z.
+// then, unless z is UTC, its offset, label and wall clock in z.
 func formatResolved(r timeparse.Resolved, z zone) string {
 	mark := ""
 	if r.Approximate {
 		mark = "~"
 	}
+	instant := mark + r.Instant.UTC().Format("2006-01-02T15:04:05"+fraction(r.Precision)+"Z")
+	if z.loc == time.UTC {
+		return instant
+	}
 	wall := r.Instant.In(z.loc)
 
-	return fmt.Sprintf("%s%s (%s %s: %s)", mark, r.Instant.UTC().Format("2006-01-02T15:04:05"+fraction(r.Precision)+"Z"),
-		wall.Format("-07:00"), z.label, wall.Format(time.TimeOnly))
+	return fmt.Sprintf("%s (%s %s: %s)", instant, wall.Format("-07:00"), z.label, wall.Format(time.TimeOnly))
 }
 
 // occurredText renders e's occurred at in z to its precision, a day-precision event in its own

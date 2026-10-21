@@ -20,7 +20,7 @@ the link and the text, and write the event's text yourself.
 
    ```console
    $ coroner event add "On-call reports checkout p99 at 4s" --at 1789084692123456 --url https://acme.slack.com/archives/C024BE91L/p1789084692123456 --source slack
-   Added event #1 to timeline `checkout-latency` at 2026-09-10T23:58:12.123456Z (+00:00 local: 23:58:12)
+   Added event #1 to timeline `checkout-latency` at 2026-09-10T23:58:12.123456Z
    ```
 
    The time is exact to the microsecond and needs no time zone, so the event sorts

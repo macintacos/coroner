@@ -58,11 +58,16 @@ var _ = Describe("add forms", func() {
 		Entry("an error of no kind", errors.New("disk full"), false),
 	)
 
-	It("read times in the local zone when the config file's default_timezone is unknown", func() {
-		env := baseCheckEnv(formSession{app: App{Now: testNow}, inv: invocation{cfg: config.Config{DefaultTimezone: "Mars/Olympus_Mons"}}})
+	DescribeTable("read times in UTC, not the clock's zone, when the config file's default_timezone is UTC or unknown",
+		func(defaultTimezone string) {
+			now := func() time.Time { return testNow().In(time.FixedZone("Test/Local", -3*3600)) }
+			env := baseCheckEnv(formSession{app: App{Now: now}, inv: invocation{cfg: config.Config{DefaultTimezone: defaultTimezone}}})
 
-		Expect(env.zone.loc).To(Equal(testNow().Location()))
-	})
+			Expect(env.zone).To(Equal(zone{loc: time.UTC, label: "UTC"}))
+		},
+		Entry("UTC", "UTC"),
+		Entry("unknown", "Mars/Olympus_Mons"),
+	)
 
 	It("read times in --tz over the config file's default_timezone", func() {
 		tz := "UTC"
@@ -479,10 +484,10 @@ var _ = Describe("add forms", func() {
 
 						Expect(errOut.String()).To(HaveSuffix("\n" +
 							"✓ Added 2 events to timeline `mongo-outage`\n" +
-							"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
-							"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+							"  #1  2026-09-11T03:14:07Z  Primary stepped down\n" +
+							"  #2  2026-09-11T03:20:00Z  Failover\n" +
 							"✓ Added 1 event to timeline `api-latency`\n" +
-							"  #1  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Edge slow\n" +
+							"  #1  2026-09-11T03:15:00Z  Edge slow\n" +
 							"\n" +
 							"  View the timelines: coroner --db " + db + " timeline view -t mongo-outage -t api-latency\n"))
 					})
@@ -605,8 +610,8 @@ var _ = Describe("add forms", func() {
 				Expect(errOut.String()).To(HaveSuffix("Equivalent command: coroner --db " + db + " event add 'Election timeout on db-3' --at 2026-09-11T03:15:00Z\n" +
 					"\n" +
 					"✓ Added 2 events to timeline `mongo-outage`\n" +
-					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
-					"  #2  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Election timeout on db-3\n" +
+					"  #1  2026-09-11T03:14:07Z  Primary stepped down\n" +
+					"  #2  2026-09-11T03:15:00Z  Election timeout on db-3\n" +
 					"\n" +
 					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
@@ -626,7 +631,7 @@ var _ = Describe("add forms", func() {
 				Expect(echoes[2]).NotTo(ContainSubstring("--id"))
 
 				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 event to timeline `mongo-outage`\n" +
-					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+					"  #2  2026-09-11T03:20:00Z  Failover\n" +
 					"\n" +
 					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
@@ -683,7 +688,7 @@ var _ = Describe("add forms", func() {
 
 				Expect(asked).To(HaveLen(3))
 				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 event to timeline `mongo-outage`\n" +
-					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+					"  #1  2026-09-11T03:14:07Z  Primary stepped down\n" +
 					"\n" +
 					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
@@ -1052,7 +1057,7 @@ var _ = Describe("add forms", func() {
 			preview := at.preview(input, formCheckEnv())
 			occurredAt, err := timeline.ParseInstant(resolved.OccurredAt)
 			Expect(err).NotTo(HaveOccurred())
-			shown, err := time.Parse(time.RFC3339Nano, strings.TrimPrefix(strings.Fields(preview)[0], "~"))
+			shown, err := time.Parse(time.RFC3339Nano, strings.Trim(strings.Fields(preview)[0], "~,"))
 			Expect(err).NotTo(HaveOccurred(), preview)
 
 			Expect(shown).To(BeTemporally("==", occurredAt))

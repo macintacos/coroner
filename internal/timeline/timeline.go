@@ -49,7 +49,7 @@ type Event struct {
 	// states (UTC when nil).
 	OccurredAt time.Time
 	// OccurredOffset is seconds east of UTC as the input stated it; nil when the input was
-	// Z or an epoch, which say nothing about the local offset.
+	// Z or an epoch, or was read in UTC, which say nothing about a local offset.
 	OccurredOffset *int
 	Precision      Precision
 	Approximate    bool

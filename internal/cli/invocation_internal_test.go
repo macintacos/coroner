@@ -48,7 +48,7 @@ var _ = Describe("invocation", func() {
 		return inv
 	}
 
-	DescribeTable("resolves the zone only when asked, from --tz, then default_timezone, then local",
+	DescribeTable("resolves the zone only when asked, from --tz, then default_timezone, then UTC",
 		func(ctx SpecContext, configFile string, args []string, want string) {
 			z, err := read(ctx, invocationApp(map[string]string{}, configFile), args...).zone()
 
@@ -57,7 +57,7 @@ var _ = Describe("invocation", func() {
 		},
 		Entry("--tz", `default_timezone = "Asia/Tokyo"`, []string{"--tz", "Europe/Berlin"}, "Europe/Berlin"),
 		Entry("default_timezone", `default_timezone = "Asia/Tokyo"`, nil, "Asia/Tokyo"),
-		Entry("neither", "", nil, "local"),
+		Entry("neither", "", nil, "UTC"),
 	)
 
 	It("reads the timeline input with the command's rule", func(ctx SpecContext) {

@@ -28,7 +28,7 @@ func newEventListCommand(ctx context.Context, app App) *cobra.Command {
 			"overlay saved with 'coroner overlay create' holds, in place of -t.\n\n" +
 			"--since is inclusive and --until exclusive. Repeated --source flags match any of them,\n" +
 			"and repeated --tag flags must all match. Times with no offset are read, and times print,\n" +
-			"in --tz, then the config file's default_timezone, then the local zone. Piped, the\n" +
+			"in --tz, then the config file's default_timezone, then UTC. Piped, the\n" +
 			"fields are tab-separated.",
 		Args:        cobra.NoArgs,
 		Annotations: map[string]string{formatsAnnotation: "text,json,jsonl", timelinesAnnotation: "several"},

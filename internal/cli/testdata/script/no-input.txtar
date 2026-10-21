@@ -52,12 +52,12 @@ mongo-outage
 ID:          01a09862-b1c0-7000-8000-000000000001
 Title:       Primary election storm
 Refs:        -
-Created:     2026-09-12T21:30:00-04:00
-Events:      1, from 2026-09-10T23:14:07-04:00 to 2026-09-10T23:14:07-04:00
+Created:     2026-09-13T01:30:00Z
+Events:      1, from 2026-09-11T03:14:07Z to 2026-09-11T03:14:07Z
 Sources:     mongod 1
 Tags:        -
 Annotations: 1
 
-#1	2026-09-10T23:14:07-04:00		mongod	Primary stepped down
+#1	2026-09-11T03:14:07Z		mongod	Primary stepped down
 -- list.txt --
 *	mongo-outage	Primary election storm

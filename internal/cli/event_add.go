@@ -31,8 +31,8 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 		Use:   "add {<text> | - | --from-file {<file> | -}}",
 		Short: "Add an event to the current timeline",
 		Long: "Add an event to the current timeline, and print the time it resolved to.\n\n" +
-			"A time with no offset is read in --tz, then the config file's default_timezone, then the\n" +
-			"local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.\n" +
+			"A time with no offset is read in --tz, then the config file's default_timezone, then UTC.\n" +
+			"RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.\n" +
 			"Run 'coroner help time' for the times you can type.\n\n" +
 			"Pass - to read the text from stdin, which is never read otherwise.\n\n" +
 			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +

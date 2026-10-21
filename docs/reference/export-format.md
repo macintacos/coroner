@@ -169,7 +169,7 @@ database. They are output only: never part of an exported source.
 | `timeline_id` | string | ID of the event's timeline. |
 | `seq` | integer or null | Permanent per-timeline counter, shown as `#12`; null only in a preview, see below. |
 | `occurred_at` | instant | When it happened or its interval started: the start of its precision window. |
-| `occurred_offset` | integer or null | The input's offset from UTC in seconds, positive east; null when the input was `Z` or an epoch, which say nothing about a local offset. |
+| `occurred_offset` | integer or null | The input's offset from UTC in seconds, positive east; null when the input was `Z` or an epoch, or was read in UTC, which say nothing about a local offset. |
 | `precision` | string | How exact `occurred_at` is; see below. |
 | `approximate` | boolean | Whether `occurred_at` is a guess. |
 | `occurred_raw` | string or null | The time exactly as it was given; null when none was given and the event took the time it was added. |

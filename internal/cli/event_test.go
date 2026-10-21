@@ -120,7 +120,7 @@ var _ = Describe("event add", func() {
 		})
 
 		It("says on stderr which timeline it added to and the time it resolved", func(ctx SpecContext) {
-			Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0))
+			Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--tz", "local")).To(Equal(0))
 
 			Expect(out.String()).To(BeEmpty())
 			Expect(errOut.String()).To(Equal(
@@ -137,7 +137,7 @@ var _ = Describe("event add", func() {
 			Expect(run(ctx, "event", "add", "Primary stepped down", "--json")).To(Equal(0))
 
 			Expect(out.String()).To(ContainSubstring(
-				`"occurred_at":"2026-09-13T01:30:05.000000000Z","occurred_offset":-14400,"precision":"second"`))
+				`"occurred_at":"2026-09-13T01:30:05.000000000Z","occurred_offset":null,"precision":"second"`))
 			Expect(out.String()).To(ContainSubstring(`"occurred_raw":null`))
 		})
 
@@ -164,7 +164,7 @@ var _ = Describe("event add", func() {
 		})
 
 		It("exits 2 with kind invalid_time and the offsets to choose from on a time a DST change skips", func(ctx SpecContext) {
-			Expect(run(ctx, "event", "add", "Failover", "--at", "2026-03-08 02:30", "--json")).To(Equal(2))
+			Expect(run(ctx, "event", "add", "Failover", "--at", "2026-03-08 02:30", "--tz", "America/New_York", "--json")).To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
 			Expect(errOut.String()).To(ContainSubstring("-05:00"))
@@ -178,14 +178,14 @@ var _ = Describe("event add", func() {
 
 			Expect(run(ctx, "event", "add", "Deploy started", "--at", "around 2026-09-11 14:00", "--json")).To(Equal(0))
 			Expect(out.String()).To(ContainSubstring(`"approximate":true`))
-			Expect(errOut.String()).To(ContainSubstring("at ~2026-09-11T18:00:00Z"))
+			Expect(errOut.String()).To(ContainSubstring("at ~2026-09-11T14:00:00Z"))
 		})
 
 		It("sets the interval end from --ended", func(ctx SpecContext) {
 			Expect(run(ctx, "event", "add", "Deploy", "--at", "2026-09-11 14:00", "--ended", "2026-09-11 14:20", "--json")).
 				To(Equal(0))
 
-			Expect(out.String()).To(ContainSubstring(`"ended_at":"2026-09-11T18:20:00.000000000Z"`))
+			Expect(out.String()).To(ContainSubstring(`"ended_at":"2026-09-11T14:20:00.000000000Z"`))
 		})
 
 		It("exits 2 with kind invalid_time when --ended is before --at", func(ctx SpecContext) {
@@ -287,7 +287,7 @@ var _ = Describe("event add", func() {
 				Expect(run(ctx, "event", "add", "Deploy started", "--at", "2026-09-11T14:00:00Z", "--dry-run")).To(Equal(0))
 
 				Expect(out.String()).To(HavePrefix(
-					"Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z (-04:00 local: 10:00:00)\n"))
+					"Would add to timeline `mongo-outage` at 2026-09-11T14:00:00Z\n"))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Text: +Deploy started$`))
 				Expect(storedEvents(ctx)).To(BeEmpty())
 			})

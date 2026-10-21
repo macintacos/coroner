@@ -134,10 +134,10 @@ var _ = Describe("event list", func() {
 		}
 	})
 
-	It("prints tab-separated rows of seq, local time, source, tags and text when piped", func(ctx SpecContext) {
+	It("prints tab-separated rows of seq, display-zone time, source, tags and text when piped", func(ctx SpecContext) {
 		Expect(run(ctx, "event", "list", "--until", "2026-09-11T03:14:07Z")).To(Equal(0))
 
-		Expect(out.String()).To(Equal("#1\t2026-09-10T23:00:00-04:00\tpagerduty\tphase:detect\tPager fires for db-2\n"))
+		Expect(out.String()).To(Equal("#1\t2026-09-11T03:00:00Z\tpagerduty\tphase:detect\tPager fires for db-2\n"))
 	})
 
 	It("suggests event add on stderr when the timeline has no events and no filter was given, whatever the order or limit", func(ctx SpecContext) {
@@ -158,8 +158,8 @@ var _ = Describe("event list", func() {
 
 	It("says on stderr which times --since and --until resolved to, unless --quiet", func(ctx SpecContext) {
 		Expect(run(ctx, "event", "list", "--since", "2026-09-11 03:00", "--until", "2026-09-11T08:00:00Z")).To(Equal(0))
-		Expect(errOut.String()).To(ContainSubstring("2026-09-11T07:00:00Z (-04:00 local: 03:00:00)"))
-		Expect(errOut.String()).To(ContainSubstring("2026-09-11T08:00:00Z (-04:00 local: 04:00:00)"))
+		Expect(errOut.String()).To(ContainSubstring("2026-09-11T03:00:00Z"))
+		Expect(errOut.String()).To(ContainSubstring("2026-09-11T08:00:00Z"))
 
 		Expect(run(ctx, "event", "list", "--since", "2026-09-11 03:00", "--quiet")).To(Equal(0))
 		Expect(errOut.String()).To(BeEmpty())

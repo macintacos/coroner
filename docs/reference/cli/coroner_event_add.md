@@ -10,8 +10,8 @@ Add an event to the current timeline
 
 Add an event to the current timeline, and print the time it resolved to.
 
-A time with no offset is read in --tz, then the config file's default_timezone, then the
-local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
+A time with no offset is read in --tz, then the config file's default_timezone, then UTC.
+RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
 Run 'coroner help time' for the times you can type.
 
 Pass - to read the text from stdin, which is never read otherwise.
@@ -88,7 +88,7 @@ coroner event add {<text> | - | --from-file {<file> | -}} [flags]
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ```
 
 ### SEE ALSO

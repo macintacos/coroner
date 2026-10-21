@@ -18,10 +18,11 @@ env CORONER_TEST_IDS=$WORK/full-model.ids
 env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner timeline create full-model --title 'Mongo primary election' --ref INC-4821 --ref https://tracker.example.com/INC-4821
 exits 0 coroner timeline use full-model
-exits 0 coroner event add 'Maintenance window opens' --at 2026-09-11 --tz UTC --source change-calendar --tag phase:context --author julian
+# Atlantic/Reykjavik is +00:00 all year and states that zero offset; a time read in UTC stores none.
+exits 0 coroner event add 'Maintenance window opens' --at 2026-09-11 --tz Atlantic/Reykjavik --source change-calendar --tag phase:context --author julian
 # Natural language is the only input with hour precision.
-exits 0 coroner event add 'Nightly backup starts' --at '2026-09-11 3am' --tz UTC --source cron --author julian
-exits 0 coroner event add 'Oplog window drops under an hour' --at 2026-09-11T03:10 --tz UTC --source grafana --author julian
+exits 0 coroner event add 'Nightly backup starts' --at '2026-09-11 3am' --tz Atlantic/Reykjavik --source cron --author julian
+exits 0 coroner event add 'Oplog window drops under an hour' --at 2026-09-11T03:10 --tz Atlantic/Reykjavik --source grafana --author julian
 exits 0 coroner event add 'Primary stepped down' --at 2026-09-11T05:14:07+02:00 --source mongod --tag election --tag phase:detect --tag severity:high --url https://logs.example.com/l/81723 --author julian
 exits 0 coroner event add 'Election timeout on db-3' --at 2026-09-11T03:14:07.412Z --source mongod --author julian
 exits 0 coroner event add 'Driver saw NotWritablePrimary' --at 2026-09-11T03:14:07.412123Z --source api --author julian
@@ -70,7 +71,8 @@ env CORONER_TEST_NOW=2026-09-12T21:20:00-04:00
 exits 0 coroner event add 'Second of three at 03:14:07' --at 2026-09-11T03:14:07Z --source mongod
 env CORONER_TEST_NOW=2026-09-12T21:30:00-04:00
 exits 0 coroner event add 'Third of three at 03:14:07' --at 2026-09-11T03:14:07Z --source api
-exits 0 coroner event add 'Sometime in minute 03:14' --at 2026-09-11T03:14 --tz UTC --source grafana
+# Atlantic/Reykjavik states a zero offset, where UTC states none.
+exits 0 coroner event add 'Sometime in minute 03:14' --at 2026-09-11T03:14 --tz Atlantic/Reykjavik --source grafana
 exits 0 coroner timeline export --format jsonl
 exportfixture ordering.jsonl stdout
 

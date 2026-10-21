@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"charm.land/bubbles/v2/help"
@@ -788,13 +789,13 @@ func (s formSession) echo(path string, def definition, values fieldValues) error
 }
 
 // baseCheckEnv is what a form's checks read time input against before a zone is typed into it:
-// now, in --tz, else the config file's default_timezone, or the local zone when that is invalid,
+// now, in --tz, else the config file's default_timezone, or UTC when that is invalid,
 // which the add reports where it reads it.
 func baseCheckEnv(s formSession) checkEnv {
 	now := s.app.Now()
 	z, err := timeZone(s.inv.tz, s.inv.cfg.DefaultTimezone, now.Location())
 	if err != nil {
-		z = zone{loc: now.Location(), label: "local"}
+		z = zone{loc: time.UTC, label: "UTC"}
 	}
 
 	return checkEnv{now: now, zone: z}

@@ -282,9 +282,16 @@ var _ = Describe("Parse golden corpus", func() {
 		// An explicit offset wins.
 		Entry(nil, "Asia/Kolkata", "2026-09-12T14:05:03-04:00",
 			at("2026-09-12T18:05:03.000000000Z", new(edt), timeline.PrecisionSecond)),
-		// A naive time in UTC states a zero offset.
+		// A time read in UTC says nothing about the local offset, as Z does.
 		Entry(nil, "UTC", "2026-09-12 14:05:03",
-			at("2026-09-12T14:05:03.000000000Z", new(0), timeline.PrecisionSecond)),
+			at("2026-09-12T14:05:03.000000000Z", nil, timeline.PrecisionSecond)),
+		Entry(nil, "UTC", "10 minutes ago",
+			at("2026-09-13T01:20:00.000000000Z", nil, timeline.PrecisionMinute)),
+		Entry(nil, "UTC", "2026-09-06",
+			at("2026-09-06T00:00:00.000000000Z", nil, timeline.PrecisionDay)),
+		// A named zone at +00:00 states its offset.
+		Entry(nil, "Europe/London", "2026-01-12 14:05:03",
+			at("2026-01-12T14:05:03.000000000Z", new(0), timeline.PrecisionSecond)),
 		// A relative time takes the zone's offset.
 		Entry(nil, "Asia/Kolkata", "10 minutes ago",
 			at("2026-09-13T01:20:00.000000000Z", new(ist), timeline.PrecisionMinute)),

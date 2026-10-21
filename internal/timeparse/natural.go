@@ -63,9 +63,8 @@ func resolveDuration(got date.Date, now time.Time, loc *time.Location) (Resolved
 	}
 
 	t := got.Time.In(loc)
-	_, offset := t.Zone()
 
-	return resolve(t, &offset, precision), nil
+	return resolve(t, OffsetIn(t, loc), precision), nil
 }
 
 // parseWall reads a naive wall time on clock, a fixed-offset now, and resolves it in loc.
@@ -99,9 +98,7 @@ func resolveDay(wall wallTime, loc *time.Location) Resolved {
 		t = readInOffsetAt(midnight, loc, -24*time.Hour)
 	}
 
-	_, offset := t.Zone()
-
-	return resolve(t, &offset, timeline.PrecisionDay)
+	return resolve(t, OffsetIn(t, loc), timeline.PrecisionDay)
 }
 
 // parseZoned reads an input that stated zone entirely in that zone.

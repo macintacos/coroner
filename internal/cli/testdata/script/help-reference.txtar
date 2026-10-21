@@ -71,7 +71,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner agent
@@ -110,7 +110,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner agent skill
@@ -144,7 +144,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner annotation
@@ -187,7 +187,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner annotation add
@@ -249,7 +249,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner annotation delete
@@ -289,7 +289,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner annotation edit
@@ -336,7 +336,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner annotation list
@@ -379,7 +379,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner attachment
@@ -423,7 +423,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner attachment delete
@@ -463,7 +463,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner attachment export
@@ -504,7 +504,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner attachment list
@@ -545,7 +545,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner completion
@@ -588,7 +588,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event
@@ -642,7 +642,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event add
@@ -650,8 +650,8 @@ Global flags:
 ~~~text
 Add an event to the current timeline, and print the time it resolved to.
 
-A time with no offset is read in --tz, then the config file's default_timezone, then the
-local zone. RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
+A time with no offset is read in --tz, then the config file's default_timezone, then UTC.
+RFC 3339 is stable and natural language experimental, so scripts send RFC 3339.
 Run 'coroner help time' for the times you can type.
 
 Pass - to read the text from stdin, which is never read otherwise.
@@ -729,7 +729,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event delete
@@ -777,7 +777,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event edit
@@ -836,7 +836,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event link
@@ -887,7 +887,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event list
@@ -903,7 +903,7 @@ overlay saved with 'coroner overlay create' holds, in place of -t.
 
 --since is inclusive and --until exclusive. Repeated --source flags match any of them,
 and repeated --tag flags must all match. Times with no offset are read, and times print,
-in --tz, then the config file's default_timezone, then the local zone. Piped, the
+in --tz, then the config file's default_timezone, then UTC. Piped, the
 fields are tab-separated.
 ~~~
 
@@ -947,7 +947,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event unlink
@@ -992,7 +992,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner event view
@@ -1030,7 +1030,7 @@ Global flags:
       --no-input           Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet              Print only essential output
   -t, --timeline name|id   Timeline name|id to act on
-      --tz zone            Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone            Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner import
@@ -1090,7 +1090,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner overlay
@@ -1131,7 +1131,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner overlay create
@@ -1174,7 +1174,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner source
@@ -1216,7 +1216,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner source edit
@@ -1257,7 +1257,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner source list
@@ -1291,7 +1291,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner status
@@ -1331,7 +1331,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner tag
@@ -1370,7 +1370,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner tag list
@@ -1403,7 +1403,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline
@@ -1450,7 +1450,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline create
@@ -1500,7 +1500,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline delete
@@ -1543,7 +1543,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline edit
@@ -1594,7 +1594,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline export
@@ -1689,7 +1689,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline list
@@ -1727,7 +1727,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline use
@@ -1768,7 +1768,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner timeline view
@@ -1826,7 +1826,7 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~
 
 ## coroner version
@@ -1858,5 +1858,5 @@ Global flags:
       --no-color        Disable color (env: NO_COLOR, CORONER_NO_COLOR)
       --no-input        Never open a form, picker or viewer (env: CORONER_NO_INPUT)
   -q, --quiet           Print only essential output
-      --tz zone         Time zone for this invocation (default: config default_timezone, then TZ)
+      --tz zone         Time zone for this invocation (default: config default_timezone, then UTC)
 ~~~

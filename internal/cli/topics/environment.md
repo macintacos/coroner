@@ -22,7 +22,7 @@ Images show inline only with color on and outside a multiplexer.
 | `TERM_PROGRAM`, `TERM_PROGRAM_VERSION` | `ghostty`, or `iTerm.app` at version 3.7 or later, shows images inline; another program, such as `vscode`, shows placeholders whatever the other variables say |
 | `LC_TERMINAL`, `LC_TERMINAL_VERSION` | `iTerm2` at version 3.7 or later, as iTerm2 passes it through ssh, shows images inline |
 | `TMUX`, `STY`, `ZELLIJ` | Set inside tmux, screen or Zellij: images show as placeholders, since the multiplexer drops them |
-| `TZ` | The local time zone, used when neither `--tz` nor `default_timezone` names one |
+| `TZ` | The local time zone, which `local` names in `--tz` or `default_timezone` |
 | `XDG_CONFIG_HOME` | The directory holding `coroner/config.toml` |
 | `XDG_DATA_HOME` | The directory holding `coroner/coroner.db` |
 | `HOME` | The base of the default directories when an `XDG_*` variable is unset, and what a form expands a leading `~/` in Files to |

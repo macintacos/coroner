@@ -162,7 +162,7 @@ var _ = Describe("event view, edit and delete", func() {
 					EventID: &eventID, Kind: timeline.AnnotationEvidence, Body: "replSetStepDown", CreatedAt: now, UpdatedAt: now,
 				}, "0199a1c1-0000-7000-8000-000000000000")).To(Succeed())
 
-				Expect(run(ctx, "event", "view", "1")).To(Equal(0))
+				Expect(run(ctx, "event", "view", "1", "--tz", "America/New_York")).To(Equal(0))
 
 				Expect(out.String()).To(HavePrefix("Event #1 in timeline `mongo-outage`\n"))
 				Expect(out.String()).To(MatchRegexp(`(?m)^Occurred: +2026-09-10T23:14:07\.412-04:00 \(millisecond\)$`))
@@ -213,7 +213,7 @@ var _ = Describe("event view, edit and delete", func() {
 
 				Expect(out.String()).To(HavePrefix("Event #1 in timeline `mongo-outage`\n"))
 				Expect(errOut.String()).To(ContainSubstring(
-					"Would edit event #1 in timeline `mongo-outage` at 2026-09-11T03:01:00Z (-04:00 local: 23:01:00)"))
+					"Would edit event #1 in timeline `mongo-outage` at 2026-09-11T03:01:00Z"))
 				Expect(stored(ctx, steppedDown)).To(Equal(before))
 			})
 
@@ -292,8 +292,8 @@ var _ = Describe("event view, edit and delete", func() {
 		It("names both times when the event would end before it occurred", func(ctx SpecContext) {
 			Expect(run(ctx, "event", "edit", "1", "--ended", "2026-09-11T03:00:00Z")).To(Equal(2))
 
-			Expect(errOut.String()).To(ContainSubstring("2026-09-10T23:00:00-04:00"))
-			Expect(errOut.String()).To(ContainSubstring("2026-09-10T23:14:07.412-04:00"))
+			Expect(errOut.String()).To(ContainSubstring("2026-09-11T03:00:00Z"))
+			Expect(errOut.String()).To(ContainSubstring("2026-09-11T03:14:07.412Z"))
 		})
 
 		DescribeTable("exits 2 and changes nothing on an edit no event could take",

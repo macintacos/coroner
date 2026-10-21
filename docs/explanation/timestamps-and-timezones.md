@@ -29,8 +29,10 @@ keeps its occurred offset: the input's offset from UTC in seconds, as `+02:00` g
 An `--at` offset more than a day from UTC is rejected as `invalid_time`: real zones span
 −12:00 to +14:00, so the database stores only offsets within a day of UTC.
 
-The offset is null when the input was `Z`, `-00:00`, `-0000`, `UTC` or an epoch. Those say
-when something happened but nothing about the local time where it happened, and
+The offset is null when the input was `Z`, `-00:00`, `-0000`, `UTC` or an epoch; a time
+read in UTC stores null too (see
+[Reading the zone of a typed time](#reading-the-zone-of-a-typed-time)). Those say when
+something happened but nothing about the local time where it happened, and
 [RFC 9557](https://www.rfc-editor.org/rfc/rfc9557.html) gives `Z` exactly that meaning. A
 stored zero would claim the source was in a UTC+0 zone, which none of them said.
 
@@ -64,10 +66,17 @@ since evidence is often found long after it happened.
 
 A time without an offset is a wall-clock time, and coroner needs a zone to place it. It
 takes the first of: the offset or zone in the input, `--tz`, `default_timezone` in the
-[config file](../reference/configuration.md), then the local zone. The input comes first
-because a copied log line that states its offset is the most exact evidence there is.
-`--tz` beats the config file because it describes this one input, and the config file only
-says where you usually are.
+[config file](../reference/configuration.md), then UTC. The input comes first because a
+copied log line that states its offset is the most exact evidence there is. `--tz` beats
+the config file because it describes this one input, and the config file only says where
+you usually are. UTC comes last, rather than the zone of the machine coroner runs on, so
+the same command reads the same time on a laptop, a server and CI; `local` asks for the
+machine's zone by name.
+
+A time read in the zone `UTC`, in any case, whether it came from the default,
+`default_timezone` or `--tz`, stores a null offset, like `Z`: reading it in UTC says
+nothing about the source's offset. Any other zone name stores 0, even one always at
++00:00, such as `Etc/UTC` or `Atlantic/Reykjavik`, and so does a typed `+00:00`.
 
 A wall-clock time that a daylight saving change skips or repeats in its zone is rejected,
 with an error that names the zone and suggests the time written with the offset in force
@@ -81,10 +90,10 @@ timeline, so every command that writes a time echoes what it resolved, as
 
 ## Showing times
 
-Text output shows times in the zone of `--tz`, `default_timezone` or the local zone, with
-the offset written out. Exports are for other people in other zones, so the Markdown,
-Mermaid, HTML and SVG exports show times in UTC unless `--tz` names a zone, and say which
-zone they show. JSON is always UTC.
+Text output shows times in the zone of `--tz`, `default_timezone` or UTC, with the offset
+written out. Exports are for other people in other zones, so the Markdown, Mermaid, HTML
+and SVG exports show times in UTC unless `--tz` names a zone, and say which zone they
+show. JSON is always UTC.
 
 A coarse time's window does not always line up in the zone it is shown in. An hour
 recorded at `+05:30` starts at half past the hour in UTC, so writing it as `04:--` there
