@@ -5,7 +5,7 @@ import (
 	"time"
 	"unicode"
 
-	dateparser "github.com/markusmobius/go-dateparser"
+	"github.com/markusmobius/go-dateparser"
 	"github.com/markusmobius/go-dateparser/date"
 
 	"github.com/macintacos/coroner/internal/timeline"
@@ -125,8 +125,8 @@ func parseZoned(text string, now time.Time, zone *time.Location) (Resolved, erro
 // latestPast reads text on clock as the latest time it can name that is not after now.
 //
 // go-dateparser's Past and Future preferences misdate a zoned time of day, comparing it with
-// CurrentTime as though that were UTC (internal/parser/absolute/parser.go:549-561 in
-// v1.4.4), and Past moves a time of day on the 1st into the next month. So the two only
+// CurrentTime as though that were UTC (internal/parser/absolute/parser.go:554-569 in
+// v1.4.8), and Past moves a time of day on the 1st into the next month. So the two only
 // show whether the input can move at all, and a time of day moves back by parsing it on
 // yesterday's clock.
 func latestPast(text string, clock, now time.Time) (date.Date, error) {
