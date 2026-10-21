@@ -76,6 +76,14 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("head the timeline picker of each form command 📒 Timeline", func() {
+		for _, def := range []definition{eventAddDefinition(), annotationAddDefinition(), timelineEditDefinition()} {
+			picker := onlyField(def, "timeline").formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+			Expect(fieldView(namedField(picker, "timeline"))).To(ContainSubstring("📒 Timeline"))
+		}
+	})
+
 	It("head each field of the form commands with an icon before its title", func() {
 		forms := []definition{
 			withoutField(eventAddDefinition(), "id"), annotationAddDefinition(),

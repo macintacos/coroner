@@ -185,7 +185,7 @@ func editTyped(ctx context.Context, s formSession, z zone, oldName string, value
 
 func timelineEditDefinition() definition {
 	return definition{fields: []field{
-		{name: "timeline", arg: true, usage: "Timeline to edit, as a `name|id`"},
+		{name: "timeline", arg: true, title: "Timeline", usage: "Timeline to edit, as a `name|id`"},
 		{name: "name", usage: "New `name`", check: withoutEnv(checkName), suggest: suggestName, changes: true},
 		{name: "title", usage: "New `title`; an empty one clears it", check: utf8Only("--title"), changes: true},
 		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef), changes: true},
