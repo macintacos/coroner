@@ -35,9 +35,60 @@ type addForm[R renderer] struct {
 	choices func(ctx context.Context, s *store.Store, t timeline.Timeline, z zone) (formChoices, error)
 }
 
-// askFunc runs a form of fields and reports whether it was submitted: Esc returns false, Ctrl-C
+// askFunc runs a form of groups and reports whether it was submitted: Esc returns false, Ctrl-C
 // huh.ErrUserAborted.
-type askFunc func(ctx context.Context, fields ...huh.Field) (bool, error)
+type askFunc func(ctx context.Context, groups ...formGroup) (bool, error)
+
+// formGroup is one page of a form: its fields, which the form skips while hide reports true.
+type formGroup struct {
+	fields []huh.Field
+	// hide reports whether the form skips the group; nil never does.
+	hide func() bool
+}
+
+// fieldsOf returns every field of groups, in order.
+func fieldsOf(groups []formGroup) []huh.Field {
+	var fields []huh.Field
+	for _, g := range groups {
+		fields = append(fields, g.fields...)
+	}
+
+	return fields
+}
+
+// newForm returns the form that asks groups in turn.
+func newForm(groups ...formGroup) fittedForm {
+	pages := make([]*huh.Group, len(groups))
+	for i, g := range groups {
+		pages[i] = huh.NewGroup(g.fields...)
+		if g.hide != nil {
+			pages[i] = pages[i].WithHideFunc(g.hide)
+		}
+	}
+
+	return fittedForm{huh.NewForm(pages...)}
+}
+
+// fittedForm is a form told its terminal is a row shorter, since huh sizes a group's help as one
+// row but draws a blank row above it, and the terminal drops a taller frame's top row.
+type fittedForm struct{ *huh.Form }
+
+func (f fittedForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		size.Height--
+		msg = size
+	}
+	_, cmd := f.Form.Update(msg)
+
+	return f, cmd
+}
+
+func (f fittedForm) View() tea.View {
+	v := tea.NewView(f.Form.View())
+	v.ReportFocus = true
+
+	return v
+}
 
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
 var errAskAgain = errors.New("ask the form again")
@@ -49,6 +100,8 @@ type formSession struct {
 	ask askFunc
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
+	// placeholders are what the form's empty Inputs show as their default, by field name.
+	placeholders map[string]string
 }
 
 const interactiveUsage = "Open a form to fill in, prefilled from the other flags (needs a terminal)"
@@ -135,9 +188,17 @@ func newFormSession(app App, inv invocation, forms func(color bool, images graph
 		images = graphics.Detect(app.LookupEnv)
 	}
 
+	placeholders := map[string]string{}
+	// An invalid default author has no placeholder; submitting without an author reports it.
+	author, err := defaultAuthor(nil, inv.cfg.Author, app.LookupEnv)
+	if err == nil && author != nil {
+		placeholders["author"] = *author
+	}
+
 	return formSession{
 		app: app, inv: inv, ask: forms(inv.outColor, images),
-		thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
+		thumbnails:   map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(app.ReadFile, images)},
+		placeholders: placeholders,
 	}
 }
 
@@ -176,7 +237,7 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 
 		yes := true
 		another := huh.NewConfirm().Title("Add another " + noun + "?").Value(&yes)
-		submitted, err := s.ask(ctx, another)
+		submitted, err := s.ask(ctx, formGroup{fields: []huh.Field{another}})
 		if err != nil {
 			return askError(err)
 		}
@@ -230,7 +291,7 @@ func askTimeline(
 	pick := onlyField(def, "timeline")
 	fields := pick.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
-	submitted, err := s.ask(ctx, fields...)
+	submitted, err := s.ask(ctx, formGroup{fields: fields})
 	switch {
 	case err != nil:
 		return in, false, askError(err)
@@ -267,9 +328,11 @@ func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
 ) (fieldValues, error) {
 	choices.thumbnails = s.thumbnails
+	choices.placeholders = s.placeholders
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
-		submitted, err := s.ask(ctx, fields...)
+		groups := def.formGroups(fields, in)
+		submitted, err := s.ask(ctx, groups...)
 		switch {
 		case err != nil:
 			return in, askError(err)
@@ -277,7 +340,7 @@ func (s formSession) askUntil(
 			return in, nil
 		}
 
-		typed := def.formValues(fields)
+		typed := def.formValues(def.shownFields(groups))
 		err = submit(typed)
 		rejected, _ := errors.AsType[*Error](err)
 		switch {
@@ -387,17 +450,22 @@ func onlyField(d definition, name string) definition {
 // is true, in the profile an attach field needs for the images the terminal shows.
 func terminalForms(app App) func(color bool, images graphics.Protocol) askFunc {
 	return func(color bool, images graphics.Protocol) askFunc {
-		return func(ctx context.Context, fields ...huh.Field) (bool, error) {
+		return func(ctx context.Context, groups ...formGroup) (bool, error) {
+			fields := fieldsOf(groups)
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
 			cancelled := false
+			form := newForm(groups...)
+			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Interrupt
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
-			err := huh.NewForm(huh.NewGroup(fields...)).WithInput(app.In).WithOutput(app.Out).
-				WithProgramOptions(tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).
-				RunWithContext(ctx)
-			if cancelled {
+			_, err := tea.NewProgram(form, tea.WithContext(ctx), tea.WithInput(app.In), tea.WithOutput(app.Out),
+				tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
+			switch {
+			case cancelled:
 				return false, nil
+			case form.State == huh.StateAborted:
+				return false, huh.ErrUserAborted
 			}
 
 			return err == nil, err

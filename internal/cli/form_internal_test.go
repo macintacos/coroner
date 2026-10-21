@@ -64,6 +64,61 @@ var _ = Describe("form fields", func() {
 		Expect(fieldView(kind)).To(ContainSubstring("kind (required)"))
 	})
 
+	It("title each event add field for people", func() {
+		fields := eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+		for name, title := range map[string]string{
+			"text": "What happened (required)", "at": "When", "source": "Source", "tag": "Tags", "attach": "Files", "url": "url",
+		} {
+			Expect(fieldView(namedField(fields, name))).To(ContainSubstring(title), name)
+		}
+	})
+
+	Describe("event add's groups", func() {
+		def := eventAddDefinition()
+		groupsFor := func(in fieldValues) []formGroup {
+			return def.formGroups(def.formFields(formCheckEnv(), in, formChoices{}), in)
+		}
+
+		It("show the fields most events use first, and the rest behind More options", func() {
+			groups := groupsFor(fieldValues{})
+
+			Expect(groups).To(HaveLen(2))
+			Expect(fieldKeys(groups[0].fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
+			Expect(fieldKeys(groups[1].fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "id", "dry-run"}))
+			Expect(fieldView(namedField(groups[0].fields, "more-options"))).To(
+				ContainSubstring("tz, ended, approximate, url, author, id, dry-run"))
+		})
+
+		It("hide the More options fields until it is Yes", func() {
+			groups := groupsFor(fieldValues{})
+			Expect(groups[1].hide()).To(BeTrue())
+
+			fill(groups[0].fields, map[string]string{"more-options": "true"})
+
+			Expect(groups[1].hide()).To(BeFalse())
+		})
+
+		It("open More options when a field behind it holds a value", func() {
+			groups := groupsFor(fieldValues{"url": {"https://e.example"}})
+
+			Expect(namedField(groups[0].fields, "more-options").GetValue()).To(BeTrue())
+			Expect(groups[1].hide()).To(BeFalse())
+		})
+	})
+
+	It("keep one group for annotation add, timeline create and timeline edit", func() {
+		for _, def := range []definition{annotationAddDefinition(), timelineCreateDefinition(), timelineEditDefinition()} {
+			fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+			groups := def.formGroups(fields, fieldValues{})
+
+			Expect(groups).To(HaveLen(1))
+			Expect(groups[0].fields).To(Equal(fields))
+			Expect(groups[0].hide).To(BeNil())
+		}
+	})
+
 	It("read a line holding only spaces as no value, and check only the others", func() {
 		def := eventAddDefinition()
 		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
@@ -122,6 +177,19 @@ var _ = Describe("form fields", func() {
 			Entry("the base zone with none typed", "", "2026-03-08T02:30:00Z (+00:00 UTC: 02:30:00), minute precision"),
 			Entry("the gap's hint in a zone that skips it", "America/New_York", "-05:00"),
 		)
+
+		It("preview the time in the zone typed into the zone field", func() {
+			fields := eventAddDefinition().formFields(utc, fieldValues{}, formChoices{})
+			typeInto(namedField(fields, "at"), "03:25")
+			tz := namedField(fields, "tz")
+			typeInto(tz, "Asia/Tokyo")
+
+			Expect(renderedDescription(tz)).To(ContainSubstring("(+09:00 Asia/Tokyo: 03:25:00)"))
+
+			unknown := namedField(eventAddDefinition().formFields(utc, fieldValues{}, formChoices{}), "tz")
+			typeInto(unknown, "Mars/Olympus")
+			Expect(renderedDescription(unknown)).To(ContainSubstring(zoneHint))
+		})
 
 		It("shows a failing check's hint under the help of a field with no preview", func() {
 			source := namedField(eventAddDefinition().formFields(utc, fieldValues{}, formChoices{}), "source")
@@ -339,6 +407,16 @@ func namedField(fields []huh.Field, name string) huh.Field {
 
 	Fail("no form field " + name)
 	return nil
+}
+
+// fieldKeys returns each form field's key, in order.
+func fieldKeys(fields []huh.Field) []string {
+	keys := make([]string, len(fields))
+	for i, formField := range fields {
+		keys[i] = formField.GetKey()
+	}
+
+	return keys
 }
 
 // typeInto sets the text formField holds, as a fake form fills it.

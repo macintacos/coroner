@@ -46,9 +46,10 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"use' selects, which every record's timeline_id must name. Every record is checked first, so\n" +
 			"one bad record adds nothing. A record carries its own id and RFC 3339 times, so running the\n" +
 			"same file again adds nothing.\n\n" +
-			"On a terminal, with no text or with --interactive, a form asks for each flag, previews the\n" +
-			"time as you type it, and prints the command each entry equals. Under --json only --interactive\n" +
-			"opens it, and --no-input never does.",
+			"On a terminal, with no text or with --interactive, a form asks for the text, time, source,\n" +
+			"tags and files, and keeps the other flags under More options, which opens by itself when one\n" +
+			"of them holds a value. It previews the time as you type it, and prints the command each entry\n" +
+			"equals. Under --json only --interactive opens it, and --no-input never does.",
 		Args:        eventTextInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
@@ -82,11 +83,10 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 func eventAddDefinition() definition {
 	return definition{fields: []field{
 		inherited(timelineField()),
-		{name: "text", arg: true, required: true, perEntry: true, usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(eventTextInput().checkOrStdin)},
-		// Before at, so a form asks for the zone before the times read in it.
-		tzField(),
+		{name: "text", arg: true, required: true, perEntry: true, title: "What happened", usage: "What happened, as `text`, or - to read it from stdin", check: withoutEnv(eventTextInput().checkOrStdin)},
+		more(tzField()),
 		{
-			name: "at", perEntry: true, usage: "When it happened, as a `time` (default: now)", check: checkAt,
+			name: "at", perEntry: true, title: "When", usage: "When it happened, as a `time` (default: now)", check: checkAt,
 			preview: func(at string, env checkEnv) string {
 				raw := &at
 				if at == "" {
@@ -97,7 +97,7 @@ func eventAddDefinition() definition {
 			},
 		},
 		{
-			name: "ended", perEntry: true, usage: "When it ended, as a `time`, for an event that lasted",
+			name: "ended", perEntry: true, more: true, usage: "When it ended, as a `time`, for an event that lasted",
 			check: func(ended string, env checkEnv) error {
 				_, err := resolveEnded(ended, env, addedEndedHint)
 				return err
@@ -110,17 +110,17 @@ func eventAddDefinition() definition {
 				return timePreview(r, err, env.zone)
 			},
 		},
-		{name: "approximate", typ: boolField, perEntry: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
-		{name: "source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "tag", typ: stringsField, usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
-		{name: "url", perEntry: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
-		{name: "author", usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
-		perEntry(attachField()),
+		{name: "approximate", typ: boolField, perEntry: true, more: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
+		{name: "source", title: "Source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
+		{name: "tag", typ: stringsField, title: "Tags", usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
+		{name: "url", perEntry: true, more: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
+		{name: "author", more: true, usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
+		titled(perEntry(attachField()), "Files"),
 		{
-			name: "id", perEntry: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
+			name: "id", perEntry: true, more: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
 			check: withoutEnv(checkEventID),
 		},
-		{name: "dry-run", typ: boolField, usage: "Show the event as it would be added, and add nothing"},
+		{name: "dry-run", typ: boolField, more: true, usage: "Show the event as it would be added, and add nothing"},
 	}}
 }
 

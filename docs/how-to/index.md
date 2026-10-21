@@ -15,6 +15,8 @@ see the [CLI reference](../reference/cli/coroner.md).
   the time it was posted, with its text as evidence.
 - [Add log lines](add-log-lines.md): turn MongoDB, syslog and application log lines into
   events, reading each format's time correctly.
+- [Add events with the form](add-events-with-the-form.md): add events at a terminal by
+  answering prompts instead of typing flags.
 - [Share a timeline in GitHub, Linear, Confluence and chat](export-to-github-linear-confluence.md):
   paste the Markdown export, and what survives in each destination.
 - [Query a timeline with jq](query-with-jq.md): answer questions about a JSONL export.

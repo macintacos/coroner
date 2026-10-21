@@ -21,6 +21,8 @@ type formChoices struct {
 	// thumbnails return the lines shown under a list field's value, and a command the terminal
 	// needs to show them.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
+	// placeholders are shown in an empty Input and are not its value.
+	placeholders map[string]string
 }
 
 // formValues is the submit adapter: the fieldValues a form's fields hold, where an empty value,
@@ -35,6 +37,58 @@ func (d definition) formValues(fields []huh.Field) fieldValues {
 	}
 
 	return values
+}
+
+// formGroups returns fields, which must come from d.formFields, as the form's pages: one page
+// when no field is marked more, else the unmarked fields closed by a More options confirm, then
+// the marked fields, skipped while it is No. It opens Yes when in gives a marked field, so no
+// such value applies unseen.
+func (d definition) formGroups(fields []huh.Field, in fieldValues) []formGroup {
+	var shown, behind []huh.Field
+	var titles []string
+	open := false
+	for i, f := range d.fields {
+		if !f.more {
+			shown = append(shown, fields[i])
+			continue
+		}
+		behind = append(behind, fields[i])
+		titles = append(titles, f.formTitle())
+		open = open || in.given(f.name)
+	}
+	if len(behind) == 0 {
+		return []formGroup{{fields: fields}}
+	}
+	confirm := huh.NewConfirm().Key("more-options").Title("More options?").
+		Description(strings.Join(titles, ", ")).Value(&open)
+	// Value can rebind the confirm, so read what it holds.
+	hide := func() bool {
+		yes, _ := confirm.GetValue().(bool)
+		return !yes
+	}
+
+	return []formGroup{{fields: append(shown, confirm)}, {fields: behind, hide: hide}}
+}
+
+// shownFields returns the fields of d the form showed: those of groups not hidden, without
+// fields d does not declare, such as the More options confirm, plus the tz field when hidden.
+func (d definition) shownFields(groups []formGroup) []huh.Field {
+	var shown []huh.Field
+	for _, g := range groups {
+		hidden := g.hide != nil && g.hide()
+		for _, formField := range g.fields {
+			key := formField.GetKey()
+			// Every time the form shows is read in this zone, so it always applies.
+			if hidden && key != "tz" {
+				continue
+			}
+			if d.fieldIndex(key) != -1 {
+				shown = append(shown, formField)
+			}
+		}
+	}
+
+	return shown
 }
 
 // formValue returns the values a form field holding value gives f.
@@ -74,12 +128,17 @@ func (d definition) formFields(env checkEnv, in fieldValues, choices formChoices
 		choices: choices,
 		in:      in,
 	}
-	tz := d.fieldIndex("tz")
+	tz, at := d.fieldIndex("tz"), d.fieldIndex("at")
+	previewsAt := tz != -1 && at != -1 && d.fields[at].preview != nil
 	for i, f := range d.fields {
 		// A description re-renders when its own value or the zone its times are read in changes.
 		bindings := []*string{bound[i]}
 		if tz != -1 {
 			bindings = append(bindings, bound[tz])
+		}
+		if i == tz && previewsAt {
+			f.preview = zonePreview(f.check, d.fields[at].preview, func() string { return fmt.Sprint(fields[at].GetValue()) })
+			bindings = append(bindings, bound[at])
 		}
 		fields[i] = f.formField(bound[i], bindings, form)
 	}
@@ -93,6 +152,20 @@ type fieldForm struct {
 	choices formChoices
 	// in is the values the form opens with.
 	in fieldValues
+}
+
+// zonePreview returns the tz field's preview: at's value previewed in the zone typed, or the hint
+// of the check that zone fails.
+func zonePreview(check func(string, checkEnv) error, preview func(string, checkEnv) string, at func() string) func(string, checkEnv) string {
+	return func(value string, env checkEnv) string {
+		if check != nil && value != "" {
+			if failure, ok := errors.AsType[*Error](check(value, env)); ok {
+				return failure.Hint
+			}
+		}
+
+		return preview(at(), env)
+	}
 }
 
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
@@ -113,7 +186,7 @@ func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
-	title := f.name
+	title := f.formTitle()
 	if f.required {
 		title += " (required)"
 	}
@@ -151,7 +224,7 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	}
 
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).
-		Suggestions(form.choices.suggestions[f.name]).Validate(check)
+		Suggestions(form.choices.suggestions[f.name]).Placeholder(form.choices.placeholders[f.name]).Validate(check)
 	input.DescriptionFunc(func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
 	}, bindings)
