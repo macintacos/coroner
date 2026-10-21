@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"maps"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"unicode"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
@@ -51,9 +54,53 @@ type summaryLine struct {
 	cells    []string
 }
 
-// askFunc runs a form of groups and reports whether it was submitted: Esc returns false, Ctrl-C
-// huh.ErrUserAborted.
-type askFunc func(ctx context.Context, groups ...formGroup) (bool, error)
+// askFunc runs a form of groups in frame and reports whether it was submitted: Esc returns false,
+// Ctrl-C huh.ErrUserAborted.
+type askFunc func(ctx context.Context, frame formFrame, groups ...formGroup) (bool, error)
+
+// formFrame is what an ask's frame shows beside the form: a title in place of the command's, and an
+// add session's timeline and the noun records it added, in the frame's edges.
+type formFrame struct {
+	title    string
+	timeline string
+	// entry is whether the form is an entry, which ctrl+t and Esc leave.
+	entry bool
+	added int
+	noun  string
+}
+
+// edges returns what f's frame sets into its edges, titled title unless f names another: the
+// timeline, and the count of records added once there is one, each with the key that leaves an
+// entry for it.
+func (f formFrame) edges(title string) frameEdges {
+	edges := frameEdges{title: cmp.Or(f.title, title)}
+	if f.timeline != "" {
+		edges.top = []string{"📒 " + f.timeline}
+		if f.entry {
+			edges.top = append(edges.top, keyHint(switchTimelineKey()))
+		}
+	}
+	if f.added > 0 {
+		done := lipgloss.NewStyle().Foreground(lipgloss.Green).Render("✓")
+		edges.bottom = []string{done + " " + strconv.Itoa(f.added) + " " + pluralNoun(f.added, f.noun) + " added"}
+		if f.entry {
+			edges.bottom = append(edges.bottom, keyHint(key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "finish"))))
+		}
+	}
+
+	return edges
+}
+
+// switchTimelineKey is the key that leaves an entry to pick the timeline it adds to.
+func switchTimelineKey() key.Binding {
+	return key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "switch"))
+}
+
+// keyHint returns b's help as a huh group's help row draws it.
+func keyHint(b key.Binding) string {
+	styles := help.New().Styles
+	return styles.ShortKey.Render(b.Help().Key) + " " + styles.ShortDesc.Render(b.Help().Desc)
+}
 
 // formGroup is one page of a form: its fields, which the form skips while hide reports true.
 type formGroup struct {
@@ -72,8 +119,8 @@ func fieldsOf(groups []formGroup) []huh.Field {
 	return fields
 }
 
-// newForm returns the form, framed under title, that asks groups in turn.
-func newForm(title string, groups ...formGroup) *fittedForm {
+// newForm returns the form, framed with edges, that asks groups in turn.
+func newForm(edges frameEdges, groups ...formGroup) *fittedForm {
 	pages := make([]*huh.Group, len(groups))
 	for i, g := range groups {
 		pages[i] = huh.NewGroup(g.fields...)
@@ -82,7 +129,7 @@ func newForm(title string, groups ...formGroup) *fittedForm {
 		}
 	}
 
-	return &fittedForm{Form: huh.NewForm(pages...), title: title}
+	return &fittedForm{Form: huh.NewForm(pages...), edges: edges}
 }
 
 // formWidth is the widest a form's frame grows, so a wide terminal shows it as a card.
@@ -94,7 +141,7 @@ const formWidth = 80
 // the terminal drops a taller frame's top row.
 type fittedForm struct {
 	*huh.Form
-	title string
+	edges frameEdges
 	// width is the frame's, which the last window size sets.
 	width int
 }
@@ -116,7 +163,7 @@ func (f *fittedForm) View() tea.View {
 	body := f.Form.View()
 	// huh draws nothing once the form ends, which clears it from the screen.
 	if body != "" {
-		body = "\n" + frame(f.title, body, f.width)
+		body = "\n" + frame(f.edges, body, f.width)
 	}
 	v := tea.NewView(body)
 	v.ReportFocus = true
@@ -130,9 +177,16 @@ func frameBox() lipgloss.Style {
 		BorderForeground(lipgloss.BrightBlack)
 }
 
+// frameEdges is what a frame sets into its edges: title at the top edge's left, and the pieces of
+// top and bottom at the right of those edges.
+type frameEdges struct {
+	title       string
+	top, bottom []string
+}
+
 // frame returns body in a rounded frame width cells wide, clipping a wider line, or as wide as body
-// when width is 0, with title set into its top edge.
-func frame(title, body string, width int) string {
+// when width is 0, with edges set into its edges.
+func frame(edges frameEdges, body string, width int) string {
 	inside := lipgloss.NewStyle()
 	if width > 0 {
 		// huh can draw a line wider than it was told, as its help does; wrapping it would add a row
@@ -140,10 +194,41 @@ func frame(title, body string, width int) string {
 		inside = inside.MaxWidth(width - frameBox().GetHorizontalFrameSize())
 	}
 	box := frameBox().Width(width).Render(inside.Render(body))
-	edge := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
-	rule := strings.Repeat("─", max(0, lipgloss.Width(box)-ansi.StringWidth("╭─ "+title+" ╮")))
+	boxWidth := lipgloss.Width(box)
+	top := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack).Render("╭─ ") + lipgloss.NewStyle().Bold(true).Render(edges.title) +
+		edgeEnd(" ", edges.top, boxWidth-ansi.StringWidth("╭─ "+edges.title), "╮")
+	if len(edges.bottom) > 0 {
+		rows := strings.Split(box, "\n")
+		rows[len(rows)-1] = edgeEnd("╰", edges.bottom, boxWidth, "╯")
+		box = strings.Join(rows, "\n")
+	}
 
-	return edge.Render("╭─ ") + lipgloss.NewStyle().Bold(true).Render(title) + edge.Render(" "+rule+"╮") + "\n" + box
+	return top + "\n" + box
+}
+
+// edgeEnd returns the rest of a frame's edge, width cells wide: lead, a rule, pieces set off by
+// spaces, and corner. Where the edge is too narrow for them and a rule cell, it drops the last
+// pieces, then cuts the first short.
+func edgeEnd(lead string, pieces []string, width int, corner string) string {
+	edge := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	rule := width - ansi.StringWidth(lead+corner)
+	// A rule cell, a space each side of the pieces, and the rule cell before the corner.
+	right := fitted(pieces, rule-4)
+	if right == "" {
+		return edge.Render(lead + strings.Repeat("─", max(0, rule)) + corner)
+	}
+
+	return edge.Render(lead+strings.Repeat("─", rule-ansi.StringWidth(right)-3)+" ") + right + edge.Render(" ─"+corner)
+}
+
+// fitted returns pieces two spaces apart in at most width cells: the last ones dropped, then the
+// first cut short, until they fit.
+func fitted(pieces []string, width int) string {
+	for len(pieces) > 1 && ansi.StringWidth(strings.Join(pieces, "  ")) > width {
+		pieces = pieces[:len(pieces)-1]
+	}
+
+	return ansi.Truncate(strings.Join(pieces, "  "), max(0, width), "…")
 }
 
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
@@ -154,6 +239,8 @@ type formSession struct {
 	app App
 	inv invocation
 	ask askFunc
+	// frame is what the session's next ask shows beside its form.
+	frame formFrame
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
 	// completions are what the form's list fields complete typed text to, by field name.
@@ -301,15 +388,21 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	noun, _, _ := strings.Cut(f.path, " ")
 	var added []summaryLine
 	for {
+		current, err := selectedTimeline(ctx, s, in)
+		if err != nil {
+			return err
+		}
+		s.frame = formFrame{timeline: current.Name, entry: true, added: len(added), noun: noun}
 		typed, entered, err := f.entry(ctx, s, in)
 		if err != nil {
 			return err
 		}
 		added = append(added, entered...)
 
+		s.frame = formFrame{timeline: current.Name, added: len(added), noun: noun}
 		yes := true
 		another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
-		submitted, err := s.ask(ctx, formGroup{fields: []huh.Field{another}})
+		submitted, err := s.ask(ctx, s.frame, formGroup{fields: []huh.Field{another}})
 		if err != nil {
 			return askError(err)
 		}
@@ -414,7 +507,7 @@ func askTimeline(
 	pick := onlyField(def, "timeline")
 	fields := pick.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
-	submitted, err := s.ask(ctx, formGroup{fields: fields})
+	submitted, err := s.ask(ctx, s.frame, formGroup{fields: fields})
 	switch {
 	case err != nil:
 		return in, false, askError(err)
@@ -426,6 +519,18 @@ func askTimeline(
 	picked["timeline"] = pick.formValues(fields).values("timeline")
 
 	return picked, true, nil
+}
+
+// selectedTimeline returns the timeline in selects, which an entry prefilled from in adds to.
+func selectedTimeline(ctx context.Context, s formSession, in fieldValues) (timeline.Timeline, error) {
+	var t timeline.Timeline
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
+		var err error
+		t, err = selectOne(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		return err
+	})
+
+	return t, err
 }
 
 // entry asks for one entry, prefilled from in, and adds it to in's timeline once submitted. It returns
@@ -477,7 +582,7 @@ func (s formSession) askUntil(
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
 		groups := def.formGroups(fields, in)
-		submitted, err := s.ask(ctx, groups...)
+		submitted, err := s.ask(ctx, s.frame, groups...)
 		switch {
 		case err != nil:
 			return in, askError(err)
@@ -597,12 +702,12 @@ func onlyField(d definition, name string) definition {
 // color when color is true, in the profile an attach field needs for the images the terminal shows.
 func terminalForms(app App, title string) func(color bool, images graphics.Protocol) askFunc {
 	return func(color bool, images graphics.Protocol) askFunc {
-		return func(ctx context.Context, groups ...formGroup) (bool, error) {
+		return func(ctx context.Context, f formFrame, groups ...formGroup) (bool, error) {
 			fields := fieldsOf(groups)
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
 			cancelled := false
-			form := newForm(title, groups...)
+			form := newForm(f.edges(title), groups...)
 			// Not tea.Interrupt for cancel: bubbletea skips an interrupted program's last frame, the
 			// empty one that clears the form.
 			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Quit

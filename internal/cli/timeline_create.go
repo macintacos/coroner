@@ -85,7 +85,7 @@ func useExisting(ctx context.Context, s formSession, create formWrite[timelineCr
 	use := true
 	confirm := huh.NewConfirm().Title("Timeline `" + *typed.value("name") + "` already exists").
 		Affirmative("Use it").Negative("Pick another name").Value(&use)
-	submitted, err := s.ask(ctx, formGroup{fields: []huh.Field{confirm}})
+	submitted, err := s.ask(ctx, s.frame, formGroup{fields: []huh.Field{confirm}})
 	switch {
 	case err != nil:
 		return askError(err)

@@ -74,8 +74,8 @@ func namedKey(name string) tea.KeyPressMsg {
 // inside a synctest bubble.
 func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*fittedForm)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, groups ...formGroup) (bool, error) {
-			d := keyDriver{form: newForm("📝 New event", groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
+		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
+			d := keyDriver{form: newForm(f.edges("📝 New event"), groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
 			cancelled := false
 			keys := d.press(t, script, escCancels(&cancelled, fieldsOf(groups)), check)
 			script.asks = append(script.asks, keys)
@@ -676,7 +676,7 @@ func TestTerminalFormClearsWhenItEnds(t *testing.T) {
 				}()
 				pick := huh.NewSelect[string]().Key("timeline").Options(huh.NewOptions("api-latency", "mongo-outage")...)
 
-				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formGroup{fields: []huh.Field{pick}})
+				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formFrame{}, formGroup{fields: []huh.Field{pick}})
 				_ = typing.Close()
 				if !errors.Is(err, end.want) {
 					t.Fatalf("the form ended with %v; want %v", err, end.want)

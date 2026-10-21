@@ -128,6 +128,7 @@ var _ = Describe("add forms", func() {
 			db          string
 			ids         int
 			asked       [][]huh.Field
+			framed      []formFrame
 		)
 
 		// runArgs runs exactly args through Run.
@@ -161,7 +162,7 @@ var _ = Describe("add forms", func() {
 		}
 
 		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-			return scriptedForms(&asked, answers...)
+			return scriptedForms(&asked, &framed, answers...)
 		}
 
 		// runForm runs args against a root holding parent, whose add command runs its form as RunE does
@@ -194,7 +195,7 @@ var _ = Describe("add forms", func() {
 
 		BeforeEach(func(ctx SpecContext) {
 			ids = 0
-			asked = nil
+			asked, framed = nil, nil
 			home := GinkgoT().TempDir()
 			db = filepath.Join(home, "coroner.db")
 			app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
@@ -477,6 +478,21 @@ var _ = Describe("add forms", func() {
 					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
 					"\n" +
 					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
+			It("frame each entry and Add another with the timeline and the events added so far", func(ctx SpecContext) {
+				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(dryRun), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(framed).To(Equal([]formFrame{
+					{timeline: "mongo-outage", entry: true, noun: "event"},
+					{timeline: "mongo-outage", added: 1, noun: "event"},
+					{timeline: "mongo-outage", entry: true, added: 1, noun: "event"},
+					{timeline: "mongo-outage", added: 1, noun: "event"},
+				}))
 			})
 
 			It("print no summary when no entry added an event", func(ctx SpecContext) {
@@ -918,13 +934,14 @@ func shellSplit(ctx context.Context, line string) []string {
 }
 
 // scriptedForms returns forms that answer each ask in turn with the next of answers, appending
-// what each ask showed to asked.
-func scriptedForms(asked *[][]huh.Field, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+// what each ask showed to asked, and the frame it was asked in to framed.
+func scriptedForms(asked *[][]huh.Field, framed *[]formFrame, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, groups ...formGroup) (bool, error) {
+		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
 			GinkgoHelper()
 			fields := fieldsOf(groups)
 			*asked = append(*asked, fields)
+			*framed = append(*framed, f)
 			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
 			answer := answers[0]
 			answers = answers[1:]
