@@ -92,8 +92,8 @@ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/lucasb-eyer/go-colorful v1.4.1 h1:1EO+WB73+EH8EVbzlrG3KLAfEypQWVHIBqlTf+2hNss=
 github.com/lucasb-eyer/go-colorful v1.4.1/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
-github.com/macintacos/go-dateparser v1.4.7-lazy.2 h1:E2jNfgAK3BxtFs2lSR8W48zWiTSq+y3IuvVxVwpdWEI=
-github.com/macintacos/go-dateparser v1.4.7-lazy.2/go.mod h1:Cbla4ac6M/ouQJ+H/y6Sgg872jYL7+utcYkjGrcAcyc=
+github.com/markusmobius/go-dateparser v1.4.8 h1:4jH0NVrWaGRA/Bjcx5NM8Oqs+/4yoW9UXMEhKJqGztc=
+github.com/markusmobius/go-dateparser v1.4.8/go.mod h1:AFKAJe/24XvJ1Eo0o585ymdhZhtbkUyqXjLA2ClnJXM=
 github.com/markusmobius/go-dateutil/v2 v2.9.1 h1:5g4V8s1vg/EAmhu/g14VQcHgocNf8H8VD4IzOfZg+1Y=
 github.com/markusmobius/go-dateutil/v2 v2.9.1/go.mod h1:tlyvoaa3NOU816xi0DdGURMafFV6VPfEyZoBl17Tzqs=
 github.com/maruel/natural v1.1.1 h1:Hja7XhhmvEFhcByqDoHz9QZbkWey+COd9xWfCfn1ioo=

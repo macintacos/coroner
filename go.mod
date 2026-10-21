@@ -14,7 +14,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/invopop/jsonschema v0.14.0
-	github.com/macintacos/go-dateparser v1.4.7-lazy.2 // fork that builds locale data on first use instead of at init
+	github.com/markusmobius/go-dateparser v1.4.8
 	github.com/mattn/go-isatty v0.0.24
 	github.com/onsi/ginkgo/v2 v2.32.2
 	github.com/onsi/gomega v1.43.0
