@@ -99,6 +99,25 @@ var _ = Describe("add forms", func() {
 		Expect(cancelled).To(BeFalse())
 	})
 
+	It("leave an entry on ctrl+t as the form's own abort, which its ask returns as a timeline switch", func() {
+		var keys formKeys
+		text := huh.NewInput().Key("text")
+		form := huh.NewForm(huh.NewGroup(text))
+		ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+
+		form.Update(keys.filter(formFrame{entry: true}, []huh.Field{text})(nil, ctrlT))
+
+		Expect(form.State).To(Equal(huh.StateAborted))
+		Expect(keys.ended(form.State, nil)).Error().To(MatchError(errSwitchTimeline))
+	})
+
+	It("pass ctrl+t through to a form other than an entry", func() {
+		var keys formKeys
+		ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+
+		Expect(keys.filter(formFrame{timeline: "mongo-outage"}, nil)(nil, ctrlT)).To(Equal(ctrlT))
+	})
+
 	It("carry forward everything but the fields another entry clears", func() {
 		values := fieldValues{
 			"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "at": {"03:14"}, "ended": {"03:20"},
@@ -397,6 +416,115 @@ var _ = Describe("add forms", func() {
 					Expect(fieldText(second, "url")).To(BeEmpty())
 					Expect(errOut.String()).To(ContainSubstring("-t mongo-outage"))
 				})
+
+			Describe("switching the timeline with ctrl+t", func() {
+				BeforeEach(func(ctx SpecContext) {
+					Expect(run(ctx, "timeline", "create", "api-latency")).To(Equal(0), errOut.String())
+				})
+
+				// listed returns the texts of the events event list prints for name.
+				listed := func(ctx SpecContext, name string) []string {
+					GinkgoHelper()
+					Expect(run(ctx, "event", "list", "-t", name, "--json")).To(Equal(0), errOut.String())
+					var list struct {
+						Events []struct {
+							Text string `json:"text"`
+						} `json:"events"`
+					}
+					Expect(json.Unmarshal(out.Bytes(), &list)).To(Succeed())
+					var texts []string
+					for _, e := range list.Events {
+						texts = append(texts, e.Text)
+					}
+					return texts
+				}
+
+				It("reopen the entry on the timeline picked, as typed, and echo the timeline", func(ctx SpecContext) {
+					var opened string
+					var offered []string
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Edge slow", "source": "cloudflare"}),
+						func(fields []huh.Field) (bool, error) {
+							opened = fieldText(fields, "timeline")
+							offered = optionValues(namedField(fields, "timeline"))
+							return submit(map[string]string{"timeline": "api-latency"})(fields)
+						},
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(opened).To(Equal("mongo-outage"))
+					Expect(offered).To(Equal([]string{"", "api-latency", "mongo-outage"}))
+					Expect(framed[1]).To(Equal(formFrame{noun: "event"}))
+					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
+					Expect(fieldText(asked[2], "source")).To(Equal("cloudflare"))
+					Expect(framed[2].timeline).To(Equal("api-latency"))
+					Expect(errOut.String()).To(ContainSubstring(" event add 'Edge slow' -t api-latency --source cloudflare\n"))
+					Expect(listed(ctx, "api-latency")).To(Equal([]string{"Edge slow"}))
+				})
+
+				It("reopen the entry on its own timeline, as typed, when Esc leaves the picker", func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(ctrlT(map[string]string{"text": "Edge slow"}), cancel, submit(nil), confirm(false)))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
+					Expect(framed[2].timeline).To(Equal("mongo-outage"))
+					Expect(echoedArgs(ctx, errOut.String())).NotTo(ContainElement("-t"))
+					Expect(listed(ctx, "mongo-outage")).To(Equal([]string{"Edge slow"}))
+				})
+
+				It("create the timeline ✨ New timeline asks for, without making it current, and reopen the entry on it", func(ctx SpecContext) {
+					var label string
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Migration paused"}),
+						func(fields []huh.Field) (bool, error) {
+							label = fieldView(namedField(fields, "timeline"))
+							return submit(map[string]string{"timeline": ""})(fields)
+						},
+						submit(map[string]string{"name": "db-migration"}),
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(label).To(ContainSubstring("✨ New timeline"))
+					Expect(framed[2]).To(Equal(formFrame{title: "📒 New timeline", noun: "event"}))
+					Expect(errOut.String()).To(ContainSubstring("Created timeline `db-migration`."))
+					Expect(errOut.String()).To(ContainSubstring("Equivalent command: coroner --db " + db + " timeline create db-migration\n"))
+					Expect(framed[3].timeline).To(Equal("db-migration"))
+					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
+					Expect(listed(ctx, "db-migration")).To(Equal([]string{"Migration paused"}))
+					Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
+					Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-outage")))
+				})
+
+				It("reopen the entry on its own timeline when the new timeline form only dry-runs", func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Migration paused"}), submit(map[string]string{"timeline": ""}),
+						submit(map[string]string{"name": "db-migration", "dry-run": "true"}),
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(errOut.String()).To(ContainSubstring("Would create timeline `db-migration`."))
+					Expect(framed[3].timeline).To(Equal("mongo-outage"))
+				})
+
+				It("reopen the entry on its own timeline when Esc leaves the new timeline form", func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Migration paused"}), submit(map[string]string{"timeline": ""}), cancel,
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(framed[3].timeline).To(Equal("mongo-outage"))
+					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
+				})
+			})
 
 			It("open --interactive with More options shown and the url filled", func(ctx SpecContext) {
 				command := eventAdd(ctx, answers(cancel, confirm(false)))
@@ -747,7 +875,7 @@ var _ = Describe("add forms", func() {
 			command := eventAdd(ctx, answers(
 				func(fields []huh.Field) (bool, error) {
 					Expect(fields).To(HaveLen(1))
-					Expect(optionValues(namedField(fields, "timeline"))).To(Equal([]string{"mongo-outage"}))
+					Expect(optionValues(namedField(fields, "timeline"))).To(Equal([]string{"", "mongo-outage"}))
 					return submit(map[string]string{"timeline": "mongo-outage"})(fields)
 				},
 				submit(map[string]string{"text": "Pager fires"}),
@@ -958,6 +1086,15 @@ func submit(values map[string]string) func([]huh.Field) (bool, error) {
 	}
 }
 
+// ctrlT returns an answer that fills a form's fields with values and leaves it as ctrl+t
+// does.
+func ctrlT(values map[string]string) func([]huh.Field) (bool, error) {
+	return func(fields []huh.Field) (bool, error) {
+		fill(fields, values)
+		return false, errSwitchTimeline
+	}
+}
+
 // cancel answers a form as Esc does.
 func cancel([]huh.Field) (bool, error) { return false, nil }
 
@@ -998,7 +1135,8 @@ func fieldText(fields []huh.Field, name string) string {
 	return fmt.Sprint(namedField(fields, name).GetValue())
 }
 
-// optionValues returns the values a select picks from, read by moving through its options.
+// optionValues returns the values a select picks from, read by moving through its options from the
+// first.
 func optionValues(formField huh.Field) []string {
 	GinkgoHelper()
 	selectField, ok := formField.(*huh.Select[string])
@@ -1006,6 +1144,7 @@ func optionValues(formField huh.Field) []string {
 	var values []string
 	selectField.WithKeyMap(huh.NewDefaultKeyMap())
 	selectField.Focus()
+	selectField.Update(tea.KeyPressMsg{Code: tea.KeyHome})
 	for {
 		value, _ := selectField.Hovered()
 		if slices.Contains(values, value) {

@@ -93,7 +93,7 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 	if !in.given("timeline") {
 		var chosen bool
 		var err error
-		in, chosen, err = chooseTimeline(ctx, s, timelineEditDefinition(), in)
+		in, chosen, err = chooseTimeline(ctx, s, timelinePicker{def: timelineEditDefinition()}, in)
 		if err != nil || !chosen {
 			return timelineToEdit{}, false, err
 		}

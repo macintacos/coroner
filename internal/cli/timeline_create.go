@@ -31,30 +31,40 @@ func newTimelineCreateCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner timeline create --interactive",
 	}
 
-	return timelineCreateForm(ctx, app).attach(cmd, app, terminalForms(app, "📒 New timeline"))
+	return timelineCreateForm(ctx, app).attach(cmd, app, terminalForms(app, timelineCreateTitle))
 }
+
+const timelineCreateTitle = "📒 New timeline"
 
 // timelineCreateForm is timeline create with its form, which opens on a terminal when the name is
 // missing.
 func timelineCreateForm(ctx context.Context, app App) formCommand {
-	create := formWrite[timelineCreated]{path: "timeline create", def: timelineCreateDefinition(), run: createTimeline}
+	create := timelineCreateWrite()
 	return formCommand{
 		def:       create.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(create.def, in) },
 		flagsOnly: withOneArg(writeRunE(ctx, app, create.def, create.run)),
 		session: func(s formSession, in fieldValues) error {
-			return askTimelineCreate(ctx, s, create, in)
+			_, _, err := askTimelineCreate(ctx, s, create, in)
+			return err
 		},
 	}
 }
 
+func timelineCreateWrite() formWrite[timelineCreated] {
+	return formWrite[timelineCreated]{path: "timeline create", def: timelineCreateDefinition(), run: createTimeline}
+}
+
 // askTimelineCreate asks for the timeline to create, prefilled from in, until one is created or
 // used, or Esc ends the form. A taken name offers the existing timeline, or uses it when in gives
-// --if-not-exists.
-func askTimelineCreate(ctx context.Context, s formSession, create formWrite[timelineCreated], in fieldValues) error {
+// --if-not-exists. It returns that timeline, and whether there is one: none after Esc, or after a
+// dry run that created nothing.
+func askTimelineCreate(
+	ctx context.Context, s formSession, create formWrite[timelineCreated], in fieldValues,
+) (timeline.Timeline, bool, error) {
 	taken, err := timelineNames(ctx, s)
 	if err != nil {
-		return err
+		return timeline.Timeline{}, false, err
 	}
 	ifNotExists, _ := in.boolean("if-not-exists")
 	note := func(name string) string { return "Timeline `" + name + "` exists; submitting offers to use it." }
@@ -64,42 +74,46 @@ func askTimelineCreate(ctx context.Context, s formSession, create formWrite[time
 	def := withoutField(create.def, "if-not-exists")
 	def.fields[def.fieldIndex("name")].preview = namePreview(taken, note)
 
+	var made timelineCreated
 	_, err = s.askUntil(ctx, def, formChoices{}, in, func(typed fieldValues) error {
 		if ifNotExists {
 			typed["if-not-exists"] = []string{"true"}
 		}
-		_, err := create.submit(ctx, s, typed)
+		result, err := create.submit(ctx, s, typed)
 		rejected, _ := errors.AsType[*Error](err)
 		if rejected != nil && rejected.Kind == KindTimelineExists {
-			return useExisting(ctx, s, create, typed)
+			result, err = useExisting(ctx, s, create, typed)
+		}
+		if err == nil {
+			made = result
 		}
 		return err
 	})
 
-	return err
+	return made.timeline, made.stored(), err
 }
 
 // useExisting asks whether to use the existing timeline typed names, and prints it as
-// --if-not-exists does when so. Picking another name returns errAskAgain; Esc writes nothing.
-func useExisting(ctx context.Context, s formSession, create formWrite[timelineCreated], typed fieldValues) error {
+// --if-not-exists does when so, returning what that prints. Picking another name returns
+// errAskAgain; Esc writes nothing.
+func useExisting(ctx context.Context, s formSession, create formWrite[timelineCreated], typed fieldValues) (timelineCreated, error) {
 	use := true
 	confirm := huh.NewConfirm().Title("Timeline `" + *typed.value("name") + "` already exists").
 		Affirmative("Use it").Negative("Pick another name").Value(&use)
 	submitted, err := s.ask(ctx, s.frame, formGroup{fields: []huh.Field{confirm}})
 	switch {
 	case err != nil:
-		return askError(err)
+		return timelineCreated{}, askError(err)
 	case !submitted:
-		return nil
+		return timelineCreated{}, nil
 	}
 	// Value can rebind the confirm, so read what it holds.
 	if use, _ = confirm.GetValue().(bool); !use {
-		return errAskAgain
+		return timelineCreated{}, errAskAgain
 	}
 
 	typed["if-not-exists"] = []string{"true"}
-	_, err = create.submit(ctx, s, typed)
-	return err
+	return create.submit(ctx, s, typed)
 }
 
 // timelineNames returns the names of the timelines in the session's database.
@@ -203,6 +217,11 @@ func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 		})
 
 	return created, err
+}
+
+// stored reports whether c's timeline is in the database: created, or found by --if-not-exists.
+func (c timelineCreated) stored() bool {
+	return c.existed || c.timeline.ID != "" && !c.dryRun
 }
 
 func (c timelineCreated) render(o output) error {

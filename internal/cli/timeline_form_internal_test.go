@@ -273,6 +273,7 @@ var _ = Describe("timeline forms", func() {
 			Expect(runForm(ctx, command, "timeline", "edit")).To(Succeed())
 
 			Expect(asked).To(HaveLen(2))
+			Expect(optionValues(namedField(asked[0], "timeline"))).To(Equal([]string{"mongo-outage"}))
 			Expect(fieldText(asked[1], "name")).To(Equal("mongo-outage"))
 		})
 

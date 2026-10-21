@@ -234,6 +234,9 @@ func fitted(pieces []string, width int) string {
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
 var errAskAgain = errors.New("ask the form again")
 
+// errSwitchTimeline is what an entry's ask returns when ctrl+t leaves it to pick another timeline.
+var errSwitchTimeline = errors.New("switch the timeline")
+
 // formSession is what one run of a write command's form reads and writes.
 type formSession struct {
 	app App
@@ -380,7 +383,8 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	if err != nil {
 		return err
 	}
-	in, chosen, err := chooseTimeline(ctx, s, f.def, in)
+	picker := timelinePicker{def: f.def, create: newTimeline}
+	in, chosen, err := chooseTimeline(ctx, s, picker, in)
 	if err != nil || !chosen {
 		return err
 	}
@@ -394,26 +398,45 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 		}
 		s.frame = formFrame{timeline: current.Name, entry: true, added: len(added), noun: noun}
 		typed, entered, err := f.entry(ctx, s, in)
+		added = append(added, entered...)
+		switch {
+		case errors.Is(err, errSwitchTimeline):
+			s.frame = formFrame{added: len(added), noun: noun}
+			picker.current = current.Name
+			in, err = switchTimeline(ctx, s, picker, in, typed)
+			if err != nil {
+				return err
+			}
+			continue
+		case err != nil:
+			return err
+		}
+
+		s.frame = formFrame{timeline: current.Name, added: len(added), noun: noun}
+		another, err := s.askAnother(ctx, noun)
 		if err != nil {
 			return err
 		}
-		added = append(added, entered...)
-
-		s.frame = formFrame{timeline: current.Name, added: len(added), noun: noun}
-		yes := true
-		another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
-		submitted, err := s.ask(ctx, s.frame, formGroup{fields: []huh.Field{another}})
-		if err != nil {
-			return askError(err)
-		}
-		// Value can rebind the confirm, so read what it holds.
-		accepted, _ := another.GetValue().(bool)
-		if !submitted || !accepted {
+		if !another {
 			return s.summarize(noun, added)
 		}
 
 		in = carryForward(typed, f.def)
 	}
+}
+
+// askAnother asks whether to add another noun record, and reports whether so.
+func (s formSession) askAnother(ctx context.Context, noun string) (bool, error) {
+	yes := true
+	another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
+	submitted, err := s.ask(ctx, s.frame, formGroup{fields: []huh.Field{another}})
+	if err != nil {
+		return false, askError(err)
+	}
+	// Value can rebind the confirm, so read what it holds.
+	accepted, _ := another.GetValue().(bool)
+
+	return submitted && accepted, nil
 }
 
 // summarize prints a heading counting the noun records added lists, to the first one's timeline, a
@@ -467,11 +490,10 @@ func newNoteStyles(color bool) noteStyles {
 	return noteStyles{faint: s.Faint(true), done: s.Foreground(lipgloss.Green), name: s.Bold(true)}
 }
 
-// chooseTimeline returns in with the timeline the session writes to, asking for one through def's
-// timeline field when no layer selects it, and whether there is one: Esc on that ask leaves none.
-func chooseTimeline(ctx context.Context, s formSession, def definition, in fieldValues) (fieldValues, bool, error) {
+// chooseTimeline returns in with the timeline the session writes to, asking for one through picker
+// when no layer selects it, and whether there is one: Esc on that ask leaves none.
+func chooseTimeline(ctx context.Context, s formSession, picker timelinePicker, in fieldValues) (fieldValues, bool, error) {
 	var by selectedBy
-	var timelines []timeline.Timeline
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		sel, err := selectTimelines(ctx, st, timelineInputOf(in), s.app.LookupEnv)
 		if err != nil || sel.by != "" {
@@ -479,8 +501,8 @@ func chooseTimeline(ctx context.Context, s formSession, def definition, in field
 			return err
 		}
 
-		timelines, err = st.Timelines(ctx)
-		if err == nil && len(timelines) == 0 {
+		picker.timelines, err = st.Timelines(ctx)
+		if err == nil && len(picker.timelines) == 0 {
 			return timelineRequiredError(ctx, st)
 		}
 		return err
@@ -492,33 +514,97 @@ func chooseTimeline(ctx context.Context, s formSession, def definition, in field
 		return in, true, nil
 	}
 
-	return askTimeline(ctx, s, def, in, timelines)
+	name, picked, err := picker.ask(ctx, s)
+	if err != nil || !picked {
+		return in, false, err
+	}
+	chosen := maps.Clone(in)
+	chosen["timeline"] = []string{name}
+
+	return chosen, true, nil
 }
 
-// askTimeline asks which of timelines in goes to, through def's timeline field, and returns in with
-// it, and whether one was picked.
-func askTimeline(
-	ctx context.Context, s formSession, def definition, in fieldValues, timelines []timeline.Timeline,
-) (fieldValues, bool, error) {
-	options := make([]huh.Option[string], 0, len(timelines))
-	for _, t := range timelines {
+// timelinePicker asks for a timeline through def's timeline field: one of timelines, opening on
+// current, else the first, or, when create is set, ✨ New timeline, which create asks for.
+type timelinePicker struct {
+	def       definition
+	timelines []timeline.Timeline
+	current   string
+	// create returns the name of the timeline it created or used, and whether there is one.
+	create func(context.Context, formSession) (string, bool, error)
+}
+
+// ask returns the name of the timeline picked, and whether there is one: Esc leaves none.
+func (p timelinePicker) ask(ctx context.Context, s formSession) (string, bool, error) {
+	var options []huh.Option[string]
+	if p.create != nil {
+		// An empty value is no timeline, which the field's check never rejects.
+		options = append(options, huh.NewOption("✨ New timeline", ""))
+	}
+	for _, t := range p.timelines {
 		options = append(options, huh.NewOption(strings.TrimSpace(t.Name+"  "+pickerLabel(t.Title)), t.Name))
 	}
-	pick := onlyField(def, "timeline")
-	fields := pick.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
+	pick := onlyField(p.def, "timeline")
+	opening := fieldValues{"timeline": {cmp.Or(p.current, p.timelines[0].Name)}}
+	fields := pick.formFields(baseCheckEnv(s), opening, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
 	submitted, err := s.ask(ctx, s.frame, formGroup{fields: fields})
 	switch {
 	case err != nil:
-		return in, false, askError(err)
+		return "", false, askError(err)
 	case !submitted:
-		return in, false, nil
+		return "", false, nil
+	}
+	name := pick.formValues(fields).value("timeline")
+	if name == nil {
+		return p.create(ctx, s)
 	}
 
-	picked := maps.Clone(in)
-	picked["timeline"] = pick.formValues(fields).values("timeline")
+	return *name, true, nil
+}
 
-	return picked, true, nil
+// switchTimeline asks through picker which timeline the entry typed goes to, and returns what the
+// entry reopens with: typed, with the timeline and id in gives, which no entry asks, on the timeline
+// picked or created, if any.
+func switchTimeline(ctx context.Context, s formSession, picker timelinePicker, in, typed fieldValues) (fieldValues, error) {
+	reopened := maps.Clone(typed)
+	for _, name := range []string{"timeline", "id"} {
+		if in.given(name) {
+			reopened[name] = in.values(name)
+		}
+	}
+	var err error
+	picker.timelines, err = storedTimelines(ctx, s)
+	if err != nil {
+		return reopened, err
+	}
+	name, picked, err := picker.ask(ctx, s)
+	if picked {
+		reopened["timeline"] = []string{name}
+	}
+
+	return reopened, err
+}
+
+// storedTimelines returns the timelines in the session's database.
+func storedTimelines(ctx context.Context, s formSession) ([]timeline.Timeline, error) {
+	var timelines []timeline.Timeline
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
+		var err error
+		timelines, err = st.Timelines(ctx)
+		return err
+	})
+
+	return timelines, err
+}
+
+// newTimeline asks for a timeline through timeline create's own form, framed as s frames its asks
+// under that form's title, and returns its name, and whether one was created or used.
+func newTimeline(ctx context.Context, s formSession) (string, bool, error) {
+	s.frame.title = timelineCreateTitle
+	t, created, err := askTimelineCreate(ctx, s, timelineCreateWrite(), fieldValues{})
+
+	return t.Name, created, err
 }
 
 // selectedTimeline returns the timeline in selects, which an entry prefilled from in adds to.
@@ -571,7 +657,8 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 
 // askUntil asks def's fields, prefilled from in and picking from choices, and passes what was typed to
 // submit. It asks again with what was typed while submit returns errAskAgain, or a correctable error,
-// which it prints. It returns what was last typed and submit's error, or in when Esc ends the form.
+// which it prints. It returns what was last typed and submit's error, or in when Esc ends the form,
+// or what was typed and errSwitchTimeline when ctrl+t does.
 func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
 ) (fieldValues, error) {
@@ -583,14 +670,16 @@ func (s formSession) askUntil(
 		fields := def.formFields(baseCheckEnv(s), in, choices)
 		groups := def.formGroups(fields, in)
 		submitted, err := s.ask(ctx, s.frame, groups...)
+		typed := def.formValues(def.shownFields(groups))
 		switch {
+		case errors.Is(err, errSwitchTimeline):
+			return typed, err
 		case err != nil:
 			return in, askError(err)
 		case !submitted:
 			return in, nil
 		}
 
-		typed := def.formValues(def.shownFields(groups))
 		err = submit(typed)
 		rejected, _ := errors.AsType[*Error](err)
 		switch {
@@ -706,7 +795,7 @@ func terminalForms(app App, title string) func(color bool, images graphics.Proto
 			fields := fieldsOf(groups)
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
-			cancelled := false
+			var keys formKeys
 			form := newForm(f.edges(title), groups...)
 			// Not tea.Interrupt for cancel: bubbletea skips an interrupted program's last frame, the
 			// empty one that clears the form.
@@ -714,17 +803,47 @@ func terminalForms(app App, title string) func(color bool, images graphics.Proto
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
 			_, err := tea.NewProgram(form, tea.WithContext(ctx), tea.WithInput(app.In), tea.WithOutput(app.Out),
-				tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
-			switch {
-			case cancelled:
-				return false, nil
-			case form.State == huh.StateAborted:
-				return false, huh.ErrUserAborted
-			}
+				tea.WithFilter(keys.filter(f, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
 
-			return err == nil, err
+			return keys.ended(form.State, err)
 		}
 	}
+}
+
+// formKeys records which key the program filter it returns turned into a form's own abort.
+type formKeys struct{ cancelled, switched bool }
+
+// filter returns the program filter of a form framed as f, of fields: escCancels, and on an entry, one
+// that turns ctrl+t into the form's own abort too, so no field sees it.
+func (k *formKeys) filter(f formFrame, fields []huh.Field) func(tea.Model, tea.Msg) tea.Msg {
+	esc := escCancels(&k.cancelled, fields)
+	if !f.entry {
+		return esc
+	}
+
+	return func(m tea.Model, msg tea.Msg) tea.Msg {
+		press, ok := msg.(tea.KeyPressMsg)
+		if !ok || !key.Matches(press, switchTimelineKey()) {
+			return esc(m, msg)
+		}
+		k.switched = true
+		// ctrl+c is huh's Quit binding.
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+	}
+}
+
+// ended returns what an ask returns for its form, which ended in state with err.
+func (k *formKeys) ended(state huh.FormState, err error) (bool, error) {
+	switch {
+	case k.switched:
+		return false, errSwitchTimeline
+	case k.cancelled:
+		return false, nil
+	case state == huh.StateAborted:
+		return false, huh.ErrUserAborted
+	}
+
+	return err == nil, err
 }
 
 // escCancels returns a program filter that turns Esc into the form's own abort, so the form clears
