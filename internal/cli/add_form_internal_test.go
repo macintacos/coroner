@@ -836,6 +836,58 @@ var _ = Describe("add forms", func() {
 			It("suggest the timeline's tags, the most recently used first, then every other", func(ctx SpecContext) {
 				Expect(tagsFor(ctx, "mongo-outage")).To(Equal([]string{"election", "escalation", "edge"}))
 			})
+
+			Context("in the form", func() {
+				var fields []huh.Field
+
+				BeforeEach(func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(func(asked []huh.Field) (bool, error) {
+						fields = asked
+						return false, nil
+					}))
+					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
+				})
+
+				focused := func(name string) huh.Field {
+					GinkgoHelper()
+					formField := namedField(fields, name)
+					formField.WithKeyMap(huh.NewDefaultKeyMap())
+					formField.Focus()
+					return formField
+				}
+
+				It("mark the tag typed as one already stored, or as a new one", func() {
+					tag := focused("tag")
+					typeText(tag, "elect")
+					Expect(fieldView(tag)).To(ContainSubstring("✨ New tag"))
+
+					typeText(tag, "ion")
+					Expect(fieldView(tag)).To(SatisfyAll(ContainSubstring("✅ Existing tag"), Not(ContainSubstring("New tag"))))
+				})
+
+				It("show the hint of a tag the check rejects in place of the mark", func() {
+					tag := focused("tag")
+					typeText(tag, "Phase")
+					Expect(fieldView(tag)).To(SatisfyAll(ContainSubstring("Did you mean `phase`?"), Not(ContainSubstring("New tag"))))
+				})
+
+				It("mark each held tag not stored as new", func() {
+					tag := focused("tag")
+					enter(tag, "election")
+					enter(tag, "phase:detect")
+					Expect(fieldView(tag)).To(SatisfyAll(
+						ContainSubstring("✓ phase:detect  ✨ New tag"),
+						MatchRegexp(`✓ election\s*\n`),
+						Not(ContainSubstring("Existing tag")),
+					))
+				})
+
+				It("mark no file attached", func() {
+					attach := focused("attach")
+					typeText(attach, "a.txt")
+					Expect(fieldView(attach)).NotTo(Or(ContainSubstring("New"), ContainSubstring("Existing")))
+				})
+			})
 		})
 
 		It("echo two tags given to the form as two --tag flags", func(ctx SpecContext) {

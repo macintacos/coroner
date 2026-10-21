@@ -666,7 +666,11 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 	def := withoutField(withoutField(f.def, "timeline"), "id")
 	if i := def.fieldIndex("source"); i != -1 {
 		// sourceChoices suggests every stored source.
-		def.fields[i].preview = sourcePreview(choices.suggestions["source"])
+		def.fields[i].preview = storedPreview("source", checkSource, choices.suggestions["source"])
+	}
+	if i := def.fieldIndex("tag"); i != -1 {
+		// eventChoices suggests every stored tag.
+		def.fields[i].preview = storedPreview("tag", checkTag, choices.suggestions["tag"])
 	}
 
 	var added []summaryLine
@@ -964,23 +968,26 @@ func sourceChoices(ctx context.Context, s *store.Store, t timeline.Timeline) (fo
 	return formChoices{suggestions: map[string][]string{"source": names}}, nil
 }
 
-// sourcePreview returns the source field's preview: the hint of the check a typed source fails, else
-// whether it is one of existing or a new source.
-func sourcePreview(existing []string) func(string, checkEnv) string {
-	return func(source string, _ checkEnv) string {
-		rejected, ok := errors.AsType[*Error](checkSource(source))
+// storedPreview returns the preview of a field naming a noun: the hint of the check a typed value
+// fails, else whether it is one of existing or a new noun.
+func storedPreview(noun string, check func(string) error, existing []string) func(string, checkEnv) string {
+	return func(value string, _ checkEnv) string {
+		rejected, ok := errors.AsType[*Error](check(value))
 		switch {
-		case source == "":
+		case value == "":
 			return ""
 		case ok:
 			return rejected.Hint
-		case slices.Contains(existing, source):
-			return "✅ Existing source"
+		case slices.Contains(existing, value):
+			return "✅ Existing " + noun
 		}
 
-		return "✨ New source"
+		return newMark + noun
 	}
 }
+
+// newMark starts the preview of a value no stored record has; a list field marks such held values.
+const newMark = "✨ New "
 
 func sourceNames(sources []timeline.Source) []string {
 	names := make([]string, 0, len(sources))
