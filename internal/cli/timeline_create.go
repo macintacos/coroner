@@ -75,7 +75,7 @@ func askTimelineCreate(
 	def.fields[def.fieldIndex("name")].preview = namePreview(taken, note)
 
 	var made timelineCreated
-	_, err = s.askUntil(ctx, def, formChoices{}, in, func(typed fieldValues) error {
+	_, _, err = s.askUntil(ctx, def, formChoices{}, in, func(typed fieldValues) error {
 		if ifNotExists {
 			typed["if-not-exists"] = []string{"true"}
 		}

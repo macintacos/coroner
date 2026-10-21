@@ -389,6 +389,7 @@ func TestEventAddFormKeys(t *testing.T) {
 	t.Run("cycle and pick", testCycleAndPick)
 	t.Run("remove carried tag", testRemoveCarriedTag)
 	t.Run("esc in tags", testEscInTags)
+	t.Run("esc finish", testEscFinish)
 	t.Run("attach completion", testAttachCompletion)
 	t.Run("attach directories", testAttachDirectories)
 	t.Run("attach cycle and pick", testAttachCycleAndPick)
@@ -626,13 +627,37 @@ func testRemoveCarriedTag(t *testing.T) {
 }
 
 func testEscInTags(t *testing.T) {
-	script := tagsEntry().typed("db").press("esc", "n")
+	script := tagsEntry().typed("db").press("esc")
 
 	app := keyedRun(t, script, nil)
 
 	if slices.ContainsFunc(storedEvents(t, app), func(e map[string]any) bool { return e["text"] == "Failover finished" }) {
 		t.Error("stored the entry Esc cancelled")
 	}
+}
+
+func testEscFinish(t *testing.T) {
+	script := baselineEntry().press("y").typed("Failover confirmed").press("esc")
+	var bottom string
+	check := func(form *fittedForm) {
+		if form.GetFocusedField().GetKey() == "text" {
+			lines := strings.Split(ansi.Strip(form.View().Content), "\n")
+			bottom = lines[len(lines)-1]
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if want := "╰" + strings.Repeat("─", 28) + " ✓ 1 event added  esc finish ─╯"; bottom != want {
+		t.Errorf("the second entry ends %q; want %q", bottom, want)
+	}
+	if len(script.asks) != 4 {
+		t.Errorf("the forms asked %d times; want the picker, an entry, Add another and an entry", len(script.asks))
+	}
+	if slices.ContainsFunc(storedEvents(t, app), func(e map[string]any) bool { return e["text"] == "Failover confirmed" }) {
+		t.Error("stored the entry Esc left")
+	}
+	addedEvent(t, app)
 }
 
 // tagsEntry is the start of an entry, up to typing into Tags.

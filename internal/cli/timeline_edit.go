@@ -80,7 +80,7 @@ func askTimelineEdit(ctx context.Context, s formSession, z zone, in fieldValues)
 	}.apply(t, t.UpdatedAt)
 	prefilled := fieldValues{"name": {opening.Name}, "title": {opening.Title}, "ref": opening.Refs, "dry-run": in.values("dry-run")}
 
-	_, err = s.askUntil(ctx, timelineEditFormDefinition(target.taken), formChoices{}, prefilled, func(typed fieldValues) error {
+	_, _, err = s.askUntil(ctx, timelineEditFormDefinition(target.taken), formChoices{}, prefilled, func(typed fieldValues) error {
 		return editTyped(ctx, s, z, t.Name, timelineEditValues(t, target.nameOrID, typed))
 	})
 

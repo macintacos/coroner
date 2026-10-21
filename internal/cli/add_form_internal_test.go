@@ -230,7 +230,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open --interactive prefilled from the command line's arguments and flags", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "Primary stepped down", "--interactive", "--source", "mongod")).To(Succeed())
 
@@ -285,7 +285,7 @@ var _ = Describe("add forms", func() {
 
 			It("show the resolved author as a placeholder", func(ctx SpecContext) {
 				withEnv(&app, map[string]string{"USER": "sre"})
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
@@ -302,7 +302,7 @@ var _ = Describe("add forms", func() {
 					}
 					return []byte("author = \"Priya\"\n"), nil
 				}
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
@@ -347,7 +347,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open when a required flag is missing, prefilled from the argument", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel, confirm(false)))
+				command := annotationAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "annotation", "add", "replSetStepDown")).To(Succeed())
 
@@ -356,7 +356,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open with no kind chosen", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel, confirm(false)))
+				command := annotationAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
@@ -404,7 +404,7 @@ var _ = Describe("add forms", func() {
 						"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election",
 						"url": "https://example.com/1", "more-options": "true",
 					}
-					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
+					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel))
 
 					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 
@@ -527,7 +527,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open --interactive with More options shown and the url filled", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage", "--interactive", "--url", "https://e.example")).To(Succeed())
 
@@ -537,7 +537,7 @@ var _ = Describe("add forms", func() {
 
 			It("open the next entry with More options shown and dry run Yes after a dry run", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
-				command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
+				command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -643,18 +643,31 @@ var _ = Describe("add forms", func() {
 					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
-			It("skip an entry Esc cancels and end when no other is wanted", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+			It("end quietly, asking nothing more, when Esc leaves the first entry", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-				Expect(asked).To(HaveLen(2))
-				Expect(errOut.String()).NotTo(ContainSubstring("Equivalent command"))
+				Expect(asked).To(HaveLen(1))
+				Expect(errOut.String()).To(BeEmpty())
+			})
+
+			It("end with the summary, asking nothing more, when Esc leaves an entry after one was added", func(ctx SpecContext) {
+				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), cancel))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(asked).To(HaveLen(3))
+				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 event to timeline `mongo-outage`\n" +
+					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
 			It("ask the entry again, as typed, when the add rejects it", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
+				command := eventAdd(ctx, answers(submit(entry), cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -664,7 +677,7 @@ var _ = Describe("add forms", func() {
 
 			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
+				command := eventAdd(ctx, answers(submit(entry), cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
@@ -684,7 +697,7 @@ var _ = Describe("add forms", func() {
 					typeText(attach, "files/p")
 					view = fieldView(attach)
 					return cancel(fields)
-				}, confirm(false)))
+				}))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
@@ -698,13 +711,13 @@ var _ = Describe("add forms", func() {
 					fill(fields, map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z"})
 					enter(namedField(fields, "attach"), "missing.png")
 					return true, nil
-				}, cancel, confirm(false)))
+				}, cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 				Expect(errOut.String()).To(ContainSubstring("cannot read --attach missing.png"))
 				Expect(errOut.String()).To(ContainSubstring("Pass a file that exists and you can read."))
-				Expect(asked).To(HaveLen(3))
+				Expect(asked).To(HaveLen(2))
 			})
 		})
 
@@ -748,7 +761,7 @@ var _ = Describe("add forms", func() {
 				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
 					source = namedField(fields, "source")
 					return false, nil
-				}, confirm(false)))
+				}))
 				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 				source.WithKeyMap(huh.NewDefaultKeyMap())
 				source.Focus()
@@ -919,8 +932,7 @@ var _ = Describe("add forms", func() {
 		)
 
 		It("refuse an invalid --id given with --interactive as usage, before asking anything", func(ctx SpecContext) {
-			entry := submit(map[string]string{"text": "Pager fires"})
-			command := eventAdd(ctx, answers(entry, entry, cancel, confirm(false)))
+			command := eventAdd(ctx, answers())
 
 			err := runForm(ctx, command, "event", "add", "--interactive", "-t", "mongo-outage", "--id", "not-a-uuid")
 
@@ -1064,6 +1076,9 @@ func shellSplit(ctx context.Context, line string) []string {
 // scriptedForms returns forms that answer each ask in turn with the next of answers, appending
 // what each ask showed to asked, and the frame it was asked in to framed.
 func scriptedForms(asked *[][]huh.Field, framed *[]formFrame, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+	DeferCleanup(func() {
+		Expect(answers).To(BeEmpty(), "%d scripted answers were never asked for", len(answers))
+	})
 	return func(bool, graphics.Protocol) askFunc {
 		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
 			GinkgoHelper()

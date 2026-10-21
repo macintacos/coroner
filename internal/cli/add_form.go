@@ -237,6 +237,9 @@ var errAskAgain = errors.New("ask the form again")
 // errSwitchTimeline is what an entry's ask returns when ctrl+t leaves it to pick another timeline.
 var errSwitchTimeline = errors.New("switch the timeline")
 
+// errEntryCancelled is what an entry returns when Esc leaves it, adding nothing.
+var errEntryCancelled = errors.New("entry cancelled")
+
 // formSession is what one run of a write command's form reads and writes.
 type formSession struct {
 	app App
@@ -408,6 +411,8 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 				return err
 			}
 			continue
+		case errors.Is(err, errEntryCancelled):
+			return s.summarize(noun, added)
 		case err != nil:
 			return err
 		}
@@ -620,7 +625,8 @@ func selectedTimeline(ctx context.Context, s formSession, in fieldValues) (timel
 }
 
 // entry asks for one entry, prefilled from in, and adds it to in's timeline once submitted. It returns
-// the values last submitted, or in when none was, and the summary's line for the record it stored.
+// the values last submitted, or in when none was, and the summary's line for the record it stored;
+// errEntryCancelled when Esc leaves it, and what was typed with errSwitchTimeline when ctrl+t does.
 func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, []summaryLine, error) {
 	choices, err := f.entryChoices(ctx, s, in, baseCheckEnv(s).zone)
 	if err != nil {
@@ -635,7 +641,7 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 	}
 
 	var added []summaryLine
-	typed, err := s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
+	typed, submitted, err := s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
 		if in.given("timeline") {
 			typed["timeline"] = in.values("timeline")
 		}
@@ -651,17 +657,20 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 		}
 		return nil
 	})
+	if err == nil && !submitted {
+		err = errEntryCancelled
+	}
 
 	return typed, added, err
 }
 
 // askUntil asks def's fields, prefilled from in and picking from choices, and passes what was typed to
 // submit. It asks again with what was typed while submit returns errAskAgain, or a correctable error,
-// which it prints. It returns what was last typed and submit's error, or in when Esc ends the form,
-// or what was typed and errSwitchTimeline when ctrl+t does.
+// which it prints. It returns what was last typed, whether submit took it, and submit's error; in when
+// Esc ends the form, or what was typed and errSwitchTimeline when ctrl+t does.
 func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
-) (fieldValues, error) {
+) (fieldValues, bool, error) {
 	choices.thumbnails = s.thumbnails
 	choices.completions = s.completions
 	choices.paths = s.paths
@@ -673,11 +682,11 @@ func (s formSession) askUntil(
 		typed := def.formValues(def.shownFields(groups))
 		switch {
 		case errors.Is(err, errSwitchTimeline):
-			return typed, err
+			return typed, false, err
 		case err != nil:
-			return in, askError(err)
+			return in, false, askError(err)
 		case !submitted:
-			return in, nil
+			return in, false, nil
 		}
 
 		err = submit(typed)
@@ -688,10 +697,10 @@ func (s formSession) askUntil(
 			// A rejected entry is reported to the person at the form, never as a JSON envelope.
 			err = writeError(s.app.Err, rejected, errorStyle{color: s.inv.errColor})
 			if err != nil {
-				return typed, err
+				return typed, false, err
 			}
 		default:
-			return typed, err
+			return typed, err == nil, err
 		}
 		in = typed
 	}
