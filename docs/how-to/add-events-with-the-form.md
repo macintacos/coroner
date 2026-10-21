@@ -23,7 +23,8 @@ under `--no-input` or `CORONER_NO_INPUT`. Under `--json` only `--interactive` op
 ## Fill in the fields
 
 The form draws in a frame titled 📝 New event, at most 80 columns wide, and puts an icon
-before each field's title. It first asks for the five fields most events use:
+before each field's title. The frame's top edge names the timeline the event goes to, as
+📒 inc-4821. It first asks for the five fields most events use:
 
 - **What happened:** the event's text.
 - **When:** the time it happened, in any form `coroner help time-input` lists. The form
@@ -60,7 +61,8 @@ These keys move through the form:
 | `backspace`         | Remove the picked value.                                        |
 | `y` / `n`           | Answer Yes or No, as to More options?                           |
 | `shift+tab`         | Go back to the previous field.                                  |
-| `esc`               | Drop the entry, and add nothing.                                |
+| `ctrl+t`            | Pick the timeline the entry goes to, or create one.             |
+| `esc`               | Drop the entry and finish, listing the events already added.    |
 | `ctrl+c`            | Stop coroner, which exits as interrupted.                       |
 
 ## Use More options
@@ -79,6 +81,22 @@ the flags of those names. The form never asks for an id; an `--id` given with
 - Answer No to add the event without any of them, even one that held a value, except the
   zone: the times the form shows are already read in it.
 
+## Switch the timeline
+
+Press `ctrl+t` on any page of an entry to pick the timeline it goes to. The picker lists
+every timeline, with the cursor on the entry's own, after ✨ New timeline:
+
+- Pick a timeline, and the entry reopens on it with what you typed, suggesting that
+  timeline's sources and tags. Each later entry's command names it with `-t`.
+- Pick ✨ New timeline to create one in `coroner timeline create`'s own form, titled 📒
+  New timeline, which prints what that command prints. A name already taken offers the
+  existing timeline. The entry then reopens on the timeline created or used, which does
+  not become current.
+- Press `esc` to go back to the entry on its own timeline.
+
+When nothing selects a timeline, the form asks for one from the same picker before the
+first entry.
+
 ## Add several events in a row
 
 After each event, the form asks **Add another event?** Answer Yes to open the next entry
@@ -94,21 +112,27 @@ with these values carried from the last one:
 The text, time, end, approximate mark, URL and files start empty each time. To drop a
 carried tag, pick it with `↑` and press `backspace`.
 
-Answer No, or press `esc`, to stop. Each form clears from the screen when it ends, so only
-what coroner prints stays. When you added at least one event, coroner then lists them: the
-timeline, each event's seq, time and text, and the command that shows the timeline. A dry
-run, or an `--id` already stored, adds nothing, so the list leaves it out. `-q` silences
-the list. `annotation add`'s form ends the same way, listing each annotation's kind and
-body.
+Each event is added when you submit it. Once one is, the frame's bottom edge counts them,
+as ✓ 2 events added, and offers `esc finish`.
+
+Answer No to stop, or press `esc` on an entry to stop at once, dropping only the entry on
+screen. Each form clears from the screen when it ends, so only what coroner prints stays.
+When you added at least one event, coroner then lists them: for each timeline, in the
+order it first got one, its name and each event's seq, time and text, then the command
+that shows those timelines. A dry run, or an `--id` already stored, adds nothing, so the
+count and the list leave it out. `-q` silences the list. `annotation add`'s form switches
+its timeline, counts and ends the same way, listing each annotation's kind and body.
 
 ```text
-Equivalent command: coroner event add 'Election timeout on db-3' -t inc-4821 --at 2026-10-20T16:05:00Z
+Equivalent command: coroner event add 'Migration paused' -t db-migration --at 2026-10-20T16:10:00Z
 
 ✓ Added 2 events to timeline `inc-4821`
   #3  2026-10-20T16:00:00Z (-04:00 local: 12:00:00)  Primary stepped down
   #4  2026-10-20T16:05:00Z (-04:00 local: 12:05:00)  Election timeout on db-3
+✓ Added 1 event to timeline `db-migration`
+  #1  2026-10-20T16:10:00Z (-04:00 local: 12:10:00)  Migration paused
 
-  View the timeline: coroner timeline view -t inc-4821
+  View the timelines: coroner timeline view -t inc-4821 -t db-migration
 ```
 
 ## Repeat an entry from a script
