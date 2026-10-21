@@ -80,7 +80,7 @@ func askTimelineEdit(ctx context.Context, s formSession, z zone, in fieldValues)
 	}.apply(t, t.UpdatedAt)
 	prefilled := fieldValues{"name": {opening.Name}, "title": {opening.Title}, "ref": opening.Refs, "dry-run": in.values("dry-run")}
 
-	_, err = s.askUntil(ctx, timelineEditFormDefinition(target.taken), formChoices{}, prefilled, func(typed fieldValues) error {
+	_, _, err = s.askUntil(ctx, timelineEditFormDefinition(target.taken), formChoices{}, prefilled, func(typed fieldValues) error {
 		return editTyped(ctx, s, z, t.Name, timelineEditValues(t, target.nameOrID, typed))
 	})
 
@@ -93,7 +93,7 @@ func chooseTimelineToEdit(ctx context.Context, s formSession, in fieldValues) (t
 	if !in.given("timeline") {
 		var chosen bool
 		var err error
-		in, chosen, err = chooseTimeline(ctx, s, timelineEditDefinition(), in)
+		in, chosen, err = chooseTimeline(ctx, s, timelinePicker{def: timelineEditDefinition()}, in)
 		if err != nil || !chosen {
 			return timelineToEdit{}, false, err
 		}
@@ -185,7 +185,7 @@ func editTyped(ctx context.Context, s formSession, z zone, oldName string, value
 
 func timelineEditDefinition() definition {
 	return definition{fields: []field{
-		{name: "timeline", arg: true, usage: "Timeline to edit, as a `name|id`"},
+		{name: "timeline", arg: true, title: "Timeline", usage: "Timeline to edit, as a `name|id`"},
 		{name: "name", usage: "New `name`", check: withoutEnv(checkName), suggest: suggestName, changes: true},
 		{name: "title", usage: "New `title`; an empty one clears it", check: utf8Only("--title"), changes: true},
 		{name: "add-ref", typ: stringsField, usage: "Add a ticket key or URL; repeat for more", check: withoutEnv(checkAddedRef), changes: true},

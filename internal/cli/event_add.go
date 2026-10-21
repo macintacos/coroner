@@ -50,8 +50,10 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"tags and files, and keeps the other flags under More options, which opens by itself when one\n" +
 			"of them holds a value. It suggests sources and tags, the ones on the timeline's latest\n" +
 			"events first, previews the time as you type it, and prints the command each entry equals.\n" +
-			"It never asks for --id, which applies to the first entry only, and lists the events added\n" +
-			"when you finish. Under --json only --interactive opens it, and --no-input never does.",
+			"It never asks for --id, which applies to the first entry only. Its frame names the timeline,\n" +
+			"which ctrl+t switches or creates, and counts the events added, which it lists when you\n" +
+			"finish; esc on an entry finishes at once. Under --json only --interactive opens it, and\n" +
+			"--no-input never does.",
 		Args:        eventTextInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +

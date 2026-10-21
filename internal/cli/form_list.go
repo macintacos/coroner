@@ -32,6 +32,9 @@ type listField struct {
 	// what is typed.
 	row      *matchRow
 	complete func(typed string) []string
+	// preview, when set, returns the line shown above the match row for what is typed; a held value
+	// whose preview marks it new carries that mark.
+	preview func(value string) string
 }
 
 // listShown is how many values a list field, or a match row, shows at once, so a long list never
@@ -81,6 +84,26 @@ func (l *listField) withPath(path func(typed string) string) *listField {
 	return l
 }
 
+// withPreview returns l previewing values with preview, in the env it reads.
+func (l *listField) withPreview(preview func(string, checkEnv) string, env func() checkEnv) *listField {
+	if preview == nil {
+		return l
+	}
+	l.preview = func(value string) string { return preview(value, env()) }
+	l.show()
+
+	return l
+}
+
+// typedPreview returns the preview of what is typed, or "" with none.
+func (l *listField) typedPreview() string {
+	if l.preview == nil || l.typed() == "" {
+		return ""
+	}
+
+	return l.preview(l.typed())
+}
+
 // withSuggestions returns l suggesting suggestions, and showing a row of what is typed matches.
 func (l *listField) withSuggestions(suggestions []string) *listField {
 	if len(suggestions) == 0 {
@@ -119,18 +142,22 @@ func (l *listField) refreshSuggestions(typed string) {
 // Update refreshes the suggestions after a key or a paste, which textinput inserts without
 // matching it.
 func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	shownPreview := l.typedPreview()
 	model, cmd := l.update(msg)
 	press, isPress := msg.(tea.KeyPressMsg)
-	if _, pasted := msg.(tea.PasteMsg); (isPress || pasted) && l.row != nil {
+	_, pasted := msg.(tea.PasteMsg)
+	changed := l.typedPreview() != shownPreview
+	if (isPress || pasted) && l.row != nil {
 		typed, shownRow := fmt.Sprint(l.Input.GetValue()), l.row.line()
 		if typed != l.row.typed {
 			l.refreshSuggestions(typed)
 		}
 		l.row.follow(press, typed)
-		if l.row.line() != shownRow {
-			l.show()
-			cmd = tea.Batch(cmd, tea.RequestWindowSize)
-		}
+		changed = changed || l.row.line() != shownRow
+	}
+	if changed {
+		l.show()
+		cmd = tea.Batch(cmd, tea.RequestWindowSize)
 	}
 	return model, tea.Batch(cmd, l.takeSend())
 }
@@ -288,7 +315,7 @@ func (l *listField) show() {
 		if first+i == l.picked {
 			marker = "× "
 		}
-		b.WriteString("\n" + marker + pickerLabel(value))
+		b.WriteString("\n" + marker + pickerLabel(value) + l.heldMark(value))
 	}
 	if l.thumbnail != nil && len(l.values) > 0 {
 		value := l.values[len(l.values)-1]
@@ -301,9 +328,24 @@ func (l *listField) show() {
 			b.WriteString("\n" + lines)
 		}
 	}
+	if preview := l.typedPreview(); preview != "" {
+		b.WriteString("\n" + preview)
+	}
 	if l.row != nil && l.row.line() != "" {
 		b.WriteString("\n" + l.row.line())
 	}
 
 	l.Description(b.String())
+}
+
+// heldMark returns what follows a held value: its preview when that marks it new, else "".
+func (l *listField) heldMark(value string) string {
+	if l.preview == nil {
+		return ""
+	}
+	if preview := l.preview(value); strings.HasPrefix(preview, newMark) {
+		return "  " + preview
+	}
+
+	return ""
 }

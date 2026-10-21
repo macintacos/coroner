@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -10,6 +12,8 @@ import (
 	"time"
 	"unicode"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
@@ -52,9 +56,53 @@ type summaryLine struct {
 	cells    []string
 }
 
-// askFunc runs a form of groups and reports whether it was submitted: Esc returns false, Ctrl-C
-// huh.ErrUserAborted.
-type askFunc func(ctx context.Context, groups ...formGroup) (bool, error)
+// askFunc runs a form of groups in frame and reports whether it was submitted: Esc returns false,
+// Ctrl-C huh.ErrUserAborted.
+type askFunc func(ctx context.Context, frame formFrame, groups ...formGroup) (bool, error)
+
+// formFrame is what an ask's frame shows beside the form: a title in place of the command's, and an
+// add session's timeline and the noun records it added, in the frame's edges.
+type formFrame struct {
+	title    string
+	timeline string
+	// entry is whether the form is an entry, which ctrl+t and Esc leave.
+	entry bool
+	added int
+	noun  string
+}
+
+// edges returns what f's frame sets into its edges, titled title unless f names another: the
+// timeline, and the count of records added once there is one, each with the key that leaves an
+// entry for it.
+func (f formFrame) edges(title string) frameEdges {
+	edges := frameEdges{title: cmp.Or(f.title, title)}
+	if f.timeline != "" {
+		edges.top = []string{"📒 " + f.timeline}
+		if f.entry {
+			edges.top = append(edges.top, keyHint(switchTimelineKey()))
+		}
+	}
+	if f.added > 0 {
+		done := lipgloss.NewStyle().Foreground(lipgloss.Green).Render("✓")
+		edges.bottom = []string{done + " " + strconv.Itoa(f.added) + " " + pluralNoun(f.added, f.noun) + " added"}
+		if f.entry {
+			edges.bottom = append(edges.bottom, keyHint(key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "finish"))))
+		}
+	}
+
+	return edges
+}
+
+// switchTimelineKey is the key that leaves an entry to pick the timeline it adds to.
+func switchTimelineKey() key.Binding {
+	return key.NewBinding(key.WithKeys("ctrl+t"), key.WithHelp("ctrl+t", "switch"))
+}
+
+// keyHint returns b's help as a huh group's help row draws it.
+func keyHint(b key.Binding) string {
+	styles := help.New().Styles
+	return styles.ShortKey.Render(b.Help().Key) + " " + styles.ShortDesc.Render(b.Help().Desc)
+}
 
 // formGroup is one page of a form: its fields, which the form skips while hide reports true.
 type formGroup struct {
@@ -73,8 +121,8 @@ func fieldsOf(groups []formGroup) []huh.Field {
 	return fields
 }
 
-// newForm returns the form, framed under title, that asks groups in turn.
-func newForm(title string, groups ...formGroup) *fittedForm {
+// newForm returns the form, framed with edges, that asks groups in turn.
+func newForm(edges frameEdges, groups ...formGroup) *fittedForm {
 	pages := make([]*huh.Group, len(groups))
 	for i, g := range groups {
 		pages[i] = huh.NewGroup(g.fields...)
@@ -83,7 +131,7 @@ func newForm(title string, groups ...formGroup) *fittedForm {
 		}
 	}
 
-	return &fittedForm{Form: huh.NewForm(pages...), title: title}
+	return &fittedForm{Form: huh.NewForm(pages...), edges: edges}
 }
 
 // formWidth is the widest a form's frame grows, so a wide terminal shows it as a card.
@@ -95,7 +143,7 @@ const formWidth = 80
 // the terminal drops a taller frame's top row.
 type fittedForm struct {
 	*huh.Form
-	title string
+	edges frameEdges
 	// width is the frame's, which the last window size sets.
 	width int
 }
@@ -117,7 +165,7 @@ func (f *fittedForm) View() tea.View {
 	body := f.Form.View()
 	// huh draws nothing once the form ends, which clears it from the screen.
 	if body != "" {
-		body = "\n" + frame(f.title, body, f.width)
+		body = "\n" + frame(f.edges, body, f.width)
 	}
 	v := tea.NewView(body)
 	v.ReportFocus = true
@@ -131,9 +179,16 @@ func frameBox() lipgloss.Style {
 		BorderForeground(lipgloss.BrightBlack)
 }
 
+// frameEdges is what a frame sets into its edges: title at the top edge's left, and the pieces of
+// top and bottom at the right of those edges.
+type frameEdges struct {
+	title       string
+	top, bottom []string
+}
+
 // frame returns body in a rounded frame width cells wide, clipping a wider line, or as wide as body
-// when width is 0, with title set into its top edge.
-func frame(title, body string, width int) string {
+// when width is 0, with edges set into its edges.
+func frame(edges frameEdges, body string, width int) string {
 	inside := lipgloss.NewStyle()
 	if width > 0 {
 		// huh can draw a line wider than it was told, as its help does; wrapping it would add a row
@@ -141,20 +196,59 @@ func frame(title, body string, width int) string {
 		inside = inside.MaxWidth(width - frameBox().GetHorizontalFrameSize())
 	}
 	box := frameBox().Width(width).Render(inside.Render(body))
-	edge := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
-	rule := strings.Repeat("─", max(0, lipgloss.Width(box)-ansi.StringWidth("╭─ "+title+" ╮")))
+	boxWidth := lipgloss.Width(box)
+	top := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack).Render("╭─ ") + lipgloss.NewStyle().Bold(true).Render(edges.title) +
+		edgeEnd(" ", edges.top, boxWidth-ansi.StringWidth("╭─ "+edges.title), "╮")
+	if len(edges.bottom) > 0 {
+		rows := strings.Split(box, "\n")
+		rows[len(rows)-1] = edgeEnd("╰", edges.bottom, boxWidth, "╯")
+		box = strings.Join(rows, "\n")
+	}
 
-	return edge.Render("╭─ ") + lipgloss.NewStyle().Bold(true).Render(title) + edge.Render(" "+rule+"╮") + "\n" + box
+	return top + "\n" + box
+}
+
+// edgeEnd returns the rest of a frame's edge, width cells wide: lead, a rule, pieces set off by
+// spaces, and corner. Where the edge is too narrow for them and a rule cell, it drops the last
+// pieces, then cuts the first short.
+func edgeEnd(lead string, pieces []string, width int, corner string) string {
+	edge := lipgloss.NewStyle().Foreground(lipgloss.BrightBlack)
+	rule := width - ansi.StringWidth(lead+corner)
+	// A rule cell, a space each side of the pieces, and the rule cell before the corner.
+	right := fitted(pieces, rule-4)
+	if right == "" {
+		return edge.Render(lead + strings.Repeat("─", max(0, rule)) + corner)
+	}
+
+	return edge.Render(lead+strings.Repeat("─", rule-ansi.StringWidth(right)-3)+" ") + right + edge.Render(" ─"+corner)
+}
+
+// fitted returns pieces two spaces apart in at most width cells: the last ones dropped, then the
+// first cut short, until they fit.
+func fitted(pieces []string, width int) string {
+	for len(pieces) > 1 && ansi.StringWidth(strings.Join(pieces, "  ")) > width {
+		pieces = pieces[:len(pieces)-1]
+	}
+
+	return ansi.Truncate(strings.Join(pieces, "  "), max(0, width), "…")
 }
 
 // errAskAgain is what a form's submission returns to ask the form again without printing an error.
 var errAskAgain = errors.New("ask the form again")
+
+// errSwitchTimeline is what an entry's ask returns when ctrl+t leaves it to pick another timeline.
+var errSwitchTimeline = errors.New("switch the timeline")
+
+// errEntryCancelled is what an entry returns when Esc leaves it, adding nothing.
+var errEntryCancelled = errors.New("entry cancelled")
 
 // formSession is what one run of a write command's form reads and writes.
 type formSession struct {
 	app App
 	inv invocation
 	ask askFunc
+	// frame is what the session's next ask shows beside its form.
+	frame formFrame
 	// thumbnails are what the form's list fields show under their values, by field name.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
 	// completions are what the form's list fields complete typed text to, by field name.
@@ -294,7 +388,8 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	if err != nil {
 		return err
 	}
-	in, chosen, err := chooseTimeline(ctx, s, f.def, in)
+	picker := timelinePicker{def: f.def, create: newTimeline}
+	in, chosen, err := chooseTimeline(ctx, s, picker, in)
 	if err != nil || !chosen {
 		return err
 	}
@@ -302,21 +397,34 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	noun, _, _ := strings.Cut(f.path, " ")
 	var added []summaryLine
 	for {
-		typed, entered, err := f.entry(ctx, s, in)
+		current, err := selectedTimeline(ctx, s, in)
 		if err != nil {
 			return err
 		}
+		s.frame = formFrame{timeline: current.Name, entry: true, added: len(added), noun: noun}
+		typed, entered, err := f.entry(ctx, s, in)
 		added = append(added, entered...)
-
-		yes := true
-		another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
-		submitted, err := s.ask(ctx, formGroup{fields: []huh.Field{another}})
-		if err != nil {
-			return askError(err)
+		switch {
+		case errors.Is(err, errSwitchTimeline):
+			s.frame = formFrame{added: len(added), noun: noun}
+			picker.current = current.Name
+			in, err = switchTimeline(ctx, s, picker, in, typed)
+			if err != nil {
+				return err
+			}
+			continue
+		case errors.Is(err, errEntryCancelled):
+			return s.summarize(noun, added)
+		case err != nil:
+			return err
 		}
-		// Value can rebind the confirm, so read what it holds.
-		accepted, _ := another.GetValue().(bool)
-		if !submitted || !accepted {
+
+		s.frame = formFrame{timeline: current.Name, added: len(added), noun: noun}
+		another, err := s.askAnother(ctx, noun)
+		if err != nil {
+			return err
+		}
+		if !another {
 			return s.summarize(noun, added)
 		}
 
@@ -324,19 +432,61 @@ func (f addForm[R]) session(ctx context.Context, s formSession, in fieldValues) 
 	}
 }
 
-// summarize prints a heading counting the noun records added lists, to the first one's timeline, a
-// row for each, and the command that views that timeline; nothing when added is empty.
+// askAnother asks whether to add another noun record, and reports whether so.
+func (s formSession) askAnother(ctx context.Context, noun string) (bool, error) {
+	yes := true
+	another := huh.NewConfirm().Title("➕ Add another " + noun + "?").Value(&yes)
+	submitted, err := s.ask(ctx, s.frame, formGroup{fields: []huh.Field{another}})
+	if err != nil {
+		return false, askError(err)
+	}
+	// Value can rebind the confirm, so read what it holds.
+	accepted, _ := another.GetValue().(bool)
+
+	return submitted && accepted, nil
+}
+
+// summarize prints, for each timeline the noun records added lists went to, in the order each first
+// got one, a heading counting them and a row for each, then the command that views those timelines;
+// nothing when added is empty.
 func (s formSession) summarize(noun string, added []summaryLine) error {
 	if len(added) == 0 {
 		return nil
 	}
 	styles := newNoteStyles(s.inv.errColor)
-	name := added[0].timeline
-	view := shellLine(slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view", "-t", name}))
+	groups := byTimeline(added)
+	// One table, so the columns line up across the timelines.
+	rows := strings.Split(summaryRows(slices.Concat(groups...), styles.faint), "\n")
+	blocks := make([]string, len(groups))
+	view := slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view"})
+	for i, group := range groups {
+		name := group[0].timeline
+		blocks[i] = fmt.Sprintf("%s Added %d %s to timeline %s\n%s", styles.done.Render("✓"), len(group),
+			pluralNoun(len(group), noun), styles.name.Render(name), strings.Join(rows[:len(group)], "\n"))
+		rows = rows[len(group):]
+		view = append(view, "-t", name)
+	}
+	label := "View the timeline:"
+	if len(groups) > 1 {
+		label = "View the timelines:"
+	}
 
-	return s.inv.out.notify("\n%s Added %d %s to timeline %s\n%s\n\n  %s %s",
-		styles.done.Render("✓"), len(added), pluralNoun(len(added), noun), styles.name.Render(name),
-		summaryRows(added, styles.faint), styles.faint.Render("View the timeline:"), view)
+	return s.inv.out.notify("\n%s\n\n  %s %s", strings.Join(blocks, "\n"), styles.faint.Render(label), shellLine(view))
+}
+
+// byTimeline returns added grouped by timeline, in the order each timeline first appears.
+func byTimeline(added []summaryLine) [][]summaryLine {
+	var groups [][]summaryLine
+	for _, line := range added {
+		i := slices.IndexFunc(groups, func(group []summaryLine) bool { return group[0].timeline == line.timeline })
+		if i == -1 {
+			groups = append(groups, nil)
+			i = len(groups) - 1
+		}
+		groups[i] = append(groups[i], line)
+	}
+
+	return groups
 }
 
 // summaryRows returns added's rows, two spaces in, with each cell before the text drawn in lead and
@@ -375,11 +525,10 @@ func newNoteStyles(color bool) noteStyles {
 	return noteStyles{faint: s.Faint(true), done: s.Foreground(lipgloss.Green), name: s.Bold(true)}
 }
 
-// chooseTimeline returns in with the timeline the session writes to, asking for one through def's
-// timeline field when no layer selects it, and whether there is one: Esc on that ask leaves none.
-func chooseTimeline(ctx context.Context, s formSession, def definition, in fieldValues) (fieldValues, bool, error) {
+// chooseTimeline returns in with the timeline the session writes to, asking for one through picker
+// when no layer selects it, and whether there is one: Esc on that ask leaves none.
+func chooseTimeline(ctx context.Context, s formSession, picker timelinePicker, in fieldValues) (fieldValues, bool, error) {
 	var by selectedBy
-	var timelines []timeline.Timeline
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		sel, err := selectTimelines(ctx, st, timelineInputOf(in), s.app.LookupEnv)
 		if err != nil || sel.by != "" {
@@ -387,8 +536,8 @@ func chooseTimeline(ctx context.Context, s formSession, def definition, in field
 			return err
 		}
 
-		timelines, err = st.Timelines(ctx)
-		if err == nil && len(timelines) == 0 {
+		picker.timelines, err = st.Timelines(ctx)
+		if err == nil && len(picker.timelines) == 0 {
 			return timelineRequiredError(ctx, st)
 		}
 		return err
@@ -400,37 +549,114 @@ func chooseTimeline(ctx context.Context, s formSession, def definition, in field
 		return in, true, nil
 	}
 
-	return askTimeline(ctx, s, def, in, timelines)
+	name, picked, err := picker.ask(ctx, s)
+	if err != nil || !picked {
+		return in, false, err
+	}
+	chosen := maps.Clone(in)
+	chosen["timeline"] = []string{name}
+
+	return chosen, true, nil
 }
 
-// askTimeline asks which of timelines in goes to, through def's timeline field, and returns in with
-// it, and whether one was picked.
-func askTimeline(
-	ctx context.Context, s formSession, def definition, in fieldValues, timelines []timeline.Timeline,
-) (fieldValues, bool, error) {
-	options := make([]huh.Option[string], 0, len(timelines))
-	for _, t := range timelines {
+// timelinePicker asks for a timeline through def's timeline field: one of timelines, opening on
+// current, else the first, or, when create is set, ✨ New timeline, which create asks for.
+type timelinePicker struct {
+	def       definition
+	timelines []timeline.Timeline
+	current   string
+	// create returns the name of the timeline it created or used, and whether there is one.
+	create func(context.Context, formSession) (string, bool, error)
+}
+
+// ask returns the name of the timeline picked, and whether there is one: Esc leaves none.
+func (p timelinePicker) ask(ctx context.Context, s formSession) (string, bool, error) {
+	var options []huh.Option[string]
+	if p.create != nil {
+		// An empty value is no timeline, which the field's check never rejects.
+		options = append(options, huh.NewOption("✨ New timeline", ""))
+	}
+	for _, t := range p.timelines {
 		options = append(options, huh.NewOption(strings.TrimSpace(t.Name+"  "+pickerLabel(t.Title)), t.Name))
 	}
-	pick := onlyField(def, "timeline")
-	fields := pick.formFields(baseCheckEnv(s), fieldValues{}, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
+	pick := onlyField(p.def, "timeline")
+	opening := fieldValues{"timeline": {cmp.Or(p.current, p.timelines[0].Name)}}
+	fields := pick.formFields(baseCheckEnv(s), opening, formChoices{options: map[string][]huh.Option[string]{"timeline": options}})
 
-	submitted, err := s.ask(ctx, formGroup{fields: fields})
+	submitted, err := s.ask(ctx, s.frame, formGroup{fields: fields})
 	switch {
 	case err != nil:
-		return in, false, askError(err)
+		return "", false, askError(err)
 	case !submitted:
-		return in, false, nil
+		return "", false, nil
+	}
+	name := pick.formValues(fields).value("timeline")
+	if name == nil {
+		return p.create(ctx, s)
 	}
 
-	picked := maps.Clone(in)
-	picked["timeline"] = pick.formValues(fields).values("timeline")
+	return *name, true, nil
+}
 
-	return picked, true, nil
+// switchTimeline asks through picker which timeline the entry typed goes to, and returns what the
+// entry reopens with: typed, with the timeline and id in gives, which no entry asks, on the timeline
+// picked or created, if any.
+func switchTimeline(ctx context.Context, s formSession, picker timelinePicker, in, typed fieldValues) (fieldValues, error) {
+	reopened := maps.Clone(typed)
+	for _, name := range []string{"timeline", "id"} {
+		if in.given(name) {
+			reopened[name] = in.values(name)
+		}
+	}
+	var err error
+	picker.timelines, err = storedTimelines(ctx, s)
+	if err != nil {
+		return reopened, err
+	}
+	name, picked, err := picker.ask(ctx, s)
+	if picked {
+		reopened["timeline"] = []string{name}
+	}
+
+	return reopened, err
+}
+
+// storedTimelines returns the timelines in the session's database.
+func storedTimelines(ctx context.Context, s formSession) ([]timeline.Timeline, error) {
+	var timelines []timeline.Timeline
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
+		var err error
+		timelines, err = st.Timelines(ctx)
+		return err
+	})
+
+	return timelines, err
+}
+
+// newTimeline asks for a timeline through timeline create's own form, framed as s frames its asks
+// under that form's title, and returns its name, and whether one was created or used.
+func newTimeline(ctx context.Context, s formSession) (string, bool, error) {
+	s.frame.title = timelineCreateTitle
+	t, created, err := askTimelineCreate(ctx, s, timelineCreateWrite(), fieldValues{})
+
+	return t.Name, created, err
+}
+
+// selectedTimeline returns the timeline in selects, which an entry prefilled from in adds to.
+func selectedTimeline(ctx context.Context, s formSession, in fieldValues) (timeline.Timeline, error) {
+	var t timeline.Timeline
+	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
+		var err error
+		t, err = selectOne(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		return err
+	})
+
+	return t, err
 }
 
 // entry asks for one entry, prefilled from in, and adds it to in's timeline once submitted. It returns
-// the values last submitted, or in when none was, and the summary's line for the record it stored.
+// the values last submitted, or in when none was, and the summary's line for the record it stored;
+// errEntryCancelled when Esc leaves it, and what was typed with errSwitchTimeline when ctrl+t does.
 func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (fieldValues, []summaryLine, error) {
 	choices, err := f.entryChoices(ctx, s, in, baseCheckEnv(s).zone)
 	if err != nil {
@@ -441,11 +667,15 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 	def := withoutField(withoutField(f.def, "timeline"), "id")
 	if i := def.fieldIndex("source"); i != -1 {
 		// sourceChoices suggests every stored source.
-		def.fields[i].preview = sourcePreview(choices.suggestions["source"])
+		def.fields[i].preview = storedPreview("source", checkSource, choices.suggestions["source"])
+	}
+	if i := def.fieldIndex("tag"); i != -1 {
+		// eventChoices suggests every stored tag.
+		def.fields[i].preview = storedPreview("tag", checkTag, choices.suggestions["tag"])
 	}
 
 	var added []summaryLine
-	typed, err := s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
+	typed, submitted, err := s.askUntil(ctx, def, choices, in, func(typed fieldValues) error {
 		if in.given("timeline") {
 			typed["timeline"] = in.values("timeline")
 		}
@@ -461,16 +691,20 @@ func (f addForm[R]) entry(ctx context.Context, s formSession, in fieldValues) (f
 		}
 		return nil
 	})
+	if err == nil && !submitted {
+		err = errEntryCancelled
+	}
 
 	return typed, added, err
 }
 
 // askUntil asks def's fields, prefilled from in and picking from choices, and passes what was typed to
 // submit. It asks again with what was typed while submit returns errAskAgain, or a correctable error,
-// which it prints. It returns what was last typed and submit's error, or in when Esc ends the form.
+// which it prints. It returns what was last typed, whether submit took it, and submit's error; in when
+// Esc ends the form, or what was typed and errSwitchTimeline when ctrl+t does.
 func (s formSession) askUntil(
 	ctx context.Context, def definition, choices formChoices, in fieldValues, submit func(typed fieldValues) error,
-) (fieldValues, error) {
+) (fieldValues, bool, error) {
 	choices.thumbnails = s.thumbnails
 	choices.completions = s.completions
 	choices.paths = s.paths
@@ -478,15 +712,17 @@ func (s formSession) askUntil(
 	for {
 		fields := def.formFields(baseCheckEnv(s), in, choices)
 		groups := def.formGroups(fields, in)
-		submitted, err := s.ask(ctx, groups...)
+		submitted, err := s.ask(ctx, s.frame, groups...)
+		typed := def.formValues(def.shownFields(groups))
 		switch {
+		case errors.Is(err, errSwitchTimeline):
+			return typed, false, err
 		case err != nil:
-			return in, askError(err)
+			return in, false, askError(err)
 		case !submitted:
-			return in, nil
+			return in, false, nil
 		}
 
-		typed := def.formValues(def.shownFields(groups))
 		err = submit(typed)
 		rejected, _ := errors.AsType[*Error](err)
 		switch {
@@ -495,10 +731,10 @@ func (s formSession) askUntil(
 			// A rejected entry is reported to the person at the form, never as a JSON envelope.
 			err = writeError(s.app.Err, rejected, errorStyle{color: s.inv.errColor})
 			if err != nil {
-				return typed, err
+				return typed, false, err
 			}
 		default:
-			return typed, err
+			return typed, err == nil, err
 		}
 		in = typed
 	}
@@ -598,29 +834,59 @@ func onlyField(d definition, name string) definition {
 // color when color is true, in the profile an attach field needs for the images the terminal shows.
 func terminalForms(app App, title string) func(color bool, images graphics.Protocol) askFunc {
 	return func(color bool, images graphics.Protocol) askFunc {
-		return func(ctx context.Context, groups ...formGroup) (bool, error) {
+		return func(ctx context.Context, f formFrame, groups ...formGroup) (bool, error) {
 			fields := fieldsOf(groups)
 			attach := slices.ContainsFunc(fields, func(f huh.Field) bool { return f.GetKey() == "attach" })
 			profile := formProfile(color, images, attach)
-			cancelled := false
-			form := newForm(title, groups...)
+			var keys formKeys
+			form := newForm(f.edges(title), groups...)
 			// Not tea.Interrupt for cancel: bubbletea skips an interrupted program's last frame, the
 			// empty one that clears the form.
 			form.SubmitCmd, form.CancelCmd = tea.Quit, tea.Quit
 			// The caller's context already ends on a signal, and the profile is pinned so bubbletea
 			// never reads the process environment to pick one.
 			_, err := tea.NewProgram(form, tea.WithContext(ctx), tea.WithInput(app.In), tea.WithOutput(app.Out),
-				tea.WithFilter(escCancels(&cancelled, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
-			switch {
-			case cancelled:
-				return false, nil
-			case form.State == huh.StateAborted:
-				return false, huh.ErrUserAborted
-			}
+				tea.WithFilter(keys.filter(f, fields)), tea.WithColorProfile(profile), tea.WithoutSignalHandler()).Run()
 
-			return err == nil, err
+			return keys.ended(form.State, err)
 		}
 	}
+}
+
+// formKeys records which key the program filter it returns turned into a form's own abort.
+type formKeys struct{ cancelled, switched bool }
+
+// filter returns the program filter of a form framed as f, of fields: escCancels, and on an entry, one
+// that turns ctrl+t into the form's own abort too, so no field sees it.
+func (k *formKeys) filter(f formFrame, fields []huh.Field) func(tea.Model, tea.Msg) tea.Msg {
+	esc := escCancels(&k.cancelled, fields)
+	if !f.entry {
+		return esc
+	}
+
+	return func(m tea.Model, msg tea.Msg) tea.Msg {
+		press, ok := msg.(tea.KeyPressMsg)
+		if !ok || !key.Matches(press, switchTimelineKey()) {
+			return esc(m, msg)
+		}
+		k.switched = true
+		// ctrl+c is huh's Quit binding.
+		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
+	}
+}
+
+// ended returns what an ask returns for its form, which ended in state with err.
+func (k *formKeys) ended(state huh.FormState, err error) (bool, error) {
+	switch {
+	case k.switched:
+		return false, errSwitchTimeline
+	case k.cancelled:
+		return false, nil
+	case state == huh.StateAborted:
+		return false, huh.ErrUserAborted
+	}
+
+	return err == nil, err
 }
 
 // escCancels returns a program filter that turns Esc into the form's own abort, so the form clears
@@ -703,23 +969,26 @@ func sourceChoices(ctx context.Context, s *store.Store, t timeline.Timeline) (fo
 	return formChoices{suggestions: map[string][]string{"source": names}}, nil
 }
 
-// sourcePreview returns the source field's preview: the hint of the check a typed source fails, else
-// whether it is one of existing or a new source.
-func sourcePreview(existing []string) func(string, checkEnv) string {
-	return func(source string, _ checkEnv) string {
-		rejected, ok := errors.AsType[*Error](checkSource(source))
+// storedPreview returns the preview of a field naming a noun: the hint of the check a typed value
+// fails, else whether it is one of existing or a new noun.
+func storedPreview(noun string, check func(string) error, existing []string) func(string, checkEnv) string {
+	return func(value string, _ checkEnv) string {
+		rejected, ok := errors.AsType[*Error](check(value))
 		switch {
-		case source == "":
+		case value == "":
 			return ""
 		case ok:
 			return rejected.Hint
-		case slices.Contains(existing, source):
-			return "✅ Existing source"
+		case slices.Contains(existing, value):
+			return "✅ Existing " + noun
 		}
 
-		return "✨ New source"
+		return newMark + noun
 	}
 }
+
+// newMark starts the preview of a value no stored record has; a list field marks such held values.
+const newMark = "✨ New "
 
 func sourceNames(sources []timeline.Source) []string {
 	names := make([]string, 0, len(sources))

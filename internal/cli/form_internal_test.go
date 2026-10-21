@@ -76,6 +76,14 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("head the timeline picker of each form command 📒 Timeline", func() {
+		for _, def := range []definition{eventAddDefinition(), annotationAddDefinition(), timelineEditDefinition()} {
+			picker := onlyField(def, "timeline").formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+			Expect(fieldView(namedField(picker, "timeline"))).To(ContainSubstring("📒 Timeline"))
+		}
+	})
+
 	It("head each field of the form commands with an icon before its title", func() {
 		forms := []definition{
 			withoutField(eventAddDefinition(), "id"), annotationAddDefinition(),
@@ -91,7 +99,7 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("frame a form's view in a border as wide as asked, with its title set into the top edge and a blank row under it", func() {
-		lines := strings.Split(ansi.Strip(frame("📝 New event", "What happened\n> Primary stepped down", 40)), "\n")
+		lines := strings.Split(ansi.Strip(frame(frameEdges{title: "📝 New event"}, "What happened\n> Primary stepped down", 40)), "\n")
 
 		Expect(lines).To(HaveLen(5))
 		Expect(lines[0]).To(HavePrefix("╭─ 📝 New event ─"))
@@ -105,7 +113,7 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("clip a line wider than the frame's inside, so the frame keeps the rows the form planned", func() {
-		lines := strings.Split(ansi.Strip(frame("📝 New event", strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
+		lines := strings.Split(ansi.Strip(frame(frameEdges{title: "📝 New event"}, strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
 
 		Expect(lines).To(HaveLen(5))
 		Expect(lines[3]).To(HavePrefix("│ > typed"))
@@ -114,8 +122,59 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("set an edge's pieces into its right end, two spaces apart", func() {
+		edges := frameEdges{
+			title: "📝 New event", top: []string{"📒 inc-4821", "ctrl+t switch"}, bottom: []string{"✓ 2 events added", "esc finish"},
+		}
+
+		lines := strings.Split(ansi.Strip(frame(edges, "What happened", 80)), "\n")
+
+		Expect(lines[0]).To(Equal("╭─ 📝 New event " + strings.Repeat("─", 34) + " 📒 inc-4821  ctrl+t switch ─╮"))
+		Expect(lines[len(lines)-1]).To(Equal("╰" + strings.Repeat("─", 47) + " ✓ 2 events added  esc finish ─╯"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(80), line)
+		}
+	})
+
+	It("drop an edge's last pieces, then cut the first short, where the edge is too narrow, keeping a rule cell", func() {
+		edges := frameEdges{
+			title: "📝 New event", top: []string{"📒 inc-4821", "ctrl+t switch"}, bottom: []string{"✓ 2 events added", "esc finish"},
+		}
+
+		lines := strings.Split(ansi.Strip(frame(edges, "What happened", 30)), "\n")
+
+		Expect(lines[0]).To(Equal("╭─ 📝 New event ─ 📒 inc-4… ─╮"))
+		Expect(lines[len(lines)-1]).To(Equal("╰" + strings.Repeat("─", 9) + " ✓ 2 events added ─╯"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(30), line)
+		}
+	})
+
+	DescribeTable("show an add session's timeline and the records it added in the edges of each form it asks",
+		func(f formFrame, title string, top, bottom []string) {
+			edges := f.edges("📝 New event")
+
+			Expect(edges.title).To(Equal(title))
+			Expect(stripped(edges.top)).To(Equal(top))
+			Expect(stripped(edges.bottom)).To(Equal(bottom))
+		},
+		Entry("an entry before any was added",
+			formFrame{timeline: "inc-4821", entry: true, noun: "event"}, "📝 New event",
+			[]string{"📒 inc-4821", "ctrl+t switch"}, nil),
+		Entry("an entry after two were added",
+			formFrame{timeline: "inc-4821", entry: true, added: 2, noun: "event"}, "📝 New event",
+			[]string{"📒 inc-4821", "ctrl+t switch"}, []string{"✓ 2 events added", "esc finish"}),
+		Entry("Add another",
+			formFrame{timeline: "inc-4821", added: 2, noun: "event"}, "📝 New event", []string{"📒 inc-4821"}, []string{"✓ 2 events added"}),
+		Entry("the timeline picker",
+			formFrame{added: 1, noun: "annotation"}, "📝 New event", nil, []string{"✓ 1 annotation added"}),
+		Entry("the new timeline form",
+			formFrame{title: "📒 New timeline", added: 1, noun: "event"}, "📒 New timeline", nil, []string{"✓ 1 event added"}),
+		Entry("the first timeline picker", formFrame{}, "📝 New event", nil, nil),
+	)
+
 	It("frame a form at most 80 cells wide on a wider terminal", func() {
-		form := newForm("📝 New event", formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+		form := newForm(frameEdges{title: "📝 New event"}, formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
 
 		form.Update(tea.WindowSizeMsg{Width: 200, Height: 20})
 
@@ -125,7 +184,7 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("draw a blank row between the output above a form and its frame", func() {
-		form := newForm("📝 New event", formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+		form := newForm(frameEdges{title: "📝 New event"}, formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
 
 		form.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
 
@@ -809,4 +868,14 @@ func fieldView(formField huh.Field) string {
 	}
 
 	return ansi.Strip(view.View())
+}
+
+// stripped returns pieces without their styles, or nil for none.
+func stripped(pieces []string) []string {
+	var plain []string
+	for _, piece := range pieces {
+		plain = append(plain, ansi.Strip(piece))
+	}
+
+	return plain
 }

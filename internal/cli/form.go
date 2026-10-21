@@ -222,7 +222,7 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	case f.typ == stringsField && f.list:
 		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check).
 			withSuggestions(form.choices.suggestions[f.name]).withCompletions(form.choices.completions[f.name]).
-			withThumbnail(form.choices.thumbnails[f.name]).withPath(form.choices.paths[f.name])
+			withThumbnail(form.choices.thumbnails[f.name]).withPath(form.choices.paths[f.name]).withPreview(f.preview, form.env)
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)

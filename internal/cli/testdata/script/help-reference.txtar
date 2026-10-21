@@ -674,8 +674,10 @@ On a terminal, with no text or with --interactive, a form asks for the text, tim
 tags and files, and keeps the other flags under More options, which opens by itself when one
 of them holds a value. It suggests sources and tags, the ones on the timeline's latest
 events first, previews the time as you type it, and prints the command each entry equals.
-It never asks for --id, which applies to the first entry only, and lists the events added
-when you finish. Under --json only --interactive opens it, and --no-input never does.
+It never asks for --id, which applies to the first entry only. Its frame names the timeline,
+which ctrl+t switches or creates, and counts the events added, which it lists when you
+finish; esc on an entry finishes at once. Under --json only --interactive opens it, and
+--no-input never does.
 ~~~
 
 ~~~text

@@ -62,7 +62,7 @@ func namedKey(name string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
 	case "backspace":
 		return tea.KeyPressMsg{Code: tea.KeyBackspace}
-	case "ctrl+e", "ctrl+n", "ctrl+p":
+	case "ctrl+e", "ctrl+n", "ctrl+p", "ctrl+t":
 		return tea.KeyPressMsg{Code: rune(name[len(name)-1]), Mod: tea.ModCtrl}
 	}
 	r := []rune(name)[0]
@@ -74,18 +74,11 @@ func namedKey(name string) tea.KeyPressMsg {
 // inside a synctest bubble.
 func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*fittedForm)) func(bool, graphics.Protocol) askFunc {
 	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, groups ...formGroup) (bool, error) {
-			d := keyDriver{form: newForm("📝 New event", groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
-			cancelled := false
-			keys := d.press(t, script, escCancels(&cancelled, fieldsOf(groups)), check)
-			script.asks = append(script.asks, keys)
-			switch {
-			case cancelled:
-				return false, nil
-			case d.form.State == huh.StateAborted:
-				return false, huh.ErrUserAborted
-			}
-			return true, nil
+		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
+			d := keyDriver{form: newForm(f.edges("📝 New event"), groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
+			var keys formKeys
+			script.asks = append(script.asks, d.press(t, script, keys.filter(f, fieldsOf(groups)), check))
+			return keys.ended(d.form.State, nil)
 		}
 	}
 }
@@ -283,6 +276,9 @@ func keyedRun(t *testing.T, script *keyScript, check func(*fittedForm)) App {
 	for i, keys := range script.asks {
 		t.Logf("ask %d: %d keys %v", i, len(keys), keys)
 	}
+	if len(script.keys) > 0 {
+		t.Errorf("the forms ended with %v still to press", script.keys)
+	}
 
 	app.Args = []string{"--db", db}
 	return app
@@ -388,13 +384,48 @@ func TestEventAddFormKeys(t *testing.T) {
 		keyedRun(t, script, check)
 	})
 
+	t.Run("switch timeline", testSwitchTimeline)
 	t.Run("tag suggestion", testTagSuggestion)
 	t.Run("cycle and pick", testCycleAndPick)
 	t.Run("remove carried tag", testRemoveCarriedTag)
 	t.Run("esc in tags", testEscInTags)
+	t.Run("esc finish", testEscFinish)
 	t.Run("attach completion", testAttachCompletion)
 	t.Run("attach directories", testAttachDirectories)
 	t.Run("attach cycle and pick", testAttachCycleAndPick)
+}
+
+func testSwitchTimeline(t *testing.T) {
+	script := new(keyScript).press("down", "enter").
+		typed("Edge slower").press("ctrl+t").
+		press("up", "enter").
+		press("enter", "enter", "enter", "enter", "enter", "enter").
+		press("n")
+	var top string
+	check := func(form *fittedForm) {
+		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
+		if form.GetFocusedField().GetKey() == "text" && strings.Contains(lines[1], "api-latency") {
+			top = lines[1]
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if want := "╭─ 📝 New event " + strings.Repeat("─", 11) + " 📒 api-latency  ctrl+t switch ─╮"; top != want {
+		t.Errorf("the entry on api-latency is headed %q; want %q", top, want)
+	}
+	if switched := script.asks[1]; !slices.Equal(switched, []string{"ctrl+t"}) {
+		t.Errorf("the first entry took %v; want ctrl+t alone", switched)
+	}
+	app.Args = append(app.Args, "event", "list", "-t", "api-latency", "--json")
+	var out strings.Builder
+	app.Out = &out
+	if code := Run(t.Context(), app); code != 0 {
+		t.Fatalf("event list exited %d", code)
+	}
+	if !strings.Contains(out.String(), `"text": "Edge slower"`) {
+		t.Errorf("api-latency holds %s; want Edge slower", out.String())
+	}
 }
 
 func testAttachDirectories(t *testing.T) {
@@ -596,13 +627,37 @@ func testRemoveCarriedTag(t *testing.T) {
 }
 
 func testEscInTags(t *testing.T) {
-	script := tagsEntry().typed("db").press("esc", "n")
+	script := tagsEntry().typed("db").press("esc")
 
 	app := keyedRun(t, script, nil)
 
 	if slices.ContainsFunc(storedEvents(t, app), func(e map[string]any) bool { return e["text"] == "Failover finished" }) {
 		t.Error("stored the entry Esc cancelled")
 	}
+}
+
+func testEscFinish(t *testing.T) {
+	script := baselineEntry().press("y").typed("Failover confirmed").press("esc")
+	var bottom string
+	check := func(form *fittedForm) {
+		if form.GetFocusedField().GetKey() == "text" {
+			lines := strings.Split(ansi.Strip(form.View().Content), "\n")
+			bottom = lines[len(lines)-1]
+		}
+	}
+
+	app := keyedRun(t, script, check)
+
+	if want := "╰" + strings.Repeat("─", 28) + " ✓ 1 event added  esc finish ─╯"; bottom != want {
+		t.Errorf("the second entry ends %q; want %q", bottom, want)
+	}
+	if len(script.asks) != 4 {
+		t.Errorf("the forms asked %d times; want the picker, an entry, Add another and an entry", len(script.asks))
+	}
+	if slices.ContainsFunc(storedEvents(t, app), func(e map[string]any) bool { return e["text"] == "Failover confirmed" }) {
+		t.Error("stored the entry Esc left")
+	}
+	addedEvent(t, app)
 }
 
 // tagsEntry is the start of an entry, up to typing into Tags.
@@ -676,7 +731,7 @@ func TestTerminalFormClearsWhenItEnds(t *testing.T) {
 				}()
 				pick := huh.NewSelect[string]().Key("timeline").Options(huh.NewOptions("api-latency", "mongo-outage")...)
 
-				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formGroup{fields: []huh.Field{pick}})
+				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formFrame{}, formGroup{fields: []huh.Field{pick}})
 				_ = typing.Close()
 				if !errors.Is(err, end.want) {
 					t.Fatalf("the form ended with %v; want %v", err, end.want)
