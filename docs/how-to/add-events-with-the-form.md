@@ -31,7 +31,10 @@ before each field's title. It first asks for the five fields most events use:
 - **Source:** the system, service or person it came from. As you type, the form marks the
   name ✅ Existing source when coroner already has that source, or ✨ New source when the
   event would create it. `annotation add`'s form marks its Source field the same way.
-- **Tags:** keywords such as `phase:detect`, added one at a time with `enter`.
+- **Tags:** keywords such as `phase:detect`, added one at a time with `enter`. As you
+  type, the form marks the tag ✅ Existing tag when coroner already has that tag, or ✨
+  New tag when it does not, and each tag the field holds that is new keeps ✨ New tag
+  beside it.
 - **Files:** files to attach, such as screenshots, one path at a time.
 
 Source and Tags show a `💡 Suggestions:` row of the values on the timeline's latest events
