@@ -464,6 +464,29 @@ var _ = Describe("add forms", func() {
 					Expect(listed(ctx, "api-latency")).To(Equal([]string{"Edge slow"}))
 				})
 
+				It("end with a block for each timeline added to, in the order each first got an event, and one command viewing them all",
+					func(ctx SpecContext) {
+						first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+						second := map[string]string{"text": "Edge slow", "at": "2026-09-11T03:15:00Z"}
+						third := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
+						command := eventAdd(ctx, answers(
+							submit(first), confirm(true),
+							ctrlT(nil), submit(map[string]string{"timeline": "api-latency"}), submit(second), confirm(true),
+							ctrlT(nil), submit(map[string]string{"timeline": "mongo-outage"}), submit(third), confirm(false),
+						))
+
+						Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+						Expect(errOut.String()).To(HaveSuffix("\n" +
+							"✓ Added 2 events to timeline `mongo-outage`\n" +
+							"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+							"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+							"✓ Added 1 event to timeline `api-latency`\n" +
+							"  #1  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Edge slow\n" +
+							"\n" +
+							"  View the timelines: coroner --db " + db + " timeline view -t mongo-outage -t api-latency\n"))
+					})
+
 				It("reopen the entry on its own timeline, as typed, when Esc leaves the picker", func(ctx SpecContext) {
 					command := eventAdd(ctx, answers(ctrlT(map[string]string{"text": "Edge slow"}), cancel, submit(nil), confirm(false)))
 

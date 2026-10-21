@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -444,19 +445,47 @@ func (s formSession) askAnother(ctx context.Context, noun string) (bool, error) 
 	return submitted && accepted, nil
 }
 
-// summarize prints a heading counting the noun records added lists, to the first one's timeline, a
-// row for each, and the command that views that timeline; nothing when added is empty.
+// summarize prints, for each timeline the noun records added lists went to, in the order each first
+// got one, a heading counting them and a row for each, then the command that views those timelines;
+// nothing when added is empty.
 func (s formSession) summarize(noun string, added []summaryLine) error {
 	if len(added) == 0 {
 		return nil
 	}
 	styles := newNoteStyles(s.inv.errColor)
-	name := added[0].timeline
-	view := shellLine(slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view", "-t", name}))
+	groups := byTimeline(added)
+	// One table, so the columns line up across the timelines.
+	rows := strings.Split(summaryRows(slices.Concat(groups...), styles.faint), "\n")
+	blocks := make([]string, len(groups))
+	view := slices.Concat([]string{"coroner"}, s.inv.echoArgs, []string{"timeline", "view"})
+	for i, group := range groups {
+		name := group[0].timeline
+		blocks[i] = fmt.Sprintf("%s Added %d %s to timeline %s\n%s", styles.done.Render("✓"), len(group),
+			pluralNoun(len(group), noun), styles.name.Render(name), strings.Join(rows[:len(group)], "\n"))
+		rows = rows[len(group):]
+		view = append(view, "-t", name)
+	}
+	label := "View the timeline:"
+	if len(groups) > 1 {
+		label = "View the timelines:"
+	}
 
-	return s.inv.out.notify("\n%s Added %d %s to timeline %s\n%s\n\n  %s %s",
-		styles.done.Render("✓"), len(added), pluralNoun(len(added), noun), styles.name.Render(name),
-		summaryRows(added, styles.faint), styles.faint.Render("View the timeline:"), view)
+	return s.inv.out.notify("\n%s\n\n  %s %s", strings.Join(blocks, "\n"), styles.faint.Render(label), shellLine(view))
+}
+
+// byTimeline returns added grouped by timeline, in the order each timeline first appears.
+func byTimeline(added []summaryLine) [][]summaryLine {
+	var groups [][]summaryLine
+	for _, line := range added {
+		i := slices.IndexFunc(groups, func(group []summaryLine) bool { return group[0].timeline == line.timeline })
+		if i == -1 {
+			groups = append(groups, nil)
+			i = len(groups) - 1
+		}
+		groups[i] = append(groups[i], line)
+	}
+
+	return groups
 }
 
 // summaryRows returns added's rows, two spaces in, with each cell before the text drawn in lead and
