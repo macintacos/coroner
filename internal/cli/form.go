@@ -171,7 +171,7 @@ func zonePreview(check func(string, checkEnv) error, preview func(string, checkE
 // typedZone returns env in the zone the tz field of d's form fields holds, when timeZone accepts it.
 func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 	i := d.fieldIndex("tz")
-	if i == -1 {
+	if i == -1 || fields[i] == nil {
 		return env
 	}
 	tz := fmt.Sprint(fields[i].GetValue())
@@ -216,23 +216,27 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 		}, bindings)
 	case f.typ == stringsField && f.list:
 		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check).
-			withThumbnail(form.choices.thumbnails[f.name])
+			withSuggestions(form.choices.suggestions[f.name]).withThumbnail(form.choices.thumbnails[f.name])
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)
 		})
 	}
 
+	suggestions := form.choices.suggestions[f.name]
 	input := huh.NewInput().Key(f.name).Title(title).Description(help).Value(bound).
-		Suggestions(form.choices.suggestions[f.name]).Placeholder(form.choices.placeholders[f.name]).Validate(check)
-	input.DescriptionFunc(func() string {
+		Suggestions(suggestions).Placeholder(form.choices.placeholders[f.name]).Validate(check)
+	describe := func() string {
 		return f.description(help, fmt.Sprint(input.GetValue()), form.env())
-	}, bindings)
-	if f.suggest == nil {
-		return input
+	}
+	switch {
+	case f.suggest != nil:
+		return suggestingInput{Input: input.DescriptionFunc(describe, bindings), bound: bound, suggest: f.suggest}
+	case len(suggestions) > 0:
+		return newMatchingInput(input, describe, suggestions)
 	}
 
-	return suggestingInput{Input: input, bound: bound, suggest: f.suggest}
+	return input.DescriptionFunc(describe, bindings)
 }
 
 // suggestingInput is an Input that ctrl+e sets to the valid value suggest offers for what it holds.

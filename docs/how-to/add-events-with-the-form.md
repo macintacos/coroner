@@ -28,20 +28,26 @@ The form first asks for the five fields most events use:
 - **When:** the time it happened, in any form `coroner help time-input` lists. The form
   previews the time it reads as you type. Leave it empty to mean now.
 - **Source:** the system, service or person it came from.
-- **Tags:** keywords such as `phase:detect`, one per line.
-- **Files:** files to attach, such as screenshots, one path per line.
+- **Tags:** keywords such as `phase:detect`, added one at a time with `enter`.
+- **Files:** files to attach, such as screenshots, one path at a time.
+
+Source and Tags show a row of the values on the timeline's latest events first, then every
+other one. Once you type, the row shows the ones that start with what you typed, beside
+the inline suggestion `ctrl+e` takes.
 
 These keys move through the form:
 
-| Key         | What it does                                                   |
-| ----------- | -------------------------------------------------------------- |
-| `enter`     | Go to the next field; in Files, add the path typed, or move on from an empty line. |
-| `ctrl+e`    | Take the field's suggestion, such as a source already in use.  |
-| `ctrl+j`    | Start a new line in Tags.                                      |
-| `y` / `n`   | Answer Yes or No, as to More options?                          |
-| `shift+tab` | Go back to the previous field.                                 |
-| `esc`       | Drop the entry, and add nothing.                               |
-| `ctrl+c`    | Stop coroner, which exits as interrupted.                      |
+| Key                 | What it does                                                    |
+| ------------------- | --------------------------------------------------------------- |
+| `enter`             | Go to the next field; in Tags or Files, add the value typed, or move on from an empty one. |
+| `ctrl+e`            | Take the field's suggestion, such as a source already in use.   |
+| `↑` / `↓`           | Cycle the matches while you type, or pick a value in Tags or Files while nothing is typed. |
+| `ctrl+n` / `ctrl+p` | Cycle the matches.                                              |
+| `backspace`         | Remove the picked value.                                        |
+| `y` / `n`           | Answer Yes or No, as to More options?                           |
+| `shift+tab`         | Go back to the previous field.                                  |
+| `esc`               | Drop the entry, and add nothing.                                |
+| `ctrl+c`            | Stop coroner, which exits as interrupted.                       |
 
 ## Use More options
 
@@ -70,7 +76,8 @@ with these values carried from the last one:
 - the author
 - the dry run
 
-The text, time, end, approximate mark, URL, id and files start empty each time.
+The text, time, end, approximate mark, URL, id and files start empty each time. To drop a
+carried tag, pick it with `↑` and press `backspace`.
 
 ## Repeat an entry from a script
 

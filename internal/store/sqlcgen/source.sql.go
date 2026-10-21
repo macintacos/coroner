@@ -113,6 +113,41 @@ func (q *Queries) ListSources(ctx context.Context) ([]Source, error) {
 	return items, nil
 }
 
+const listTimelineSources = `-- name: ListTimelineSources :many
+SELECT s.id, s.name, s.timezone, s.created_at FROM source s JOIN event e ON e.source_id = s.id
+WHERE e.timeline_id = ?
+GROUP BY s.id
+ORDER BY MAX(e.occurred_at) DESC, s.name
+`
+
+func (q *Queries) ListTimelineSources(ctx context.Context, timelineID string) ([]Source, error) {
+	rows, err := q.db.QueryContext(ctx, listTimelineSources, timelineID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Source{}
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Timezone,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateSource = `-- name: UpdateSource :one
 UPDATE source
 SET name = ?

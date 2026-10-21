@@ -26,6 +26,24 @@ func (tx *Tx) Sources(ctx context.Context) ([]timeline.Source, error) {
 	})
 }
 
+// TimelineSources is Tx.TimelineSources in its own Read.
+func (s *Store) TimelineSources(ctx context.Context, timelineID string) ([]timeline.Source, error) {
+	return readIn(ctx, s, func(tx *Tx) ([]timeline.Source, error) { return tx.TimelineSources(ctx, timelineID) })
+}
+
+// TimelineSources returns the sources the timeline's events name, the one on its latest event
+// first.
+func (tx *Tx) TimelineSources(ctx context.Context, timelineID string) ([]timeline.Source, error) {
+	return translated(func() ([]timeline.Source, error) {
+		rows, err := tx.q.ListTimelineSources(ctx, timelineID)
+		if err != nil {
+			return nil, err
+		}
+
+		return loadAll(rows, loadSource)
+	})
+}
+
 // SourceUsage is a source with how many events and annotations name it, and when its events
 // happened.
 type SourceUsage struct {

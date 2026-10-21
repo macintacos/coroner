@@ -498,10 +498,36 @@ func filtering(formField huh.Field) bool {
 func eventAddForm() addForm[eventAdded] {
 	return addForm[eventAdded]{
 		path: "event add", def: eventAddDefinition(), run: addEvent,
-		choices: func(ctx context.Context, s *store.Store, _ timeline.Timeline, _ zone) (formChoices, error) {
-			return sourceChoices(ctx, s)
-		},
+		choices: eventChoices,
 	}
+}
+
+// eventChoices suggests sources as sourceChoices does, and t's tags, ordered by their latest event's
+// occurred at, latest first, then every other tag there is.
+func eventChoices(ctx context.Context, s *store.Store, t timeline.Timeline, _ zone) (formChoices, error) {
+	choices, err := sourceChoices(ctx, s, t)
+	if err != nil {
+		return formChoices{}, err
+	}
+	timelineTags, err := s.TagUsages(ctx, t.ID)
+	if err != nil {
+		return formChoices{}, err
+	}
+	everyTag, err := s.TagUsages(ctx)
+	if err != nil {
+		return formChoices{}, err
+	}
+	choices.suggestions["tag"] = appendUnique(tagNames(timelineTags), tagNames(everyTag)...)
+
+	return choices, nil
+}
+
+func tagNames(usages []store.TagUsage) []string {
+	names := make([]string, 0, len(usages))
+	for _, usage := range usages {
+		names = append(names, usage.Name)
+	}
+	return names
 }
 
 func annotationAddForm() addForm[annotationAdded] {
@@ -511,21 +537,34 @@ func annotationAddForm() addForm[annotationAdded] {
 	}
 }
 
-// sourceChoices suggests the sources there are for the source field.
-func sourceChoices(ctx context.Context, s *store.Store) (formChoices, error) {
-	sources, err := s.Sources(ctx)
+// sourceChoices suggests t's sources for the source field, the one on its latest event first, then
+// every other source there is.
+func sourceChoices(ctx context.Context, s *store.Store, t timeline.Timeline) (formChoices, error) {
+	timelineSources, err := s.TimelineSources(ctx, t.ID)
+	if err != nil {
+		return formChoices{}, err
+	}
+	everySource, err := s.Sources(ctx)
+	if err != nil {
+		return formChoices{}, err
+	}
+	names := appendUnique(sourceNames(timelineSources), sourceNames(everySource)...)
+
+	return formChoices{suggestions: map[string][]string{"source": names}}, nil
+}
+
+func sourceNames(sources []timeline.Source) []string {
 	names := make([]string, 0, len(sources))
 	for _, source := range sources {
 		names = append(names, source.Name)
 	}
-
-	return formChoices{suggestions: map[string][]string{"source": names}}, err
+	return names
 }
 
 // annotationChoices suggests sources, picks the kind, and picks the event from t's events, or none
 // for the whole timeline.
 func annotationChoices(ctx context.Context, s *store.Store, t timeline.Timeline, z zone) (formChoices, error) {
-	choices, err := sourceChoices(ctx, s)
+	choices, err := sourceChoices(ctx, s, t)
 	if err != nil {
 		return choices, err
 	}

@@ -27,8 +27,9 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"unique id prefix. The event must be in the timeline the annotation goes to.\n\n" +
 			"Each --attach copies a file, such as a screenshot, into the blob directory beside the\n" +
 			"database, and prints its id, sha256, size and type.\n\n" +
-			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag, picks\n" +
-			"the event from the timeline, and prints the command each entry equals. Under --json only\n" +
+			"On a terminal, with no body or --kind, or with --interactive, a form asks for each flag,\n" +
+			"suggests sources, the ones on the timeline's latest events first, picks the event from the\n" +
+			"timeline, and prints the command each entry equals. Under --json only\n" +
 			"--interactive opens it, and --no-input never does.",
 		Args:        annotationBodyInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},

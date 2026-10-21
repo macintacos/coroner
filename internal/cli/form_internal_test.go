@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -120,15 +121,15 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("read a line holding only spaces as no value, and check only the others", func() {
-		def := eventAddDefinition()
+		def := eventEditDefinition()
 		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
-		tag := namedField(fields, "tag")
+		tag := namedField(fields, "add-tag")
 		typeInto(tag, "election\n  ")
 
 		tag.Blur()
 
 		Expect(tag.Error()).NotTo(HaveOccurred())
-		Expect(def.formValues(fields)).To(Equal(fieldValues{"tag": {"election"}}))
+		Expect(def.formValues(fields)).To(HaveKeyWithValue("add-tag", []string{"election"}))
 	})
 
 	It("pick from options in a select, and suggest in an input", func() {
@@ -318,6 +319,43 @@ var _ = Describe("form fields", func() {
 			Expect(ansi.Strip(form.View())).To(SatisfyAll(ContainSubstring("… 7 more"), ContainSubstring("TYPING-NOW")))
 		})
 
+		It("suggests nothing for the empty input after an add", func() {
+			choices := formChoices{suggestions: map[string][]string{"ref": {"election", "escalation"}}}
+			fields := refs.formFields(formCheckEnv(), fieldValues{}, choices)
+			ref := namedField(fields, "ref")
+			ref.WithKeyMap(huh.NewDefaultKeyMap())
+			ref.Focus()
+
+			typeText(ref, "e")
+			press(ref, tea.KeyEnter)
+			Expect(fieldView(ref)).NotTo(MatchRegexp(`> +election`))
+
+			ref.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+			press(ref, tea.KeyEnter)
+
+			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"e"}}))
+		})
+
+		It("picks values with up and down only while nothing is typed", func() {
+			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			ref := namedField(fields, "ref")
+			typeInto(ref, "INC-2")
+
+			press(ref, tea.KeyUp)
+
+			Expect(fieldView(ref)).NotTo(ContainSubstring("×"))
+		})
+
+		It("picks timeline create's refs with up and down", func() {
+			def := timelineCreateDefinition()
+			fields := def.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1", "INC-2"}}, formChoices{})
+			ref := namedField(fields, "ref")
+
+			press(ref, tea.KeyUp, tea.KeyBackspace)
+
+			Expect(def.formValues(fields)["ref"]).To(Equal([]string{"INC-1"}))
+		})
+
 		It("refuses a value its check rejects, and adds nothing", func() {
 			fields := refs.formFields(formCheckEnv(), fieldValues{}, formChoices{})
 			ref := namedField(fields, "ref")
@@ -326,6 +364,116 @@ var _ = Describe("form fields", func() {
 
 			Expect(ref.Error()).To(MatchError("bad ref"))
 			Expect(refs.formValues(fields)).To(BeEmpty())
+		})
+	})
+
+	Describe("a match row", func() {
+		seven := []string{"db-1", "db-2", "db-3", "db-4", "db-5", "db-6", "db-7"}
+		sourceWith := func(suggestions ...string) huh.Field {
+			GinkgoHelper()
+			choices := formChoices{suggestions: map[string][]string{"source": suggestions}}
+			source := namedField(annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "source")
+			source.WithKeyMap(huh.NewDefaultKeyMap())
+			source.Focus()
+
+			return source
+		}
+		ctrlE := func(formField huh.Field) { formField.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) }
+
+		It("shows the first five suggestions while nothing is typed", func() {
+			Expect(fieldView(sourceWith(seven...))).To(SatisfyAll(
+				ContainSubstring("↳ db-1  db-2  db-3  db-4  db-5"), Not(ContainSubstring("db-6"))))
+		})
+
+		It("shows the suggestions typed text starts, in their order, ignoring case", func() {
+			source := sourceWith("Mongod", "slack", "mongos", "db-1")
+
+			typeText(source, "MON")
+
+			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("↳ Mongod  mongos"), Not(ContainSubstring("slack"))))
+		})
+
+		It("keeps the match up and down cycle to in its window", func() {
+			source := sourceWith(seven...)
+			typeText(source, "db")
+
+			press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
+			Expect(fieldView(source)).To(ContainSubstring("↳ db-3  db-4  db-5  db-6  db-7"))
+			ctrlE(source)
+
+			Expect(source.GetValue()).To(Equal("db-7"))
+			Expect(fieldView(source)).To(ContainSubstring("↳ db-7"))
+		})
+
+		It("wraps up and down around the matches, as the inline suggestion does", func() {
+			down := sourceWith("db-1", "db-2", "db-3")
+			typeText(down, "db")
+			press(down, tea.KeyDown, tea.KeyDown, tea.KeyDown)
+			ctrlE(down)
+			Expect(down.GetValue()).To(Equal("db-1"))
+
+			up := sourceWith(seven...)
+			typeText(up, "db")
+			press(up, tea.KeyUp)
+			Expect(fieldView(up)).To(ContainSubstring("↳ db-3  db-4  db-5  db-6  db-7"))
+			ctrlE(up)
+			Expect(up.GetValue()).To(Equal("db-7"))
+		})
+
+		It("shows the first five suggestions again once a list field adds what was typed on leaving", func() {
+			choices := formChoices{suggestions: map[string][]string{"tag": {"election", "escalation", "edge"}}}
+			tag := namedField(eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "tag")
+			tag.WithKeyMap(huh.NewDefaultKeyMap())
+			tag.Focus()
+			typeText(tag, "el")
+
+			tag.Blur()
+
+			Expect(fieldView(tag)).To(ContainSubstring("↳ election  escalation  edge"))
+		})
+
+		It("opens a suggested field that comes before the tz field", func() {
+			source := field{name: "source", usage: "System it came from", check: withoutEnv(checkSource)}
+			def := definition{fields: []field{source, tzField()}}
+			choices := formChoices{suggestions: map[string][]string{"source": {"mongod"}}}
+
+			Expect(func() { def.formFields(formCheckEnv(), fieldValues{}, choices) }).NotTo(Panic())
+		})
+
+		It("shows no row when nothing matches", func() {
+			source := sourceWith(seven...)
+
+			typeText(source, "zz")
+
+			Expect(fieldView(source)).NotTo(ContainSubstring("↳"))
+		})
+
+		It("names the cycling keys in its help only while something matches", func() {
+			source := sourceWith(seven...)
+			typeText(source, "db")
+			Expect(helpKeys(source)).To(ContainElements("↑/↓ cycle matches", "ctrl+n/ctrl+p cycle"))
+
+			typeText(source, "z")
+			Expect(helpKeys(source)).NotTo(ContainElement("↑/↓ cycle matches"))
+		})
+
+		It("binds ctrl+e once on every field of the form commands", func() {
+			choices := formChoices{suggestions: map[string][]string{"source": {"mongod"}, "tag": {"election"}}}
+			for _, def := range []definition{
+				eventAddDefinition(), annotationAddDefinition(), timelineCreateDefinition(), timelineEditDefinition(),
+			} {
+				in := fieldValues{"source": {"mongo"}, "name": {"Mongo Outage"}}
+				for _, formField := range def.formFields(formCheckEnv(), in, choices) {
+					formField.WithKeyMap(huh.NewDefaultKeyMap())
+					bound := 0
+					for _, binding := range formField.KeyBinds() {
+						if slices.Contains(binding.Keys(), "ctrl+e") {
+							bound++
+						}
+					}
+					Expect(bound).To(BeNumerically("<=", 1), formField.GetKey())
+				}
+			}
 		})
 	})
 
@@ -357,6 +505,13 @@ var _ = DescribeTable("suggestName offers a valid timeline name only for a rejec
 func press(formField huh.Field, codes ...rune) {
 	for _, code := range codes {
 		formField.Update(tea.KeyPressMsg{Code: code})
+	}
+}
+
+// typeText presses a key in formField for each character of text.
+func typeText(formField huh.Field, text string) {
+	for _, r := range text {
+		formField.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
 	}
 }
 

@@ -48,8 +48,9 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"same file again adds nothing.\n\n" +
 			"On a terminal, with no text or with --interactive, a form asks for the text, time, source,\n" +
 			"tags and files, and keeps the other flags under More options, which opens by itself when one\n" +
-			"of them holds a value. It previews the time as you type it, and prints the command each entry\n" +
-			"equals. Under --json only --interactive opens it, and --no-input never does.",
+			"of them holds a value. It suggests sources and tags, the ones on the timeline's latest\n" +
+			"events first, previews the time as you type it, and prints the command each entry equals.\n" +
+			"Under --json only --interactive opens it, and --no-input never does.",
 		Args:        eventTextInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
@@ -112,7 +113,7 @@ func eventAddDefinition() definition {
 		},
 		{name: "approximate", typ: boolField, perEntry: true, more: true, usage: "Mark the time as a guess, as a ~ or around prefix does"},
 		{name: "source", title: "Source", usage: "System, service or person it came from, as a `source`, created on first use", check: withoutEnv(checkSource)},
-		{name: "tag", typ: stringsField, title: "Tags", usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
+		{name: "tag", typ: stringsField, list: true, title: "Tags", usage: "Keyword such as phase:detect, as a `tag`; repeat for more", check: withoutEnv(checkTag)},
 		{name: "url", perEntry: true, more: true, usage: "Permalink to the log line or message, as a `url`", check: freeText("--url")},
 		{name: "author", more: true, usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		titled(perEntry(attachField()), "Files"),
