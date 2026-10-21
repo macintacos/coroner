@@ -21,7 +21,9 @@ type listField struct {
 	// picked is the index of the value up and down picked, or -1 while typing.
 	picked int
 	check  func(string) error
-	err    error
+	// path, when set, turns what is typed into the value added.
+	path func(typed string) string
+	err  error
 	// thumbnail, when set, returns what shows under the picked value, or the last one added, and
 	// the command the terminal needs to show it; send holds that command until the next update.
 	thumbnail func(value string) (string, tea.Cmd)
@@ -30,6 +32,9 @@ type listField struct {
 	// what is typed.
 	row      *matchRow
 	complete func(typed string) []string
+	// preview, when set, returns the line shown above the match row for what is typed; a held value
+	// whose preview marks it new carries that mark.
+	preview func(value string) string
 }
 
 // listShown is how many values a list field, or a match row, shows at once, so a long list never
@@ -72,6 +77,33 @@ func (l *listField) withThumbnail(thumbnail func(value string) (string, tea.Cmd)
 	return l
 }
 
+// withPath returns l adding what path turns typed values into.
+func (l *listField) withPath(path func(typed string) string) *listField {
+	l.path = path
+
+	return l
+}
+
+// withPreview returns l previewing values with preview, in the env it reads.
+func (l *listField) withPreview(preview func(string, checkEnv) string, env func() checkEnv) *listField {
+	if preview == nil {
+		return l
+	}
+	l.preview = func(value string) string { return preview(value, env()) }
+	l.show()
+
+	return l
+}
+
+// typedPreview returns the preview of what is typed, or "" with none.
+func (l *listField) typedPreview() string {
+	if l.preview == nil || l.typed() == "" {
+		return ""
+	}
+
+	return l.preview(l.typed())
+}
+
 // withSuggestions returns l suggesting suggestions, and showing a row of what is typed matches.
 func (l *listField) withSuggestions(suggestions []string) *listField {
 	if len(suggestions) == 0 {
@@ -110,18 +142,22 @@ func (l *listField) refreshSuggestions(typed string) {
 // Update refreshes the suggestions after a key or a paste, which textinput inserts without
 // matching it.
 func (l *listField) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
+	shownPreview := l.typedPreview()
 	model, cmd := l.update(msg)
 	press, isPress := msg.(tea.KeyPressMsg)
-	if _, pasted := msg.(tea.PasteMsg); (isPress || pasted) && l.row != nil {
+	_, pasted := msg.(tea.PasteMsg)
+	changed := l.typedPreview() != shownPreview
+	if (isPress || pasted) && l.row != nil {
 		typed, shownRow := fmt.Sprint(l.Input.GetValue()), l.row.line()
 		if typed != l.row.typed {
 			l.refreshSuggestions(typed)
 		}
 		l.row.follow(press, typed)
-		if l.row.line() != shownRow {
-			l.show()
-			cmd = tea.Batch(cmd, tea.RequestWindowSize)
-		}
+		changed = changed || l.row.line() != shownRow
+	}
+	if changed {
+		l.show()
+		cmd = tea.Batch(cmd, tea.RequestWindowSize)
 	}
 	return model, tea.Batch(cmd, l.takeSend())
 }
@@ -222,6 +258,9 @@ func (l *listField) typed() string {
 // addTyped adds what is typed, when check accepts it, and clears it.
 func (l *listField) addTyped() tea.Cmd {
 	typed := l.typed()
+	if l.path != nil {
+		typed = l.path(typed)
+	}
 	l.err = l.check(typed)
 	if l.err != nil {
 		return nil
@@ -256,8 +295,9 @@ func (l *listField) pick(up bool) {
 }
 
 // show puts under the help at most listShown values, the last ones or a window holding the picked
-// one, after how many more there are, then the thumbnail of the picked value or the last one. The
-// picked one is marked ×, which backspace removes (> would read as the Input's prompt).
+// one, after how many more there are, then the thumbnail of the picked value or the last one. Each
+// value is marked ✓, so it never reads as a suggestion, and the picked one ×, which backspace
+// removes (> would read as the Input's prompt).
 func (l *listField) show() {
 	first := max(0, len(l.values)-listShown)
 	if l.picked != -1 {
@@ -271,11 +311,11 @@ func (l *listField) show() {
 		fmt.Fprintf(&b, "\n  … %d more", hidden)
 	}
 	for i, value := range shown {
-		marker := "  "
+		marker := "✓ "
 		if first+i == l.picked {
 			marker = "× "
 		}
-		b.WriteString("\n" + marker + pickerLabel(value))
+		b.WriteString("\n" + marker + pickerLabel(value) + l.heldMark(value))
 	}
 	if l.thumbnail != nil && len(l.values) > 0 {
 		value := l.values[len(l.values)-1]
@@ -288,9 +328,24 @@ func (l *listField) show() {
 			b.WriteString("\n" + lines)
 		}
 	}
+	if preview := l.typedPreview(); preview != "" {
+		b.WriteString("\n" + preview)
+	}
 	if l.row != nil && l.row.line() != "" {
 		b.WriteString("\n" + l.row.line())
 	}
 
 	l.Description(b.String())
+}
+
+// heldMark returns what follows a held value: its preview when that marks it new, else "".
+func (l *listField) heldMark(value string) string {
+	if l.preview == nil {
+		return ""
+	}
+	if preview := l.preview(value); strings.HasPrefix(preview, newMark) {
+		return "  " + preview
+	}
+
+	return ""
 }

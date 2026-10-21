@@ -40,7 +40,7 @@ func newAnnotationAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner annotation add --interactive -e 12",
 	}
 
-	return annotationAddForm().attach(ctx, cmd, app, terminalForms(app))
+	return annotationAddForm().attach(ctx, cmd, app, terminalForms(app, "💬 New annotation"))
 }
 
 func annotationAddDefinition() definition {
@@ -148,6 +148,11 @@ func (a annotationAdded) render(o output) error {
 	}
 
 	return o.notify("Added %s annotation %s to %s", a.annotation.Kind, a.annotation.ID, target)
+}
+
+func (a annotationAdded) summary() (summaryLine, bool) {
+	cells := []string{string(a.annotation.Kind), pickerLabel(a.annotation.Body)}
+	return summaryLine{timeline: a.timeline.Name, cells: cells}, !a.dryRun
 }
 
 // annotatedEvent returns the event ref names in t, or nil when ref is nil.

@@ -50,7 +50,10 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"tags and files, and keeps the other flags under More options, which opens by itself when one\n" +
 			"of them holds a value. It suggests sources and tags, the ones on the timeline's latest\n" +
 			"events first, previews the time as you type it, and prints the command each entry equals.\n" +
-			"Under --json only --interactive opens it, and --no-input never does.",
+			"It never asks for --id, which applies to the first entry only. Its frame names the timeline,\n" +
+			"which ctrl+t switches or creates, and counts the events added, which it lists when you\n" +
+			"finish; esc on an entry finishes at once. Under --json only --interactive opens it, and\n" +
+			"--no-input never does.",
 		Args:        eventTextInput().args,
 		Annotations: map[string]string{formatsAnnotation: "text,json"},
 		Example: "  $ coroner event add \"Primary stepped down: replSetStepDown\" --at 2026-09-11T03:14:07.412Z \\\n" +
@@ -65,7 +68,7 @@ func newEventAddCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner event add --interactive --source mongod",
 	}
 
-	eventAddForm().attach(ctx, cmd, app, terminalForms(app))
+	eventAddForm().attach(ctx, cmd, app, terminalForms(app, "📝 New event"))
 	cmd.Flags().String("from-file", "", fromFileUsage)
 	// A file of records needs no form, so --from-file branches before the form gate and stays
 	// outside the definition.
@@ -118,7 +121,7 @@ func eventAddDefinition() definition {
 		{name: "author", more: true, usage: "Who is adding it, as a `name` (default: config author, then USER)", check: freeText("--author")},
 		titled(perEntry(attachField()), "Files"),
 		{
-			name: "id", perEntry: true, more: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
+			name: "id", perEntry: true, usage: "The event's id, as a lowercase UUIDv7 `uuid`",
 			check: withoutEnv(checkEventID),
 		},
 		{name: "dry-run", typ: boolField, more: true, usage: "Show the event as it would be added, and add nothing"},
@@ -310,6 +313,11 @@ func (a eventAdded) render(o output) error {
 	}
 
 	return o.notify("Added event #%d to timeline `%s` at %s", a.event.Seq, a.timeline.Name, a.when)
+}
+
+func (a eventAdded) summary() (summaryLine, bool) {
+	cells := []string{fmt.Sprintf("#%d", a.event.Seq), a.when, pickerLabel(a.event.Text)}
+	return summaryLine{timeline: a.timeline.Name, cells: cells}, !a.dryRun && !a.existed
 }
 
 // eventDraft is an event read from its fields and checked, still without its timeline.

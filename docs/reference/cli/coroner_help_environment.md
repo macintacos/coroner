@@ -29,7 +29,7 @@ Images show inline only with color on and outside a multiplexer.
 | `TZ` | The local time zone, used when neither `--tz` nor `default_timezone` names one |
 | `XDG_CONFIG_HOME` | The directory holding `coroner/config.toml` |
 | `XDG_DATA_HOME` | The directory holding `coroner/coroner.db` |
-| `HOME` | The base of the default directories when an `XDG_*` variable is unset |
+| `HOME` | The base of the default directories when an `XDG_*` variable is unset, and what a form expands a leading `~/` in Files to |
 | `USER` | The author of an event when neither `--author` nor `author` in the config file names one |
 
 ## Where the config file and database live

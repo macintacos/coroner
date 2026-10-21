@@ -45,7 +45,7 @@ var _ = Describe("timeline forms", func() {
 	}
 
 	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-		return scriptedForms(&asked, answers...)
+		return scriptedForms(&asked, new([]formFrame), answers...)
 	}
 
 	// runForm runs args against a root whose timeline command holds command, as RunE runs on a
@@ -273,6 +273,7 @@ var _ = Describe("timeline forms", func() {
 			Expect(runForm(ctx, command, "timeline", "edit")).To(Succeed())
 
 			Expect(asked).To(HaveLen(2))
+			Expect(optionValues(namedField(asked[0], "timeline"))).To(Equal([]string{"mongo-outage"}))
 			Expect(fieldText(asked[1], "name")).To(Equal("mongo-outage"))
 		})
 

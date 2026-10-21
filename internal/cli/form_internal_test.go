@@ -76,8 +76,125 @@ var _ = Describe("form fields", func() {
 		}
 	})
 
+	It("head the timeline picker of each form command 📒 Timeline", func() {
+		for _, def := range []definition{eventAddDefinition(), annotationAddDefinition(), timelineEditDefinition()} {
+			picker := onlyField(def, "timeline").formFields(formCheckEnv(), fieldValues{}, formChoices{})
+
+			Expect(fieldView(namedField(picker, "timeline"))).To(ContainSubstring("📒 Timeline"))
+		}
+	})
+
+	It("head each field of the form commands with an icon before its title", func() {
+		forms := []definition{
+			withoutField(eventAddDefinition(), "id"), annotationAddDefinition(),
+			withoutField(timelineCreateDefinition(), "if-not-exists"), timelineEditFormDefinition(nil),
+		}
+		for _, def := range forms {
+			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
+				f := def.fields[i]
+				Expect(fieldIcon(f.name)).NotTo(BeEmpty(), f.name)
+				Expect(fieldView(formField)).To(ContainSubstring(fieldIcon(f.name)+" "+f.formTitle()), f.name)
+			}
+		}
+	})
+
+	It("frame a form's view in a border as wide as asked, with its title set into the top edge and a blank row under it", func() {
+		lines := strings.Split(ansi.Strip(frame(frameEdges{title: "📝 New event"}, "What happened\n> Primary stepped down", 40)), "\n")
+
+		Expect(lines).To(HaveLen(5))
+		Expect(lines[0]).To(HavePrefix("╭─ 📝 New event ─"))
+		Expect(lines[1]).To(MatchRegexp(`^│ +│$`))
+		Expect(lines[2]).To(HavePrefix("│ What happened"))
+		Expect(lines[3]).To(HavePrefix("│ > Primary stepped down"))
+		Expect(lines[4]).To(HavePrefix("╰─"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(40), line)
+		}
+	})
+
+	It("clip a line wider than the frame's inside, so the frame keeps the rows the form planned", func() {
+		lines := strings.Split(ansi.Strip(frame(frameEdges{title: "📝 New event"}, strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
+
+		Expect(lines).To(HaveLen(5))
+		Expect(lines[3]).To(HavePrefix("│ > typed"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(40), line)
+		}
+	})
+
+	It("set an edge's pieces into its right end, two spaces apart", func() {
+		edges := frameEdges{
+			title: "📝 New event", top: []string{"📒 inc-4821", "ctrl+t switch"}, bottom: []string{"✓ 2 events added", "esc finish"},
+		}
+
+		lines := strings.Split(ansi.Strip(frame(edges, "What happened", 80)), "\n")
+
+		Expect(lines[0]).To(Equal("╭─ 📝 New event " + strings.Repeat("─", 34) + " 📒 inc-4821  ctrl+t switch ─╮"))
+		Expect(lines[len(lines)-1]).To(Equal("╰" + strings.Repeat("─", 47) + " ✓ 2 events added  esc finish ─╯"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(80), line)
+		}
+	})
+
+	It("drop an edge's last pieces, then cut the first short, where the edge is too narrow, keeping a rule cell", func() {
+		edges := frameEdges{
+			title: "📝 New event", top: []string{"📒 inc-4821", "ctrl+t switch"}, bottom: []string{"✓ 2 events added", "esc finish"},
+		}
+
+		lines := strings.Split(ansi.Strip(frame(edges, "What happened", 30)), "\n")
+
+		Expect(lines[0]).To(Equal("╭─ 📝 New event ─ 📒 inc-4… ─╮"))
+		Expect(lines[len(lines)-1]).To(Equal("╰" + strings.Repeat("─", 9) + " ✓ 2 events added ─╯"))
+		for _, line := range lines {
+			Expect(ansi.StringWidth(line)).To(Equal(30), line)
+		}
+	})
+
+	DescribeTable("show an add session's timeline and the records it added in the edges of each form it asks",
+		func(f formFrame, title string, top, bottom []string) {
+			edges := f.edges("📝 New event")
+
+			Expect(edges.title).To(Equal(title))
+			Expect(stripped(edges.top)).To(Equal(top))
+			Expect(stripped(edges.bottom)).To(Equal(bottom))
+		},
+		Entry("an entry before any was added",
+			formFrame{timeline: "inc-4821", entry: true, noun: "event"}, "📝 New event",
+			[]string{"📒 inc-4821", "ctrl+t switch"}, nil),
+		Entry("an entry after two were added",
+			formFrame{timeline: "inc-4821", entry: true, added: 2, noun: "event"}, "📝 New event",
+			[]string{"📒 inc-4821", "ctrl+t switch"}, []string{"✓ 2 events added", "esc finish"}),
+		Entry("Add another",
+			formFrame{timeline: "inc-4821", added: 2, noun: "event"}, "📝 New event", []string{"📒 inc-4821"}, []string{"✓ 2 events added"}),
+		Entry("the timeline picker",
+			formFrame{added: 1, noun: "annotation"}, "📝 New event", nil, []string{"✓ 1 annotation added"}),
+		Entry("the new timeline form",
+			formFrame{title: "📒 New timeline", added: 1, noun: "event"}, "📒 New timeline", nil, []string{"✓ 1 event added"}),
+		Entry("the first timeline picker", formFrame{}, "📝 New event", nil, nil),
+	)
+
+	It("frame a form at most 80 cells wide on a wider terminal", func() {
+		form := newForm(frameEdges{title: "📝 New event"}, formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+
+		form.Update(tea.WindowSizeMsg{Width: 200, Height: 20})
+
+		for line := range strings.SplitSeq(strings.TrimLeft(ansi.Strip(form.View().Content), "\n"), "\n") {
+			Expect(ansi.StringWidth(line)).To(Equal(80), line)
+		}
+	})
+
+	It("draw a blank row between the output above a form and its frame", func() {
+		form := newForm(frameEdges{title: "📝 New event"}, formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+
+		form.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
+
+		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
+		Expect(lines[0]).To(BeEmpty())
+		Expect(lines[1]).To(HavePrefix("╭─ 📝 New event"))
+	})
+
 	Describe("event add's groups", func() {
-		def := eventAddDefinition()
+		def := withoutField(eventAddDefinition(), "id")
 		groupsFor := func(in fieldValues) []formGroup {
 			return def.formGroups(def.formFields(formCheckEnv(), in, formChoices{}), in)
 		}
@@ -87,9 +204,9 @@ var _ = Describe("form fields", func() {
 
 			Expect(groups).To(HaveLen(2))
 			Expect(fieldKeys(groups[0].fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
-			Expect(fieldKeys(groups[1].fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "id", "dry-run"}))
+			Expect(fieldKeys(groups[1].fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "dry-run"}))
 			Expect(fieldView(namedField(groups[0].fields, "more-options"))).To(
-				ContainSubstring("tz, ended, approximate, url, author, id, dry-run"))
+				ContainSubstring("tz, ended, approximate, url, author, dry-run"))
 		})
 
 		It("hide the More options fields until it is Yes", func() {
@@ -240,7 +357,7 @@ var _ = Describe("form fields", func() {
 			ref := namedField(fields, "ref")
 
 			press(ref, tea.KeyUp, tea.KeyUp)
-			Expect(fieldView(ref)).To(ContainSubstring("× INC-2"))
+			Expect(fieldView(ref)).To(SatisfyAll(ContainSubstring("× INC-2"), ContainSubstring("✓ INC-3")))
 			press(ref, tea.KeyBackspace)
 
 			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1", "INC-3"}}))
@@ -388,9 +505,9 @@ var _ = Describe("form fields", func() {
 
 			return tag
 		}
-		It("shows the first five suggestions while nothing is typed", func() {
+		It("shows the first five suggestions under their label while nothing is typed", func() {
 			Expect(fieldView(sourceWith(seven...))).To(SatisfyAll(
-				ContainSubstring("↳ db-1  db-2  db-3  db-4  db-5"), Not(ContainSubstring("db-6"))))
+				ContainSubstring("💡 Suggestions: db-1 · db-2 · db-3 · db-4 · db-5"), Not(ContainSubstring("db-6"))))
 		})
 
 		It("shows the suggestions typed text starts, in their order, ignoring case", func() {
@@ -398,7 +515,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(source, "MON")
 
-			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("↳ Mongod  mongos"), Not(ContainSubstring("slack"))))
+			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring(suggestionsLabel+"Mongod · mongos"), Not(ContainSubstring("slack"))))
 		})
 
 		It("keeps the match up and down cycle to in its window", func() {
@@ -406,11 +523,11 @@ var _ = Describe("form fields", func() {
 			typeText(source, "db")
 
 			press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
-			Expect(fieldView(source)).To(ContainSubstring("↳ db-3  db-4  db-5  db-6  db-7"))
+			Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
 			ctrlE(source)
 
 			Expect(source.GetValue()).To(Equal("db-7"))
-			Expect(fieldView(source)).To(ContainSubstring("↳ db-7"))
+			Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "db-7"))
 		})
 
 		It("wraps up and down around the matches, as the inline suggestion does", func() {
@@ -423,7 +540,7 @@ var _ = Describe("form fields", func() {
 			up := sourceWith(seven...)
 			typeText(up, "db")
 			press(up, tea.KeyUp)
-			Expect(fieldView(up)).To(ContainSubstring("↳ db-3  db-4  db-5  db-6  db-7"))
+			Expect(fieldView(up)).To(ContainSubstring(suggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
 			ctrlE(up)
 			Expect(up.GetValue()).To(Equal("db-7"))
 		})
@@ -437,7 +554,7 @@ var _ = Describe("form fields", func() {
 
 			tag.Blur()
 
-			Expect(fieldView(tag)).To(ContainSubstring("↳ election  escalation  edge"))
+			Expect(fieldView(tag)).To(ContainSubstring(suggestionsLabel + "election · escalation · edge"))
 		})
 
 		It("matches what a paste leaves in a list field", func() {
@@ -475,7 +592,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(source, "zz")
 
-			Expect(fieldView(source)).NotTo(ContainSubstring("↳"))
+			Expect(fieldView(source)).NotTo(ContainSubstring(suggestionsLabel))
 		})
 
 		It("names the cycling keys in its help only while something matches", func() {
@@ -531,7 +648,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(path, "fi")
 
-			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring("↳ files/"), ContainSubstring("> files/")))
+			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring(suggestionsLabel+"files/"), ContainSubstring("> files/")))
 		})
 
 		It("completes what a paste leaves", func() {
@@ -577,7 +694,7 @@ var _ = Describe("form fields", func() {
 			ctrlE(path)
 
 			Expect(fieldView(path)).To(SatisfyAll(
-				ContainSubstring("> files/"), ContainSubstring("↳ files/p99.png  files/q01.png")))
+				ContainSubstring("> files/"), ContainSubstring(suggestionsLabel+"files/p99.png · files/q01.png")))
 		})
 
 		It("completes the empty input again after an add", func() {
@@ -587,7 +704,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(path, "d")
 
-			Expect(fieldView(path)).To(ContainSubstring("↳ docs/"))
+			Expect(fieldView(path)).To(ContainSubstring(suggestionsLabel + "docs/"))
 		})
 
 		It("ghosts nothing over the empty input after an add when nothing completes it", func() {
@@ -751,4 +868,14 @@ func fieldView(formField huh.Field) string {
 	}
 
 	return ansi.Strip(view.View())
+}
+
+// stripped returns pieces without their styles, or nil for none.
+func stripped(pieces []string) []string {
+	var plain []string
+	for _, piece := range pieces {
+		plain = append(plain, ansi.Strip(piece))
+	}
+
+	return plain
 }

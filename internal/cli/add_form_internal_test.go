@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -17,6 +18,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -97,6 +99,25 @@ var _ = Describe("add forms", func() {
 		Expect(cancelled).To(BeFalse())
 	})
 
+	It("leave an entry on ctrl+t as the form's own abort, which its ask returns as a timeline switch", func() {
+		var keys formKeys
+		text := huh.NewInput().Key("text")
+		form := huh.NewForm(huh.NewGroup(text))
+		ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+
+		form.Update(keys.filter(formFrame{entry: true}, []huh.Field{text})(nil, ctrlT))
+
+		Expect(form.State).To(Equal(huh.StateAborted))
+		Expect(keys.ended(form.State, nil)).Error().To(MatchError(errSwitchTimeline))
+	})
+
+	It("pass ctrl+t through to a form other than an entry", func() {
+		var keys formKeys
+		ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
+
+		Expect(keys.filter(formFrame{timeline: "mongo-outage"}, nil)(nil, ctrlT)).To(Equal(ctrlT))
+	})
+
 	It("carry forward everything but the fields another entry clears", func() {
 		values := fieldValues{
 			"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "at": {"03:14"}, "ended": {"03:20"},
@@ -110,6 +131,15 @@ var _ = Describe("add forms", func() {
 		Expect(values).To(HaveKey("text"))
 	})
 
+	It("align a summary's columns to their widest cell", func() {
+		rows := summaryRows([]summaryLine{
+			{cells: []string{"#9", "03:14:07Z", "Primary stepped down"}},
+			{cells: []string{"#10", "03:15:00Z", "Election timeout on db-3"}},
+		}, lipgloss.NewStyle())
+
+		Expect(rows).To(Equal("  #9   03:14:07Z  Primary stepped down\n  #10  03:15:00Z  Election timeout on db-3"))
+	})
+
 	Describe("session", func() {
 		var (
 			out, errOut bytes.Buffer
@@ -117,6 +147,7 @@ var _ = Describe("add forms", func() {
 			db          string
 			ids         int
 			asked       [][]huh.Field
+			framed      []formFrame
 		)
 
 		// runArgs runs exactly args through Run.
@@ -150,7 +181,7 @@ var _ = Describe("add forms", func() {
 		}
 
 		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-			return scriptedForms(&asked, answers...)
+			return scriptedForms(&asked, &framed, answers...)
 		}
 
 		// runForm runs args against a root holding parent, whose add command runs its form as RunE does
@@ -183,7 +214,7 @@ var _ = Describe("add forms", func() {
 
 		BeforeEach(func(ctx SpecContext) {
 			ids = 0
-			asked = nil
+			asked, framed = nil, nil
 			home := GinkgoT().TempDir()
 			db = filepath.Join(home, "coroner.db")
 			app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
@@ -199,7 +230,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open --interactive prefilled from the command line's arguments and flags", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "Primary stepped down", "--interactive", "--source", "mongod")).To(Succeed())
 
@@ -254,7 +285,7 @@ var _ = Describe("add forms", func() {
 
 			It("show the resolved author as a placeholder", func(ctx SpecContext) {
 				withEnv(&app, map[string]string{"USER": "sre"})
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
@@ -271,11 +302,23 @@ var _ = Describe("add forms", func() {
 					}
 					return []byte("author = \"Priya\"\n"), nil
 				}
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
 				Expect(fieldView(namedField(asked[0], "author"))).To(ContainSubstring("Priya"))
+			})
+
+			It("attach a Files path starting with ~/ from HOME, echoing its full path", func(ctx SpecContext) {
+				home := GinkgoT().TempDir()
+				withEnv(&app, map[string]string{"HOME": home})
+				Expect(os.WriteFile(filepath.Join(home, "log.txt"), []byte("stepdown\n"), 0o600)).To(Succeed())
+				app.ReadFile = os.ReadFile
+				command := eventAdd(ctx, answers(submit(map[string]string{"text": "Primary stepped down", "attach": "~/log.txt"}), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(echoedArgs(ctx, errOut.String())).To(ContainElements("--attach", filepath.Join(home, "log.txt")))
 			})
 
 			It("echo the flags-only command with every field in the flags' order", func(ctx SpecContext) {
@@ -288,11 +331,12 @@ var _ = Describe("add forms", func() {
 				command := eventAdd(ctx, answers(submit(map[string]string{
 					"text": "Primary stepped down", "tz": "UTC", "at": "2026-09-11T03:14:07Z", "ended": "2026-09-11T03:20:00Z",
 					"approximate": "true", "source": "mongod", "tag": "election\nphase:detect", "url": "https://example.com/log",
-					"author": "Priya", "id": "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2", "dry-run": "true", "more-options": "true",
+					"author": "Priya", "dry-run": "true", "more-options": "true",
 				}), confirm(false)))
 
-				// A list field takes its values by keys, so attach is given by its flag.
-				Expect(runForm(ctx, command, "event", "add", "--interactive", "--attach", "log.txt")).To(Succeed())
+				// A list field takes its values by keys, and the form asks no id, so both are given by flag.
+				Expect(runForm(ctx, command, "event", "add", "--interactive", "--attach", "log.txt",
+					"--id", "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2")).To(Succeed())
 
 				Expect(echoedArgs(ctx, errOut.String())).To(Equal([]string{
 					"coroner", "--db", db, "event", "add", "Primary stepped down", "--tz", "UTC", "--at", "2026-09-11T03:14:07Z",
@@ -303,7 +347,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open when a required flag is missing, prefilled from the argument", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel, confirm(false)))
+				command := annotationAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "annotation", "add", "replSetStepDown")).To(Succeed())
 
@@ -312,7 +356,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open with no kind chosen", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel, confirm(false)))
+				command := annotationAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
@@ -360,7 +404,7 @@ var _ = Describe("add forms", func() {
 						"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election",
 						"url": "https://example.com/1", "more-options": "true",
 					}
-					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
+					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel))
 
 					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 
@@ -373,8 +417,140 @@ var _ = Describe("add forms", func() {
 					Expect(errOut.String()).To(ContainSubstring("-t mongo-outage"))
 				})
 
+			Describe("switching the timeline with ctrl+t", func() {
+				BeforeEach(func(ctx SpecContext) {
+					Expect(run(ctx, "timeline", "create", "api-latency")).To(Equal(0), errOut.String())
+				})
+
+				// listed returns the texts of the events event list prints for name.
+				listed := func(ctx SpecContext, name string) []string {
+					GinkgoHelper()
+					Expect(run(ctx, "event", "list", "-t", name, "--json")).To(Equal(0), errOut.String())
+					var list struct {
+						Events []struct {
+							Text string `json:"text"`
+						} `json:"events"`
+					}
+					Expect(json.Unmarshal(out.Bytes(), &list)).To(Succeed())
+					var texts []string
+					for _, e := range list.Events {
+						texts = append(texts, e.Text)
+					}
+					return texts
+				}
+
+				It("reopen the entry on the timeline picked, as typed, and echo the timeline", func(ctx SpecContext) {
+					var opened string
+					var offered []string
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Edge slow", "source": "cloudflare"}),
+						func(fields []huh.Field) (bool, error) {
+							opened = fieldText(fields, "timeline")
+							offered = optionValues(namedField(fields, "timeline"))
+							return submit(map[string]string{"timeline": "api-latency"})(fields)
+						},
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(opened).To(Equal("mongo-outage"))
+					Expect(offered).To(Equal([]string{"", "api-latency", "mongo-outage"}))
+					Expect(framed[1]).To(Equal(formFrame{noun: "event"}))
+					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
+					Expect(fieldText(asked[2], "source")).To(Equal("cloudflare"))
+					Expect(framed[2].timeline).To(Equal("api-latency"))
+					Expect(errOut.String()).To(ContainSubstring(" event add 'Edge slow' -t api-latency --source cloudflare\n"))
+					Expect(listed(ctx, "api-latency")).To(Equal([]string{"Edge slow"}))
+				})
+
+				It("end with a block for each timeline added to, in the order each first got an event, and one command viewing them all",
+					func(ctx SpecContext) {
+						first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+						second := map[string]string{"text": "Edge slow", "at": "2026-09-11T03:15:00Z"}
+						third := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
+						command := eventAdd(ctx, answers(
+							submit(first), confirm(true),
+							ctrlT(nil), submit(map[string]string{"timeline": "api-latency"}), submit(second), confirm(true),
+							ctrlT(nil), submit(map[string]string{"timeline": "mongo-outage"}), submit(third), confirm(false),
+						))
+
+						Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+						Expect(errOut.String()).To(HaveSuffix("\n" +
+							"✓ Added 2 events to timeline `mongo-outage`\n" +
+							"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+							"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+							"✓ Added 1 event to timeline `api-latency`\n" +
+							"  #1  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Edge slow\n" +
+							"\n" +
+							"  View the timelines: coroner --db " + db + " timeline view -t mongo-outage -t api-latency\n"))
+					})
+
+				It("reopen the entry on its own timeline, as typed, when Esc leaves the picker", func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(ctrlT(map[string]string{"text": "Edge slow"}), cancel, submit(nil), confirm(false)))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
+					Expect(framed[2].timeline).To(Equal("mongo-outage"))
+					Expect(echoedArgs(ctx, errOut.String())).NotTo(ContainElement("-t"))
+					Expect(listed(ctx, "mongo-outage")).To(Equal([]string{"Edge slow"}))
+				})
+
+				It("create the timeline ✨ New timeline asks for, without making it current, and reopen the entry on it", func(ctx SpecContext) {
+					var label string
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Migration paused"}),
+						func(fields []huh.Field) (bool, error) {
+							label = fieldView(namedField(fields, "timeline"))
+							return submit(map[string]string{"timeline": ""})(fields)
+						},
+						submit(map[string]string{"name": "db-migration"}),
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(label).To(ContainSubstring("✨ New timeline"))
+					Expect(framed[2]).To(Equal(formFrame{title: "📒 New timeline", noun: "event"}))
+					Expect(errOut.String()).To(ContainSubstring("Created timeline `db-migration`."))
+					Expect(errOut.String()).To(ContainSubstring("Equivalent command: coroner --db " + db + " timeline create db-migration\n"))
+					Expect(framed[3].timeline).To(Equal("db-migration"))
+					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
+					Expect(listed(ctx, "db-migration")).To(Equal([]string{"Migration paused"}))
+					Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
+					Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-outage")))
+				})
+
+				It("reopen the entry on its own timeline when the new timeline form only dry-runs", func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Migration paused"}), submit(map[string]string{"timeline": ""}),
+						submit(map[string]string{"name": "db-migration", "dry-run": "true"}),
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(errOut.String()).To(ContainSubstring("Would create timeline `db-migration`."))
+					Expect(framed[3].timeline).To(Equal("mongo-outage"))
+				})
+
+				It("reopen the entry on its own timeline when Esc leaves the new timeline form", func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(
+						ctrlT(map[string]string{"text": "Migration paused"}), submit(map[string]string{"timeline": ""}), cancel,
+						submit(nil), confirm(false),
+					))
+
+					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+					Expect(framed[3].timeline).To(Equal("mongo-outage"))
+					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
+				})
+			})
+
 			It("open --interactive with More options shown and the url filled", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+				command := eventAdd(ctx, answers(cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage", "--interactive", "--url", "https://e.example")).To(Succeed())
 
@@ -384,7 +560,7 @@ var _ = Describe("add forms", func() {
 
 			It("open the next entry with More options shown and dry run Yes after a dry run", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
-				command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel, confirm(false)))
+				command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -419,18 +595,102 @@ var _ = Describe("add forms", func() {
 				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("total", 0.0))
 			})
 
-			It("skip an entry Esc cancels and end when no other is wanted", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel, confirm(false)))
+			It("end with a summary of the events added and the command that views their timeline", func(ctx SpecContext) {
+				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				second := map[string]string{"text": "Election timeout on db-3", "at": "2026-09-11T03:15:00Z"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(second), confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-				Expect(asked).To(HaveLen(2))
-				Expect(errOut.String()).NotTo(ContainSubstring("Equivalent command"))
+				Expect(errOut.String()).To(HaveSuffix("Equivalent command: coroner --db " + db + " event add 'Election timeout on db-3' --at 2026-09-11T03:15:00Z\n" +
+					"\n" +
+					"✓ Added 2 events to timeline `mongo-outage`\n" +
+					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+					"  #2  2026-09-11T03:15:00Z (+00:00 local: 03:15:00)  Election timeout on db-3\n" +
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
+			It("count in the summary only the entries that added an event, not a dry run or an --id already stored", func(ctx SpecContext) {
+				id := "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2"
+				Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z", "--id", id)).To(Equal(0), errOut.String())
+				stored := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
+				added := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
+				command := eventAdd(ctx, answers(submit(stored), confirm(true), submit(added), confirm(true), submit(dryRun), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add", "--id", id)).To(Succeed())
+
+				echoes := strings.Split(errOut.String(), "Equivalent command: ")
+				Expect(echoes).To(HaveLen(4))
+				Expect(echoes[2]).NotTo(ContainSubstring("--id"))
+
+				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 event to timeline `mongo-outage`\n" +
+					"  #2  2026-09-11T03:20:00Z (+00:00 local: 03:20:00)  Failover\n" +
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
+			It("frame each entry and Add another with the timeline and the events added so far", func(ctx SpecContext) {
+				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(dryRun), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(framed).To(Equal([]formFrame{
+					{timeline: "mongo-outage", entry: true, noun: "event"},
+					{timeline: "mongo-outage", added: 1, noun: "event"},
+					{timeline: "mongo-outage", entry: true, added: 1, noun: "event"},
+					{timeline: "mongo-outage", added: 1, noun: "event"},
+				}))
+			})
+
+			It("print no summary when no entry added an event", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(submit(map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(ContainSubstring("Equivalent command"))
+				Expect(errOut.String()).NotTo(ContainSubstring("View the timeline"))
+			})
+
+			It("end annotation add's session with a summary of the annotations added", func(ctx SpecContext) {
+				command := annotationAdd(ctx, answers(submit(map[string]string{"body": "replSetStepDown", "kind": "evidence"}), confirm(false)))
+
+				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
+
+				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 annotation to timeline `mongo-outage`\n" +
+					"  evidence  replSetStepDown\n" +
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
+			})
+
+			It("end quietly, asking nothing more, when Esc leaves the first entry", func(ctx SpecContext) {
+				command := eventAdd(ctx, answers(cancel))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(asked).To(HaveLen(1))
+				Expect(errOut.String()).To(BeEmpty())
+			})
+
+			It("end with the summary, asking nothing more, when Esc leaves an entry after one was added", func(ctx SpecContext) {
+				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
+				command := eventAdd(ctx, answers(submit(first), confirm(true), cancel))
+
+				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
+
+				Expect(asked).To(HaveLen(3))
+				Expect(errOut.String()).To(HaveSuffix("✓ Added 1 event to timeline `mongo-outage`\n" +
+					"  #1  2026-09-11T03:14:07Z (+00:00 local: 03:14:07)  Primary stepped down\n" +
+					"\n" +
+					"  View the timeline: coroner --db " + db + " timeline view -t mongo-outage\n"))
 			})
 
 			It("ask the entry again, as typed, when the add rejects it", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
+				command := eventAdd(ctx, answers(submit(entry), cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -440,7 +700,7 @@ var _ = Describe("add forms", func() {
 
 			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(entry), cancel, confirm(false)))
+				command := eventAdd(ctx, answers(submit(entry), cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
@@ -460,11 +720,11 @@ var _ = Describe("add forms", func() {
 					typeText(attach, "files/p")
 					view = fieldView(attach)
 					return cancel(fields)
-				}, confirm(false)))
+				}))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
-				Expect(view).To(ContainSubstring("↳ files/p99.png"))
+				Expect(view).To(ContainSubstring(suggestionsLabel + "files/p99.png"))
 			})
 
 			It("reject an attach path that does not exist as --attach does", func(ctx SpecContext) {
@@ -474,13 +734,13 @@ var _ = Describe("add forms", func() {
 					fill(fields, map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z"})
 					enter(namedField(fields, "attach"), "missing.png")
 					return true, nil
-				}, cancel, confirm(false)))
+				}, cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 				Expect(errOut.String()).To(ContainSubstring("cannot read --attach missing.png"))
 				Expect(errOut.String()).To(ContainSubstring("Pass a file that exists and you can read."))
-				Expect(asked).To(HaveLen(3))
+				Expect(asked).To(HaveLen(2))
 			})
 		})
 
@@ -516,7 +776,27 @@ var _ = Describe("add forms", func() {
 				source.WithKeyMap(huh.NewDefaultKeyMap())
 				source.Focus()
 				typeText(source, "c")
-				Expect(fieldView(source)).To(ContainSubstring("↳ cassandra  cloudflare"))
+				Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "cassandra · cloudflare"))
+			})
+
+			It("mark the source typed as one already stored, or as a new one submitting creates", func(ctx SpecContext) {
+				var source huh.Field
+				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
+					source = namedField(fields, "source")
+					return false, nil
+				}))
+				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
+				source.WithKeyMap(huh.NewDefaultKeyMap())
+				source.Focus()
+
+				typeText(source, "cassandra")
+				Expect(fieldView(source)).To(ContainSubstring("Existing source"))
+
+				typeText(source, "-ring")
+				Expect(fieldView(source)).To(ContainSubstring("New source"))
+
+				typeText(source, "!")
+				Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("Did you mean `cassandra-ring`?"), Not(ContainSubstring("New source"))))
 			})
 
 			It("scope annotation add's source suggestions to the timeline the same way", func(ctx SpecContext) {
@@ -555,6 +835,58 @@ var _ = Describe("add forms", func() {
 
 			It("suggest the timeline's tags, the most recently used first, then every other", func(ctx SpecContext) {
 				Expect(tagsFor(ctx, "mongo-outage")).To(Equal([]string{"election", "escalation", "edge"}))
+			})
+
+			Context("in the form", func() {
+				var fields []huh.Field
+
+				BeforeEach(func(ctx SpecContext) {
+					command := eventAdd(ctx, answers(func(asked []huh.Field) (bool, error) {
+						fields = asked
+						return false, nil
+					}))
+					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
+				})
+
+				focused := func(name string) huh.Field {
+					GinkgoHelper()
+					formField := namedField(fields, name)
+					formField.WithKeyMap(huh.NewDefaultKeyMap())
+					formField.Focus()
+					return formField
+				}
+
+				It("mark the tag typed as one already stored, or as a new one", func() {
+					tag := focused("tag")
+					typeText(tag, "elect")
+					Expect(fieldView(tag)).To(ContainSubstring("✨ New tag"))
+
+					typeText(tag, "ion")
+					Expect(fieldView(tag)).To(SatisfyAll(ContainSubstring("✅ Existing tag"), Not(ContainSubstring("New tag"))))
+				})
+
+				It("show the hint of a tag the check rejects in place of the mark", func() {
+					tag := focused("tag")
+					typeText(tag, "Phase")
+					Expect(fieldView(tag)).To(SatisfyAll(ContainSubstring("Did you mean `phase`?"), Not(ContainSubstring("New tag"))))
+				})
+
+				It("mark each held tag not stored as new", func() {
+					tag := focused("tag")
+					enter(tag, "election")
+					enter(tag, "phase:detect")
+					Expect(fieldView(tag)).To(SatisfyAll(
+						ContainSubstring("✓ phase:detect  ✨ New tag"),
+						MatchRegexp(`✓ election\s*\n`),
+						Not(ContainSubstring("Existing tag")),
+					))
+				})
+
+				It("mark no file attached", func() {
+					attach := focused("attach")
+					typeText(attach, "a.txt")
+					Expect(fieldView(attach)).NotTo(Or(ContainSubstring("New"), ContainSubstring("Existing")))
+				})
 			})
 		})
 
@@ -631,7 +963,7 @@ var _ = Describe("add forms", func() {
 			command := eventAdd(ctx, answers(
 				func(fields []huh.Field) (bool, error) {
 					Expect(fields).To(HaveLen(1))
-					Expect(optionValues(namedField(fields, "timeline"))).To(Equal([]string{"mongo-outage"}))
+					Expect(optionValues(namedField(fields, "timeline"))).To(Equal([]string{"", "mongo-outage"}))
 					return submit(map[string]string{"timeline": "mongo-outage"})(fields)
 				},
 				submit(map[string]string{"text": "Pager fires"}),
@@ -673,6 +1005,15 @@ var _ = Describe("add forms", func() {
 			Entry("CORONER_NO_INPUT", map[string]string{"CORONER_NO_INPUT": "1"}),
 			Entry("--json", nil, "--json"),
 		)
+
+		It("refuse an invalid --id given with --interactive as usage, before asking anything", func(ctx SpecContext) {
+			command := eventAdd(ctx, answers())
+
+			err := runForm(ctx, command, "event", "add", "--interactive", "-t", "mongo-outage", "--id", "not-a-uuid")
+
+			Expect(err).To(HaveField("Kind", KindUsage))
+			Expect(asked).To(BeEmpty())
+		})
 
 		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
@@ -808,13 +1149,17 @@ func shellSplit(ctx context.Context, line string) []string {
 }
 
 // scriptedForms returns forms that answer each ask in turn with the next of answers, appending
-// what each ask showed to asked.
-func scriptedForms(asked *[][]huh.Field, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+// what each ask showed to asked, and the frame it was asked in to framed.
+func scriptedForms(asked *[][]huh.Field, framed *[]formFrame, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+	DeferCleanup(func() {
+		Expect(answers).To(BeEmpty(), "%d scripted answers were never asked for", len(answers))
+	})
 	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, groups ...formGroup) (bool, error) {
+		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
 			GinkgoHelper()
 			fields := fieldsOf(groups)
 			*asked = append(*asked, fields)
+			*framed = append(*framed, f)
 			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
 			answer := answers[0]
 			answers = answers[1:]
@@ -828,6 +1173,15 @@ func submit(values map[string]string) func([]huh.Field) (bool, error) {
 	return func(fields []huh.Field) (bool, error) {
 		fill(fields, values)
 		return true, nil
+	}
+}
+
+// ctrlT returns an answer that fills a form's fields with values and leaves it as ctrl+t
+// does.
+func ctrlT(values map[string]string) func([]huh.Field) (bool, error) {
+	return func(fields []huh.Field) (bool, error) {
+		fill(fields, values)
+		return false, errSwitchTimeline
 	}
 }
 
@@ -871,7 +1225,8 @@ func fieldText(fields []huh.Field, name string) string {
 	return fmt.Sprint(namedField(fields, name).GetValue())
 }
 
-// optionValues returns the values a select picks from, read by moving through its options.
+// optionValues returns the values a select picks from, read by moving through its options from the
+// first.
 func optionValues(formField huh.Field) []string {
 	GinkgoHelper()
 	selectField, ok := formField.(*huh.Select[string])
@@ -879,6 +1234,7 @@ func optionValues(formField huh.Field) []string {
 	var values []string
 	selectField.WithKeyMap(huh.NewDefaultKeyMap())
 	selectField.Focus()
+	selectField.Update(tea.KeyPressMsg{Code: tea.KeyHome})
 	for {
 		value, _ := selectField.Hovered()
 		if slices.Contains(values, value) {

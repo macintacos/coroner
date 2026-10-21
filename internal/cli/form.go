@@ -24,6 +24,8 @@ type formChoices struct {
 	// thumbnails return the lines shown under a list field's value, and a command the terminal
 	// needs to show them.
 	thumbnails map[string]func(value string) (string, tea.Cmd)
+	// paths turn what is typed into a list field into the value it adds.
+	paths map[string]func(typed string) string
 	// placeholders are shown in an empty Input and are not its value.
 	placeholders map[string]string
 }
@@ -62,7 +64,7 @@ func (d definition) formGroups(fields []huh.Field, in fieldValues) []formGroup {
 	if len(behind) == 0 {
 		return []formGroup{{fields: fields}}
 	}
-	confirm := huh.NewConfirm().Key("more-options").Title("More options?").
+	confirm := huh.NewConfirm().Key("more-options").Title("🔧 More options?").
 		Description(strings.Join(titles, ", ")).Value(&open)
 	// Value can rebind the confirm, so read what it holds.
 	hide := func() bool {
@@ -189,7 +191,7 @@ func typedZone(env checkEnv, d definition, fields []huh.Field) checkEnv {
 func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.Field {
 	// As pflag.UnquoteUsage prints it: the first `placeholder` loses its backquotes.
 	help := strings.Replace(f.usage, "`", "", 2)
-	title := f.formTitle()
+	title := f.formHeading()
 	if f.required {
 		title += " (required)"
 	}
@@ -220,7 +222,7 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	case f.typ == stringsField && f.list:
 		return newListField(huh.NewInput().Key(f.name).Title(title), help, form.in.values(f.name), check).
 			withSuggestions(form.choices.suggestions[f.name]).withCompletions(form.choices.completions[f.name]).
-			withThumbnail(form.choices.thumbnails[f.name])
+			withThumbnail(form.choices.thumbnails[f.name]).withPath(form.choices.paths[f.name]).withPreview(f.preview, form.env)
 	case f.typ == stringsField:
 		return huh.NewText().Key(f.name).Title(title).Description(help).Value(bound).Validate(func(text string) error {
 			return checkLines(text, check)
@@ -241,6 +243,21 @@ func (f field) formField(bound *string, bindings []*string, form fieldForm) huh.
 	}
 
 	return input.DescriptionFunc(describe, bindings)
+}
+
+// formHeading returns what a form shows over f: its icon, when it has one, then its title.
+func (f field) formHeading() string {
+	return strings.TrimSpace(fieldIcon(f.name) + " " + f.formTitle())
+}
+
+// fieldIcon returns the icon a form shows before the title of the field called name, or "" for
+// none. Each has emoji presentation, so terminals draw it two cells wide and the titles line up.
+func fieldIcon(name string) string {
+	return map[string]string{
+		"timeline": "📒", "text": "📝", "body": "📝", "at": "🕒", "ended": "⌛", "approximate": "🤔",
+		"tz": "🌐", "source": "📡", "tag": "🔖", "url": "🔗", "author": "👤", "attach": "📎",
+		"dry-run": "🧪", "event": "📍", "kind": "🔎", "name": "📛", "title": "📄", "ref": "🎫",
+	}[name]
 }
 
 // suggestingInput is an Input that ctrl+e sets to the valid value suggest offers for what it holds.

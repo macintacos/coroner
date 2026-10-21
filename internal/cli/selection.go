@@ -55,7 +55,7 @@ const timelineUsage = "Timeline `name|id` to act on"
 // timelineField is -t as a write command's field: a stringsField because -t is a StringArray
 // on every command; wrapRunErrors refuses a second timeline on a command that reads one.
 func timelineField() field {
-	return field{name: "timeline", shorthand: "t", typ: stringsField, usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
+	return field{name: "timeline", shorthand: "t", typ: stringsField, title: "Timeline", usage: timelineUsage, check: withoutEnv(checkTimelineFlag)}
 }
 
 // timelinesAnnotation is the cmd.Annotations key listing, comma-separated, how a command names

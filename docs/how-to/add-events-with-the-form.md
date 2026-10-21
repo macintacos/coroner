@@ -22,27 +22,36 @@ under `--no-input` or `CORONER_NO_INPUT`. Under `--json` only `--interactive` op
 
 ## Fill in the fields
 
-The form first asks for the five fields most events use:
+The form draws in a frame titled 📝 New event, at most 80 columns wide, and puts an icon
+before each field's title. The frame's top edge names the timeline the event goes to, as
+📒 inc-4821. It first asks for the five fields most events use:
 
 - **What happened:** the event's text.
 - **When:** the time it happened, in any form `coroner help time-input` lists. The form
   previews the time it reads as you type. Leave it empty to mean now.
-- **Source:** the system, service or person it came from.
-- **Tags:** keywords such as `phase:detect`, added one at a time with `enter`.
+- **Source:** the system, service or person it came from. As you type, the form marks the
+  name ✅ Existing source when coroner already has that source, or ✨ New source when the
+  event would create it. `annotation add`'s form marks its Source field the same way.
+- **Tags:** keywords such as `phase:detect`, added one at a time with `enter`. As you
+  type, the form marks the tag ✅ Existing tag when coroner already has that tag, or ✨
+  New tag when it does not, and each tag the field holds that is new keeps ✨ New tag
+  beside it.
 - **Files:** files to attach, such as screenshots, one path at a time.
 
-Source and Tags show a row of the values on the timeline's latest events first, then every
-other one. Once you type, the row shows the ones that start with what you typed, beside
-the inline suggestion `ctrl+e` takes.
+Source and Tags show a `💡 Suggestions:` row of the values on the timeline's latest events
+first, then every other one, while the values a field already holds are each marked `✓`.
+Once you type, the row shows the ones that start with what you typed, beside the inline
+suggestion `ctrl+e` takes.
 
 Files completes the path you type. Once you type, the row lists the entries of the typed
-path's directory, relative to where you run coroner or absolute, that start with the typed
-name, matching case, and a directory ends in `/`. `ctrl+e` takes the inline one, so you
-can keep completing inside a directory. Names starting with `.` show once you type the
-`.`. A path starting with `~/` completes nothing and is not expanded, so type the full
-path. A file that does not exist is reported when you submit, as `--attach` reports it,
-and the form asks the entry again. `annotation add`'s form completes its attach field the
-same way.
+path's directory, relative to where you run coroner, absolute, or in your home directory
+as `~/`, that start with the typed name, matching case, and a directory ends in `/`.
+`ctrl+e` takes the inline one, so you can keep completing inside a directory. Names
+starting with `.` show once you type the `.`. A path starting with `~/` attaches the file
+in your home directory, and the form shows and echoes its full path; `~user/` is not
+expanded. A file that does not exist is reported when you submit, as `--attach` reports
+it, and the form asks the entry again. `annotation add`'s form completes its attach field
+the same way.
 
 These keys move through the form:
 
@@ -55,14 +64,16 @@ These keys move through the form:
 | `backspace`         | Remove the picked value.                                        |
 | `y` / `n`           | Answer Yes or No, as to More options?                           |
 | `shift+tab`         | Go back to the previous field.                                  |
-| `esc`               | Drop the entry, and add nothing.                                |
+| `ctrl+t`            | Pick the timeline the entry goes to, or create one.             |
+| `esc`               | Drop the entry and finish, listing the events already added.    |
 | `ctrl+c`            | Stop coroner, which exits as interrupted.                       |
 
 ## Use More options
 
 After Files, the form asks **More options?**, which defaults to No. Its description lists
-the fields it holds: tz, ended, approximate, url, author, id and dry-run, the same values
-as the flags of those names.
+the fields it holds: tz, ended, approximate, url, author and dry-run, the same values as
+the flags of those names. The form never asks for an id; an `--id` given with
+`--interactive` applies to the first entry only.
 
 - Answer Yes to fill them in. The tz field comes first, and previews When's time read in
   the zone you type.
@@ -72,6 +83,22 @@ as the flags of those names.
   from the entry before, More options opens Yes by itself.
 - Answer No to add the event without any of them, even one that held a value, except the
   zone: the times the form shows are already read in it.
+
+## Switch the timeline
+
+Press `ctrl+t` on any page of an entry to pick the timeline it goes to. The picker lists
+every timeline, with the cursor on the entry's own, after ✨ New timeline:
+
+- Pick a timeline, and the entry reopens on it with what you typed, suggesting that
+  timeline's sources and tags. Each later entry's command names it with `-t`.
+- Pick ✨ New timeline to create one in `coroner timeline create`'s own form, titled 📒
+  New timeline, which prints what that command prints. A name already taken offers the
+  existing timeline. The entry then reopens on the timeline created or used, which does
+  not become current.
+- Press `esc` to go back to the entry on its own timeline.
+
+When nothing selects a timeline, the form asks for one from the same picker before the
+first entry.
 
 ## Add several events in a row
 
@@ -85,8 +112,31 @@ with these values carried from the last one:
 - the author
 - the dry run
 
-The text, time, end, approximate mark, URL, id and files start empty each time. To drop a
+The text, time, end, approximate mark, URL and files start empty each time. To drop a
 carried tag, pick it with `↑` and press `backspace`.
+
+Each event is added when you submit it. Once one is, the frame's bottom edge counts them,
+as ✓ 2 events added, and offers `esc finish`.
+
+Answer No to stop, or press `esc` on an entry to stop at once, dropping only the entry on
+screen. Each form clears from the screen when it ends, so only what coroner prints stays.
+When you added at least one event, coroner then lists them: for each timeline, in the
+order it first got one, its name and each event's seq, time and text, then the command
+that shows those timelines. A dry run, or an `--id` already stored, adds nothing, so the
+count and the list leave it out. `-q` silences the list. `annotation add`'s form switches
+its timeline, counts and ends the same way, listing each annotation's kind and body.
+
+```text
+Equivalent command: coroner event add 'Migration paused' -t db-migration --at 2026-10-20T16:10:00Z
+
+✓ Added 2 events to timeline `inc-4821`
+  #3  2026-10-20T16:00:00Z (-04:00 local: 12:00:00)  Primary stepped down
+  #4  2026-10-20T16:05:00Z (-04:00 local: 12:05:00)  Election timeout on db-3
+✓ Added 1 event to timeline `db-migration`
+  #1  2026-10-20T16:10:00Z (-04:00 local: 12:10:00)  Migration paused
+
+  View the timelines: coroner timeline view -t inc-4821 -t db-migration
+```
 
 ## Repeat an entry from a script
 

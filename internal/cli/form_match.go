@@ -74,8 +74,11 @@ func (r *matchRow) line() string {
 		labels[i] = pickerLabel(value)
 	}
 
-	return "↳ " + strings.Join(labels, "  ")
+	return suggestionsLabel + strings.Join(labels, " · ")
 }
+
+// suggestionsLabel heads a match row, so its values never read as ones a field holds.
+const suggestionsLabel = "💡 Suggestions: "
 
 func cycleKeys() []key.Binding {
 	return []key.Binding{
