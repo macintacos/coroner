@@ -89,6 +89,7 @@ digraph coroner_rules_router {
     "Load rules/viewer.md" [shape=box];
     "Load rules/skills.md" [shape=box];
     "Load .claude/skills/release-coroner/SKILL.md" [shape=box];
+    "Load design/README.md" [shape=box];
 
     "Working on coroner" -> "What does the change touch?";
     "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
@@ -106,6 +107,7 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load rules/viewer.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
     "What does the change touch?" -> "Load rules/skills.md" [label="skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json"];
     "What does the change touch?" -> "Load .claude/skills/release-coroner/SKILL.md" [label="internal/tools/release: a subcommand, flag, JSON key or error code the /release-coroner skill uses"];
+    "What does the change touch?" -> "Load design/README.md" [label="how coroner looks or reads to people: the HTML or SVG export's styling, the viewer, picker or forms, how command output and errors are styled, or the docs site's theme"];
 }
 ```
 

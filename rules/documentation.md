@@ -36,6 +36,7 @@ digraph coroner_docs_router {
     "Edit docs/reference/configuration.md" [shape=box];
     "Edit internal/cli/topics/*.md" [shape=box];
     "Edit skills/coroner/ (SKILL.md and references/)" [shape=box];
+    "Edit design/" [shape=box];
 
     "Changing documentation" -> "Which doc does the change affect?";
     "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, installing the agent skill, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
@@ -57,6 +58,7 @@ digraph coroner_docs_router {
     "Which doc does the change affect?" -> "Edit docs/reference/configuration.md" [label="a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule"];
     "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site"];
     "Which doc does the change affect?" -> "Edit skills/coroner/ (SKILL.md and references/)" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed"];
+    "Which doc does the change affect?" -> "Edit design/" [label="the design direction: a colour, face, radius or motion value moving to a new home, a design decision, a departure from the /taste defaults, or code catching up with an open item"];
 }
 ```
 
@@ -170,6 +172,15 @@ digraph coroner_docs_router {
   [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json) offers it as a
   plugin; `README.md` and the how-to repeat its plugin and marketplace names, so a rename
   there updates both.
+- **[`design/`](../design/README.md)** (coding agents changing how coroner looks or reads
+  to people, and the maintainer who sets its design direction) — the design direction for
+  the exports, the viewer, picker and forms, command output and the docs site: the brief,
+  where each design value lives, the patterns, the departures from the `/taste` defaults,
+  and the decision log with what the code has yet to catch up on. It sits at the repo root
+  rather than under `docs/`, which publishes every file, because the `/taste` skill reads
+  it there. Its pages point at values in the code and never copy them, so moving a value
+  updates `design/tokens.md`, and code that closes an open item removes it from
+  `design/decisions.md`.
 
 ## Audience, stated at the top of every new doc
 
