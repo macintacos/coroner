@@ -2,5 +2,5 @@
 name            = "coroner-docs"
 version         = "0.1.0"
 description     = "Builds coroner's documentation site with Zensical."
-requires-python = ">=3.10"
-dependencies    = ["zensical>=0.0.62"]
+requires-python = ">=3.14"
+dependencies    = ["zensical>=0.0.73"]
