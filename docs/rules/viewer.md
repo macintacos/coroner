@@ -6,7 +6,7 @@
    which opens the store, reads in deferred transactions and closes it on every call.
    Never keep a `*store.Store`, a connection or a transaction in the model, and never read
    while rendering: an agent keeps running `coroner event add` while a person watches. The
-   `viewer-no-store` depguard rule in [`.golangci.yml`](../.golangci.yml) fails any
+   `viewer-no-store` depguard rule in [`.golangci.yml`](../../.golangci.yml) fails any
    non-test viewer file that imports `internal/store`. The timeline picker reads nothing
    itself: its rows arrive in `PickOptions`, read from a store the command closes before
    the picker opens.

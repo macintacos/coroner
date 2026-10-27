@@ -6,6 +6,11 @@ site_url  = "https://macintacos.github.io/coroner/"
 repo_url  = "https://github.com/macintacos/coroner"
 repo_name = "macintacos/coroner"
 
+# Agent-facing rule files, read in the repository and never published.
+exclude_docs = """
+rules/
+"""
+
 # Unlisted pages, such as every command page but coroner.md, are still built and searchable.
 nav = [
   { "Home" = "index.md" },

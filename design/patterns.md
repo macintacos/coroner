@@ -4,8 +4,8 @@
 who sets its design direction.*
 
 How coroner builds things. Values live where [`tokens.md`](tokens.md) says. The rules for
-the code behind each surface live in [`rules/export.md`](../rules/export.md) and
-[`rules/viewer.md`](../rules/viewer.md), and command wording follows
+the code behind each surface live in [`docs/rules/export.md`](../docs/rules/export.md) and
+[`docs/rules/viewer.md`](../docs/rules/viewer.md), and command wording follows
 [the command checklist](../docs/contributing/command-checklist.md).
 
 ## HTML export

@@ -44,7 +44,7 @@ skill, whose `init`, `mockup` and `review` commands read and write these files.
 - **Code that catches up with a decision:** remove its item from the open list in
   `decisions.md`.
 - **A new page:** add an edge to the digraph above, and add the page to
-  [`rules/documentation.md`](../rules/documentation.md).
+  [`docs/rules/documentation.md`](../docs/rules/documentation.md).
 
 The floors (contrast, focus, target size, reduced motion, 200% zoom, colour never the only
 signal) are not design choices and never appear in `exceptions.md`. A floor the code

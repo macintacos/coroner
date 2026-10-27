@@ -22,18 +22,18 @@
    keys, order or values than `export.Write` writes for its record.
 4. **A changed type is a contract change:** edit the Go type, run
    `go run ./internal/tools/schemagen`, and classify the change by the evolution rules in
-   [the export format reference](../docs/reference/export-format.md#evolution-rules), with
-   the reference updated in the same change (`AGENTS.md` Rules 3 and 4). `export.Decode`
-   and the schema require every key of the current type, so a key added to an existing
-   object in a minor version carries a `since:"1.N"` struct tag, which schemagen reads to
-   leave the key out of `required`, as `Envelope.Attachments` does. A new record type's
-   keys need no tag: no older minor has that record. `checkKeys` does not read the tag
-   yet, so the first tagged key on a JSONL record type or the header teaches it to skip
-   that key for a header of an older minor; until then such a key fails every older
-   minor's JSONL fixtures (rule 7). An older minor's fixture still validates and decodes,
-   but no longer re-encodes to its own bytes: the added key is written into its lines.
+   [the export format reference](../reference/export-format.md#evolution-rules), with the
+   reference updated in the same change (`AGENTS.md` Rules 3 and 4). `export.Decode` and
+   the schema require every key of the current type, so a key added to an existing object
+   in a minor version carries a `since:"1.N"` struct tag, which schemagen reads to leave
+   the key out of `required`, as `Envelope.Attachments` does. A new record type's keys
+   need no tag: no older minor has that record. `checkKeys` does not read the tag yet, so
+   the first tagged key on a JSONL record type or the header teaches it to skip that key
+   for a header of an older minor; until then such a key fails every older minor's JSONL
+   fixtures (rule 7). An older minor's fixture still validates and decodes, but no longer
+   re-encodes to its own bytes: the added key is written into its lines.
 5. **The package imports no command or storage code:** the `export-contract` depguard rule
-   in [`.golangci.yml`](../.golangci.yml) fails an import of `internal/store`,
+   in [`.golangci.yml`](../../.golangci.yml) fails an import of `internal/store`,
    `internal/cli` or cobra.
 6. **Export JSONL has one reader and one writer:** read it only through `export.Decode`,
    and write it only through `export.Records` and `export.WriteRecords`, or, in the HTML
@@ -142,7 +142,7 @@
    is not a contract (`AGENTS.md` Rule 3); its goldens in
    `internal/export/testdata/html/`, with the inlined files elided, change only through
    `go test ./internal/export -update`. The bundle changes only by the steps in
-   [its README](../internal/export/html/vendor/README.md).
+   [its README](../../internal/export/html/vendor/README.md).
 11. **The HTML viewer's colours live in `theme.go`:** every colour the page shows is a
     token in `internal/export/theme.go` with a role, background, text or line, and
     `WriteHTML` writes the tokens into the page as custom properties with their light,

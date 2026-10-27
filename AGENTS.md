@@ -52,12 +52,12 @@ which a package reuses because CI first sets each checked-out file's mtime from 
 content. The docs gate
 ([`.github/workflows/docs-gate.yml`](.github/workflows/docs-gate.yml)) fails a pull
 request that changes a file under `internal/cli/` other than a test, testdata or help
-topic without changing a page under `docs/` outside `docs/reference/cli/`, unless it has
-the `docs-not-needed` label; [`.github/scripts/docs-gate`](.github/scripts/docs-gate)
-holds the rule and reads changed paths on stdin. Pushing a `v*` tag runs two workflows:
-one deploys the docs site to GitHub Pages
-([`.github/workflows/docs.yml`](.github/workflows/docs.yml)), for a final tag only, not a
-release candidate such as `v0.1.0-rc.0`, and the release workflow
+topic without changing a page under `docs/` outside `docs/reference/cli/` and
+`docs/rules/`, unless it has the `docs-not-needed` label;
+[`.github/scripts/docs-gate`](.github/scripts/docs-gate) holds the rule and reads changed
+paths on stdin. Pushing a `v*` tag runs two workflows: one deploys the docs site to GitHub
+Pages ([`.github/workflows/docs.yml`](.github/workflows/docs.yml)), for a final tag only,
+not a release candidate such as `v0.1.0-rc.0`, and the release workflow
 ([`.github/workflows/release.yml`](.github/workflows/release.yml)) reads the release notes
 from the annotated tag's message, then has goreleaser publish the release and update the
 Homebrew cask.
@@ -80,14 +80,14 @@ digraph coroner_rules_router {
     "Load CONTEXT.md" [shape=box];
     "Load STABILITY.md" [shape=box];
     "Load skills/coroner/SKILL.md" [shape=box];
-    "Load rules/documentation.md" [shape=box];
-    "Load rules/timeline.md" [shape=box];
-    "Load rules/store.md" [shape=box];
-    "Load rules/timeparse.md" [shape=box];
-    "Load rules/timetext.md" [shape=box];
-    "Load rules/export.md" [shape=box];
-    "Load rules/viewer.md" [shape=box];
-    "Load rules/skills.md" [shape=box];
+    "Load docs/rules/documentation.md" [shape=box];
+    "Load docs/rules/timeline.md" [shape=box];
+    "Load docs/rules/store.md" [shape=box];
+    "Load docs/rules/timeparse.md" [shape=box];
+    "Load docs/rules/timetext.md" [shape=box];
+    "Load docs/rules/export.md" [shape=box];
+    "Load docs/rules/viewer.md" [shape=box];
+    "Load docs/rules/skills.md" [shape=box];
     "Load .claude/skills/release-coroner/SKILL.md" [shape=box];
     "Load design/README.md" [shape=box];
 
@@ -98,14 +98,14 @@ digraph coroner_rules_router {
     "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
     "What does the change touch?" -> "Load STABILITY.md" [label="JSON output, exports or another contract (Rule 3)"];
     "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 5)"];
-    "What does the change touch?" -> "Load rules/documentation.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a rules/ file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
-    "What does the change touch?" -> "Load rules/timeline.md" [label="internal/timeline, or code that stores, orders or validates its types"];
-    "What does the change touch?" -> "Load rules/store.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
-    "What does the change touch?" -> "Load rules/timeparse.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
-    "What does the change touch?" -> "Load rules/timetext.md" [label="internal/timetext, or code that shows an event's time to people"];
-    "What does the change touch?" -> "Load rules/export.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
-    "What does the change touch?" -> "Load rules/viewer.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
-    "What does the change touch?" -> "Load rules/skills.md" [label="skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json"];
+    "What does the change touch?" -> "Load docs/rules/documentation.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a docs/rules/ file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
+    "What does the change touch?" -> "Load docs/rules/timeline.md" [label="internal/timeline, or code that stores, orders or validates its types"];
+    "What does the change touch?" -> "Load docs/rules/store.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
+    "What does the change touch?" -> "Load docs/rules/timeparse.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
+    "What does the change touch?" -> "Load docs/rules/timetext.md" [label="internal/timetext, or code that shows an event's time to people"];
+    "What does the change touch?" -> "Load docs/rules/export.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
+    "What does the change touch?" -> "Load docs/rules/viewer.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
+    "What does the change touch?" -> "Load docs/rules/skills.md" [label="skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json"];
     "What does the change touch?" -> "Load .claude/skills/release-coroner/SKILL.md" [label="internal/tools/release: a subcommand, flag, JSON key or error code the /release-coroner skill uses"];
     "What does the change touch?" -> "Load design/README.md" [label="how coroner looks or reads to people: the HTML or SVG export's styling, the viewer, picker or forms, how command output and errors are styled, or the docs site's theme"];
 }
@@ -259,10 +259,11 @@ digraph coroner_rules_router {
   `reference/`, `explanation/` and `contributing/`, with its nav in
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
   [`pyproject.toml`](pyproject.toml), locked by `uv.lock`. Every file under `docs/` is
-  published, so agent-facing rules live in [`rules/`](rules/), never under `docs/`, and a
-  published page links a file outside `docs/` by its GitHub URL, except the export schema,
-  which `docs:build` copies into the site at `/coroner/schema/`, under `site_url`'s path,
-  and fails when a page links a file there it did not copy.
+  published except the agent-facing rules in [`docs/rules/`](docs/rules/), which
+  `zensical.toml`'s `exclude_docs` leaves out, so a published page links a file there, or
+  outside `docs/`, by its GitHub URL, except the export schema, which `docs:build` copies
+  into the site at `/coroner/schema/`, under `site_url`'s path, and fails when a page
+  links a file there it did not copy.
 - Vocabulary: use the glossary in [`CONTEXT.md`](CONTEXT.md) for names in code, flags,
   JSON and docs. The noun is `annotation`, not `note`.
   [`docs/explanation/data-model.md`](docs/explanation/data-model.md) carries the glossary

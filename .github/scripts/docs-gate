@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Reads a pull request's changed paths on stdin. Fails when a file under internal/cli/ other
 # than a test, testdata or help topic changed but nothing under docs/ did, other than the
-# generated CLI reference. An empty stdin fails.
+# generated CLI reference or the agent-facing docs/rules/. An empty stdin fails.
 
 set -euo pipefail
 
@@ -17,9 +17,9 @@ match() {
 }
 
 cli=$(match -E '^internal/cli/' <<<"$paths" | match -vE '_test\.go$|/testdata/|^internal/cli/topics/')
-docs=$(match -E '^docs/' <<<"$paths" | match -v '^docs/reference/cli/')
+docs=$(match -E '^docs/' <<<"$paths" | match -vE '^docs/(reference/cli|rules)/')
 
 if [[ -n $cli && -z $docs ]]; then
-	printf '::error::internal/cli changed but no hand-written page under docs/ did (the generated docs/reference/cli/ does not count): %s. Update the docs page the change affects, or add the docs-not-needed label if nothing user-visible changed.\n' "${cli//$'\n'/, }" >&2
+	printf '::error::internal/cli changed but no hand-written page under docs/ did (the generated docs/reference/cli/ and the agent-facing docs/rules/ do not count): %s. Update the docs page the change affects, or add the docs-not-needed label if nothing user-visible changed.\n' "${cli//$'\n'/, }" >&2
 	exit 1
 fi
