@@ -11,23 +11,24 @@ gap and overlay.
 
 ## Routing
 
-Read the digraph as a checklist, not a single path. Load every file whose edge matches the
-change before you design or style that part.
+Walk the `router` fence from `@designing-coroner` as a checklist, not a single path. Take
+every exit whose label matches the change, and load each file those stops name before you
+design or style that part.
 
-```graphviz
-digraph coroner_design_router {
-    node [shape=box];
-
-    "Designing coroner" [shape=doublecircle];
-    "What does the change decide?" [shape=diamond];
-
-    "Designing coroner" -> "What does the change decide?";
-    "What does the change decide?" -> "Load design/brief.md" [label="anything a person sees, presses or reads"];
-    "What does the change decide?" -> "Load design/tokens.md" [label="a colour, face, size, radius, spacing or motion value"];
-    "What does the change decide?" -> "Load design/patterns.md" [label="building or changing a surface, control, key, row, frame, message or error"];
-    "What does the change decide?" -> "Load design/exceptions.md" [label="a choice that departs from the /taste defaults, or seems to"];
-    "What does the change decide?" -> "Load design/decisions.md" [label="why a choice was made, what the code has yet to catch up on, or recording a new pick"];
-}
+```router
+@designing-coroner: Designing coroner
+  > what-does
+what-does: What does the change decide?
+  anything a person sees, presses or reads > brief
+  a colour, face, size, radius, spacing or motion value > tokens
+  building or changing a surface, control, key, row, frame, message or error > patterns
+  a choice that departs from the /taste defaults, or seems to > exceptions
+  why a choice was made, what the code has yet to catch up on, or recording a new pick > decisions
+brief!: Load design/brief.md
+tokens!: Load design/tokens.md
+patterns!: Load design/patterns.md
+exceptions!: Load design/exceptions.md
+decisions!: Load design/decisions.md
 ```
 
 ## Updating design/
@@ -43,7 +44,7 @@ skill, whose `init`, `mockup` and `review` commands read and write these files.
   [`exceptions.md`](exceptions.md) with what it departs from and why.
 - **Code that catches up with a decision:** remove its item from the open list in
   `decisions.md`.
-- **A new page:** add an edge to the digraph above, and add the page to
+- **A new page:** add an exit and a stop to the router above, and add the page to
   [`docs/rules/documentation.md`](../docs/rules/documentation.md).
 
 The floors (contrast, focus, target size, reduced motion, 200% zoom, colour never the only

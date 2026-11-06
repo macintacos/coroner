@@ -64,51 +64,48 @@ Homebrew cask.
 
 ## Routing
 
-Read the digraph as a checklist, not a single path:
-**load every file whose edge matches the change** before editing that area. A box marked
-"not in the repo yet" names the issue that will land that file. Until it lands there is
-nothing to load: skip the box, and never create its file early.
+Walk the `router` fence from `@working-on` as a checklist, not a single path: take
+**every exit whose label matches the change**, and load each file those stops name before
+editing that area. A stop marked "not in the repo yet" names the issue that will land that
+file. Until it lands there is nothing to load: skip the stop, and never create its file
+early.
 
-```graphviz
-digraph coroner_rules_router {
-    "Working on coroner" [shape=doublecircle];
-    "What does the change touch?" [shape=diamond];
-
-    "Load AGENTS.md § Rules" [shape=box];
-    "Load docs/contributing/command-checklist.md" [shape=box];
-    "Load .golangci.yml" [shape=box];
-    "Load CONTEXT.md" [shape=box];
-    "Load STABILITY.md" [shape=box];
-    "Load skills/coroner/SKILL.md" [shape=box];
-    "Load docs/rules/documentation.md" [shape=box];
-    "Load docs/rules/timeline.md" [shape=box];
-    "Load docs/rules/store.md" [shape=box];
-    "Load docs/rules/timeparse.md" [shape=box];
-    "Load docs/rules/timetext.md" [shape=box];
-    "Load docs/rules/export.md" [shape=box];
-    "Load docs/rules/viewer.md" [shape=box];
-    "Load docs/rules/skills.md" [shape=box];
-    "Load .claude/skills/release-coroner/SKILL.md" [shape=box];
-    "Load design/README.md" [shape=box];
-
-    "Working on coroner" -> "What does the change touch?";
-    "What does the change touch?" -> "Load AGENTS.md § Rules" [label="any change: the repository rules always apply"];
-    "What does the change touch?" -> "Load docs/contributing/command-checklist.md" [label="a command, flag, output or error message (Rule 1)"];
-    "What does the change touch?" -> "Load .golangci.yml" [label="Go code: function shape and layering are lint rules"];
-    "What does the change touch?" -> "Load CONTEXT.md" [label="naming something in code, flags, JSON or docs"];
-    "What does the change touch?" -> "Load STABILITY.md" [label="JSON output, exports or another contract (Rule 3)"];
-    "What does the change touch?" -> "Load skills/coroner/SKILL.md" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 5)"];
-    "What does the change touch?" -> "Load docs/rules/documentation.md" [label="adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a docs/rules/ file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4)"];
-    "What does the change touch?" -> "Load docs/rules/timeline.md" [label="internal/timeline, or code that stores, orders or validates its types"];
-    "What does the change touch?" -> "Load docs/rules/store.md" [label="internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping"];
-    "What does the change touch?" -> "Load docs/rules/timeparse.md" [label="internal/timeparse, or code that turns typed time input into an instant"];
-    "What does the change touch?" -> "Load docs/rules/timetext.md" [label="internal/timetext, or code that shows an event's time to people"];
-    "What does the change touch?" -> "Load docs/rules/export.md" [label="internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export"];
-    "What does the change touch?" -> "Load docs/rules/viewer.md" [label="internal/viewer, or the code in internal/cli that loads what it shows"];
-    "What does the change touch?" -> "Load docs/rules/skills.md" [label="skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json"];
-    "What does the change touch?" -> "Load .claude/skills/release-coroner/SKILL.md" [label="internal/tools/release: a subcommand, flag, JSON key or error code the /release-coroner skill uses"];
-    "What does the change touch?" -> "Load design/README.md" [label="how coroner looks or reads to people: the HTML or SVG export's styling, the viewer, picker or forms, how command output and errors are styled, or the docs site's theme"];
-}
+```router
+@working-on: Working on coroner
+  > what-does
+what-does: What does the change touch?
+  any change: the repository rules always apply > agents
+  a command, flag, output or error message (Rule 1) > command-checklist
+  Go code: function shape and layering are lint rules > load-golangci
+  naming something in code, flags, JSON or docs > context
+  JSON output, exports or another contract (Rule 3) > stability
+  a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 5) > skill
+  adding, removing, renaming or changing a doc, a mise task, hk hook or CI workflow step, a docs/rules/ file or a generated artifact; an area's first rules; landing anything marked not in the repo yet; or user-visible behaviour (Rule 4) > documentation
+  internal/timeline, or code that stores, orders or validates its types > timeline
+  internal/store: a migration, a query, sqlc.yaml, the SQL it runs, or the store's transactions and row mapping > store
+  internal/timeparse, or code that turns typed time input into an instant > timeparse
+  internal/timetext, or code that shows an event's time to people > timetext
+  internal/export, schema/, testdata/export/, or code that encodes the export types, reads export JSONL or renders the Markdown, Mermaid, HTML or SVG export > export
+  internal/viewer, or the code in internal/cli that loads what it shows > viewer
+  skills/: the agent skill, its references, skills/skills.go or .claude-plugin/marketplace.json > skills
+  internal/tools/release: a subcommand, flag, JSON key or error code the /release-coroner skill uses > skill-2
+  how coroner looks or reads to people: the HTML or SVG export's styling, the viewer, picker or forms, how command output and errors are styled, or the docs site's theme > readme
+agents!: Load AGENTS.md § Rules
+command-checklist!: Load docs/contributing/command-checklist.md
+load-golangci!: Load .golangci.yml
+context!: Load CONTEXT.md
+stability!: Load STABILITY.md
+skill!: Load skills/coroner/SKILL.md
+documentation!: Load docs/rules/documentation.md
+timeline!: Load docs/rules/timeline.md
+store!: Load docs/rules/store.md
+timeparse!: Load docs/rules/timeparse.md
+timetext!: Load docs/rules/timetext.md
+export!: Load docs/rules/export.md
+viewer!: Load docs/rules/viewer.md
+skills!: Load docs/rules/skills.md
+skill-2!: Load .claude/skills/release-coroner/SKILL.md
+readme!: Load design/README.md
 ```
 
 ## Where things live and what to call them

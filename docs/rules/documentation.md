@@ -4,62 +4,58 @@
 
 [`AGENTS.md`](../../AGENTS.md) routes a change to the rules it needs. This file is its
 mirror for docs: it maps every doc coroner ships or will ship, and decides which ones a
-change updates. Read the digraph as a checklist, not a single path:
-**update every doc whose edge matches**. A box marked "not in the repo yet" names the
-issue that will land that doc. Until it lands there is nothing to edit: skip the box, and
-never create its file early. That issue completes the entry here
-([§ The maintenance rule](#the-maintenance-rule)).
+change updates. Walk the `router` fence from `@changing-documentation` as a checklist, not
+a single path: take **every exit whose label matches**, and update each doc those stops
+name. A stop marked "not in the repo yet" names the issue that will land that doc. Until
+it lands there is nothing to edit: skip the stop, and never create its file early. That
+issue completes the entry here ([§ The maintenance rule](#the-maintenance-rule)).
 
 ## Routing
 
-```graphviz
-digraph coroner_docs_router {
-    "Changing documentation" [shape=doublecircle];
-    "Which doc does the change affect?" [shape=diamond];
-
-    "Edit README.md" [shape=box];
-    "Edit AGENTS.md" [shape=box];
-    "Edit docs/rules/*.md" [shape=box];
-    "Edit docs/contributing/command-checklist.md" [shape=box];
-    "Edit docs/contributing/migrations.md" [shape=box];
-    "Edit docs/contributing/releasing.md" [shape=box];
-    "Edit .claude/skills/release-coroner/SKILL.md" [shape=box];
-    "Edit docs/how-to/install.md" [shape=box];
-    "Edit .github/pull_request_template.md" [shape=box];
-    "Edit internal/cli/testdata/script/contract/README.md" [shape=box];
-    "Edit internal/export/html/vendor/README.md" [shape=box];
-    "Edit CONTEXT.md" [shape=box];
-    "Edit STABILITY.md" [shape=box];
-    "Edit the docs site: docs/ and zensical.toml" [shape=box];
-    "Regenerate docs/reference/cli/" [shape=box];
-    "Edit docs/reference/export-format.md" [shape=box];
-    "Edit docs/reference/configuration.md" [shape=box];
-    "Edit internal/cli/topics/*.md" [shape=box];
-    "Edit skills/coroner/ (SKILL.md and references/)" [shape=box];
-    "Edit design/" [shape=box];
-
-    "Changing documentation" -> "Which doc does the change affect?";
-    "Which doc does the change affect?" -> "Edit README.md" [label="the human front door: what coroner is, install, installing the agent skill, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page"];
-    "Which doc does the change affect?" -> "Edit AGENTS.md" [label="what coroner is, the mise tasks, hk hooks and what CI runs, the routing digraph, where things live, the repository rules"];
-    "Which doc does the change affect?" -> "Edit docs/rules/*.md" [label="a rule file for one area, loaded on demand from AGENTS.md; this map is one"];
-    "Which doc does the change affect?" -> "Edit docs/contributing/command-checklist.md" [label="clig.dev rules for commands, flags, output and errors, or the verb glossary"];
-    "Which doc does the change affect?" -> "Edit docs/contributing/migrations.md" [label="the migration rules, the release fixture databases and their procedure, or a deferred migration gap"];
-    "Which doc does the change affect?" -> "Edit docs/contributing/releasing.md" [label="how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, the release flow /release-coroner runs, or the steps before and after a tag"];
-    "Which doc does the change affect?" -> "Edit .claude/skills/release-coroner/SKILL.md" [label="the release flow, or a subcommand, flag, JSON key or error code of internal/tools/release"];
-    "Which doc does the change affect?" -> "Edit docs/how-to/install.md" [label="how coroner is installed, upgraded or removed, what a release archive holds, or the macOS signing decision"];
-    "Which doc does the change affect?" -> "Edit .github/pull_request_template.md" [label="what every pull request confirms"];
-    "Which doc does the change affect?" -> "Edit internal/cli/testdata/script/contract/README.md" [label="what the contract scripts pin and how, what a diff under contract/ means, and the export round trip in internal/cli/roundtrip_test.go"];
-    "Which doc does the change affect?" -> "Edit internal/export/html/vendor/README.md" [label="the vendored vis-timeline: its version, checksum, licence or update steps"];
-    "Which doc does the change affect?" -> "Edit CONTEXT.md" [label="domain vocabulary: a new or renamed noun, repeated word for word in docs/explanation/data-model.md"];
-    "Which doc does the change affect?" -> "Edit STABILITY.md" [label="what is a contract, format_version bumps, deprecation windows"];
-    "Which doc does the change affect?" -> "Edit the docs site: docs/ and zensical.toml" [label="user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav"];
-    "Which doc does the change affect?" -> "Regenerate docs/reference/cli/" [label="a command, flag or help topic changed: regenerate, never hand-edit"];
-    "Which doc does the change affect?" -> "Edit docs/reference/export-format.md" [label="the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules"];
-    "Which doc does the change affect?" -> "Edit docs/reference/configuration.md" [label="a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule"];
-    "Which doc does the change affect?" -> "Edit internal/cli/topics/*.md" [label="terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site"];
-    "Which doc does the change affect?" -> "Edit skills/coroner/ (SKILL.md and references/)" [label="a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed"];
-    "Which doc does the change affect?" -> "Edit design/" [label="the design direction: a colour, face, radius or motion value moving to a new home, a design decision, a departure from the /taste defaults, or code catching up with an open item"];
-}
+```router
+@changing-documentation: Changing documentation
+  > which-doc
+which-doc: Which doc does the change affect?
+  the human front door: what coroner is, install, installing the agent skill, development setup, project status, license; install and status also appear on docs/index.md, the site's landing page > readme
+  what coroner is, the mise tasks, hk hooks and what CI runs, the router, where things live, the repository rules > agents
+  a rule file for one area, loaded on demand from AGENTS.md; this map is one > edit-docs
+  clig.dev rules for commands, flags, output and errors, or the verb glossary > command-checklist
+  the migration rules, the release fixture databases and their procedure, or a deferred migration gap > migrations
+  how a release is cut: the tap and its token, the release tasks, the release workflow, .goreleaser.yaml, the release flow /release-coroner runs, or the steps before and after a tag > releasing
+  the release flow, or a subcommand, flag, JSON key or error code of internal/tools/release > skill
+  how coroner is installed, upgraded or removed, what a release archive holds, or the macOS signing decision > install
+  what every pull request confirms > pull-request-template
+  what the contract scripts pin and how, what a diff under contract/ means, and the export round trip in internal/cli/roundtrip_test.go > readme-2
+  the vendored vis-timeline: its version, checksum, licence or update steps > readme-3
+  domain vocabulary: a new or renamed noun, repeated word for word in docs/explanation/data-model.md > context
+  what is a contract, format_version bumps, deprecation windows > stability
+  user-visible behaviour: the landing page, tutorial, how-to guides, reference and explanation pages, or a page added to or moved in the site's nav > edit-the
+  a command, flag or help topic changed: regenerate, never hand-edit > regenerate-docs
+  the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules > export-format
+  a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule > configuration
+  terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site > edit-internal
+  a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed > skill-2
+  the design direction: a colour, face, radius or motion value moving to a new home, a design decision, a departure from the /taste defaults, or code catching up with an open item > edit-design
+readme!: Edit README.md
+agents!: Edit AGENTS.md
+edit-docs!: Edit docs/rules/*.md
+command-checklist!: Edit docs/contributing/command-checklist.md
+migrations!: Edit docs/contributing/migrations.md
+releasing!: Edit docs/contributing/releasing.md
+skill!: Edit .claude/skills/release-coroner/SKILL.md
+install!: Edit docs/how-to/install.md
+pull-request-template!: Edit .github/pull_request_template.md
+readme-2!: Edit internal/cli/testdata/script/contract/README.md
+readme-3!: Edit internal/export/html/vendor/README.md
+context!: Edit CONTEXT.md
+stability!: Edit STABILITY.md
+edit-the!: Edit the docs site: docs/ and zensical.toml
+regenerate-docs!: Regenerate docs/reference/cli/
+export-format!: Edit docs/reference/export-format.md
+configuration!: Edit docs/reference/configuration.md
+edit-internal!: Edit internal/cli/topics/*.md
+skill-2!: Edit skills/coroner/ (SKILL.md and references/)
+edit-design!: Edit design/
 ```
 
 ## The doc landscape
@@ -68,11 +64,11 @@ digraph coroner_docs_router {
   install, installing the agent skill, the development tasks and CI, project status, and
   the license, which points at `LICENSE`.
 - **[`AGENTS.md`](../../AGENTS.md)** (agent-facing) — the router: what coroner is, the
-  `mise` tasks, `hk` hooks and what CI runs, the routing digraph, where things live, and
-  the repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it
-  through the import; it never gains content of its own.
+  `mise` tasks, `hk` hooks and what CI runs, the router, where things live, and the
+  repository rules. `CLAUDE.md` is exactly `@AGENTS.md` so Claude Code reads it through
+  the import; it never gains content of its own.
 - **`docs/rules/*.md`** (agent-facing) — on-demand rule files, one per area, each reached
-  from an edge in `AGENTS.md`'s digraph.
+  from an exit in `AGENTS.md`'s router.
 - **[`docs/contributing/command-checklist.md`](../contributing/command-checklist.md)**
   — the [clig.dev](https://clig.dev/) rules with stable IDs (cite them as "violates
   OUT-3") and the verb glossary.
@@ -194,8 +190,9 @@ docs such as `docs/reference/cli/` are exempt; their landscape entry names the a
 it lands.
 
 Diagrams follow the same split, **deliberately**: human-facing docs use **mermaid**, which
-GitHub and the docs site render, and agent-facing docs use **graphviz**, which agents read
-as text. This is not an inconsistency to reconcile; never convert one to the other.
+GitHub and the docs site render, and agent-facing docs use **`router` fences**, which
+agents read as text. This is not an inconsistency to reconcile; never convert one to the
+other.
 
 ## Prose passes: use `/doc-coauthoring`
 
@@ -210,20 +207,20 @@ Documentation drifts when a map and the thing it maps change in separate pull re
 So, **in the same change**:
 
 1. **When one of these is added, removed, or renamed:**
-   - a doc updates its box and landscape entry here, and a rule file under `docs/rules/`
-     also adds or updates its edge in `AGENTS.md`'s digraph;
+   - a doc updates its exit, stop and landscape entry here, and a rule file under
+     `docs/rules/` also adds or updates its exit and stop in `AGENTS.md`'s router;
    - a `mise` task, `hk` hook or CI workflow step updates `AGENTS.md` § How to work here
      and every doc that names it, such as `README.md`'s Development section, and so does a
      change to what one runs;
    - a generated artifact adds its path and how to regenerate it to `AGENTS.md` Rule 2,
-     and a box and landscape entry here when it is a doc, like the CLI reference.
+     and an exit, stop and landscape entry here when it is a doc, like the CLI reference.
 2. **Landing something marked "not in the repo yet"** removes every marker for it (grep
-   for its path and its issue ID; a marker inside a digraph appears on both the box and
-   its edge) and turns the path mention into a link, outside code blocks.
+   for its path and its issue ID; a marker inside a router appears on both the stop and
+   the exit that leads to it) and turns the path mention into a link, outside code blocks.
 3. **An area gets rules only once it has code.** An area is a top-level package under
    `internal/` or a top-level directory such as `skills/`. The first issue with rules for
    an area that an agent would otherwise get wrong adds `docs/rules/<area>.md` and the
-   `AGENTS.md` edge that loads it.
+   `AGENTS.md` exit and stop that load it.
 4. **A new doc** states its audience and uses that audience's diagram tool
    ([§ Audience](#audience-stated-at-the-top-of-every-new-doc)).
 5. **A substantive prose pass** goes through `/doc-coauthoring`
