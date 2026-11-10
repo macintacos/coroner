@@ -16,6 +16,7 @@ import (
 	"github.com/macintacos/coroner/internal/cli/annotation"
 	"github.com/macintacos/coroner/internal/cli/attachment"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/event"
 	"github.com/macintacos/coroner/internal/cli/overlay"
 	"github.com/macintacos/coroner/internal/cli/source"
@@ -95,7 +96,7 @@ var _ = Describe("write command definitions", func() {
 	It("accept every optional form field's zero value, which a form reads as not given, and reject a required one's", func() {
 		var problems []string
 		for path, def := range writeDefinitions() {
-			for i, formField := range def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}) {
+			for i, formField := range def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}) {
 				formField.Blur()
 				err := formField.Error()
 				switch required := def.Fields[i].Required; {
@@ -299,7 +300,7 @@ var _ = Describe("write run functions", func() {
 
 // runWithoutStore calls run with an App whose store fails the spec when opened.
 func runWithoutStore(ctx context.Context, run func(context.Context, clikit.App, config.Config, clikit.FieldValues) error, in clikit.FieldValues) error {
-	return run(ctx, storelessApp(nil), config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
+	return run(ctx, clitest.StorelessApp(nil), config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
 }
 
 // errorOf returns run with its result dropped.
@@ -387,7 +388,7 @@ func flagShapeProblems(path string, flag *pflag.Flag, f clikit.Field) []string {
 func fieldProblems(path string, flag *pflag.Flag, formField huh.Field) []string {
 	var problems []string
 	_, usage := pflag.UnquoteUsage(flag)
-	if !strings.Contains(fieldView(formField), usage) {
+	if !strings.Contains(clitest.FieldView(formField), usage) {
 		problems = append(problems, fmt.Sprintf("coroner %s: form field %s does not show %q", path, flag.Name, usage))
 	}
 
@@ -475,7 +476,7 @@ func commandLine(def clikit.Definition, bad badValue) []string {
 	GinkgoHelper()
 	args := append(strings.Fields(bad.path), bad.otherArgs...)
 
-	return append(args, fieldArg(fieldNamed(def, bad.field), bad.value))
+	return append(args, fieldArg(clitest.FieldNamed(def, bad.field), bad.value))
 }
 
 // fieldArg returns the argument that gives f value: value itself for the positional argument, or
@@ -492,7 +493,7 @@ func fieldArg(f clikit.Field, value string) string {
 // fails with.
 func flagError(ctx context.Context, args []string) *clikit.Error {
 	GinkgoHelper()
-	return executeError(ctx, storelessApp(args), args...)
+	return executeError(ctx, clitest.StorelessApp(args), args...)
 }
 
 // executeError runs args through app's root and returns the *Error it fails with.
@@ -512,18 +513,9 @@ func executeError(ctx context.Context, app clikit.App, args ...string) *clikit.E
 // focus, with times read as the flag side reads them.
 func formError(def clikit.Definition, name, value string) error {
 	GinkgoHelper()
-	formField := namedField(def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), name)
-	typeInto(formField, value)
+	formField := clitest.NamedField(def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), name)
+	clitest.TypeInto(formField, value)
 	formField.Blur()
 
 	return formField.Error()
-}
-
-// formCheckEnv is what form fields check time input against, as the flag side reads it.
-func formCheckEnv() clikit.CheckEnv {
-	GinkgoHelper()
-	z, err := clikit.TimeZone(nil, "local", testNow().Location())
-	Expect(err).NotTo(HaveOccurred())
-
-	return clikit.CheckEnv{Now: testNow(), Zone: z}
 }

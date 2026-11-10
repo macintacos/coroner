@@ -18,7 +18,7 @@
    and `Annotation` and add `attachments`, so a field change to one is a `--json` change
    too, under the same `format_version` bump. Each slice field is made non-nil in its
    `NewX`, since v1 encodes a nil slice as `null`. A spec in
-   `internal/cli/output_internal_test.go` fails when one of those objects encodes other
+   `internal/cli/clikit/output_test.go` fails when one of those objects encodes other
    keys, order or values than `export.Write` writes for its record.
 4. **A changed type is a contract change:** edit the Go type, run
    `go run ./internal/tools/schemagen`, and classify the change by the evolution rules in

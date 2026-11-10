@@ -1,4 +1,4 @@
-package cli
+package clikit_test
 
 import (
 	"io/fs"
@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 )
 
 var _ = Describe("the attach field's completions", func() {
@@ -77,11 +78,11 @@ var _ = Describe("the attach field's completions", func() {
 
 	It("attaches a typed path starting with ~/ from the home directory", func() {
 		d := clikit.Definition{Fields: []clikit.Field{clikit.AttachField()}}
-		fields := d.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{Paths: map[string]func(string) string{"attach": clikit.ExpandHome("/home/priya")}})
-		attach := namedField(fields, "attach")
+		fields := d.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{Paths: map[string]func(string) string{"attach": clikit.ExpandHome("/home/priya")}})
+		attach := clitest.NamedField(fields, "attach")
 		attach.WithKeyMap(huh.NewDefaultKeyMap())
 		attach.Focus()
-		typeText(attach, "~/p99.png")
+		clitest.TypeText(attach, "~/p99.png")
 		attach.Blur()
 
 		Expect(d.FormValues(fields)).To(Equal(clikit.FieldValues{"attach": {"/home/priya/p99.png"}}))
@@ -97,12 +98,12 @@ var _ = Describe("the attach field's completions", func() {
 		Expect(clikit.AttachCompletions(failing, "")("files/p")).To(BeEmpty())
 
 		choices := clikit.FormChoices{Completions: map[string]func(string) []string{"attach": clikit.AttachCompletions(failing, "")}}
-		attach := namedField(clikit.Definition{Fields: []clikit.Field{clikit.AttachField()}}.FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "attach")
+		attach := clitest.NamedField(clikit.Definition{Fields: []clikit.Field{clikit.AttachField()}}.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "attach")
 		attach.WithKeyMap(huh.NewDefaultKeyMap())
 		attach.Focus()
-		typeText(attach, "files/p")
+		clitest.TypeText(attach, "files/p")
 
 		Expect(attach.Error()).NotTo(HaveOccurred())
-		Expect(fieldView(attach)).NotTo(ContainSubstring(clikit.SuggestionsLabel))
+		Expect(clitest.FieldView(attach)).NotTo(ContainSubstring(clikit.SuggestionsLabel))
 	})
 })

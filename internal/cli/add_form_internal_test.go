@@ -6,11 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -66,7 +63,7 @@ var _ = Describe("add forms", func() {
 
 	DescribeTable("read times in UTC, not the clock's zone, when the config file's default_timezone is UTC or unknown",
 		func(defaultTimezone string) {
-			now := func() time.Time { return testNow().In(time.FixedZone("Test/Local", -3*3600)) }
+			now := func() time.Time { return clitest.TestNow().In(time.FixedZone("Test/Local", -3*3600)) }
 			env := clikit.BaseCheckEnv(clikit.FormSession{App: clikit.App{Now: now}, Inv: clikit.Invocation{Cfg: config.Config{DefaultTimezone: defaultTimezone}}})
 
 			Expect(env.Zone).To(Equal(clikit.Zone{Loc: time.UTC, Label: "UTC"}))
@@ -77,7 +74,7 @@ var _ = Describe("add forms", func() {
 
 	It("read times in --tz over the config file's default_timezone", func() {
 		tz := "UTC"
-		env := clikit.BaseCheckEnv(clikit.FormSession{App: clikit.App{Now: testNow}, Inv: clikit.Invocation{TZ: &tz, Cfg: config.Config{DefaultTimezone: "Asia/Tokyo"}}})
+		env := clikit.BaseCheckEnv(clikit.FormSession{App: clikit.App{Now: clitest.TestNow}, Inv: clikit.Invocation{TZ: &tz, Cfg: config.Config{DefaultTimezone: "Asia/Tokyo"}}})
 
 		Expect(env.Zone.Loc).To(Equal(time.UTC))
 	})
@@ -192,7 +189,7 @@ var _ = Describe("add forms", func() {
 		}
 
 		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) clikit.AskFunc {
-			return scriptedForms(&asked, &framed, answers...)
+			return clitest.ScriptedForms(&asked, &framed, answers...)
 		}
 
 		// runForm runs args against a root holding parent, whose add command runs its form as RunE does
@@ -228,7 +225,7 @@ var _ = Describe("add forms", func() {
 			asked, framed = nil, nil
 			home := GinkgoT().TempDir()
 			db = filepath.Join(home, "coroner.db")
-			app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
+			app = clitest.ScratchApp(home, &out, &errOut, clitest.SequentialIDs(&ids))
 			app.InIsTTY, app.OutIsTTY = true, true
 			clitest.WriteMigratedDatabase(db)
 
@@ -241,36 +238,36 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open --interactive prefilled from the command line's arguments and flags", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel))
+				command := eventAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "Primary stepped down", "--interactive", "--source", "mongod")).To(Succeed())
 
-				Expect(fieldText(asked[0], "text")).To(Equal("Primary stepped down"))
-				Expect(fieldText(asked[0], "source")).To(Equal("mongod"))
+				Expect(clitest.FieldText(asked[0], "text")).To(Equal("Primary stepped down"))
+				Expect(clitest.FieldText(asked[0], "source")).To(Equal("mongod"))
 			})
 
 			It("write what the form submits and echo a command that dry-runs to the same event", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(submit(map[string]string{
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{
 					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
-				}), confirm(false)))
+				}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
-				written := withoutRecordKeys(out.Bytes())
+				written := clitest.WithoutRecordKeys(out.Bytes())
 
-				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
-				Expect(withoutRecordKeys(out.Bytes())).To(Equal(written))
+				Expect(runArgs(ctx, append(clitest.EchoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
+				Expect(clitest.WithoutRecordKeys(out.Bytes())).To(Equal(written))
 				Expect(written).To(HaveKeyWithValue("text", "Primary stepped down"))
 			})
 
 			It("log the same change lines as the command they echo", func(ctx SpecContext) {
 				app.Log = clikit.NewDiagnosticLog(app)
-				command := eventAdd(ctx, answers(submit(map[string]string{
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{
 					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
-				}), confirm(false)))
+				}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
-				submitted := changeShapes(app.Log.Lines())
-				echoed := echoedArgs(ctx, errOut.String())[1:]
+				submitted := clitest.ChangeShapes(app.Log.Lines())
+				echoed := clitest.EchoedArgs(ctx, errOut.String())[1:]
 				Expect(echoed[:2]).To(Equal([]string{"--db", db}))
 
 				app.Log = nil
@@ -279,27 +276,27 @@ var _ = Describe("add forms", func() {
 				Expect(runArgs(ctx, "--db", fresh, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 				Expect(runArgs(ctx, "--db", fresh, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
 				logPath := config.DiagnosticLogPath(fresh)
-				before := fileSize(logPath)
+				before := clitest.FileSize(logPath)
 				Expect(runArgs(ctx, append([]string{"--db", fresh}, echoed[2:]...)...)).To(Equal(0), errOut.String())
 
-				Expect(submitted).To(Equal(changeShapes(appendedLines(logPath, before))))
+				Expect(submitted).To(Equal(clitest.ChangeShapes(clitest.AppendedLines(logPath, before))))
 				Expect(submitted).To(ContainElement(HaveKeyWithValue("msg", "event added")))
 			})
 
 			It("store the time typed in the zone typed under More options", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(submit(map[string]string{
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{
 					"text": "Pager fires", "at": "03:25", "tz": "Asia/Tokyo", "more-options": "true",
-				}), confirm(false)))
+				}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
-				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
+				Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
 			})
 
 			It("apply the zone a later entry carries when More options is No", func(ctx SpecContext) {
 				first := map[string]string{"text": "First", "at": "03:25", "tz": "Asia/Tokyo", "more-options": "true"}
 				second := map[string]string{"text": "Second", "at": "03:25", "more-options": "false"}
-				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(second), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(first), clitest.Confirm(true), clitest.Submit(second), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -309,27 +306,27 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("apply --tz when More options is No", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(submit(map[string]string{
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{
 					"text": "Pager fires", "at": "03:25", "more-options": "false",
-				}), confirm(false)))
+				}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "--tz", "Asia/Tokyo", "event", "add", "--interactive", "--json")).To(Succeed())
 
-				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
+				Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("occurred_at", "2026-09-12T18:25:00.000000000Z"))
 			})
 
 			It("show the resolved author as a placeholder", func(ctx SpecContext) {
-				withEnv(&app, map[string]string{"USER": "sre"})
-				command := eventAdd(ctx, answers(cancel))
+				clitest.WithEnv(&app, map[string]string{"USER": "sre"})
+				command := eventAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
-				Expect(fieldView(namedField(asked[0], "author"))).To(ContainSubstring("sre"))
-				Expect(fieldText(asked[0], "author")).To(BeEmpty())
+				Expect(clitest.FieldView(clitest.NamedField(asked[0], "author"))).To(ContainSubstring("sre"))
+				Expect(clitest.FieldText(asked[0], "author")).To(BeEmpty())
 			})
 
 			It("show the config author as the placeholder when one is set", func(ctx SpecContext) {
-				withEnv(&app, map[string]string{"USER": "sre"})
+				clitest.WithEnv(&app, map[string]string{"USER": "sre"})
 				config := filepath.Join(filepath.Dir(db), ".config", "coroner", "config.toml")
 				app.ReadFile = func(name string) ([]byte, error) {
 					if name != config {
@@ -337,23 +334,23 @@ var _ = Describe("add forms", func() {
 					}
 					return []byte("author = \"Priya\"\n"), nil
 				}
-				command := eventAdd(ctx, answers(cancel))
+				command := eventAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
-				Expect(fieldView(namedField(asked[0], "author"))).To(ContainSubstring("Priya"))
+				Expect(clitest.FieldView(clitest.NamedField(asked[0], "author"))).To(ContainSubstring("Priya"))
 			})
 
 			It("attach a Files path starting with ~/ from HOME, echoing its full path", func(ctx SpecContext) {
 				home := GinkgoT().TempDir()
-				withEnv(&app, map[string]string{"HOME": home})
+				clitest.WithEnv(&app, map[string]string{"HOME": home})
 				Expect(os.WriteFile(filepath.Join(home, "log.txt"), []byte("stepdown\n"), 0o600)).To(Succeed())
 				app.ReadFile = os.ReadFile
-				command := eventAdd(ctx, answers(submit(map[string]string{"text": "Primary stepped down", "attach": "~/log.txt"}), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{"text": "Primary stepped down", "attach": "~/log.txt"}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-				Expect(echoedArgs(ctx, errOut.String())).To(ContainElements("--attach", filepath.Join(home, "log.txt")))
+				Expect(clitest.EchoedArgs(ctx, errOut.String())).To(ContainElements("--attach", filepath.Join(home, "log.txt")))
 			})
 
 			It("echo the flags-only command with every field in the flags' order", func(ctx SpecContext) {
@@ -363,17 +360,17 @@ var _ = Describe("add forms", func() {
 					}
 					return []byte("stepdown\n"), nil
 				}
-				command := eventAdd(ctx, answers(submit(map[string]string{
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{
 					"text": "Primary stepped down", "tz": "UTC", "at": "2026-09-11T03:14:07Z", "ended": "2026-09-11T03:20:00Z",
 					"approximate": "true", "source": "mongod", "tag": "election\nphase:detect", "url": "https://example.com/log",
 					"author": "Priya", "dry-run": "true", "more-options": "true",
-				}), confirm(false)))
+				}), clitest.Confirm(false)))
 
 				// A list field takes its values by keys, and the form asks no id, so both are given by flag.
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--attach", "log.txt",
 					"--id", "01a0a07c-cc3e-764d-b6e9-6d030ebfc0b2")).To(Succeed())
 
-				Expect(echoedArgs(ctx, errOut.String())).To(Equal([]string{
+				Expect(clitest.EchoedArgs(ctx, errOut.String())).To(Equal([]string{
 					"coroner", "--db", db, "event", "add", "Primary stepped down", "--tz", "UTC", "--at", "2026-09-11T03:14:07Z",
 					"--ended", "2026-09-11T03:20:00Z", "--approximate", "--source", "mongod", "--tag", "election", "--tag", "phase:detect",
 					"--url", "https://example.com/log", "--author", "Priya", "--attach", "log.txt",
@@ -382,20 +379,20 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("open when a required flag is missing, prefilled from the argument", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel))
+				command := annotationAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "annotation", "add", "replSetStepDown")).To(Succeed())
 
 				Expect(asked).NotTo(BeEmpty())
-				Expect(fieldText(asked[0], "body")).To(Equal("replSetStepDown"))
+				Expect(clitest.FieldText(asked[0], "body")).To(Equal("replSetStepDown"))
 			})
 
 			It("open with no kind chosen", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(cancel))
+				command := annotationAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
-				Expect(fieldText(asked[0], "kind")).To(BeEmpty())
+				Expect(clitest.FieldText(asked[0], "kind")).To(BeEmpty())
 			})
 
 			It("keep an event given by id prefix, and write the annotation on it", func(ctx SpecContext) {
@@ -406,30 +403,30 @@ var _ = Describe("add forms", func() {
 				Expect(json.Unmarshal(out.Bytes(), &event)).To(Succeed())
 				prefix := event.ID[:8]
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					Expect(fieldText(fields, "event")).To(Equal(prefix))
+					Expect(clitest.FieldText(fields, "event")).To(Equal(prefix))
 					return true, nil
-				}, confirm(false)))
+				}, clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "-e", prefix, "--kind", "evidence", "body", "--json")).
 					To(Succeed())
 
-				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("event_id", event.ID))
+				Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("event_id", event.ID))
 			})
 
 			It("write an annotation on the picked event and echo a command that dry-runs to the same one", func(ctx SpecContext) {
 				Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0), errOut.String())
 				var offered []string
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					offered = optionValues(namedField(fields, "event"))
-					return submit(map[string]string{"body": "replSetStepDown", "event": "1", "kind": "evidence"})(fields)
-				}, confirm(false)))
+					offered = clitest.OptionValues(clitest.NamedField(fields, "event"))
+					return clitest.Submit(map[string]string{"body": "replSetStepDown", "event": "1", "kind": "evidence"})(fields)
+				}, clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add", "--interactive", "--json")).To(Succeed())
-				written := withoutRecordKeys(out.Bytes())
+				written := clitest.WithoutRecordKeys(out.Bytes())
 
 				Expect(offered).To(Equal([]string{"", "1"}))
-				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
-				Expect(withoutRecordKeys(out.Bytes())).To(Equal(written))
+				Expect(runArgs(ctx, append(clitest.EchoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
+				Expect(clitest.WithoutRecordKeys(out.Bytes())).To(Equal(written))
 				Expect(written).To(HaveKey("event_id"))
 			})
 
@@ -439,16 +436,16 @@ var _ = Describe("add forms", func() {
 						"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election",
 						"url": "https://example.com/1", "more-options": "true",
 					}
-					command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel))
+					command := eventAdd(ctx, answers(clitest.Submit(entry), clitest.Confirm(true), clitest.Cancel))
 
 					Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 
 					second := asked[2]
-					Expect(fieldText(second, "source")).To(Equal("mongod"))
-					Expect(namedField(second, "tag").GetValue()).To(Equal([]string{"election"}))
-					Expect(fieldText(second, "text")).To(BeEmpty())
-					Expect(fieldText(second, "at")).To(BeEmpty())
-					Expect(fieldText(second, "url")).To(BeEmpty())
+					Expect(clitest.FieldText(second, "source")).To(Equal("mongod"))
+					Expect(clitest.NamedField(second, "tag").GetValue()).To(Equal([]string{"election"}))
+					Expect(clitest.FieldText(second, "text")).To(BeEmpty())
+					Expect(clitest.FieldText(second, "at")).To(BeEmpty())
+					Expect(clitest.FieldText(second, "url")).To(BeEmpty())
 					Expect(errOut.String()).To(ContainSubstring("-t mongo-outage"))
 				})
 
@@ -478,13 +475,13 @@ var _ = Describe("add forms", func() {
 					var opened string
 					var offered []string
 					command := eventAdd(ctx, answers(
-						ctrlT(map[string]string{"text": "Edge slow", "source": "cloudflare"}),
+						clitest.CtrlT(map[string]string{"text": "Edge slow", "source": "cloudflare"}),
 						func(fields []huh.Field) (bool, error) {
-							opened = fieldText(fields, "timeline")
-							offered = optionValues(namedField(fields, "timeline"))
-							return submit(map[string]string{"timeline": "api-latency"})(fields)
+							opened = clitest.FieldText(fields, "timeline")
+							offered = clitest.OptionValues(clitest.NamedField(fields, "timeline"))
+							return clitest.Submit(map[string]string{"timeline": "api-latency"})(fields)
 						},
-						submit(nil), confirm(false),
+						clitest.Submit(nil), clitest.Confirm(false),
 					))
 
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -492,8 +489,8 @@ var _ = Describe("add forms", func() {
 					Expect(opened).To(Equal("mongo-outage"))
 					Expect(offered).To(Equal([]string{"", "api-latency", "mongo-outage"}))
 					Expect(framed[1]).To(Equal(clikit.FormFrame{Noun: "event"}))
-					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
-					Expect(fieldText(asked[2], "source")).To(Equal("cloudflare"))
+					Expect(clitest.FieldText(asked[2], "text")).To(Equal("Edge slow"))
+					Expect(clitest.FieldText(asked[2], "source")).To(Equal("cloudflare"))
 					Expect(framed[2].Timeline).To(Equal("api-latency"))
 					Expect(errOut.String()).To(ContainSubstring(" event add 'Edge slow' -t api-latency --source cloudflare\n"))
 					Expect(listed(ctx, "api-latency")).To(Equal([]string{"Edge slow"}))
@@ -505,9 +502,9 @@ var _ = Describe("add forms", func() {
 						second := map[string]string{"text": "Edge slow", "at": "2026-09-11T03:15:00Z"}
 						third := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
 						command := eventAdd(ctx, answers(
-							submit(first), confirm(true),
-							ctrlT(nil), submit(map[string]string{"timeline": "api-latency"}), submit(second), confirm(true),
-							ctrlT(nil), submit(map[string]string{"timeline": "mongo-outage"}), submit(third), confirm(false),
+							clitest.Submit(first), clitest.Confirm(true),
+							clitest.CtrlT(nil), clitest.Submit(map[string]string{"timeline": "api-latency"}), clitest.Submit(second), clitest.Confirm(true),
+							clitest.CtrlT(nil), clitest.Submit(map[string]string{"timeline": "mongo-outage"}), clitest.Submit(third), clitest.Confirm(false),
 						))
 
 						Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -523,26 +520,26 @@ var _ = Describe("add forms", func() {
 					})
 
 				It("reopen the entry on its own timeline, as typed, when Esc leaves the picker", func(ctx SpecContext) {
-					command := eventAdd(ctx, answers(ctrlT(map[string]string{"text": "Edge slow"}), cancel, submit(nil), confirm(false)))
+					command := eventAdd(ctx, answers(clitest.CtrlT(map[string]string{"text": "Edge slow"}), clitest.Cancel, clitest.Submit(nil), clitest.Confirm(false)))
 
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
+					Expect(clitest.FieldText(asked[2], "text")).To(Equal("Edge slow"))
 					Expect(framed[2].Timeline).To(Equal("mongo-outage"))
-					Expect(echoedArgs(ctx, errOut.String())).NotTo(ContainElement("-t"))
+					Expect(clitest.EchoedArgs(ctx, errOut.String())).NotTo(ContainElement("-t"))
 					Expect(listed(ctx, "mongo-outage")).To(Equal([]string{"Edge slow"}))
 				})
 
 				It("create the timeline ✨ New timeline asks for, without making it current, and reopen the entry on it", func(ctx SpecContext) {
 					var label string
 					command := eventAdd(ctx, answers(
-						ctrlT(map[string]string{"text": "Migration paused"}),
+						clitest.CtrlT(map[string]string{"text": "Migration paused"}),
 						func(fields []huh.Field) (bool, error) {
-							label = fieldView(namedField(fields, "timeline"))
-							return submit(map[string]string{"timeline": ""})(fields)
+							label = clitest.FieldView(clitest.NamedField(fields, "timeline"))
+							return clitest.Submit(map[string]string{"timeline": ""})(fields)
 						},
-						submit(map[string]string{"name": "db-migration"}),
-						submit(nil), confirm(false),
+						clitest.Submit(map[string]string{"name": "db-migration"}),
+						clitest.Submit(nil), clitest.Confirm(false),
 					))
 
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -552,17 +549,17 @@ var _ = Describe("add forms", func() {
 					Expect(errOut.String()).To(ContainSubstring("Created timeline `db-migration`."))
 					Expect(errOut.String()).To(ContainSubstring("Equivalent command: coroner --db " + db + " timeline create db-migration\n"))
 					Expect(framed[3].Timeline).To(Equal("db-migration"))
-					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
+					Expect(clitest.FieldText(asked[3], "text")).To(Equal("Migration paused"))
 					Expect(listed(ctx, "db-migration")).To(Equal([]string{"Migration paused"}))
 					Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
-					Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-outage")))
+					Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-outage")))
 				})
 
 				It("reopen the entry on its own timeline when the new timeline form only dry-runs", func(ctx SpecContext) {
 					command := eventAdd(ctx, answers(
-						ctrlT(map[string]string{"text": "Migration paused"}), submit(map[string]string{"timeline": ""}),
-						submit(map[string]string{"name": "db-migration", "dry-run": "true"}),
-						submit(nil), confirm(false),
+						clitest.CtrlT(map[string]string{"text": "Migration paused"}), clitest.Submit(map[string]string{"timeline": ""}),
+						clitest.Submit(map[string]string{"name": "db-migration", "dry-run": "true"}),
+						clitest.Submit(nil), clitest.Confirm(false),
 					))
 
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -573,40 +570,40 @@ var _ = Describe("add forms", func() {
 
 				It("reopen the entry on its own timeline when Esc leaves the new timeline form", func(ctx SpecContext) {
 					command := eventAdd(ctx, answers(
-						ctrlT(map[string]string{"text": "Migration paused"}), submit(map[string]string{"timeline": ""}), cancel,
-						submit(nil), confirm(false),
+						clitest.CtrlT(map[string]string{"text": "Migration paused"}), clitest.Submit(map[string]string{"timeline": ""}), clitest.Cancel,
+						clitest.Submit(nil), clitest.Confirm(false),
 					))
 
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 					Expect(framed[3].Timeline).To(Equal("mongo-outage"))
-					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
+					Expect(clitest.FieldText(asked[3], "text")).To(Equal("Migration paused"))
 				})
 			})
 
 			It("open --interactive with More options shown and the url filled", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel))
+				command := eventAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage", "--interactive", "--url", "https://e.example")).To(Succeed())
 
-				Expect(fieldText(asked[0], "more-options")).To(Equal("true"))
-				Expect(fieldText(asked[0], "url")).To(Equal("https://e.example"))
+				Expect(clitest.FieldText(asked[0], "more-options")).To(Equal("true"))
+				Expect(clitest.FieldText(asked[0], "url")).To(Equal("https://e.example"))
 			})
 
 			It("open the next entry with More options shown and dry run Yes after a dry run", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
-				command := eventAdd(ctx, answers(submit(entry), confirm(true), cancel))
+				command := eventAdd(ctx, answers(clitest.Submit(entry), clitest.Confirm(true), clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-				Expect(fieldText(asked[2], "more-options")).To(Equal("true"))
-				Expect(fieldText(asked[2], "dry-run")).To(Equal("true"))
+				Expect(clitest.FieldText(asked[2], "more-options")).To(Equal("true"))
+				Expect(clitest.FieldText(asked[2], "dry-run")).To(Equal("true"))
 			})
 
 			It("submit none of the fields More options hides when it is No, except the zone", func(ctx SpecContext) {
 				hidden := map[string]string{"text": "Pager fires", "url": "https://e.example/1", "dry-run": "true"}
 				shown := map[string]string{"text": "Failover", "url": "https://e.example/2", "dry-run": "true", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(hidden), confirm(true), submit(shown), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(hidden), clitest.Confirm(true), clitest.Submit(shown), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 				echoed := errOut.String()
@@ -619,7 +616,7 @@ var _ = Describe("add forms", func() {
 
 			It("write nothing and report interrupted when Ctrl-C ends the form", func(ctx SpecContext) {
 				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					fill(fields, map[string]string{"text": "Primary stepped down"})
+					clitest.Fill(fields, map[string]string{"text": "Primary stepped down"})
 					return false, huh.ErrUserAborted
 				}))
 
@@ -627,13 +624,13 @@ var _ = Describe("add forms", func() {
 
 				Expect(err).To(HaveField("Kind", clikit.KindInterrupted))
 				Expect(run(ctx, "event", "list", "--json")).To(Equal(0), errOut.String())
-				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("total", 0.0))
+				Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("total", 0.0))
 			})
 
 			It("end with a summary of the events added and the command that views their timeline", func(ctx SpecContext) {
 				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
 				second := map[string]string{"text": "Election timeout on db-3", "at": "2026-09-11T03:15:00Z"}
-				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(second), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(first), clitest.Confirm(true), clitest.Submit(second), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -652,7 +649,7 @@ var _ = Describe("add forms", func() {
 				stored := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
 				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
 				added := map[string]string{"text": "Failover", "at": "2026-09-11T03:20:00Z"}
-				command := eventAdd(ctx, answers(submit(stored), confirm(true), submit(added), confirm(true), submit(dryRun), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(stored), clitest.Confirm(true), clitest.Submit(added), clitest.Confirm(true), clitest.Submit(dryRun), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--id", id)).To(Succeed())
 
@@ -669,7 +666,7 @@ var _ = Describe("add forms", func() {
 			It("frame each entry and Add another with the timeline and the events added so far", func(ctx SpecContext) {
 				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
 				dryRun := map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}
-				command := eventAdd(ctx, answers(submit(first), confirm(true), submit(dryRun), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(first), clitest.Confirm(true), clitest.Submit(dryRun), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -682,7 +679,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("print no summary when no entry added an event", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(submit(map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}), confirm(false)))
+				command := eventAdd(ctx, answers(clitest.Submit(map[string]string{"text": "Pager fires", "more-options": "true", "dry-run": "true"}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -691,7 +688,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("end annotation add's session with a summary of the annotations added", func(ctx SpecContext) {
-				command := annotationAdd(ctx, answers(submit(map[string]string{"body": "replSetStepDown", "kind": "evidence"}), confirm(false)))
+				command := annotationAdd(ctx, answers(clitest.Submit(map[string]string{"body": "replSetStepDown", "kind": "evidence"}), clitest.Confirm(false)))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
@@ -702,7 +699,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("end quietly, asking nothing more, when Esc leaves the first entry", func(ctx SpecContext) {
-				command := eventAdd(ctx, answers(cancel))
+				command := eventAdd(ctx, answers(clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -712,7 +709,7 @@ var _ = Describe("add forms", func() {
 
 			It("end with the summary, asking nothing more, when Esc leaves an entry after one was added", func(ctx SpecContext) {
 				first := map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"}
-				command := eventAdd(ctx, answers(submit(first), confirm(true), cancel))
+				command := eventAdd(ctx, answers(clitest.Submit(first), clitest.Confirm(true), clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -725,17 +722,17 @@ var _ = Describe("add forms", func() {
 
 			It("ask the entry again, as typed, when the add rejects it", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(entry), cancel))
+				command := eventAdd(ctx, answers(clitest.Submit(entry), clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 				Expect(errOut.String()).To(ContainSubstring("--ended"))
-				Expect(fieldText(asked[1], "ended")).To(Equal("2026-09-11T03:00:00Z"))
+				Expect(clitest.FieldText(asked[1], "ended")).To(Equal("2026-09-11T03:00:00Z"))
 			})
 
 			It("print a rejected entry's error for a person, even under --json", func(ctx SpecContext) {
 				entry := map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z", "ended": "2026-09-11T03:00:00Z", "more-options": "true"}
-				command := eventAdd(ctx, answers(submit(entry), cancel))
+				command := eventAdd(ctx, answers(clitest.Submit(entry), clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
@@ -749,12 +746,12 @@ var _ = Describe("add forms", func() {
 				Expect(run(ctx, "event", "add", "Primary stepped down")).To(Equal(0), errOut.String())
 				var view string
 				command := annotationAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					attach := namedField(fields, "attach")
+					attach := clitest.NamedField(fields, "attach")
 					attach.WithKeyMap(huh.NewDefaultKeyMap())
 					attach.Focus()
-					typeText(attach, "files/p")
-					view = fieldView(attach)
-					return cancel(fields)
+					clitest.TypeText(attach, "files/p")
+					view = clitest.FieldView(attach)
+					return clitest.Cancel(fields)
 				}))
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
@@ -766,10 +763,10 @@ var _ = Describe("add forms", func() {
 				Expect(run(ctx, "event", "add", "Deploy", "-t", "mongo-outage", "--attach", "missing.png")).To(Equal(2))
 				Expect(errOut.String()).To(ContainSubstring("cannot read --attach missing.png"))
 				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					fill(fields, map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z"})
-					enter(namedField(fields, "attach"), "missing.png")
+					clitest.Fill(fields, map[string]string{"text": "Deploy", "at": "2026-09-11T04:00:00Z"})
+					clitest.Enter(clitest.NamedField(fields, "attach"), "missing.png")
 					return true, nil
-				}, cancel))
+				}, clitest.Cancel))
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -806,32 +803,32 @@ var _ = Describe("add forms", func() {
 				Expect(mongo).To(Equal([]string{"cassandra", "cloudflare"}))
 				Expect(sourcesFor(ctx, choices, "api-latency")).To(Equal([]string{"cloudflare", "cassandra"}))
 
-				source := namedField(event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{},
+				source := clitest.NamedField(event.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{},
 					clikit.FormChoices{Suggestions: map[string][]string{"source": mongo}}), "source")
 				source.WithKeyMap(huh.NewDefaultKeyMap())
 				source.Focus()
-				typeText(source, "c")
-				Expect(fieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "cassandra · cloudflare"))
+				clitest.TypeText(source, "c")
+				Expect(clitest.FieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "cassandra · cloudflare"))
 			})
 
 			It("mark the source typed as one already stored, or as a new one submitting creates", func(ctx SpecContext) {
 				var source huh.Field
 				command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-					source = namedField(fields, "source")
+					source = clitest.NamedField(fields, "source")
 					return false, nil
 				}))
 				Expect(runForm(ctx, command, "event", "add", "-t", "mongo-outage")).To(Succeed())
 				source.WithKeyMap(huh.NewDefaultKeyMap())
 				source.Focus()
 
-				typeText(source, "cassandra")
-				Expect(fieldView(source)).To(ContainSubstring("Existing source"))
+				clitest.TypeText(source, "cassandra")
+				Expect(clitest.FieldView(source)).To(ContainSubstring("Existing source"))
 
-				typeText(source, "-ring")
-				Expect(fieldView(source)).To(ContainSubstring("New source"))
+				clitest.TypeText(source, "-ring")
+				Expect(clitest.FieldView(source)).To(ContainSubstring("New source"))
 
-				typeText(source, "!")
-				Expect(fieldView(source)).To(SatisfyAll(ContainSubstring("Did you mean `cassandra-ring`?"), Not(ContainSubstring("New source"))))
+				clitest.TypeText(source, "!")
+				Expect(clitest.FieldView(source)).To(SatisfyAll(ContainSubstring("Did you mean `cassandra-ring`?"), Not(ContainSubstring("New source"))))
 			})
 
 			It("scope annotation add's source suggestions to the timeline the same way", func(ctx SpecContext) {
@@ -885,7 +882,7 @@ var _ = Describe("add forms", func() {
 
 				focused := func(name string) huh.Field {
 					GinkgoHelper()
-					formField := namedField(fields, name)
+					formField := clitest.NamedField(fields, name)
 					formField.WithKeyMap(huh.NewDefaultKeyMap())
 					formField.Focus()
 					return formField
@@ -893,24 +890,24 @@ var _ = Describe("add forms", func() {
 
 				It("mark the tag typed as one already stored, or as a new one", func() {
 					tag := focused("tag")
-					typeText(tag, "elect")
-					Expect(fieldView(tag)).To(ContainSubstring("✨ New tag"))
+					clitest.TypeText(tag, "elect")
+					Expect(clitest.FieldView(tag)).To(ContainSubstring("✨ New tag"))
 
-					typeText(tag, "ion")
-					Expect(fieldView(tag)).To(SatisfyAll(ContainSubstring("✅ Existing tag"), Not(ContainSubstring("New tag"))))
+					clitest.TypeText(tag, "ion")
+					Expect(clitest.FieldView(tag)).To(SatisfyAll(ContainSubstring("✅ Existing tag"), Not(ContainSubstring("New tag"))))
 				})
 
 				It("show the hint of a tag the check rejects in place of the mark", func() {
 					tag := focused("tag")
-					typeText(tag, "Phase")
-					Expect(fieldView(tag)).To(SatisfyAll(ContainSubstring("Did you mean `phase`?"), Not(ContainSubstring("New tag"))))
+					clitest.TypeText(tag, "Phase")
+					Expect(clitest.FieldView(tag)).To(SatisfyAll(ContainSubstring("Did you mean `phase`?"), Not(ContainSubstring("New tag"))))
 				})
 
 				It("mark each held tag not stored as new", func() {
 					tag := focused("tag")
-					enter(tag, "election")
-					enter(tag, "phase:detect")
-					Expect(fieldView(tag)).To(SatisfyAll(
+					clitest.Enter(tag, "election")
+					clitest.Enter(tag, "phase:detect")
+					Expect(clitest.FieldView(tag)).To(SatisfyAll(
 						ContainSubstring("✓ phase:detect  ✨ New tag"),
 						MatchRegexp(`✓ election\s*\n`),
 						Not(ContainSubstring("Existing tag")),
@@ -919,8 +916,8 @@ var _ = Describe("add forms", func() {
 
 				It("mark no file attached", func() {
 					attach := focused("attach")
-					typeText(attach, "a.txt")
-					Expect(fieldView(attach)).NotTo(Or(ContainSubstring("New"), ContainSubstring("Existing")))
+					clitest.TypeText(attach, "a.txt")
+					Expect(clitest.FieldView(attach)).NotTo(Or(ContainSubstring("New"), ContainSubstring("Existing")))
 				})
 			})
 		})
@@ -928,17 +925,17 @@ var _ = Describe("add forms", func() {
 		It("echo two tags given to the form as two --tag flags", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
 			command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-				fill(fields, map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"})
-				tag := namedField(fields, "tag")
-				enter(tag, "election")
-				enter(tag, "db")
+				clitest.Fill(fields, map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"})
+				tag := clitest.NamedField(fields, "tag")
+				clitest.Enter(tag, "election")
+				clitest.Enter(tag, "db")
 				return true, nil
-			}, confirm(false)))
+			}, clitest.Confirm(false)))
 
 			Expect(runForm(ctx, command, "event", "add", "--interactive", "--json")).To(Succeed())
 
-			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("tags", ConsistOf("election", "db")))
-			Expect(strings.Join(echoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--tag election --tag db"))
+			Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("tags", ConsistOf("election", "db")))
+			Expect(strings.Join(clitest.EchoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--tag election --tag db"))
 		})
 
 		It("echo three files given to the form as three --attach flags", func(ctx SpecContext) {
@@ -950,21 +947,21 @@ var _ = Describe("add forms", func() {
 				return nil, fs.ErrNotExist
 			}
 			command := eventAdd(ctx, answers(func(fields []huh.Field) (bool, error) {
-				fill(fields, map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"})
-				attach := namedField(fields, "attach")
-				enter(attach, "a.txt")
-				enter(attach, "b.txt")
-				enter(attach, "c.txt")
+				clitest.Fill(fields, map[string]string{"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z"})
+				attach := clitest.NamedField(fields, "attach")
+				clitest.Enter(attach, "a.txt")
+				clitest.Enter(attach, "b.txt")
+				clitest.Enter(attach, "c.txt")
 				return true, nil
-			}, confirm(false)))
+			}, clitest.Confirm(false)))
 
 			Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
 
-			Expect(strings.Join(echoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--attach a.txt --attach b.txt --attach c.txt"))
+			Expect(strings.Join(clitest.EchoedArgs(ctx, errOut.String()), " ")).To(ContainSubstring("--attach a.txt --attach b.txt --attach c.txt"))
 		})
 
 		It("end without asking more when Esc cancels the timeline pick", func(ctx SpecContext) {
-			command := eventAdd(ctx, answers(cancel))
+			command := eventAdd(ctx, answers(clitest.Cancel))
 
 			Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
@@ -998,11 +995,11 @@ var _ = Describe("add forms", func() {
 			command := eventAdd(ctx, answers(
 				func(fields []huh.Field) (bool, error) {
 					Expect(fields).To(HaveLen(1))
-					Expect(optionValues(namedField(fields, "timeline"))).To(Equal([]string{"", "mongo-outage"}))
-					return submit(map[string]string{"timeline": "mongo-outage"})(fields)
+					Expect(clitest.OptionValues(clitest.NamedField(fields, "timeline"))).To(Equal([]string{"", "mongo-outage"}))
+					return clitest.Submit(map[string]string{"timeline": "mongo-outage"})(fields)
 				},
-				submit(map[string]string{"text": "Pager fires"}),
-				confirm(false),
+				clitest.Submit(map[string]string{"text": "Pager fires"}),
+				clitest.Confirm(false),
 			))
 
 			Expect(runForm(ctx, command, "event", "add")).To(Succeed())
@@ -1029,7 +1026,7 @@ var _ = Describe("add forms", func() {
 
 		DescribeTable("run the command line as given on a terminal, asking nothing, when input is turned off or a machine format is asked for",
 			func(ctx SpecContext, env map[string]string, args ...string) {
-				withEnv(&app, env)
+				clitest.WithEnv(&app, env)
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add"}, args...)...)
 
@@ -1052,7 +1049,7 @@ var _ = Describe("add forms", func() {
 
 		DescribeTable("refuse --interactive when input is turned off, naming what turned it off, before opening anything",
 			func(ctx SpecContext, env map[string]string, flags []string, message string) {
-				withEnv(&app, env)
+				clitest.WithEnv(&app, env)
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add", "Pager fires", "--interactive"}, flags...)...)
 
@@ -1068,7 +1065,7 @@ var _ = Describe("add forms", func() {
 		func(ctx SpecContext, input string) {
 			var out, errOut bytes.Buffer
 			home := GinkgoT().TempDir()
-			app := scratchApp(home, &out, &errOut, func() (uuid.UUID, error) { return uuid.New(), nil })
+			app := clitest.ScratchApp(home, &out, &errOut, func() (uuid.UUID, error) { return uuid.New(), nil })
 			db := filepath.Join(home, "coroner.db")
 			app.Args = []string{"--db", db, "timeline", "create", "mongo-outage"}
 			Expect(Run(ctx, app)).To(Equal(0), errOut.String())
@@ -1083,8 +1080,8 @@ var _ = Describe("add forms", func() {
 			}
 			Expect(json.Unmarshal(out.Bytes(), &resolved)).To(Succeed())
 			def := event.AddDefinition()
-			at := fieldNamed(def, "at")
-			preview := at.Preview(input, formCheckEnv())
+			at := clitest.FieldNamed(def, "at")
+			preview := at.Preview(input, clitest.FormCheckEnv())
 			occurredAt, err := timeline.ParseInstant(resolved.OccurredAt)
 			Expect(err).NotTo(HaveOccurred())
 			shown, err := time.Parse(time.RFC3339Nano, strings.Trim(strings.Fields(preview)[0], "~,"))
@@ -1104,7 +1101,7 @@ var _ = Describe("add forms", func() {
 var _ = Describe("inlineImages", func() {
 	DescribeTable("decides how a form shows images, and logs it under --debug",
 		func(outColor bool, env map[string]string, want graphics.Protocol, logged string) {
-			log := &clikit.DiagnosticLog{Debug: true, Now: testNow}
+			log := &clikit.DiagnosticLog{Debug: true, Now: clitest.TestNow}
 			app := clikit.App{Log: log, Err: &bytes.Buffer{}, LookupEnv: func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
@@ -1121,252 +1118,3 @@ var _ = Describe("inlineImages", func() {
 		Entry("color inside tmux", true, map[string]string{"TMUX": "/tmp/tmux-501/default,1,0", "KITTY_WINDOW_ID": "1"}, graphics.None, "none"),
 	)
 })
-
-// scratchApp returns an App on home, with no config file, the fixed clock and a real store.
-func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, error)) clikit.App {
-	return clikit.App{
-		Out: out, Err: errOut,
-		LookupEnv:         func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
-		ReadFile:          func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-		ReadDir:           func(string) ([]fs.DirEntry, error) { return nil, fs.ErrNotExist },
-		OpenFile:          openFile,
-		Stat:              os.Stat,
-		Rename:            os.Rename,
-		Now:               testNow,
-		NewID:             newID,
-		OpenStore:         store.Open,
-		OpenStoreReadOnly: store.OpenReadOnly,
-	}
-}
-
-// changeShape is a change line without what differs between two databases: its level, message,
-// keys and fields.
-func changeShape(line map[string]any) map[string]any {
-	return map[string]any{
-		"level": line["level"], "msg": line["msg"], "keys": slices.Sorted(maps.Keys(line)), "fields": line["fields"],
-	}
-}
-
-// changeShapes returns the shape of each JSON line in lines but command finished.
-func changeShapes(lines [][]byte) []map[string]any {
-	GinkgoHelper()
-	var shapes []map[string]any
-	for _, raw := range lines {
-		if len(raw) == 0 {
-			continue
-		}
-		var line map[string]any
-		Expect(json.Unmarshal(raw, &line)).To(Succeed())
-		if line["msg"] != "command finished" {
-			shapes = append(shapes, changeShape(line))
-		}
-	}
-
-	return shapes
-}
-
-// appendedLines returns the lines of the file at path past its first skip bytes.
-func appendedLines(path string, skip int) [][]byte {
-	GinkgoHelper()
-	data, err := os.ReadFile(filepath.Clean(path))
-	Expect(err).NotTo(HaveOccurred())
-
-	return bytes.Split(bytes.TrimSpace(data[skip:]), []byte("\n"))
-}
-
-// fileSize returns the size of the file at path, or 0 when there is none.
-func fileSize(path string) int {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	return int(info.Size())
-}
-
-// storelessApp returns an App that runs args, with no config file, and fails the spec when it
-// opens the store.
-func storelessApp(args []string) clikit.App {
-	return clikit.App{
-		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard,
-		LookupEnv: envOf(map[string]string{"HOME": "/nonexistent", "CORONER_DB": "/nonexistent/coroner.db"}),
-		ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
-		Now:       testNow,
-		NewID:     func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-		OpenStore: func(context.Context, string, ...store.Option) (*store.Store, error) {
-			Fail(strings.TrimSpace("coroner "+strings.Join(args, " ")) + " opened the store before rejecting its input")
-			return nil, errors.New("unreachable")
-		},
-	}
-}
-
-// testNow is the suite's fixed clock.
-func testNow() time.Time {
-	return time.Date(2026, 9, 12, 21, 30, 0, 0, time.UTC)
-}
-
-// sequentialIDs returns ids numbered from *n+1, counting in *n.
-func sequentialIDs(n *int) func() (uuid.UUID, error) {
-	return func() (uuid.UUID, error) {
-		*n++
-		return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", *n))
-	}
-}
-
-// envOf returns a LookupEnv that reads env.
-func envOf(env map[string]string) func(string) (string, bool) {
-	return func(key string) (string, bool) {
-		value, ok := env[key]
-		return value, ok
-	}
-}
-
-// withEnv sets env over app's environment.
-func withEnv(app *clikit.App, env map[string]string) {
-	lookupEnv := app.LookupEnv
-	app.LookupEnv = func(key string) (string, bool) {
-		if value, ok := env[key]; ok {
-			return value, true
-		}
-		return lookupEnv(key)
-	}
-}
-
-// fieldNamed returns def's field called name.
-func fieldNamed(def clikit.Definition, name string) clikit.Field {
-	GinkgoHelper()
-	i := def.FieldIndex(name)
-	if i == -1 {
-		Fail("no field " + name)
-	}
-
-	return def.Fields[i]
-}
-
-// shellSplit returns line's words, split as a shell splits them.
-func shellSplit(ctx context.Context, line string) []string {
-	GinkgoHelper()
-	split, err := exec.CommandContext(ctx, "sh", "-c", "printf '%s\\0' "+line).Output() //nolint:gosec // the spec hands the line to a shell on purpose
-	Expect(err).NotTo(HaveOccurred())
-
-	return strings.Split(strings.TrimSuffix(string(split), "\x00"), "\x00")
-}
-
-// scriptedForms returns forms that answer each ask in turn with the next of answers, appending
-// what each ask showed to asked, and the frame it was asked in to framed.
-func scriptedForms(asked *[][]huh.Field, framed *[]clikit.FormFrame, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) clikit.AskFunc {
-	DeferCleanup(func() {
-		Expect(answers).To(BeEmpty(), "%d scripted answers were never asked for", len(answers))
-	})
-	return func(bool, graphics.Protocol) clikit.AskFunc {
-		return func(_ context.Context, f clikit.FormFrame, groups ...clikit.FormGroup) (bool, error) {
-			GinkgoHelper()
-			fields := clikit.FieldsOf(groups)
-			*asked = append(*asked, fields)
-			*framed = append(*framed, f)
-			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
-			answer := answers[0]
-			answers = answers[1:]
-			return answer(fields)
-		}
-	}
-}
-
-// submit returns an answer that fills a form's fields with values and submits it.
-func submit(values map[string]string) func([]huh.Field) (bool, error) {
-	return func(fields []huh.Field) (bool, error) {
-		fill(fields, values)
-		return true, nil
-	}
-}
-
-// ctrlT returns an answer that fills a form's fields with values and leaves it as ctrl+t
-// does.
-func ctrlT(values map[string]string) func([]huh.Field) (bool, error) {
-	return func(fields []huh.Field) (bool, error) {
-		fill(fields, values)
-		return false, clikit.ErrSwitchTimeline
-	}
-}
-
-// cancel answers a form as Esc does.
-func cancel([]huh.Field) (bool, error) { return false, nil }
-
-// confirm returns an answer to "add another": yes or no.
-func confirm(yes bool) func([]huh.Field) (bool, error) {
-	return func(fields []huh.Field) (bool, error) {
-		GinkgoHelper()
-		another, ok := fields[0].(*huh.Confirm)
-		Expect(ok).To(BeTrue(), "expected the add-another confirm, got %T", fields[0])
-		another.Value(&yes)
-		return true, nil
-	}
-}
-
-// fill sets each field named in values to that value, as typing and picking would.
-func fill(fields []huh.Field, values map[string]string) {
-	GinkgoHelper()
-	for name, value := range values {
-		switch f := namedField(fields, name).(type) {
-		case *huh.Select[string]:
-			f.Value(&value)
-		case *huh.Confirm:
-			b := value == "true"
-			f.Value(&b)
-		case *clikit.ListField:
-			for line := range strings.Lines(value) {
-				enter(f, strings.TrimSuffix(line, "\n"))
-			}
-		default:
-			typeInto(f, value)
-		}
-	}
-}
-
-// fieldText returns the value the field called name opened with or holds, as text.
-func fieldText(fields []huh.Field, name string) string {
-	GinkgoHelper()
-	return fmt.Sprint(namedField(fields, name).GetValue())
-}
-
-// optionValues returns the values a select picks from, read by moving through its options from the
-// first.
-func optionValues(formField huh.Field) []string {
-	GinkgoHelper()
-	selectField, ok := formField.(*huh.Select[string])
-	Expect(ok).To(BeTrue(), "form field %s is not a select", formField.GetKey())
-	var values []string
-	selectField.WithKeyMap(huh.NewDefaultKeyMap())
-	selectField.Focus()
-	selectField.Update(tea.KeyPressMsg{Code: tea.KeyHome})
-	for {
-		value, _ := selectField.Hovered()
-		if slices.Contains(values, value) {
-			return values
-		}
-		values = append(values, value)
-		selectField.Update(tea.KeyPressMsg{Code: tea.KeyDown})
-	}
-}
-
-// echoedArgs returns the args of the last equivalent command in stderr, split as a shell splits them.
-func echoedArgs(ctx context.Context, stderr string) []string {
-	GinkgoHelper()
-	const prefix = "Equivalent command: "
-	i := strings.LastIndex(stderr, prefix)
-	Expect(i).NotTo(Equal(-1), "no equivalent command in %q", stderr)
-	line, _, _ := strings.Cut(stderr[i+len(prefix):], "\n")
-
-	return shellSplit(ctx, line)
-}
-
-// withoutRecordKeys returns the JSON object in data without the keys a new record gets.
-func withoutRecordKeys(data []byte) map[string]any {
-	GinkgoHelper()
-	var object map[string]any
-	Expect(json.Unmarshal(data, &object)).To(Succeed(), string(data))
-	for _, key := range []string{"id", "seq", "created_at", "updated_at"} {
-		delete(object, key)
-	}
-
-	return object
-}

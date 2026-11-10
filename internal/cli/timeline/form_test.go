@@ -1,4 +1,4 @@
-package cli
+package timeline_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/cli/clitest"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
@@ -30,7 +31,7 @@ var _ = Describe("timeline forms", func() {
 
 	// appOn returns a terminal App on home, logging to formLog when a spec sets it.
 	appOn := func() clikit.App {
-		app := scratchApp(home, &out, &errOut, sequentialIDs(&ids))
+		app := clitest.ScratchApp(home, &out, &errOut, clitest.SequentialIDs(&ids))
 		app.InIsTTY, app.OutIsTTY = true, true
 		if formLog != nil {
 			app.Log = formLog
@@ -45,7 +46,7 @@ var _ = Describe("timeline forms", func() {
 		errOut.Reset()
 		app := appOn()
 		app.Args = append([]string{"--db", path}, args...)
-		return Run(ctx, app)
+		return cli.Run(ctx, app)
 	}
 	run := func(ctx SpecContext, args ...string) int {
 		GinkgoHelper()
@@ -53,7 +54,7 @@ var _ = Describe("timeline forms", func() {
 	}
 
 	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) clikit.AskFunc {
-		return scriptedForms(&asked, new([]clikit.FormFrame), answers...)
+		return clitest.ScriptedForms(&asked, new([]clikit.FormFrame), answers...)
 	}
 
 	// runForm runs args against a root whose timeline command holds command, as RunE runs on a
@@ -75,14 +76,14 @@ var _ = Describe("timeline forms", func() {
 	// prepares as the form's was, and returns what it printed as JSON without record keys.
 	replay := func(ctx SpecContext, setup func(path string), extra ...string) map[string]any {
 		GinkgoHelper()
-		echoed := echoedArgs(ctx, errOut.String())[1:]
+		echoed := clitest.EchoedArgs(ctx, errOut.String())[1:]
 		Expect(echoed[:2]).To(Equal([]string{"--db", db}))
 		fresh := filepath.Join(GinkgoT().TempDir(), "coroner.db")
 		ids = 0
 		setup(fresh)
 		Expect(runOn(ctx, fresh, append(echoed[2:], extra...)...)).To(Equal(0), errOut.String())
 
-		return withoutRecordKeys(out.Bytes())
+		return clitest.WithoutRecordKeys(out.Bytes())
 	}
 
 	BeforeEach(func() {
@@ -101,9 +102,9 @@ var _ = Describe("timeline forms", func() {
 		// named fills in a timeline's name and title, enters each of refs, and submits.
 		named := func(name, title string, refs ...string) func([]huh.Field) (bool, error) {
 			return func(fields []huh.Field) (bool, error) {
-				fill(fields, map[string]string{"name": name, "title": title})
+				clitest.Fill(fields, map[string]string{"name": name, "title": title})
 				for _, ref := range refs {
-					enter(namedField(fields, "ref"), ref)
+					clitest.Enter(clitest.NamedField(fields, "ref"), ref)
 				}
 				return true, nil
 			}
@@ -120,7 +121,7 @@ var _ = Describe("timeline forms", func() {
 				app.InIsTTY = false
 				app.Args = append([]string{"--db", db, "timeline", "create"}, args...)
 
-				Expect(Run(ctx, app)).To(Equal(2))
+				Expect(cli.Run(ctx, app)).To(Equal(2))
 				Expect(errOut.String()).To(ContainSubstring(message))
 				Expect(errOut.String()).To(ContainSubstring("Usage: coroner timeline create <name> [flags]\nRun 'coroner timeline create --help' for more."))
 			},
@@ -130,7 +131,7 @@ var _ = Describe("timeline forms", func() {
 
 		It("write nothing and report interrupted when Ctrl-C ends the form", func(ctx SpecContext) {
 			command := create(ctx, answers(func(fields []huh.Field) (bool, error) {
-				fill(fields, map[string]string{"name": "mongo-outage"})
+				clitest.Fill(fields, map[string]string{"name": "mongo-outage"})
 				return false, huh.ErrUserAborted
 			}))
 
@@ -145,7 +146,7 @@ var _ = Describe("timeline forms", func() {
 			command := create(ctx, answers(named("mongo-failover", "Primary election storm", "INC-4821", "INC-4822", "INC-4823")))
 
 			Expect(runForm(ctx, command, "timeline", "create", "--interactive", "--json")).To(Succeed())
-			written := withoutRecordKeys(out.Bytes())
+			written := clitest.WithoutRecordKeys(out.Bytes())
 
 			Expect(written).To(HaveKeyWithValue("refs", []any{"INC-4821", "INC-4822", "INC-4823"}))
 			Expect(errOut.String()).To(ContainSubstring("Next:"))
@@ -154,20 +155,20 @@ var _ = Describe("timeline forms", func() {
 
 		It("note under the name that a valid name is taken", func(ctx SpecContext) {
 			existing(ctx, db)
-			command := create(ctx, answers(cancel))
+			command := create(ctx, answers(clitest.Cancel))
 
 			Expect(runForm(ctx, command, "timeline", "create", "mongo-outage", "--interactive")).To(Succeed())
 
-			Expect(renderedDescription(namedField(asked[0], "name"))).To(ContainSubstring("`mongo-outage` exists"))
+			Expect(clitest.RenderedDescription(clitest.NamedField(asked[0], "name"))).To(ContainSubstring("`mongo-outage` exists"))
 		})
 
 		It("note under a taken name that submitting uses it when --if-not-exists is given", func(ctx SpecContext) {
 			existing(ctx, db)
-			command := create(ctx, answers(cancel))
+			command := create(ctx, answers(clitest.Cancel))
 
 			Expect(runForm(ctx, command, "timeline", "create", "mongo-outage", "--if-not-exists", "--interactive")).To(Succeed())
 
-			Expect(renderedDescription(namedField(asked[0], "name"))).To(ContainSubstring("submitting uses it"))
+			Expect(clitest.RenderedDescription(clitest.NamedField(asked[0], "name"))).To(ContainSubstring("submitting uses it"))
 		})
 
 		It("use the existing timeline for a taken name without asking when --if-not-exists is given", func(ctx SpecContext) {
@@ -177,31 +178,31 @@ var _ = Describe("timeline forms", func() {
 			Expect(runForm(ctx, command, "timeline", "create", "--if-not-exists", "--interactive", "--json")).To(Succeed())
 
 			Expect(asked).To(HaveLen(1))
-			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("title", "Primary election storm"))
-			Expect(echoedArgs(ctx, errOut.String())).To(ContainElement("--if-not-exists"))
+			Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("title", "Primary election storm"))
+			Expect(clitest.EchoedArgs(ctx, errOut.String())).To(ContainElement("--if-not-exists"))
 		})
 
 		It("use the existing timeline for a taken name, printing what --if-not-exists prints", func(ctx SpecContext) {
 			existing(ctx, db)
-			command := create(ctx, answers(named("mongo-outage", "Other title"), confirm(true)))
+			command := create(ctx, answers(named("mongo-outage", "Other title"), clitest.Confirm(true)))
 
 			Expect(runForm(ctx, command, "timeline", "create", "--interactive", "--json")).To(Succeed())
 			used := bytes.Clone(out.Bytes())
 
-			Expect(echoedArgs(ctx, errOut.String())).To(ContainElement("--if-not-exists"))
+			Expect(clitest.EchoedArgs(ctx, errOut.String())).To(ContainElement("--if-not-exists"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage", "--if-not-exists", "--json")).To(Equal(0), errOut.String())
 			Expect(used).To(Equal(out.Bytes()))
 		})
 
 		It("reopen with what was typed when the taken name is not used", func(ctx SpecContext) {
 			existing(ctx, db)
-			command := create(ctx, answers(named("mongo-outage", "Other title", "INC-1"), confirm(false), cancel))
+			command := create(ctx, answers(named("mongo-outage", "Other title", "INC-1"), clitest.Confirm(false), clitest.Cancel))
 
 			Expect(runForm(ctx, command, "timeline", "create")).To(Succeed())
 
 			Expect(asked).To(HaveLen(3))
-			Expect(fieldText(asked[2], "title")).To(Equal("Other title"))
-			Expect(fieldText(asked[2], "ref")).To(Equal("[INC-1]"))
+			Expect(clitest.FieldText(asked[2], "title")).To(Equal("Other title"))
+			Expect(clitest.FieldText(asked[2], "ref")).To(Equal("[INC-1]"))
 			Expect(run(ctx, "timeline", "list", "--json")).To(Equal(0), errOut.String())
 			Expect(out.String()).NotTo(ContainSubstring("Other title"))
 		})
@@ -219,7 +220,7 @@ var _ = Describe("timeline forms", func() {
 		}
 		// renamed fills in name and submits.
 		renamed := func(name string) func([]huh.Field) (bool, error) {
-			return submit(map[string]string{"name": name})
+			return clitest.Submit(map[string]string{"name": name})
 		}
 
 		BeforeEach(func(ctx SpecContext) {
@@ -228,36 +229,36 @@ var _ = Describe("timeline forms", func() {
 		})
 
 		It("open prefilled with the stored name, title and refs when no change is given", func(ctx SpecContext) {
-			command := edit(ctx, answers(cancel))
+			command := edit(ctx, answers(clitest.Cancel))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
 
-			Expect(fieldText(asked[0], "name")).To(Equal("mongo-outage"))
-			Expect(fieldText(asked[0], "title")).To(Equal("Primary election storm"))
-			Expect(fieldText(asked[0], "ref")).To(Equal("[INC-4821 INC-4822]"))
+			Expect(clitest.FieldText(asked[0], "name")).To(Equal("mongo-outage"))
+			Expect(clitest.FieldText(asked[0], "title")).To(Equal("Primary election storm"))
+			Expect(clitest.FieldText(asked[0], "ref")).To(Equal("[INC-4821 INC-4822]"))
 		})
 
 		It("replace a rejected new name with the one its field suggests on ctrl+e", func() {
-			name := namedField(timelinecmd.EditFormDefinition(nil).FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "name")
-			typeInto(name, "Mongo Failover")
+			name := clitest.NamedField(timelinecmd.EditFormDefinition(nil).FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "name")
+			clitest.TypeInto(name, "Mongo Failover")
 
 			name.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 
-			Expect(fieldText([]huh.Field{name}, "name")).To(Equal("mongo-failover"))
+			Expect(clitest.FieldText([]huh.Field{name}, "name")).To(Equal("mongo-failover"))
 		})
 
 		It("store the refs added and removed, as its echoed command does", func(ctx SpecContext) {
 			command := edit(ctx, answers(func(fields []huh.Field) (bool, error) {
-				refs := namedField(fields, "ref")
+				refs := clitest.NamedField(fields, "ref")
 				for _, ref := range []string{"INC-1", "INC-2", "INC-3"} {
-					enter(refs, ref)
+					clitest.Enter(refs, ref)
 				}
-				press(refs, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyBackspace)
+				clitest.Press(refs, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyBackspace)
 				return true, nil
 			}))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--interactive", "--json")).To(Succeed())
-			written := withoutRecordKeys(out.Bytes())
+			written := clitest.WithoutRecordKeys(out.Bytes())
 
 			Expect(written).To(HaveKeyWithValue("refs", []any{"INC-4822", "INC-1", "INC-2", "INC-3"}))
 			Expect(replay(ctx, func(path string) { seed(ctx, path) }, "--dry-run", "--json")).To(Equal(written))
@@ -268,12 +269,12 @@ var _ = Describe("timeline forms", func() {
 			command := edit(ctx, answers(renamed("mongo-failover")))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "--interactive", "--json")).To(Succeed())
-			written := withoutRecordKeys(out.Bytes())
+			written := clitest.WithoutRecordKeys(out.Bytes())
 
 			Expect(errOut.String()).To(ContainSubstring("`mongo-outage` no longer selects"))
 			Expect(replay(ctx, func(path string) { seed(ctx, path) }, "--dry-run", "--json")).To(Equal(written))
 			Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
-			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-failover")))
+			Expect(clitest.WithoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-failover")))
 		})
 
 		It("log the same change lines as the command they echo", func(ctx SpecContext) {
@@ -281,7 +282,7 @@ var _ = Describe("timeline forms", func() {
 			command := edit(ctx, answers(renamed("mongo-failover")))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--interactive")).To(Succeed())
-			submitted := changeShapes(formLog.Lines())
+			submitted := clitest.ChangeShapes(formLog.Lines())
 			formLog = nil
 
 			var logPath string
@@ -289,23 +290,23 @@ var _ = Describe("timeline forms", func() {
 			replay(ctx, func(path string) {
 				seed(ctx, path)
 				logPath = config.DiagnosticLogPath(path)
-				before = fileSize(logPath)
+				before = clitest.FileSize(logPath)
 			}, "--json")
 
-			Expect(submitted).To(Equal(changeShapes(appendedLines(logPath, before))))
+			Expect(submitted).To(Equal(clitest.ChangeShapes(clitest.AppendedLines(logPath, before))))
 			Expect(submitted).To(ContainElement(SatisfyAll(
 				HaveKeyWithValue("msg", "timeline edited"), HaveKeyWithValue("fields", []any{"name"}),
 			)))
 		})
 
 		It("ask which timeline to edit when none is selected", func(ctx SpecContext) {
-			command := edit(ctx, answers(submit(map[string]string{"timeline": "mongo-outage"}), cancel))
+			command := edit(ctx, answers(clitest.Submit(map[string]string{"timeline": "mongo-outage"}), clitest.Cancel))
 
 			Expect(runForm(ctx, command, "timeline", "edit")).To(Succeed())
 
 			Expect(asked).To(HaveLen(2))
-			Expect(optionValues(namedField(asked[0], "timeline"))).To(Equal([]string{"mongo-outage"}))
-			Expect(fieldText(asked[1], "name")).To(Equal("mongo-outage"))
+			Expect(clitest.OptionValues(clitest.NamedField(asked[0], "timeline"))).To(Equal([]string{"mongo-outage"}))
+			Expect(clitest.FieldText(asked[1], "name")).To(Equal("mongo-outage"))
 		})
 
 		It("exit as timeline_required, no timeline selected, pointing at timeline create, when there are no timelines", func(ctx SpecContext) {
@@ -321,16 +322,16 @@ var _ = Describe("timeline forms", func() {
 
 		It("reopen with what was typed when the new name is taken", func(ctx SpecContext) {
 			Expect(run(ctx, "timeline", "create", "second")).To(Equal(0), errOut.String())
-			command := edit(ctx, answers(renamed("second"), cancel))
+			command := edit(ctx, answers(renamed("second"), clitest.Cancel))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
 
 			Expect(errOut.String()).To(ContainSubstring(`timeline "second" already exists`))
-			Expect(fieldText(asked[1], "name")).To(Equal("second"))
+			Expect(clitest.FieldText(asked[1], "name")).To(Equal("second"))
 		})
 
 		It("write nothing and echo nothing when nothing changed", func(ctx SpecContext) {
-			command := edit(ctx, answers(submit(map[string]string{})))
+			command := edit(ctx, answers(clitest.Submit(map[string]string{})))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage")).To(Succeed())
 

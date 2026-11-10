@@ -48,7 +48,7 @@ var _ = Describe("timeline selection", func() {
 	// selected returns the names of the timelines in, env or the current timeline select, and
 	// the layer that selected them.
 	selected := func(ctx context.Context, in clikit.TimelineInput, env map[string]string) ([]string, clikit.SelectedBy, error) {
-		sel, err := clikit.SelectTimelines(ctx, slog.New(slog.DiscardHandler), s, in, envOf(env))
+		sel, err := clikit.SelectTimelines(ctx, slog.New(slog.DiscardHandler), s, in, clitest.EnvOf(env))
 		if err != nil || sel.By == "" {
 			return nil, sel.By, err
 		}
@@ -59,7 +59,7 @@ var _ = Describe("timeline selection", func() {
 	// required returns the error a command that needs a timeline fails with when no layer
 	// selects one.
 	required := func(ctx context.Context, env map[string]string) error {
-		sel, err := clikit.SelectTimelines(ctx, slog.New(slog.DiscardHandler), s, clikit.TimelineInput{}, envOf(env))
+		sel, err := clikit.SelectTimelines(ctx, slog.New(slog.DiscardHandler), s, clikit.TimelineInput{}, clitest.EnvOf(env))
 		if err != nil {
 			return err
 		}
@@ -82,7 +82,7 @@ var _ = Describe("timeline selection", func() {
 		ids := 0
 		home := GinkgoT().TempDir()
 		db = filepath.Join(home, "coroner.db")
-		app = scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
+		app = clitest.ScratchApp(home, io.Discard, io.Discard, clitest.SequentialIDs(&ids))
 		app.In = strings.NewReader("")
 		seeded.Into(home, func() {
 			clitest.WriteMigratedDatabase(db)

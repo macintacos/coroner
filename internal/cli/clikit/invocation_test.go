@@ -1,4 +1,4 @@
-package cli
+package clikit_test
 
 import (
 	"context"
@@ -8,7 +8,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/store"
 )
 
@@ -20,14 +22,14 @@ var _ = Describe("invocation", func() {
 		env["HOME"] = "/home/priya"
 		return clikit.App{
 			InIsTTY: true, OutIsTTY: true, ErrIsTTY: true,
-			LookupEnv: envOf(env),
+			LookupEnv: clitest.EnvOf(env),
 			ReadFile: func(string) ([]byte, error) {
 				if configFile == "" {
 					return nil, fs.ErrNotExist
 				}
 				return []byte(configFile), nil
 			},
-			Now: testNow,
+			Now: clitest.TestNow,
 			OpenStore: func(context.Context, string, ...store.Option) (*store.Store, error) {
 				Fail("readInvocation opened the store")
 				return nil, nil
@@ -40,7 +42,7 @@ var _ = Describe("invocation", func() {
 	}
 
 	read := func(ctx context.Context, app clikit.App, args ...string) clikit.Invocation {
-		cmd, rest, err := NewRoot(ctx, app).Find(append([]string{"event", "list"}, args...))
+		cmd, rest, err := cli.NewRoot(ctx, app).Find(append([]string{"event", "list"}, args...))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cmd.ParseFlags(rest)).To(Succeed())
 
@@ -99,8 +101,8 @@ var _ = Describe("invocation", func() {
 		Entry("CORONER_NO_INPUT false", invocationApp(map[string]string{"CORONER_NO_INPUT": "false"}, ""), nil, false, true),
 		Entry("--no-input=false over CORONER_NO_INPUT",
 			invocationApp(map[string]string{"CORONER_NO_INPUT": "1"}, ""), []string{"--no-input=false"}, false, true),
-		Entry("stdin not a terminal", withTTY(invocationApp(map[string]string{}, ""), false, true, true), nil, false, false),
-		Entry("stdout not a terminal", withTTY(invocationApp(map[string]string{}, ""), true, false, true), nil, false, false),
+		Entry("stdin not a terminal", clitest.WithTTY(invocationApp(map[string]string{}, ""), false, true, true), nil, false, false),
+		Entry("stdout not a terminal", clitest.WithTTY(invocationApp(map[string]string{}, ""), true, false, true), nil, false, false),
 		Entry("TERM=dumb", invocationApp(map[string]string{"TERM": "dumb"}, ""), nil, false, false),
 	)
 
@@ -116,8 +118,8 @@ var _ = Describe("invocation", func() {
 		Entry("NO_COLOR", invocationApp(map[string]string{"NO_COLOR": "1"}, ""), nil, false, false),
 		Entry("CORONER_NO_COLOR", invocationApp(map[string]string{"CORONER_NO_COLOR": "1"}, ""), nil, false, false),
 		Entry("TERM=dumb", invocationApp(map[string]string{"TERM": "dumb"}, ""), nil, false, false),
-		Entry("stdout not a terminal", withTTY(invocationApp(map[string]string{}, ""), true, false, true), nil, false, true),
-		Entry("stderr not a terminal", withTTY(invocationApp(map[string]string{}, ""), true, true, false), nil, true, false),
+		Entry("stdout not a terminal", clitest.WithTTY(invocationApp(map[string]string{}, ""), true, false, true), nil, false, true),
+		Entry("stderr not a terminal", clitest.WithTTY(invocationApp(map[string]string{}, ""), true, true, false), nil, true, false),
 	)
 
 	It("repeats only the --db and --config the command line gave", func(ctx SpecContext) {
@@ -146,9 +148,3 @@ var _ = Describe("invocation", func() {
 		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--json").Interactive()).To(BeFalse())
 	})
 })
-
-// withTTY returns app with stdin, stdout and stderr on a terminal as given.
-func withTTY(app clikit.App, in, out, errOut bool) clikit.App {
-	app.InIsTTY, app.OutIsTTY, app.ErrIsTTY = in, out, errOut
-	return app
-}

@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli/annotation"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/event"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 )
@@ -34,7 +34,7 @@ var _ = Describe("form fields", func() {
 
 	DescribeTable("give back the values they hold as the command line would give them",
 		func(def clikit.Definition, in clikit.FieldValues, choices clikit.FormChoices, want clikit.FieldValues) {
-			Expect(def.FormValues(def.FormFields(formCheckEnv(), in, choices))).To(Equal(want))
+			Expect(def.FormValues(def.FormFields(clitest.FormCheckEnv(), in, choices))).To(Equal(want))
 		},
 		Entry("every value they open with", event.AddDefinition(), every, clikit.FormChoices{}, every),
 		Entry("only the non-blank lines of a repeatable field", event.AddDefinition(),
@@ -63,29 +63,29 @@ var _ = Describe("form fields", func() {
 		choices := clikit.FormChoices{Options: map[string][]huh.Option[string]{
 			"kind": append([]huh.Option[string]{huh.NewOption("choose…", "")}, kinds...),
 		}}
-		kind := namedField(annotation.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "kind")
+		kind := clitest.NamedField(annotation.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "kind")
 
 		kind.Blur()
 
 		Expect(kind.Error()).To(SatisfyAll(HaveField("Kind", clikit.KindUsage), MatchError("kind is required")))
-		Expect(fieldView(kind)).To(ContainSubstring("kind (required)"))
+		Expect(clitest.FieldView(kind)).To(ContainSubstring("kind (required)"))
 	})
 
 	It("title each event add field for people", func() {
-		fields := event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
+		fields := event.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 
 		for name, title := range map[string]string{
 			"text": "What happened (required)", "at": "When", "source": "Source", "tag": "Tags", "attach": "Files", "url": "url",
 		} {
-			Expect(fieldView(namedField(fields, name))).To(ContainSubstring(title), name)
+			Expect(clitest.FieldView(clitest.NamedField(fields, name))).To(ContainSubstring(title), name)
 		}
 	})
 
 	It("head the timeline picker of each form command 📒 Timeline", func() {
 		for _, def := range []clikit.Definition{event.AddDefinition(), annotation.AddDefinition(), timelinecmd.EditDefinition()} {
-			picker := clikit.OnlyField(def, "timeline").FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
+			picker := clikit.OnlyField(def, "timeline").FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 
-			Expect(fieldView(namedField(picker, "timeline"))).To(ContainSubstring("📒 Timeline"))
+			Expect(clitest.FieldView(clitest.NamedField(picker, "timeline"))).To(ContainSubstring("📒 Timeline"))
 		}
 	})
 
@@ -95,10 +95,10 @@ var _ = Describe("form fields", func() {
 			clikit.WithoutField(timelinecmd.CreateDefinition(), "if-not-exists"), timelinecmd.EditFormDefinition(nil),
 		}
 		for _, def := range forms {
-			for i, formField := range def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}) {
+			for i, formField := range def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}) {
 				f := def.Fields[i]
 				Expect(clikit.FieldIcon(f.Name)).NotTo(BeEmpty(), f.Name)
-				Expect(fieldView(formField)).To(ContainSubstring(clikit.FieldIcon(f.Name)+" "+f.FormTitle()), f.Name)
+				Expect(clitest.FieldView(formField)).To(ContainSubstring(clikit.FieldIcon(f.Name)+" "+f.FormTitle()), f.Name)
 			}
 		}
 	})
@@ -160,8 +160,8 @@ var _ = Describe("form fields", func() {
 			edges := f.Edges("📝 New event")
 
 			Expect(edges.Title).To(Equal(title))
-			Expect(stripped(edges.Top)).To(Equal(top))
-			Expect(stripped(edges.Bottom)).To(Equal(bottom))
+			Expect(clitest.Stripped(edges.Top)).To(Equal(top))
+			Expect(clitest.Stripped(edges.Bottom)).To(Equal(bottom))
 		},
 		Entry("an entry before any was added",
 			clikit.FormFrame{Timeline: "inc-4821", Entry: true, Noun: "event"}, "📝 New event",
@@ -201,16 +201,16 @@ var _ = Describe("form fields", func() {
 	Describe("event add's groups", func() {
 		def := clikit.WithoutField(event.AddDefinition(), "id")
 		groupsFor := func(in clikit.FieldValues) []clikit.FormGroup {
-			return def.FormGroups(def.FormFields(formCheckEnv(), in, clikit.FormChoices{}), in)
+			return def.FormGroups(def.FormFields(clitest.FormCheckEnv(), in, clikit.FormChoices{}), in)
 		}
 
 		It("show the fields most events use first, and the rest behind More options", func() {
 			groups := groupsFor(clikit.FieldValues{})
 
 			Expect(groups).To(HaveLen(2))
-			Expect(fieldKeys(groups[0].Fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
-			Expect(fieldKeys(groups[1].Fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "dry-run"}))
-			Expect(fieldView(namedField(groups[0].Fields, "more-options"))).To(
+			Expect(clitest.FieldKeys(groups[0].Fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
+			Expect(clitest.FieldKeys(groups[1].Fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "dry-run"}))
+			Expect(clitest.FieldView(clitest.NamedField(groups[0].Fields, "more-options"))).To(
 				ContainSubstring("tz, ended, approximate, url, author, dry-run"))
 		})
 
@@ -218,7 +218,7 @@ var _ = Describe("form fields", func() {
 			groups := groupsFor(clikit.FieldValues{})
 			Expect(groups[1].Hide()).To(BeTrue())
 
-			fill(groups[0].Fields, map[string]string{"more-options": "true"})
+			clitest.Fill(groups[0].Fields, map[string]string{"more-options": "true"})
 
 			Expect(groups[1].Hide()).To(BeFalse())
 		})
@@ -226,14 +226,14 @@ var _ = Describe("form fields", func() {
 		It("open More options when a field behind it holds a value", func() {
 			groups := groupsFor(clikit.FieldValues{"url": {"https://e.example"}})
 
-			Expect(namedField(groups[0].Fields, "more-options").GetValue()).To(BeTrue())
+			Expect(clitest.NamedField(groups[0].Fields, "more-options").GetValue()).To(BeTrue())
 			Expect(groups[1].Hide()).To(BeFalse())
 		})
 	})
 
 	It("keep one group for annotation add, timeline create and timeline edit", func() {
 		for _, def := range []clikit.Definition{annotation.AddDefinition(), timelinecmd.CreateDefinition(), timelinecmd.EditDefinition()} {
-			fields := def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
+			fields := def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 
 			groups := def.FormGroups(fields, clikit.FieldValues{})
 
@@ -245,9 +245,9 @@ var _ = Describe("form fields", func() {
 
 	It("read a line holding only spaces as no value, and check only the others", func() {
 		def := event.EditDefinition()
-		fields := def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
-		tag := namedField(fields, "add-tag")
-		typeInto(tag, "election\n  ")
+		fields := def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
+		tag := clitest.NamedField(fields, "add-tag")
+		clitest.TypeInto(tag, "election\n  ")
 
 		tag.Blur()
 
@@ -258,14 +258,14 @@ var _ = Describe("form fields", func() {
 	It("pick from options in a select, and suggest in an input", func() {
 		choices := eventOptions
 		choices.Suggestions = map[string][]string{"source": {"mongod", "slack"}}
-		fields := annotation.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices)
+		fields := annotation.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices)
 
-		event := namedField(fields, "event")
+		event := clitest.NamedField(fields, "event")
 		Expect(event).To(BeAssignableToTypeOf(&huh.Select[string]{}))
-		Expect(fieldView(event)).To(ContainSubstring("#12  Primary stepped down"))
+		Expect(clitest.FieldView(event)).To(ContainSubstring("#12  Primary stepped down"))
 
 		var keys []string
-		for _, binding := range namedField(fields, "source").WithKeyMap(huh.NewDefaultKeyMap()).KeyBinds() {
+		for _, binding := range clitest.NamedField(fields, "source").WithKeyMap(huh.NewDefaultKeyMap()).KeyBinds() {
 			keys = append(keys, binding.Help().Desc)
 		}
 		Expect(keys).To(ContainElement("complete"))
@@ -274,17 +274,17 @@ var _ = Describe("form fields", func() {
 	Describe("a time field", func() {
 		// 02:30 on 2026-03-08 is a wall clock New York's DST change skips, and a real time in UTC.
 		const gap = "2026-03-08 02:30"
-		utc := clikit.CheckEnv{Now: testNow(), Zone: clikit.Zone{Loc: time.UTC, Label: "UTC"}}
+		utc := clikit.CheckEnv{Now: clitest.TestNow(), Zone: clikit.Zone{Loc: time.UTC, Label: "UTC"}}
 
 		It("checks its time in the zone typed into the form", func() {
 			fields := event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{})
-			at := namedField(fields, "at")
-			typeInto(at, gap)
+			at := clitest.NamedField(fields, "at")
+			clitest.TypeInto(at, gap)
 
 			at.Blur()
 			Expect(at.Error()).NotTo(HaveOccurred())
 
-			typeInto(namedField(fields, "tz"), "America/New_York")
+			clitest.TypeInto(clitest.NamedField(fields, "tz"), "America/New_York")
 			at.Blur()
 			Expect(at.Error()).To(HaveField("Kind", clikit.KindInvalidTime))
 		})
@@ -292,11 +292,11 @@ var _ = Describe("form fields", func() {
 		DescribeTable("previews its time under its help, in the zone typed into the form",
 			func(tz, want string) {
 				fields := event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{})
-				at := namedField(fields, "at")
-				typeInto(at, gap)
-				typeInto(namedField(fields, "tz"), tz)
+				at := clitest.NamedField(fields, "at")
+				clitest.TypeInto(at, gap)
+				clitest.TypeInto(clitest.NamedField(fields, "tz"), tz)
 
-				Expect(renderedDescription(at)).To(SatisfyAll(ContainSubstring("When it happened"), ContainSubstring(want)))
+				Expect(clitest.RenderedDescription(at)).To(SatisfyAll(ContainSubstring("When it happened"), ContainSubstring(want)))
 			},
 			Entry("the base zone with none typed", "", "2026-03-08T02:30:00Z, minute precision"),
 			Entry("the gap's hint in a zone that skips it", "America/New_York", "-05:00"),
@@ -304,22 +304,22 @@ var _ = Describe("form fields", func() {
 
 		It("preview the time in the zone typed into the zone field", func() {
 			fields := event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{})
-			typeInto(namedField(fields, "at"), "03:25")
-			tz := namedField(fields, "tz")
-			typeInto(tz, "Asia/Tokyo")
+			clitest.TypeInto(clitest.NamedField(fields, "at"), "03:25")
+			tz := clitest.NamedField(fields, "tz")
+			clitest.TypeInto(tz, "Asia/Tokyo")
 
-			Expect(renderedDescription(tz)).To(ContainSubstring("(+09:00 Asia/Tokyo: 03:25:00)"))
+			Expect(clitest.RenderedDescription(tz)).To(ContainSubstring("(+09:00 Asia/Tokyo: 03:25:00)"))
 
-			unknown := namedField(event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{}), "tz")
-			typeInto(unknown, "Mars/Olympus")
-			Expect(renderedDescription(unknown)).To(ContainSubstring(clikit.ZoneHint))
+			unknown := clitest.NamedField(event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{}), "tz")
+			clitest.TypeInto(unknown, "Mars/Olympus")
+			Expect(clitest.RenderedDescription(unknown)).To(ContainSubstring(clikit.ZoneHint))
 		})
 
 		It("shows a failing check's hint under the help of a field with no preview", func() {
-			source := namedField(event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{}), "source")
-			typeInto(source, "DB 2")
+			source := clitest.NamedField(event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{}), "source")
+			clitest.TypeInto(source, "DB 2")
 
-			Expect(renderedDescription(source)).To(ContainSubstring("Did you mean `db-2`?"))
+			Expect(clitest.RenderedDescription(source)).To(ContainSubstring("Did you mean `db-2`?"))
 		})
 	})
 
@@ -333,21 +333,21 @@ var _ = Describe("form fields", func() {
 		refs := clikit.Definition{Fields: []clikit.Field{{Name: "ref", Typ: clikit.StringsField, List: true, Usage: "Ticket key or URL", Check: rejectBad}}}
 
 		It("adds each value typed and entered, once, after the values it opens with", func() {
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
 
-			enter(ref, "INC-2")
-			enter(ref, "INC-1")
+			clitest.Enter(ref, "INC-2")
+			clitest.Enter(ref, "INC-1")
 
 			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1", "INC-2"}}))
-			Expect(fieldView(ref)).To(SatisfyAll(ContainSubstring("Ticket key or URL"), ContainSubstring("INC-2")))
+			Expect(clitest.FieldView(ref)).To(SatisfyAll(ContainSubstring("Ticket key or URL"), ContainSubstring("INC-2")))
 		})
 
 		It("moves on when enter finds nothing typed, and stays while it adds", func() {
-			ref := namedField(refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "ref")
+			ref := clitest.NamedField(refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "ref")
 			ref.WithKeyMap(huh.NewDefaultKeyMap())
 
-			typeInto(ref, "INC-1")
+			clitest.TypeInto(ref, "INC-1")
 			_, stay := ref.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			_, next := ref.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 
@@ -358,30 +358,30 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("removes the value up picks, counting back from the last", func() {
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1", "INC-2", "INC-3"}}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{"ref": {"INC-1", "INC-2", "INC-3"}}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
 
-			press(ref, tea.KeyUp, tea.KeyUp)
-			Expect(fieldView(ref)).To(SatisfyAll(ContainSubstring("× INC-2"), ContainSubstring("✓ INC-3")))
-			press(ref, tea.KeyBackspace)
+			clitest.Press(ref, tea.KeyUp, tea.KeyUp)
+			Expect(clitest.FieldView(ref)).To(SatisfyAll(ContainSubstring("× INC-2"), ContainSubstring("✓ INC-3")))
+			clitest.Press(ref, tea.KeyBackspace)
 
 			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1", "INC-3"}}))
 		})
 
 		It("goes back to typing when down passes the last value", func() {
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
 
-			press(ref, tea.KeyUp, tea.KeyDown, tea.KeyBackspace)
+			clitest.Press(ref, tea.KeyUp, tea.KeyDown, tea.KeyBackspace)
 
 			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1"}}))
-			Expect(fieldView(ref)).NotTo(ContainSubstring("×"))
+			Expect(clitest.FieldView(ref)).NotTo(ContainSubstring("×"))
 		})
 
 		It("adds a value left typed when it loses focus", func() {
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
-			typeInto(ref, "INC-1")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
+			clitest.TypeInto(ref, "INC-1")
 
 			ref.Blur()
 
@@ -392,51 +392,51 @@ var _ = Describe("form fields", func() {
 		It("gives back a value it opens with unchanged, even one holding a newline", func() {
 			in := clikit.FieldValues{"ref": {"INC-1\nfollow-up"}}
 
-			Expect(refs.FormValues(refs.FormFields(formCheckEnv(), in, clikit.FormChoices{}))).To(Equal(in))
+			Expect(refs.FormValues(refs.FormFields(clitest.FormCheckEnv(), in, clikit.FormChoices{}))).To(Equal(in))
 		})
 
 		It("shows the last five values while typing, and five around the picked one, counting the rest", func() {
 			in := clikit.FieldValues{"ref": {"INC-1", "INC-2", "INC-3", "INC-4", "INC-5", "INC-6", "INC-7", "INC-8"}}
-			ref := namedField(refs.FormFields(formCheckEnv(), in, clikit.FormChoices{}), "ref")
+			ref := clitest.NamedField(refs.FormFields(clitest.FormCheckEnv(), in, clikit.FormChoices{}), "ref")
 
-			Expect(fieldView(ref)).To(SatisfyAll(
+			Expect(clitest.FieldView(ref)).To(SatisfyAll(
 				ContainSubstring("… 3 more"), ContainSubstring("INC-4"), ContainSubstring("INC-8"), Not(ContainSubstring("INC-3"))))
 
-			press(ref, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp)
-			Expect(fieldView(ref)).To(SatisfyAll(
+			clitest.Press(ref, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp, tea.KeyUp)
+			Expect(clitest.FieldView(ref)).To(SatisfyAll(
 				ContainSubstring("… 3 more"), ContainSubstring("× INC-3"), ContainSubstring("INC-7"), Not(ContainSubstring("INC-8"))))
 		})
 
 		It("shows in its help only the keys that act on what it holds", func() {
-			ref := namedField(refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "ref")
+			ref := clitest.NamedField(refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "ref")
 			ref.WithKeyMap(huh.NewDefaultKeyMap())
-			Expect(helpKeys(ref)).To(Equal([]string{"shift+tab back", "enter submit", "enter next"}))
+			Expect(clitest.HelpKeys(ref)).To(Equal([]string{"shift+tab back", "enter submit", "enter next"}))
 
-			typeInto(ref, "INC-1")
-			Expect(helpKeys(ref)).To(Equal([]string{"enter add", "shift+tab back"}))
+			clitest.TypeInto(ref, "INC-1")
+			Expect(clitest.HelpKeys(ref)).To(Equal([]string{"enter add", "shift+tab back"}))
 
-			press(ref, tea.KeyEnter)
-			Expect(helpKeys(ref)).To(Equal([]string{"↑/↓ pick", "shift+tab back", "enter submit", "enter next"}))
+			clitest.Press(ref, tea.KeyEnter)
+			Expect(clitest.HelpKeys(ref)).To(Equal([]string{"↑/↓ pick", "shift+tab back", "enter submit", "enter next"}))
 
-			press(ref, tea.KeyUp)
-			Expect(helpKeys(ref)).To(Equal([]string{"↑/↓ pick", "backspace remove", "shift+tab back", "enter submit", "enter next"}))
+			clitest.Press(ref, tea.KeyUp)
+			Expect(clitest.HelpKeys(ref)).To(Equal([]string{"↑/↓ pick", "backspace remove", "shift+tab back", "enter submit", "enter next"}))
 		})
 
 		It("keeps its typing line on screen inside a form after a dozen values", func() {
 			def := clikit.Definition{Fields: []clikit.Field{{Name: "name", Arg: true, Check: clikit.WithoutEnv(timelinecmd.CheckName), Suggest: timelinecmd.SuggestName}, refs.Fields[0]}}
-			form := huh.NewForm(huh.NewGroup(def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})...))
+			form := huh.NewForm(huh.NewGroup(def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})...))
 			size := tea.WindowSizeMsg{Width: 100, Height: 12}
 			form.Init()
 			form.Update(size)
 
-			typeKeys(form, "Mongo Outage")
+			clitest.TypeKeys(form, "Mongo Outage")
 			form.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 			form.Update(huh.NextField())
 			for i := range 12 {
-				typeKeys(form, fmt.Sprintf("INC-%d", i))
-				pressResizing(form, tea.KeyEnter, size)
+				clitest.TypeKeys(form, fmt.Sprintf("INC-%d", i))
+				clitest.PressResizing(form, tea.KeyEnter, size)
 			}
-			typeKeys(form, "TYPING-NOW")
+			clitest.TypeKeys(form, "TYPING-NOW")
 
 			Expect(form.GetString("name")).To(Equal("mongo-outage"))
 			Expect(ansi.Strip(form.View())).To(SatisfyAll(ContainSubstring("… 7 more"), ContainSubstring("TYPING-NOW")))
@@ -444,46 +444,46 @@ var _ = Describe("form fields", func() {
 
 		It("suggests nothing for the empty input after an add", func() {
 			choices := clikit.FormChoices{Suggestions: map[string][]string{"ref": {"election", "escalation"}}}
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{}, choices)
-			ref := namedField(fields, "ref")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices)
+			ref := clitest.NamedField(fields, "ref")
 			ref.WithKeyMap(huh.NewDefaultKeyMap())
 			ref.Focus()
 
-			typeText(ref, "e")
-			press(ref, tea.KeyEnter)
-			Expect(fieldView(ref)).NotTo(MatchRegexp(`> +election`))
+			clitest.TypeText(ref, "e")
+			clitest.Press(ref, tea.KeyEnter)
+			Expect(clitest.FieldView(ref)).NotTo(MatchRegexp(`> +election`))
 
 			ref.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
-			press(ref, tea.KeyEnter)
+			clitest.Press(ref, tea.KeyEnter)
 
 			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"e"}}))
 		})
 
 		It("picks values with up and down only while nothing is typed", func() {
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
-			typeInto(ref, "INC-2")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
+			clitest.TypeInto(ref, "INC-2")
 
-			press(ref, tea.KeyUp)
+			clitest.Press(ref, tea.KeyUp)
 
-			Expect(fieldView(ref)).NotTo(ContainSubstring("×"))
+			Expect(clitest.FieldView(ref)).NotTo(ContainSubstring("×"))
 		})
 
 		It("picks timeline create's refs with up and down", func() {
 			def := timelinecmd.CreateDefinition()
-			fields := def.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1", "INC-2"}}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
+			fields := def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{"ref": {"INC-1", "INC-2"}}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
 
-			press(ref, tea.KeyUp, tea.KeyBackspace)
+			clitest.Press(ref, tea.KeyUp, tea.KeyBackspace)
 
 			Expect(def.FormValues(fields)["ref"]).To(Equal([]string{"INC-1"}))
 		})
 
 		It("refuses a value its check rejects, and adds nothing", func() {
-			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
-			ref := namedField(fields, "ref")
+			fields := refs.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
+			ref := clitest.NamedField(fields, "ref")
 
-			enter(ref, "Bad Ref")
+			clitest.Enter(ref, "Bad Ref")
 
 			Expect(ref.Error()).To(MatchError("bad ref"))
 			Expect(refs.FormValues(fields)).To(BeEmpty())
@@ -495,7 +495,7 @@ var _ = Describe("form fields", func() {
 		sourceWith := func(suggestions ...string) huh.Field {
 			GinkgoHelper()
 			choices := clikit.FormChoices{Suggestions: map[string][]string{"source": suggestions}}
-			source := namedField(annotation.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "source")
+			source := clitest.NamedField(annotation.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "source")
 			source.WithKeyMap(huh.NewDefaultKeyMap())
 			source.Focus()
 
@@ -504,82 +504,82 @@ var _ = Describe("form fields", func() {
 		tagWith := func(suggestions ...string) huh.Field {
 			GinkgoHelper()
 			choices := clikit.FormChoices{Suggestions: map[string][]string{"tag": suggestions}}
-			tag := namedField(event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "tag")
+			tag := clitest.NamedField(event.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "tag")
 			tag.WithKeyMap(huh.NewDefaultKeyMap())
 			tag.Focus()
 
 			return tag
 		}
 		It("shows the first five suggestions under their label while nothing is typed", func() {
-			Expect(fieldView(sourceWith(seven...))).To(SatisfyAll(
+			Expect(clitest.FieldView(sourceWith(seven...))).To(SatisfyAll(
 				ContainSubstring("💡 Suggestions: db-1 · db-2 · db-3 · db-4 · db-5"), Not(ContainSubstring("db-6"))))
 		})
 
 		It("shows the suggestions typed text starts, in their order, ignoring case", func() {
 			source := sourceWith("Mongod", "slack", "mongos", "db-1")
 
-			typeText(source, "MON")
+			clitest.TypeText(source, "MON")
 
-			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring(clikit.SuggestionsLabel+"Mongod · mongos"), Not(ContainSubstring("slack"))))
+			Expect(clitest.FieldView(source)).To(SatisfyAll(ContainSubstring(clikit.SuggestionsLabel+"Mongod · mongos"), Not(ContainSubstring("slack"))))
 		})
 
 		It("keeps the match up and down cycle to in its window", func() {
 			source := sourceWith(seven...)
-			typeText(source, "db")
+			clitest.TypeText(source, "db")
 
-			press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
-			Expect(fieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
-			ctrlE(source)
+			clitest.Press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
+			Expect(clitest.FieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
+			clitest.CtrlE(source)
 
 			Expect(source.GetValue()).To(Equal("db-7"))
-			Expect(fieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "db-7"))
+			Expect(clitest.FieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "db-7"))
 		})
 
 		It("wraps up and down around the matches, as the inline suggestion does", func() {
 			down := sourceWith("db-1", "db-2", "db-3")
-			typeText(down, "db")
-			press(down, tea.KeyDown, tea.KeyDown, tea.KeyDown)
-			ctrlE(down)
+			clitest.TypeText(down, "db")
+			clitest.Press(down, tea.KeyDown, tea.KeyDown, tea.KeyDown)
+			clitest.CtrlE(down)
 			Expect(down.GetValue()).To(Equal("db-1"))
 
 			up := sourceWith(seven...)
-			typeText(up, "db")
-			press(up, tea.KeyUp)
-			Expect(fieldView(up)).To(ContainSubstring(clikit.SuggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
-			ctrlE(up)
+			clitest.TypeText(up, "db")
+			clitest.Press(up, tea.KeyUp)
+			Expect(clitest.FieldView(up)).To(ContainSubstring(clikit.SuggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
+			clitest.CtrlE(up)
 			Expect(up.GetValue()).To(Equal("db-7"))
 		})
 
 		It("shows the first five suggestions again once a list field adds what was typed on leaving", func() {
 			choices := clikit.FormChoices{Suggestions: map[string][]string{"tag": {"election", "escalation", "edge"}}}
-			tag := namedField(event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "tag")
+			tag := clitest.NamedField(event.AddDefinition().FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "tag")
 			tag.WithKeyMap(huh.NewDefaultKeyMap())
 			tag.Focus()
-			typeText(tag, "el")
+			clitest.TypeText(tag, "el")
 
 			tag.Blur()
 
-			Expect(fieldView(tag)).To(ContainSubstring(clikit.SuggestionsLabel + "election · escalation · edge"))
+			Expect(clitest.FieldView(tag)).To(ContainSubstring(clikit.SuggestionsLabel + "election · escalation · edge"))
 		})
 
 		It("matches what a paste leaves in a list field", func() {
 			tag := tagWith("election", "escalation", "edge")
-			typeText(tag, "e")
+			clitest.TypeText(tag, "e")
 			tag.Update(tea.PasteMsg{Content: "s"})
 
-			ctrlE(tag)
-			press(tag, tea.KeyEnter)
+			clitest.CtrlE(tag)
+			clitest.Press(tag, tea.KeyEnter)
 
 			Expect(tag.GetValue()).To(Equal([]string{"escalation"}))
 		})
 
 		It("takes nothing on ctrl+e once a paste runs past every match", func() {
 			tag := tagWith("election", "escalation", "edge")
-			typeText(tag, "ed")
+			clitest.TypeText(tag, "ed")
 			tag.Update(tea.PasteMsg{Content: "gexyz"})
 
-			Expect(func() { ctrlE(tag) }).NotTo(Panic())
-			press(tag, tea.KeyEnter)
+			Expect(func() { clitest.CtrlE(tag) }).NotTo(Panic())
+			clitest.Press(tag, tea.KeyEnter)
 
 			Expect(tag.GetValue()).To(Equal([]string{"edgexyz"}))
 		})
@@ -589,24 +589,24 @@ var _ = Describe("form fields", func() {
 			def := clikit.Definition{Fields: []clikit.Field{source, clikit.TzField()}}
 			choices := clikit.FormChoices{Suggestions: map[string][]string{"source": {"mongod"}}}
 
-			Expect(func() { def.FormFields(formCheckEnv(), clikit.FieldValues{}, choices) }).NotTo(Panic())
+			Expect(func() { def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices) }).NotTo(Panic())
 		})
 
 		It("shows no row when nothing matches", func() {
 			source := sourceWith(seven...)
 
-			typeText(source, "zz")
+			clitest.TypeText(source, "zz")
 
-			Expect(fieldView(source)).NotTo(ContainSubstring(clikit.SuggestionsLabel))
+			Expect(clitest.FieldView(source)).NotTo(ContainSubstring(clikit.SuggestionsLabel))
 		})
 
 		It("names the cycling keys in its help only while something matches", func() {
 			source := sourceWith(seven...)
-			typeText(source, "db")
-			Expect(helpKeys(source)).To(ContainElements("↑/↓ cycle matches", "ctrl+n/ctrl+p cycle"))
+			clitest.TypeText(source, "db")
+			Expect(clitest.HelpKeys(source)).To(ContainElements("↑/↓ cycle matches", "ctrl+n/ctrl+p cycle"))
 
-			typeText(source, "z")
-			Expect(helpKeys(source)).NotTo(ContainElement("↑/↓ cycle matches"))
+			clitest.TypeText(source, "z")
+			Expect(clitest.HelpKeys(source)).NotTo(ContainElement("↑/↓ cycle matches"))
 		})
 
 		It("binds ctrl+e once on every field of the form commands", func() {
@@ -615,7 +615,7 @@ var _ = Describe("form fields", func() {
 				event.AddDefinition(), annotation.AddDefinition(), timelinecmd.CreateDefinition(), timelinecmd.EditDefinition(),
 			} {
 				in := clikit.FieldValues{"source": {"mongo"}, "name": {"Mongo Outage"}}
-				for _, formField := range def.FormFields(formCheckEnv(), in, choices) {
+				for _, formField := range def.FormFields(clitest.FormCheckEnv(), in, choices) {
 					formField.WithKeyMap(huh.NewDefaultKeyMap())
 					bound := 0
 					for _, binding := range formField.KeyBinds() {
@@ -641,7 +641,7 @@ var _ = Describe("form fields", func() {
 			}
 			def := clikit.Definition{Fields: []clikit.Field{{Name: "path", Typ: clikit.StringsField, List: true, Usage: "Files to attach"}}}
 			choices := clikit.FormChoices{Completions: map[string]func(string) []string{"path": complete}}
-			path := namedField(def.FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "path")
+			path := clitest.NamedField(def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "path")
 			path.WithKeyMap(huh.NewDefaultKeyMap())
 			path.Focus()
 
@@ -651,27 +651,27 @@ var _ = Describe("form fields", func() {
 		It("shows what its completion returns for what is typed, in the row and as the ghost", func() {
 			path := pathWith(listing)
 
-			typeText(path, "fi")
+			clitest.TypeText(path, "fi")
 
-			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring(clikit.SuggestionsLabel+"files/"), ContainSubstring("> files/")))
+			Expect(clitest.FieldView(path)).To(SatisfyAll(ContainSubstring(clikit.SuggestionsLabel+"files/"), ContainSubstring("> files/")))
 		})
 
 		It("completes what a paste leaves", func() {
 			path := pathWith(listing)
-			typeText(path, "files/")
+			clitest.TypeText(path, "files/")
 
 			path.Update(tea.PasteMsg{Content: "q"})
 
-			Expect(fieldView(path)).To(ContainSubstring("> files/q01.png"))
+			Expect(clitest.FieldView(path)).To(ContainSubstring("> files/q01.png"))
 		})
 
 		It("takes a real completion on ctrl+e after a paste runs past the match typed", func() {
 			path := pathWith(listing)
-			typeText(path, "fi")
+			clitest.TypeText(path, "fi")
 			path.Update(tea.PasteMsg{Content: "les/p99"})
 
-			Expect(func() { ctrlE(path) }).NotTo(Panic())
-			press(path, tea.KeyEnter)
+			Expect(func() { clitest.CtrlE(path) }).NotTo(Panic())
+			clitest.Press(path, tea.KeyEnter)
 
 			Expect(path.GetValue()).To(Equal([]string{"files/p99.png"}))
 		})
@@ -681,75 +681,75 @@ var _ = Describe("form fields", func() {
 			complete := func(string) []string { calls++; return []string{"files/p99.png", "files/q01.png"} }
 			def := clikit.Definition{Fields: []clikit.Field{{Name: "path", Typ: clikit.StringsField, List: true, Usage: "Files to attach"}}}
 			choices := clikit.FormChoices{Completions: map[string]func(string) []string{"path": complete}}
-			path := namedField(def.FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "path")
+			path := clitest.NamedField(def.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, choices), "path")
 			path.WithKeyMap(huh.NewDefaultKeyMap())
 			path.Focus()
-			typeText(path, "files/")
+			clitest.TypeText(path, "files/")
 			before := calls
 
-			press(path, tea.KeyDown, tea.KeyUp, tea.KeyLeft)
+			clitest.Press(path, tea.KeyDown, tea.KeyUp, tea.KeyLeft)
 
 			Expect(calls).To(Equal(before))
 		})
 
 		It("completes again from what taking the ghost leaves", func() {
 			path := pathWith(listing)
-			typeText(path, "fi")
+			clitest.TypeText(path, "fi")
 
-			ctrlE(path)
+			clitest.CtrlE(path)
 
-			Expect(fieldView(path)).To(SatisfyAll(
+			Expect(clitest.FieldView(path)).To(SatisfyAll(
 				ContainSubstring("> files/"), ContainSubstring(clikit.SuggestionsLabel+"files/p99.png · files/q01.png")))
 		})
 
 		It("completes the empty input again after an add", func() {
 			path := pathWith(listing)
-			typeText(path, "files/p99.png")
-			press(path, tea.KeyEnter)
+			clitest.TypeText(path, "files/p99.png")
+			clitest.Press(path, tea.KeyEnter)
 
-			typeText(path, "d")
+			clitest.TypeText(path, "d")
 
-			Expect(fieldView(path)).To(ContainSubstring(clikit.SuggestionsLabel + "docs/"))
+			Expect(clitest.FieldView(path)).To(ContainSubstring(clikit.SuggestionsLabel + "docs/"))
 		})
 
 		It("ghosts nothing over the empty input after an add when nothing completes it", func() {
 			path := pathWith(map[string][]string{"/x/": {"/x/a.png"}})
-			typeText(path, "/x/a")
+			clitest.TypeText(path, "/x/a")
 
-			press(path, tea.KeyEnter)
+			clitest.Press(path, tea.KeyEnter)
 
 			Expect(path.GetValue()).To(Equal([]string{"/x/a"}))
-			Expect(fieldView(path)).NotTo(ContainSubstring(".png"))
+			Expect(clitest.FieldView(path)).NotTo(ContainSubstring(".png"))
 		})
 
 		It("cycles the matches with up and down while text is typed, and picks a value while none is", func() {
 			path := pathWith(listing)
-			typeText(path, "docs/")
-			press(path, tea.KeyEnter)
+			clitest.TypeText(path, "docs/")
+			clitest.Press(path, tea.KeyEnter)
 
-			typeText(path, "files/")
-			Expect(helpKeys(path)).To(ContainElement("↑/↓ cycle matches"))
-			press(path, tea.KeyDown)
-			Expect(fieldView(path)).To(ContainSubstring("> files/q01.png"))
+			clitest.TypeText(path, "files/")
+			Expect(clitest.HelpKeys(path)).To(ContainElement("↑/↓ cycle matches"))
+			clitest.Press(path, tea.KeyDown)
+			Expect(clitest.FieldView(path)).To(ContainSubstring("> files/q01.png"))
 
 			for range "files/" {
-				press(path, tea.KeyBackspace)
+				clitest.Press(path, tea.KeyBackspace)
 			}
-			Expect(helpKeys(path)).To(ContainElement("↑/↓ pick"))
+			Expect(clitest.HelpKeys(path)).To(ContainElement("↑/↓ pick"))
 		})
 	})
 
 	It("replace a rejected value with the one its field suggests on ctrl+e, clearing its error", func() {
 		names := clikit.Definition{Fields: []clikit.Field{{Name: "name", Arg: true, Check: clikit.WithoutEnv(timelinecmd.CheckName), Suggest: timelinecmd.SuggestName}}}
-		name := namedField(names.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "name")
+		name := clitest.NamedField(names.FormFields(clitest.FormCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "name")
 		name.WithKeyMap(huh.NewDefaultKeyMap())
-		typeInto(name, "Mongo Outage")
-		press(name, tea.KeyEnter)
+		clitest.TypeInto(name, "Mongo Outage")
+		clitest.Press(name, tea.KeyEnter)
 		Expect(name.Error()).To(HaveOccurred())
 
 		name.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 
-		Expect(fieldText([]huh.Field{name}, "name")).To(Equal("mongo-outage"))
+		Expect(clitest.FieldText([]huh.Field{name}, "name")).To(Equal("mongo-outage"))
 		Expect(name.Error()).NotTo(HaveOccurred())
 	})
 })
@@ -762,125 +762,3 @@ var _ = DescribeTable("suggestName offers a valid timeline name only for a rejec
 	Entry("a valid name", "mongo-outage", ""),
 	Entry("nothing a name can hold", "!!!", ""),
 )
-
-// ctrlE presses ctrl+e in formField.
-func ctrlE(formField huh.Field) { formField.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}) }
-
-// press sends formField each key code.
-func press(formField huh.Field, codes ...rune) {
-	for _, code := range codes {
-		formField.Update(tea.KeyPressMsg{Code: code})
-	}
-}
-
-// typeText presses a key in formField for each character of text.
-func typeText(formField huh.Field, text string) {
-	for _, r := range text {
-		formField.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
-	}
-}
-
-// typeKeys presses a key in form for each character of text.
-func typeKeys(form *huh.Form, text string) {
-	for _, r := range text {
-		form.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
-	}
-}
-
-// pressResizing presses code in form and, when the key asks for the window size, gives form size
-// again, as the terminal would.
-func pressResizing(form *huh.Form, code rune, size tea.WindowSizeMsg) {
-	GinkgoHelper()
-	_, cmd := form.Update(tea.KeyPressMsg{Code: code})
-	if cmd != nil && reflect.DeepEqual(cmd(), tea.RequestWindowSize()) {
-		form.Update(size)
-	}
-}
-
-// helpKeys returns the enabled key bindings formField shows in its help, as "key description".
-func helpKeys(formField huh.Field) []string {
-	var keys []string
-	for _, binding := range formField.KeyBinds() {
-		if binding.Enabled() {
-			keys = append(keys, binding.Help().Key+" "+binding.Help().Desc)
-		}
-	}
-
-	return keys
-}
-
-// enter types value into formField and presses enter.
-func enter(formField huh.Field, value string) {
-	GinkgoHelper()
-	typeInto(formField, value)
-	press(formField, tea.KeyEnter)
-}
-
-// namedField returns the form field keyed name.
-func namedField(fields []huh.Field, name string) huh.Field {
-	GinkgoHelper()
-	for _, formField := range fields {
-		if formField.GetKey() == name {
-			return formField
-		}
-	}
-
-	Fail("no form field " + name)
-	return nil
-}
-
-// fieldKeys returns each form field's key, in order.
-func fieldKeys(fields []huh.Field) []string {
-	keys := make([]string, len(fields))
-	for i, formField := range fields {
-		keys[i] = formField.GetKey()
-	}
-
-	return keys
-}
-
-// typeInto sets the text formField holds, as a fake form fills it.
-func typeInto(formField huh.Field, value string) {
-	GinkgoHelper()
-	switch f := formField.(type) {
-	case interface {
-		Value(value *string) *huh.Input
-	}:
-		f.Value(&value)
-	case *huh.Text:
-		f.Value(&value)
-	default:
-		Fail(fmt.Sprintf("form field %s takes no text", formField.GetKey()))
-	}
-}
-
-// renderedDescription returns formField's view once a form has run its description function.
-func renderedDescription(formField huh.Field) string {
-	GinkgoHelper()
-	group := huh.NewGroup(formField)
-	_, update := group.Update(nil)
-	Expect(update).NotTo(BeNil(), "form field %s has no description function", formField.GetKey())
-	group.Update(update())
-
-	return fieldView(formField)
-}
-
-func fieldView(formField huh.Field) string {
-	GinkgoHelper()
-	view, ok := formField.WithWidth(400).(interface{ View() string })
-	if !ok {
-		Fail(fmt.Sprintf("form field %s has no view", formField.GetKey()))
-	}
-
-	return ansi.Strip(view.View())
-}
-
-// stripped returns pieces without their styles, or nil for none.
-func stripped(pieces []string) []string {
-	var plain []string
-	for _, piece := range pieces {
-		plain = append(plain, ansi.Strip(piece))
-	}
-
-	return plain
-}

@@ -1,4 +1,4 @@
-package cli
+package clikit_test
 
 import (
 	"bytes"

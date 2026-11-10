@@ -1,4 +1,4 @@
-package cli
+package clikit_test
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/event"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -154,10 +155,10 @@ var _ = Describe("time input", func() {
 		func(name, input string, want types.GomegaMatcher) {
 			z, err := clikit.TimeZone(new("America/New_York"), "local", local)
 			Expect(err).NotTo(HaveOccurred())
-			found := fieldNamed(event.AddDefinition(), name)
+			found := clitest.FieldNamed(event.AddDefinition(), name)
 
 			// testNow is 2026-09-12T17:30:00-04:00.
-			Expect(found.Preview(input, clikit.CheckEnv{Now: testNow(), Zone: z})).To(want)
+			Expect(found.Preview(input, clikit.CheckEnv{Now: clitest.TestNow(), Zone: z})).To(want)
 		},
 		Entry("RFC 3339", "at", "2026-09-11T03:14:07Z",
 			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),

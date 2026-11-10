@@ -42,7 +42,7 @@ func realRunner(ctx context.Context) func(args ...string) ran {
 	clitest.WriteMigratedDatabase(db)
 	return func(args ...string) ran {
 		var out, errOut bytes.Buffer
-		app := scratchApp(home, &out, &errOut, uuid.NewV7)
+		app := clitest.ScratchApp(home, &out, &errOut, uuid.NewV7)
 		app.Args, app.In = append([]string{"--db", db}, args...), strings.NewReader("")
 		code := Run(ctx, app)
 		return ran{code: code, out: out.String(), errOut: errOut.String()}

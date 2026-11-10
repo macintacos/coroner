@@ -237,7 +237,7 @@ func keyedRun(t *testing.T, script *keyScript, check func(*clikit.FittedForm)) c
 		t.Fatal(err)
 	}
 	ids := 0
-	app := scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
+	app := clitest.ScratchApp(home, io.Discard, io.Discard, clitest.SequentialIDs(&ids))
 	work := t.TempDir()
 	err = os.CopyFS(work, fstest.MapFS{"files/p99.png": {Data: []byte("\x89PNG\r\n")}, "files/q01.png": {}, "docs/r1.txt": {}})
 	if err != nil {

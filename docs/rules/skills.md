@@ -5,8 +5,8 @@
 1. **Front matter holds only the Agent Skills specification's keys:** `name`,
    `description` and `compatibility`, never a Claude Code extension key such as
    `allowed-tools` or `when_to_use`, and `name` matches the skill's directory. A spec in
-   [`internal/cli/agent_test.go`](../../internal/cli/agent_test.go) fails otherwise, and
-   another when a relative link in `SKILL.md` or a reference breaks.
+   [`internal/cli/agent/agent_test.go`](../../internal/cli/agent/agent_test.go) fails
+   otherwise, and another when a relative link in `SKILL.md` or a reference breaks.
 2. **Command lines go in `sh` blocks with real values:** the examples test skips a line
    with `$(…)` or backticks, and stops a line at `<`, so never write a `<placeholder>`
    there.

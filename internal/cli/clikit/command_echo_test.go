@@ -1,11 +1,13 @@
-package cli
+package clikit_test
 
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/annotation"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/event"
 )
 
@@ -14,7 +16,7 @@ var _ = Describe("equivalent command", func() {
 		func(ctx SpecContext, args []string, want string) {
 			line := clikit.ShellLine(args)
 			Expect(line).To(Equal(want))
-			Expect(shellSplit(ctx, line)).To(Equal(args))
+			Expect(clitest.ShellSplit(ctx, line)).To(Equal(args))
 		},
 		Entry("bare words", []string{"coroner", "event", "add", "--at=2026-09-11T03:14:07Z"}, "coroner event add --at=2026-09-11T03:14:07Z"),
 		Entry("spaces", []string{"Primary stepped down"}, "'Primary stepped down'"),
@@ -36,7 +38,7 @@ var _ = Describe("equivalent command", func() {
 	DescribeTable("commandArgs gives a line the command reads back as the same values",
 		func(ctx SpecContext, row commandArgsRow) {
 			args := clikit.CommandArgs(row.path, row.def, row.in)
-			root := NewRoot(ctx, clikit.App{})
+			root := cli.NewRoot(ctx, clikit.App{})
 
 			cmd, rest, err := root.Find(args[1:])
 			Expect(err).NotTo(HaveOccurred())

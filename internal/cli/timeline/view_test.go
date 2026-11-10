@@ -1,4 +1,4 @@
-package cli
+package timeline_test
 
 import (
 	"bytes"
@@ -17,6 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 
+	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/cli/clitest"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
@@ -44,7 +45,7 @@ var _ = Describe("timelineLoader", func() {
 		errOut.Reset()
 		a := app
 		a.Args = append([]string{"--db", db}, args...)
-		return Run(ctx, a)
+		return cli.Run(ctx, a)
 	}
 
 	// open returns the viewer on the fixture timeline, reading through timelineLoader.
@@ -105,7 +106,7 @@ var _ = Describe("timelineLoader", func() {
 		ids = 0
 		home := GinkgoT().TempDir()
 		db = filepath.Join(home, "coroner.db")
-		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
+		app = clitest.ScratchApp(home, &out, &errOut, clitest.SequentialIDs(&ids))
 
 		seeded.Into(home, func() {
 			clitest.WriteMigratedDatabase(db)
@@ -213,7 +214,7 @@ var _ = Describe("timelineLoader", func() {
 
 		It("holds the store's debug text off stderr until the viewer has closed, under --debug", func(ctx SpecContext) {
 			errOut.Reset()
-			log := &clikit.DiagnosticLog{Debug: true, Now: testNow, Stat: func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist }}
+			log := &clikit.DiagnosticLog{Debug: true, Now: clitest.TestNow, Stat: func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist }}
 			logger, flush := timelinecmd.ViewerDiagnostics(log, &errOut)
 			open := timelinecmd.OpenLoggingTo(clikit.Watching(app.OpenStoreReadOnly, log, &errOut), logger)
 
@@ -232,7 +233,7 @@ var _ = Describe("timelineLoader", func() {
 				Expect(err).NotTo(HaveOccurred())
 				a := snapshot.Attachments[0]
 				errOut.Reset()
-				log := &clikit.DiagnosticLog{Debug: debug, Now: testNow}
+				log := &clikit.DiagnosticLog{Debug: debug, Now: clitest.TestNow}
 				logger, flush := timelinecmd.ViewerDiagnostics(log, &errOut)
 				m := tea.Model(viewer.New(viewer.Options{
 					Snapshot: snapshot, Image: timelinecmd.BlobReader(readFile, db), Log: logger, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now,
@@ -274,7 +275,7 @@ var _ = Describe("timelineLoader", func() {
 
 	// Only the race detector catches a missing lock here; without -race this catches a deadlock.
 	It("lets a read still running log while the viewer's diagnostics flush", func(ctx SpecContext) {
-		logger, flush := timelinecmd.ViewerDiagnostics(&clikit.DiagnosticLog{Debug: true, Now: testNow}, &errOut)
+		logger, flush := timelinecmd.ViewerDiagnostics(&clikit.DiagnosticLog{Debug: true, Now: clitest.TestNow}, &errOut)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)

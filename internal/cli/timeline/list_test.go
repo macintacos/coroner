@@ -1,4 +1,4 @@
-package cli
+package timeline_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/cli/clitest"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
@@ -42,7 +43,7 @@ var _ = Describe("timeline list on a terminal", func() {
 		out.Reset()
 		errOut.Reset()
 		a.Args = args
-		return Run(ctx, a)
+		return cli.Run(ctx, a)
 	}
 
 	// pick runs timeline list on a terminal that types keys.
@@ -79,8 +80,8 @@ var _ = Describe("timeline list on a terminal", func() {
 		home := GinkgoT().TempDir()
 		env = map[string]string{"HOME": home, "CORONER_DB": filepath.Join(home, "coroner.db")}
 		terminal = &unreadable{}
-		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
-		app.In, app.LookupEnv = terminal, envOf(env)
+		app = clitest.ScratchApp(home, &out, &errOut, clitest.SequentialIDs(&ids))
+		app.In, app.LookupEnv = terminal, clitest.EnvOf(env)
 		clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 
 		for _, args := range [][]string{
@@ -120,7 +121,7 @@ var _ = Describe("timeline list on a terminal", func() {
 		renamed := make(chan int, 1)
 		go func() {
 			_, _ = typed.Write([]byte("j"))
-			renamed <- Run(ctx, renamer)
+			renamed <- cli.Run(ctx, renamer)
 			_, _ = typed.Write([]byte("\r"))
 		}()
 		a := app

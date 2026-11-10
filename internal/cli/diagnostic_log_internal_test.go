@@ -15,13 +15,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/config"
 )
 
 func testDiagnosticLog() *clikit.DiagnosticLog {
 	return &clikit.DiagnosticLog{
 		Stat:   os.Stat,
-		Open:   openFile,
+		Open:   clitest.OpenFile,
 		Rename: os.Rename,
 		Limit:  64,
 		Now:    func() time.Time { return time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC) },
@@ -35,9 +36,9 @@ func readLines(path string) []string {
 	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 }
 
-type failingFile struct{ failingWriter }
+type failingFile struct{ clitest.DiskFullWriter }
 
-func (failingFile) Close() error { return errDiskFull }
+func (failingFile) Close() error { return clitest.ErrDiskFull }
 
 var _ = Describe("diagnostic log", func() {
 	var dir, db, logPath string
