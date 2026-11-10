@@ -84,6 +84,7 @@ func (h harness) app(args ...string) cli.App {
 		NewID:             newID,
 		OpenStore:         store.OpenWithoutBlobSync,
 		OpenStoreReadOnly: store.OpenReadOnly,
+		Rename:            os.Rename,
 	}
 }
 

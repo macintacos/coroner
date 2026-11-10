@@ -39,6 +39,7 @@ nav = [
     { "Time input" = "reference/cli/coroner_help_time.md" },
     { "Output formats" = "reference/cli/coroner_help_formatting.md" },
     { "Configuration" = "reference/configuration.md" },
+    { "Diagnostic log" = "reference/diagnostic-log.md" },
     { "CLI" = "reference/cli/coroner.md" },
   ] },
   { "Explanation" = [

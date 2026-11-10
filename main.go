@@ -54,6 +54,7 @@ func main() {
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
+		Rename:            os.Rename,
 	})
 	os.Exit(code)
 }

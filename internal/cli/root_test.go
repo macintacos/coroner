@@ -5,13 +5,16 @@ import (
 	"context"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/export"
 )
 
@@ -27,6 +30,7 @@ var _ = Describe("Run", func() {
 			Out:     &out,
 			Err:     &errOut,
 			Version: "v1.2.3",
+			Now:     time.Now,
 			LookupEnv: func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
@@ -348,6 +352,9 @@ var _ = Describe("Run", func() {
 			Entry("CORONER_DEBUG=0", map[string]string{"CORONER_DEBUG": "0"}),
 			Entry("CORONER_DEBUG=false", map[string]string{"CORONER_DEBUG": "false"}),
 			Entry("CORONER_DEBUG=off", map[string]string{"CORONER_DEBUG": "off"}),
+			Entry("CORONER_DEBUG=no", map[string]string{"CORONER_DEBUG": "no"}),
+			Entry("CORONER_DEBUG=OFF", map[string]string{"CORONER_DEBUG": "OFF"}),
+			Entry("CORONER_DEBUG=No", map[string]string{"CORONER_DEBUG": "No"}),
 		)
 
 		It("prints no log lines under --debug=false, whatever CORONER_DEBUG says", func(ctx SpecContext) {
@@ -358,10 +365,24 @@ var _ = Describe("Run", func() {
 			Expect(errOut.String()).NotTo(ContainSubstring("level="))
 		})
 
-		It("logs the failure's message and the command-line args", func(ctx SpecContext) {
+		It("logs the failure's message and the flag names given, never their values", func(ctx SpecContext) {
 			cli.Run(ctx, newApp("--debug", "--no-such-flag"))
 
-			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*message=.*unknown flag.* args="\[--debug --no-such-flag\]"`))
+			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*message=.*unknown flag.* flags=\[debug\]`))
+			Expect(errOut.String()).NotTo(ContainSubstring("args="))
+		})
+
+		It("keeps a positional value out of stderr and the log", func(ctx SpecContext) {
+			dir := GinkgoT().TempDir()
+			db := filepath.Join(dir, "coroner.db")
+			h := harness{home: dir, db: db, errOut: &errOut}
+			Expect(cli.Run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+
+			Expect(cli.Run(ctx, h.app("event", "add", "-t", "nope", "secret text", "--debug"))).NotTo(Equal(0))
+
+			Expect(errOut.String()).To(ContainSubstring("command failed"))
+			Expect(errOut.String()).NotTo(ContainSubstring("secret"))
+			Expect(readFile(config.DiagnosticLogPath(db))).NotTo(ContainSubstring("secret"))
 		})
 
 		It("logs no error attribute for a failure without a cause", func(ctx SpecContext) {

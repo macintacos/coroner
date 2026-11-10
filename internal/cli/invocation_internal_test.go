@@ -127,20 +127,6 @@ var _ = Describe("invocation", func() {
 		Expect(inv.echoArgs).To(BeEmpty())
 	})
 
-	It("reads --debug and CORONER_DEBUG from parsed flags", func(ctx SpecContext) {
-		Expect(read(ctx, invocationApp(map[string]string{}, "")).debug).To(BeFalse())
-		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--debug").debug).To(BeTrue())
-		Expect(read(ctx, invocationApp(map[string]string{"CORONER_DEBUG": "1"}, "")).debug).To(BeTrue())
-		Expect(read(ctx, invocationApp(map[string]string{"CORONER_DEBUG": "1"}, ""), "--debug=false").debug).To(BeFalse())
-	})
-
-	DescribeTable("reads a no or off CORONER_DEBUG, in any case, as false",
-		func(ctx SpecContext, value string) {
-			Expect(read(ctx, invocationApp(map[string]string{"CORONER_DEBUG": value}, "")).debug).To(BeFalse())
-		},
-		Entry(nil, "no"), Entry(nil, "OFF"), Entry(nil, "No"),
-	)
-
 	It("colours both streams under --no-color=false, whatever NO_COLOR says", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{"NO_COLOR": "1", "CORONER_NO_COLOR": "1"}, ""), "--no-color=false")
 

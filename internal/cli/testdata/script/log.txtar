@@ -1,0 +1,36 @@
+# A command that opens the database ends the diagnostic log beside it with a finish line.
+exec coroner timeline create checkout --title Checkout
+exec coroner timeline list
+exists $WORK/.local/share/coroner/coroner.log
+grep '"msg":"command finished","command":"coroner timeline list","kind":"ok","exit_code":0,"duration":0' $WORK/.local/share/coroner/coroner.log
+! exists $WORK/.local/share/coroner/coroner.log.1
+
+# Another database name gets <db>.log, and the same commands write byte-identical lines.
+exec coroner --db $WORK/b/other.db timeline create checkout --title Checkout
+exec coroner --db $WORK/b/other.db timeline list
+cmp $WORK/b/other.db.log $WORK/.local/share/coroner/coroner.log
+
+# A failure is logged with its kind and exit code; --debug adds the failure line.
+! exec coroner --debug event list -t missing
+grep '"msg":"command failed".*"kind":"timeline_not_found"' $WORK/.local/share/coroner/coroner.log
+grep '"command":"coroner event list","kind":"timeline_not_found","exit_code":3' $WORK/.local/share/coroner/coroner.log
+stderr 'level=DEBUG msg="command failed"'
+
+# Version, the agent skill and completion stay out of the log.
+cp $WORK/.local/share/coroner/coroner.log before.log
+exec coroner version
+exec coroner agent skill
+exec coroner completion zsh
+cmp $WORK/.local/share/coroner/coroner.log before.log
+
+# A read or dry run against a missing database creates no log and no directory.
+exec coroner --db $WORK/missing/c.db status
+! exists $WORK/missing
+
+# A database in a directory coroner cannot write to is unaffected by the log, which writes nothing.
+exec coroner --db $WORK/ro/c.db timeline create ro --title RO
+rm $WORK/ro/c.db.log
+chmod 500 $WORK/ro
+! exec coroner --db $WORK/ro/c.db status
+! exists $WORK/ro/c.db.log
+chmod 700 $WORK/ro

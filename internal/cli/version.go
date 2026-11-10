@@ -14,7 +14,7 @@ func newVersionCommand(app App) *cobra.Command {
 		Short:       "Show coroner's version",
 		GroupID:     additionalCommands,
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Annotations: map[string]string{formatsAnnotation: "text,json", diagnosticLogAnnotation: "off"},
 		Example:     "  $ coroner version\n  $ coroner version --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return writeVersion(cmd, app)

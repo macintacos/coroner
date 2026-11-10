@@ -33,6 +33,7 @@ which-doc: Which doc does the change affect?
   a command, flag or help topic changed: regenerate, never hand-edit > regenerate-docs
   the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules > export-format
   a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule > configuration
+  the diagnostic log: where it lives, which commands write it, rotation, its levels, or a line added to or changed in it > diagnostic-log
   terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site > edit-internal
   a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed > skill-2
   the design direction: a colour, face, radius or motion value moving to a new home, a design decision, a departure from the /taste defaults, or code catching up with an open item > edit-design
@@ -53,6 +54,7 @@ edit-the!: Edit the docs site: docs/ and zensical.toml
 regenerate-docs!: Regenerate docs/reference/cli/
 export-format!: Edit docs/reference/export-format.md
 configuration!: Edit docs/reference/configuration.md
+diagnostic-log!: Edit docs/reference/diagnostic-log.md
 edit-internal!: Edit internal/cli/topics/*.md
 skill-2!: Edit skills/coroner/ (SKILL.md and references/)
 edit-design!: Edit design/
@@ -118,7 +120,8 @@ edit-design!: Edit design/
   [The reference index](../reference/index.md) lists the reference pages: the export
   format, the help topic pages docgen writes under `reference/cli/`, which the nav lists
   as the exit codes, environment variables, time input and output formats pages, and
-  [the configuration page](../reference/configuration.md).
+  [the configuration page](../reference/configuration.md) and
+  [the diagnostic log page](../reference/diagnostic-log.md).
   [The explanation pages](../explanation/index.md) cover the data model and its glossary,
   timestamps and time zones, and the design principles. The examples test fails when a
   `coroner` line in the shell code blocks of any page under `docs/` stops parsing, so a
@@ -147,6 +150,11 @@ edit-design!: Edit design/
   variables, the config file and the database, what the file rejects, and the blob
   directory rule. A spec in `internal/config` fails when the page misses a key the config
   file accepts, so a new config key updates it in the same change.
+- **[`docs/reference/diagnostic-log.md`](../reference/diagnostic-log.md)** (anyone looking
+  into what coroner's commands did on their machine, by hand or from a script) — where the
+  log lives and what it can collide with, which commands write it, rotation, its levels
+  and the lines each writes, and the line shape. A new or changed log line updates it in
+  the same change.
 - **[`internal/cli/topics/*.md`](../../internal/cli/topics/)** (humans and agents at the
   terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
   CLI reference pages, which are also the site's Exit codes, Environment variables, Time

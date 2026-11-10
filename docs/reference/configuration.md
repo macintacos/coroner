@@ -66,3 +66,5 @@ Attachment files are stored beside the database, in a directory named after it:
 No two database paths share a blob directory. The name is read from the path as written,
 so a symlink or a differently cased path to the same database gets a blob directory of its
 own.
+
+The [diagnostic log](diagnostic-log.md) sits beside the database too.

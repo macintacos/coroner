@@ -96,7 +96,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 		return writeTimelineView(o, z, snapshot)
 	}
 
-	logger, flush := viewerDiagnostics(inv.debug, app.Err)
+	logger, flush := viewerDiagnostics(app.log, app.Err)
 	term := viewer.Terminal{
 		In: app.In, Out: app.Out, NoColor: !inv.outColor, Graphics: graphics.Detect(app.LookupEnv), Env: terminalEnv(app.LookupEnv),
 	}
@@ -145,17 +145,12 @@ func timelineLoader(ctx context.Context, app App, path string, timelineIDs []str
 }
 
 // viewerDiagnostics returns a logger for debug detail found while the viewer holds the screen,
-// and a flush that writes what it logged to errOut once the viewer has closed. Without debug it
-// logs nothing.
-func viewerDiagnostics(debug bool, errOut io.Writer) (*slog.Logger, func() error) {
-	if !debug {
-		return slog.New(slog.DiscardHandler), func() error { return nil }
-	}
-
+// logging to log as it happens, and a flush that writes the stderr text it held to errOut once the
+// viewer has closed. Without debug it holds no text.
+func viewerDiagnostics(log *diagnosticLog, errOut io.Writer) (*slog.Logger, func() error) {
 	logged := &lockedBuffer{}
-	logger := slog.New(slog.NewTextHandler(logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	return logger, func() error {
+	return log.logger(logged), func() error {
 		_, err := logged.WriteTo(errOut)
 		return err
 	}

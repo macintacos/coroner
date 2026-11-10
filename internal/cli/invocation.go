@@ -24,7 +24,6 @@ type invocation struct {
 	terminal bool
 	// formatGiven is whether --format changed: plain output even on a terminal (I-1).
 	formatGiven bool
-	debug       bool
 	// echoArgs is --db and --config as given, which a form's echoed command repeats.
 	echoArgs []string
 	// timelines is the timeline input under the command's rule; wrapRunErrors has already refused
@@ -48,7 +47,7 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 
 	flags := cmd.Flags()
 	inputOff := flagOrEnv(flags, "no-input", envTrue(app.LookupEnv, "CORONER_NO_INPUT"))
-	noColor, debug := readSwitches(flags, app.LookupEnv)
+	noColor, _ := readSwitches(flags, app.LookupEnv)
 	timelines, err := readTimelineInput(flags, flags.Args(), ruleOf(cmd))
 	if err != nil {
 		return invocation{}, err
@@ -61,7 +60,6 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 		inputOff:    inputOff,
 		terminal:    interactiveTerminal(app, inputOff),
 		formatGiven: flags.Changed("format"),
-		debug:       debug,
 		echoArgs:    givenStoreArgs(flags),
 		timelines:   timelines,
 	}, nil

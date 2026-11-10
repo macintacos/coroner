@@ -113,7 +113,8 @@ readme!: Load design/README.md
 - Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
   Typed time input: `internal/timeparse`. How an event's time reads to people:
   `internal/timetext`. Config file, XDG paths and precedence, and the attachment blob
-  directory beside the database: `internal/config`, whose spec fails when
+  directory and the diagnostic log's path (`config.DiagnosticLogPath`) beside the
+  database: `internal/config`, whose spec fails when
   [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a key the
   config file accepts. JSON export types, envelope, encoder and JSONL decoder, and the
   Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`, the JSON
@@ -161,10 +162,15 @@ readme!: Load design/README.md
   builds the same input from a write command's or form's fields, and `selectTimelines`
   selects against the store. A command declares how many timelines it reads in its
   `timelines` annotation (`several`, `positional`, `guard`), and the formats that print
-  only one in its `oneTimelineFormats` annotation. `event list` and `timeline export` also
-  take `--overlay`, a saved overlay's name, in place of `-t`, and read their events
-  through `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the
-  JSON error envelope under `--format json|jsonl`.
+  only one in its `oneTimelineFormats` annotation. A command whose
+  `diagnosticLogAnnotation` is `off` keeps it and every command under it out of the
+  diagnostic log; a spec in
+  [`diagnostic_log_internal_test.go`](internal/cli/diagnostic_log_internal_test.go) pins
+  the opted-out set (`agent skill`, `completion`, `version`), and a new opted-out command
+  joins it. `event list` and `timeline export` also take `--overlay`, a saved overlay's
+  name, in place of `-t`, and read their events through `store.EventFilter.TimelineIDs`.
+  `cli.Run` prints every error once, adding the JSON error envelope under
+  `--format json|jsonl`.
 - Deprecating a command or flag: `deprecateCommand` and `deprecateFlag` in
   [`internal/cli/deprecation.go`](internal/cli/deprecation.go), under the process in
   [`STABILITY.md`](STABILITY.md#deprecation).

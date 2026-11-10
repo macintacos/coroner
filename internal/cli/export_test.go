@@ -17,10 +17,14 @@ func (h *SeededHome) Into(home string, seed func()) { h.home.into(home, seed) }
 
 func CheckCommandLine(cmd *cobra.Command, args []string) error { return checkCommandLine(cmd, args) }
 
+func WalkCommands(cmd *cobra.Command, visit func(*cobra.Command)) { walkCommands(cmd, visit) }
+
+const LogRotateSize = logRotateSize
+
 // RunWithThrowawayDeprecation is Run with one more global flag, --throwaway, deprecated in
 // favour of --json.
 func RunWithThrowawayDeprecation(ctx context.Context, app App) int {
-	root := NewRoot(ctx, app)
+	app, root := newRun(ctx, app)
 	root.PersistentFlags().Bool("throwaway", false, "A flag only tests declare")
 	deprecateFlag(root.PersistentFlags(), "throwaway",
 		deprecation{replacement: "use --json instead", removalVersion: "v0.9.0", removalDate: "2027-03-14"})
