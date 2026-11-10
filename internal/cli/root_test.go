@@ -15,6 +15,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/help"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/export"
 )
@@ -173,7 +174,7 @@ var _ = Describe("Run", func() {
 		})
 
 		It("prints a help topic's Markdown source on Out", func(ctx SpecContext) {
-			for _, topic := range cli.HelpTopics() {
+			for _, topic := range help.Topics() {
 				out.Reset()
 
 				Expect(cli.Run(ctx, newApp("help", topic.Name))).To(Equal(0), topic.Name)
@@ -185,7 +186,7 @@ var _ = Describe("Run", func() {
 
 		It("names no help topic like a command, which help would then hide", func(ctx SpecContext) {
 			for _, cmd := range cli.NewRoot(ctx, clikit.App{}).Commands() {
-				Expect(cli.CommandTopics()).NotTo(ContainElement(HaveField("Name", cmd.Name())), cmd.Name())
+				Expect(help.CommandTopics()).NotTo(ContainElement(HaveField("Name", cmd.Name())), cmd.Name())
 			}
 		})
 

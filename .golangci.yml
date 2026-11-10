@@ -112,6 +112,12 @@ linters:
               desc: pure packages never log; their callers log what they return
         cli-layers:
           files:
+            - "${base-path}/internal/cli/agent/**"
+            - "${base-path}/internal/cli/help/**"
+            - "${base-path}/internal/cli/importcmd/**"
+            - "${base-path}/internal/cli/internalcmd/**"
+            - "${base-path}/internal/cli/status/**"
+            - "${base-path}/internal/cli/version/**"
             - "${base-path}/internal/cli/annotation/**"
             - "${base-path}/internal/cli/attachment/**"
             - "${base-path}/internal/cli/event/**"
@@ -123,20 +129,32 @@ linters:
             - "${base-path}/internal/cli/merge/**"
             - "!$test"
           deny:
+            - pkg: github.com/macintacos/coroner/internal/cli/agent$
+              desc: command packages share code through internal/cli/clikit, never each other
+            - pkg: github.com/macintacos/coroner/internal/cli/help$
+              desc: command packages share code through internal/cli/clikit, never each other
+            - pkg: github.com/macintacos/coroner/internal/cli/importcmd$
+              desc: command packages share code through internal/cli/clikit, never each other
+            - pkg: github.com/macintacos/coroner/internal/cli/internalcmd$
+              desc: command packages share code through internal/cli/clikit, never each other
+            - pkg: github.com/macintacos/coroner/internal/cli/status$
+              desc: command packages share code through internal/cli/clikit, never each other
+            - pkg: github.com/macintacos/coroner/internal/cli/version$
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/annotation$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/attachment$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/event$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/overlay$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/source$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/tag$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
             - pkg: github.com/macintacos/coroner/internal/cli/timeline$
-              desc: noun packages share code through internal/cli/clikit, never each other
+              desc: command packages share code through internal/cli/clikit, never each other
         export-contract:
           files:
             - "${base-path}/internal/export/**"

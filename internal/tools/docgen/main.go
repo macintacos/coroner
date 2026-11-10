@@ -26,6 +26,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/help"
 )
 
 const outDir = "docs/reference/cli"
@@ -41,7 +42,7 @@ func main() {
 	}
 
 	// A zero App is enough: rendering pages runs no command.
-	ref := reference{root: cli.NewRoot(context.Background(), clikit.App{}), topics: cli.HelpTopics()}
+	ref := reference{root: cli.NewRoot(context.Background(), clikit.App{}), topics: help.Topics()}
 
 	var err error
 	switch {
@@ -67,7 +68,7 @@ func main() {
 // reference is what the CLI reference documents: a page per command, and one per help topic.
 type reference struct {
 	root   *cobra.Command
-	topics []cli.HelpTopic
+	topics []help.Topic
 }
 
 // write replaces dir with the reference, so pages of removed commands go with it.
@@ -191,7 +192,7 @@ func generate(ref reference, dir string) error {
 	return writeTopicPages(dir, ref.root.Name(), ref.topics)
 }
 
-func writeTopicPages(dir, rootName string, topics []cli.HelpTopic) error {
+func writeTopicPages(dir, rootName string, topics []help.Topic) error {
 	for _, topic := range topics {
 		name := rootName + "_help_" + topic.Name + ".md"
 

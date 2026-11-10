@@ -1,4 +1,4 @@
-package cli
+package help
 
 import (
 	"io"
@@ -11,10 +11,10 @@ import (
 // under topics/.
 const referenceTopic = "reference"
 
-// commandTopics are the topics help lists: the files, then the reference, whose Body is empty
+// CommandTopics are the topics help lists: the files, then the reference, whose Body is empty
 // because help renders it from the command tree.
-func commandTopics() []HelpTopic {
-	return append(HelpTopics(), HelpTopic{Name: referenceTopic, Short: "Every command and flag on one Markdown page"})
+func CommandTopics() []Topic {
+	return append(Topics(), Topic{Name: referenceTopic, Short: "Every command and flag on one Markdown page"})
 }
 
 // referenceTemplate renders one command's section of `coroner help reference`, from the same
@@ -82,7 +82,7 @@ Global flags:
 // writeReference writes root's command tree to w as one Markdown page, with topics listed in
 // root's section: a section for root and for each available command under it, depth-first.
 // help and the completion shells are only lines in their parent's section.
-func writeReference(w io.Writer, root *cobra.Command, topics []HelpTopic) error {
+func writeReference(w io.Writer, root *cobra.Command, topics []Topic) error {
 	section := template.Must(template.New("reference").Funcs(helpFuncs(topics)).Parse(referenceTemplate))
 
 	return writeSections(w, section, root)

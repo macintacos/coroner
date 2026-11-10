@@ -1,4 +1,5 @@
-package cli
+// Package version holds the version command and the --version flag's output.
+package version
 
 import (
 	"fmt"
@@ -9,7 +10,8 @@ import (
 	"github.com/macintacos/coroner/internal/export"
 )
 
-func newVersionCommand(app clikit.App) *cobra.Command {
+// NewCommand returns the version command.
+func NewCommand(app clikit.App) *cobra.Command {
 	return &cobra.Command{
 		Use:         "version",
 		Short:       "Show coroner's version",
@@ -18,7 +20,7 @@ func newVersionCommand(app clikit.App) *cobra.Command {
 		Annotations: map[string]string{clikit.FormatsAnnotation: "text,json", clikit.DiagnosticLogAnnotation: "off"},
 		Example:     "  $ coroner version\n  $ coroner version --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return writeVersion(cmd, app)
+			return Write(cmd, app)
 		},
 	}
 }
@@ -28,7 +30,8 @@ type versionJSON struct {
 	FormatVersions []string `json:"format_versions"`
 }
 
-func writeVersion(cmd *cobra.Command, app clikit.App) error {
+// Write prints coroner's version in the format cmd asks for.
+func Write(cmd *cobra.Command, app clikit.App) error {
 	chosen, err := clikit.OutputFormat(cmd)
 	if err != nil {
 		return err

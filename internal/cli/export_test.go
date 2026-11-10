@@ -8,8 +8,6 @@ import (
 	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
-func CommandTopics() []HelpTopic { return commandTopics() }
-
 func WriteMigratedDatabase(path string) { writeMigratedDatabase(path) }
 
 // SeededHome is seededHome for the external specs.

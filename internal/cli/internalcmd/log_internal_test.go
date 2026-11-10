@@ -1,4 +1,4 @@
-package cli
+package internalcmd
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
 )
@@ -130,8 +131,9 @@ var _ = Describe("internal log", func() {
 
 	Describe("readLogFilter", func() {
 		read := func(args ...string) error {
-			cmd := newInternalLogCommand(context.Background(), clikit.App{})
-			NewRoot(context.Background(), clikit.App{}).AddCommand(cmd)
+			cmd := newLogCommand(context.Background(), clikit.App{})
+			root := &cobra.Command{Use: "coroner"}
+			root.AddCommand(&cobra.Command{Use: "event", Run: func(*cobra.Command, []string) {}}, cmd)
 			Expect(cmd.ParseFlags(args)).To(Succeed())
 			_, err := readLogFilter(slog.New(slog.DiscardHandler), cmd, time.Now(), clikit.Zone{Loc: time.UTC})
 			return err

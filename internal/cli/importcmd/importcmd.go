@@ -1,4 +1,6 @@
-package cli
+// Package importcmd holds the import command; import is a Go keyword, so the package cannot
+// take the command's name.
+package importcmd
 
 import (
 	"context"
@@ -17,7 +19,8 @@ import (
 	"github.com/macintacos/coroner/internal/store"
 )
 
-func newImportCommand(ctx context.Context, app clikit.App) *cobra.Command {
+// NewCommand returns the import command.
+func NewCommand(ctx context.Context, app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "import {<file> | -}",
 		Short:   "Import records from a JSONL export",

@@ -55,7 +55,7 @@ regenerate-docs!: Regenerate docs/reference/cli/
 export-format!: Edit docs/reference/export-format.md
 configuration!: Edit docs/reference/configuration.md
 diagnostic-log!: Edit docs/reference/diagnostic-log.md
-edit-internal!: Edit internal/cli/topics/*.md
+edit-internal!: Edit internal/cli/help/topics/*.md
 skill-2!: Edit skills/coroner/ (SKILL.md and references/)
 edit-design!: Edit design/
 ```
@@ -156,12 +156,12 @@ edit-design!: Edit design/
   and the lines each writes, the line shape, and reading it with `__internal log`: its
   flags and output, which docgen leaves out as a hidden command. A new or changed log line
   updates it in the same change.
-- **[`internal/cli/topics/*.md`](../../internal/cli/topics/)** (humans and agents at the
-  terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
-  CLI reference pages, which are also the site's Exit codes, Environment variables, Time
-  input and Output formats pages, so a topic's title or structure changes a published
-  reference page. Specs pin the `exit-codes` table and the `environment` variables to the
-  code.
+- **[`internal/cli/help/topics/*.md`](../../internal/cli/help/topics/)** (humans and
+  agents at the terminal) — the help topics `coroner help <topic>` prints as-is, and the
+  source of their CLI reference pages, which are also the site's Exit codes, Environment
+  variables, Time input and Output formats pages, so a topic's title or structure changes
+  a published reference page. Specs pin the `exit-codes` table and the `environment`
+  variables to the code.
 - **[`skills/coroner/SKILL.md`](../../skills/coroner/SKILL.md)** (coding agents that drive
   coroner) — the Agent Skill: the rules for running coroner from an agent and a recipe per
   investigation step, with `references/jsonl-events.md` for `event add --from-file`

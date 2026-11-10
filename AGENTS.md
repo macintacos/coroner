@@ -115,25 +115,27 @@ readme!: Load design/README.md
 
 ## Where things live and what to call them
 
-- Commands: `internal/cli`, one package per noun (`event`, `timeline`, `annotation`,
-  `attachment`, `source`, `tag`, `overlay`), each a `NewCommand` and a file per verb, but
-  `overlay`, one file. The root package holds `NewRoot`, `Run` and the top-level verbs
-  (`import`, `status`, `version`, `agent`, `help`, `__internal`), and the specs that walk
-  the whole command tree. What commands share lives in `internal/cli/clikit`: `App`,
-  `Error`, output, selection, definitions, forms and logging. `internal/cli/merge` plans
-  and writes what `import` and `event add --from-file` merge. A noun package imports
-  `clikit` and `merge`, never another noun or the root; the root hands `event` and
-  `annotation` the form step that creates a timeline (`timelinecmd.AskCreate`). Store:
-  `internal/store`. Domain types: `internal/timeline`. Typed time input:
-  `internal/timeparse`. How an event's time reads to people: `internal/timetext`. Config
-  file, XDG paths and precedence, and the attachment blob directory and the diagnostic
-  log's path (`config.DiagnosticLogPath`) beside the database: `internal/config`, whose
-  spec fails when [`docs/reference/configuration.md`](docs/reference/configuration.md)
-  misses a key the config file accepts. JSON export types, envelope, encoder and JSONL
-  decoder, and the Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`,
-  the JSON described by [the export format reference](docs/reference/export-format.md);
-  the HTML page's viewer and vendored vis-timeline live in `internal/export/html/`, its
-  colour tokens in `internal/export/theme.go`, and the SVG picture's template in
+- Commands: `internal/cli`, one package per top-level command, each a `NewCommand`: the
+  nouns (`event`, `timeline`, `annotation`, `attachment`, `source`, `tag`, `overlay`), a
+  file per verb but `overlay`, one file, and the verbs `status`, `version`, `agent`,
+  `help`, `importcmd` (`import`, a Go keyword) and `internalcmd` (`__internal`, since a
+  directory named `internal` limits who may import it). The root package holds only
+  `NewRoot` and `Run`, and the specs that walk the whole command tree. What commands share
+  lives in `internal/cli/clikit`: `App`, `Error`, output, selection, definitions, forms
+  and logging. `internal/cli/merge` plans and writes what `import` and
+  `event add --from-file` merge. A command package imports `clikit` and `merge`, never
+  another command's package or the root; the root hands `event` and `annotation` the form
+  step that creates a timeline (`timelinecmd.AskCreate`). Store: `internal/store`. Domain
+  types: `internal/timeline`. Typed time input: `internal/timeparse`. How an event's time
+  reads to people: `internal/timetext`. Config file, XDG paths and precedence, and the
+  attachment blob directory and the diagnostic log's path (`config.DiagnosticLogPath`)
+  beside the database: `internal/config`, whose spec fails when
+  [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a key the
+  config file accepts. JSON export types, envelope, encoder and JSONL decoder, and the
+  Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`, the JSON
+  described by [the export format reference](docs/reference/export-format.md); the HTML
+  page's viewer and vendored vis-timeline live in `internal/export/html/`, its colour
+  tokens in `internal/export/theme.go`, and the SVG picture's template in
   `internal/export/svg/`. The terminal viewer `timeline view` opens and the picker
   `timeline list` opens: `internal/viewer`. Which terminals show images inline, the Kitty
   graphics sequences and the placeholder text shown where none can: `internal/graphics`,
@@ -146,12 +148,12 @@ readme!: Load design/README.md
   [`.claude/skills/release-coroner/`](.claude/skills/release-coroner/SKILL.md) is the
   maintainer-only project skill that cuts a release; it ships neither with `skills/` nor
   in the marketplace.
-- Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
+- Help topics: `internal/cli/help/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`; those pages are
   also the site's reference pages for the topics. Specs fail when `exit-codes` disagrees
   with the exit-code map or `environment` misses an environment variable the code reads.
   The `reference` topic is not a file: `writeReference`
-  ([`reference.go`](internal/cli/reference.go)) renders it from the command tree, so
+  ([`reference.go`](internal/cli/help/reference.go)) renders it from the command tree, so
   `docgen` writes no page for it.
   [`help-reference.txtar`](internal/cli/testdata/script/help-reference.txtar) pins the
   page, and any command or flag change rewrites it.
@@ -233,9 +235,9 @@ readme!: Load design/README.md
   fails when a command with `--interactive`, or `timeline view` or `timeline list`, which
   it lists by name, has no run there; a new command that opens a viewer or picker joins
   that list.
-- `import` ([`internal/cli/import.go`](internal/cli/import.go)), a top-level verb since it
-  ingests every record type (S-2's glossary lists `import`), and `--from-file` read JSONL
-  only through `export.Decode`, and merge through `merge.Merge`
+- `import` ([`internal/cli/importcmd/importcmd.go`](internal/cli/importcmd/importcmd.go)),
+  a top-level verb since it ingests every record type (S-2's glossary lists `import`), and
+  `--from-file` read JSONL only through `export.Decode`, and merge through `merge.Merge`
   ([`merge.go`](internal/cli/merge/merge.go)). `merge` decides what to insert, skip or
   replace in `PlanImport` ([`plan.go`](internal/cli/merge/plan.go)), which reads the
   database only through the lookup it is handed and does no other I/O; `merge` then writes
@@ -268,17 +270,17 @@ readme!: Load design/README.md
 - Agent skill: [`skills/coroner/`](skills/coroner/SKILL.md) holds the Agent Skill and its
   `references/`, with spec front matter keys only. Go cannot embed a parent directory, so
   [`skills/skills.go`](skills/skills.go) embeds `SKILL.md`; `main.go` passes it in as
-  `App.Skill`, and `coroner agent skill` ([`agent.go`](internal/cli/agent.go)) prints it
-  (S-2's glossary lists it). A spec fails when `agent skill` prints anything but the file
-  or opens the database, and two others when `SKILL.md`'s front matter breaks or a link to
-  a reference does. The repository is its own Claude Code plugin marketplace:
+  `App.Skill`, and `coroner agent skill` ([`agent.go`](internal/cli/agent/agent.go))
+  prints it (S-2's glossary lists it). A spec fails when `agent skill` prints anything but
+  the file or opens the database, and two others when `SKILL.md`'s front matter breaks or
+  a link to a reference does. The repository is its own Claude Code plugin marketplace:
   [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) offers `skills/` as
   a plugin holding only this skill.
 - Debugging coroner itself, not an incident: commands live under the hidden `__internal`
-  group ([`internal.go`](internal/cli/internal.go)), which stays out of the diagnostic log
-  and the stability contract. Specs fail when it shows in root help, the `reference`
-  topic, shell completion or the CLI reference. `__internal log`
-  ([`internal_log.go`](internal/cli/internal_log.go)) prints the diagnostic log as text. A
+  group ([`internalcmd.go`](internal/cli/internalcmd/internalcmd.go)), which stays out of
+  the diagnostic log and the stability contract. Specs fail when it shows in root help,
+  the `reference` topic, shell completion or the CLI reference. `__internal log`
+  ([`log.go`](internal/cli/internalcmd/log.go)) prints the diagnostic log as text. A
   hidden command gets no CLI reference page, so its flags are documented on the reference
   page of what it reads, as `__internal log`'s are in `docs/reference/diagnostic-log.md`.
 - Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,

@@ -1,4 +1,4 @@
-package cli
+package help_test
 
 import (
 	"os/exec"
@@ -12,16 +12,18 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 
+	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/help"
 )
 
 var _ = Describe("writeReference", func() {
 	noop := func(*cobra.Command, []string) {}
 
-	render := func(root *cobra.Command, topics ...HelpTopic) string {
+	render := func(root *cobra.Command, topics ...help.Topic) string {
 		GinkgoHelper()
 		var out strings.Builder
-		Expect(writeReference(&out, root, topics)).To(Succeed())
+		Expect(help.WriteReference(&out, root, topics)).To(Succeed())
 
 		return out.String()
 	}
@@ -36,7 +38,7 @@ var _ = Describe("writeReference", func() {
 		add.Flags().Bool("dry-run", false, "Add nothing")
 		root.AddCommand(add)
 
-		Expect(render(root, HelpTopic{Name: "time", Short: "Typing times"})).To(Equal(`# tool
+		Expect(render(root, help.Topic{Name: "time", Short: "Typing times"})).To(Equal(`# tool
 
 ~~~text
 A tool
@@ -123,7 +125,7 @@ Global flags:
 	})
 
 	It("gives every available coroner command a section, and help and the completion shells a listed line", func(ctx SpecContext) {
-		root := NewRoot(ctx, clikit.App{})
+		root := cli.NewRoot(ctx, clikit.App{})
 		page := render(root)
 
 		expected := []string{"# coroner"}
@@ -151,7 +153,7 @@ Global flags:
 
 	It("writes no Markdown that renders as HTML, so placeholders such as <id> survive", func(ctx SpecContext) {
 		var html []string
-		walkMarkdown(render(NewRoot(ctx, clikit.App{})), func(n ast.Node, source []byte) {
+		walkMarkdown(render(cli.NewRoot(ctx, clikit.App{})), func(n ast.Node, source []byte) {
 			switch n := n.(type) {
 			case *ast.RawHTML:
 				html = append(html, string(n.Segments.Value(source)))
@@ -168,7 +170,7 @@ Global flags:
 		Expect(err).NotTo(HaveOccurred(), "rumdl is not on PATH: run the suite through mise run test")
 
 		cmd := exec.CommandContext(ctx, "rumdl", "check", "-")
-		cmd.Stdin = strings.NewReader(render(NewRoot(ctx, clikit.App{})))
+		cmd.Stdin = strings.NewReader(render(cli.NewRoot(ctx, clikit.App{})))
 		out, err := cmd.CombinedOutput()
 
 		Expect(err).NotTo(HaveOccurred(), string(out))

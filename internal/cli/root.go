@@ -3,19 +3,23 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
-	"runtime/debug"
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli/agent"
 	"github.com/macintacos/coroner/internal/cli/annotation"
 	"github.com/macintacos/coroner/internal/cli/attachment"
 	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/cli/event"
+	"github.com/macintacos/coroner/internal/cli/help"
+	"github.com/macintacos/coroner/internal/cli/importcmd"
+	"github.com/macintacos/coroner/internal/cli/internalcmd"
 	"github.com/macintacos/coroner/internal/cli/overlay"
 	"github.com/macintacos/coroner/internal/cli/source"
+	"github.com/macintacos/coroner/internal/cli/status"
 	"github.com/macintacos/coroner/internal/cli/tag"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
+	"github.com/macintacos/coroner/internal/cli/version"
 )
 
 // NewRoot builds coroner's command tree, whose commands run against app. Execute it only
@@ -34,7 +38,7 @@ func NewRoot(ctx context.Context, app clikit.App) *cobra.Command {
 		Annotations: map[string]string{clikit.FormatsAnnotation: "text,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
-				return writeVersion(cmd, app)
+				return version.Write(cmd, app)
 			}
 
 			return cmd.Help()
@@ -51,12 +55,12 @@ func NewRoot(ctx context.Context, app clikit.App) *cobra.Command {
 		return clikit.UsageError(cmd, err)
 	})
 
-	topics := commandTopics()
-	help := newHelpTemplate(topics)
+	topics := help.CommandTopics()
+	helpTemplate := help.NewTemplate(topics)
 	// Cobra's help function writes through OutOrStdout, bypassing app.Out.
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
 		// A help function cannot fail the command.
-		_ = help.Execute(app.Out, cmd)
+		_ = helpTemplate.Execute(app.Out, cmd)
 	})
 
 	root.AddGroup(
@@ -65,9 +69,9 @@ func NewRoot(ctx context.Context, app clikit.App) *cobra.Command {
 	)
 	root.SetCompletionCommandGroupID(clikit.AdditionalCommands)
 	root.AddCommand(
-		newVersionCommand(app), timelinecmd.NewCommand(ctx, app), newStatusCommand(ctx, app), event.NewCommand(ctx, app, timelinecmd.AskCreate),
+		version.NewCommand(app), timelinecmd.NewCommand(ctx, app), status.NewCommand(ctx, app), event.NewCommand(ctx, app, timelinecmd.AskCreate),
 		annotation.NewCommand(ctx, app, timelinecmd.AskCreate), attachment.NewCommand(ctx, app), source.NewCommand(ctx, app), tag.NewCommand(ctx, app),
-		newImportCommand(ctx, app), overlay.NewCommand(ctx, app), newAgentCommand(app), newInternalCommand(ctx, app),
+		importcmd.NewCommand(ctx, app), overlay.NewCommand(ctx, app), agent.NewCommand(app), internalcmd.NewCommand(ctx, app),
 	)
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
@@ -76,7 +80,7 @@ func NewRoot(ctx context.Context, app clikit.App) *cobra.Command {
 	clikit.AddTimelineCompletion(ctx, root, app)
 	addCompletionCommand(root, app)
 	wrapRunErrors(root)
-	addHelpCommand(root, app, topics)
+	help.AddCommand(root, app, topics)
 
 	return root
 }
@@ -121,7 +125,7 @@ func wrapRunErrors(cmd *cobra.Command) {
 	}
 	for _, hook := range hooks {
 		if run := *hook; run != nil {
-			*hook = typedHook(run)
+			*hook = clikit.TypedHook(run)
 		}
 	}
 
@@ -165,22 +169,4 @@ func checkCommandLine(cmd *cobra.Command, args []string) error {
 	_, err := clikit.ReadTimelineInput(cmd.Flags(), args, clikit.RuleOf(cmd))
 
 	return err
-}
-
-// typedHook returns run with its errors and panics made *Error.
-func typedHook(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				err = &clikit.Error{
-					Kind:    clikit.KindInternal,
-					Message: fmt.Sprintf("unexpected panic: %v", r),
-					Hint:    clikit.InternalHint,
-					Err:     fmt.Errorf("%v\n%s", r, debug.Stack()),
-				}
-			}
-		}()
-
-		return clikit.AsInternal(run(cmd, args))
-	}
 }

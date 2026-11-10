@@ -1,4 +1,4 @@
-package cli
+package internalcmd
 
 import (
 	"bufio"
@@ -19,7 +19,7 @@ import (
 	"github.com/macintacos/coroner/internal/config"
 )
 
-func newInternalLogCommand(ctx context.Context, app clikit.App) *cobra.Command {
+func newLogCommand(ctx context.Context, app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Print the diagnostic log as text",

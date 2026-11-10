@@ -1,4 +1,6 @@
-package cli
+// Package help holds the help command, its templates, the built-in help topics and the
+// reference topic rendered from the command tree.
+package help
 
 import (
 	"fmt"
@@ -64,16 +66,17 @@ LEARN MORE
   Report bugs and send feedback at ` + clikit.IssuesURL + `
 `
 
-func newHelpTemplate(topics []HelpTopic) *template.Template {
+// NewTemplate returns the template that renders a command's help, listing topics under root's.
+func NewTemplate(topics []Topic) *template.Template {
 	return template.Must(template.New("help").Funcs(helpFuncs(topics)).Parse(helpTemplate))
 }
 
 // helpFuncs are the functions help's and the reference's templates call; topics pad root's name
 // column and fill HELP TOPICS.
-func helpFuncs(topics []HelpTopic) template.FuncMap {
+func helpFuncs(topics []Topic) template.FuncMap {
 	// Local funcs: cobra's own register through the package-global cobra.AddTemplateFunc.
 	return template.FuncMap{
-		"helpTopics": func() []HelpTopic {
+		"helpTopics": func() []Topic {
 			return topics
 		},
 		"inheritedFlags": inheritedFlags,
@@ -119,7 +122,7 @@ func listed(cmd *cobra.Command) bool {
 
 // namePadding is the width of the name column in cmd's help: its subcommands' names and, at
 // the top level, the topics' names.
-func namePadding(cmd *cobra.Command, topics []HelpTopic) int {
+func namePadding(cmd *cobra.Command, topics []Topic) int {
 	width := 0
 	for _, sub := range cmd.Commands() {
 		width = max(width, sub.NamePadding())
@@ -134,9 +137,9 @@ func namePadding(cmd *cobra.Command, topics []HelpTopic) int {
 	return width
 }
 
-// addHelpCommand adds the help command, which prints a help topic, or else a command's
+// AddCommand adds the help command, which prints a help topic, or else a command's
 // help. Topics are not commands, so a topic's name never becomes a runnable one.
-func addHelpCommand(root *cobra.Command, app clikit.App, topics []HelpTopic) {
+func AddCommand(root *cobra.Command, app clikit.App, topics []Topic) {
 	root.SetHelpCommand(&cobra.Command{
 		Use:     "help [<command> | <topic>]",
 		Short:   "Help about any command or topic",
@@ -152,7 +155,7 @@ func addHelpCommand(root *cobra.Command, app clikit.App, topics []HelpTopic) {
 
 			return completions, cobra.ShellCompDirectiveNoFileComp
 		},
-		RunE: typedHook(func(_ *cobra.Command, args []string) error {
+		RunE: clikit.TypedHook(func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				if args[0] == referenceTopic {
 					return writeReference(app.Out, root, topics)
@@ -184,7 +187,7 @@ type helpName struct {
 
 // helpNames lists what `help <args...> <name>` accepts: the subcommands of the command args
 // names, preceded at the top level by the topics.
-func helpNames(root *cobra.Command, args []string, topics []HelpTopic) []helpName {
+func helpNames(root *cobra.Command, args []string, topics []Topic) []helpName {
 	parent, _, err := root.Find(args)
 	if err != nil {
 		return nil
@@ -206,7 +209,7 @@ func helpNames(root *cobra.Command, args []string, topics []HelpTopic) []helpNam
 	return names
 }
 
-func unknownHelpError(root *cobra.Command, name string, topics []HelpTopic, err error) *clikit.Error {
+func unknownHelpError(root *cobra.Command, name string, topics []Topic, err error) *clikit.Error {
 	names := helpNames(root, nil, topics)
 	candidates := make([]string, len(names))
 	for i, candidate := range names {

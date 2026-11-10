@@ -1,4 +1,5 @@
-package cli
+// Package status holds the status command.
+package status
 
 import (
 	"context"
@@ -16,7 +17,8 @@ import (
 	"github.com/macintacos/coroner/internal/store"
 )
 
-func newStatusCommand(ctx context.Context, app clikit.App) *cobra.Command {
+// NewCommand returns the status command.
+func NewCommand(ctx context.Context, app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show the database and the timeline commands act on",

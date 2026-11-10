@@ -1,4 +1,4 @@
-package cli
+package help
 
 import (
 	"go/ast"
@@ -36,7 +36,7 @@ var _ = Describe("help template", func() {
 		root.AddCommand(&cobra.Command{Use: "version", Short: "Show the version", Run: func(*cobra.Command, []string) {}})
 		var out strings.Builder
 
-		Expect(newHelpTemplate([]HelpTopic{{Name: "a-long-topic-name", Short: "About it"}}).Execute(&out, root)).To(Succeed())
+		Expect(NewTemplate([]Topic{{Name: "a-long-topic-name", Short: "About it"}}).Execute(&out, root)).To(Succeed())
 
 		Expect(out.String()).To(ContainSubstring("\n  version            Show the version\n"))
 		Expect(out.String()).To(ContainSubstring("\n  a-long-topic-name  About it\n"))
@@ -57,7 +57,7 @@ var _ = Describe("help topics", func() {
 	})
 
 	It("name in environment every environment variable the code reads", func() {
-		keys := envKeysRead(filepath.Join("..", ".."))
+		keys := envKeysRead(filepath.Join("..", "..", ".."))
 		Expect(keys).To(ContainElements("CORONER_DB", "HOME"), "the scan finds known reads")
 
 		body := topicBody("environment")
@@ -69,7 +69,7 @@ var _ = Describe("help topics", func() {
 
 func topicBody(name string) string {
 	GinkgoHelper()
-	topic, ok := topicNamed(HelpTopics(), name)
+	topic, ok := topicNamed(Topics(), name)
 	Expect(ok).To(BeTrue(), name)
 
 	return topic.Body

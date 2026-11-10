@@ -16,7 +16,7 @@ match() {
 	grep "$@" || (($? == 1))
 }
 
-cli=$(match -E '^internal/cli/' <<<"$paths" | match -vE '_test\.go$|/testdata/|^internal/cli/topics/')
+cli=$(match -E '^internal/cli/' <<<"$paths" | match -vE '_test\.go$|/testdata/|^internal/cli/help/topics/')
 docs=$(match -E '^docs/' <<<"$paths" | match -vE '^docs/(reference/cli|rules)/')
 
 if [[ -n $cli && -z $docs ]]; then

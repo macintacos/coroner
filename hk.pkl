@@ -59,7 +59,7 @@ local formatters = new Mapping<String, Step> {
     glob =
       List(
         "internal/cli/**/*.go",
-        "internal/cli/topics/*.md",
+        "internal/cli/help/topics/*.md",
         "internal/tools/docgen/**/*.go",
         "go.mod",
       )

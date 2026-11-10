@@ -20,6 +20,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/help"
 )
 
 var _ = Describe("exampleLines", func() {
@@ -496,9 +497,9 @@ func helpTarget(root *cobra.Command, positionals []string) error {
 		return nil
 	}
 
-	isTopic := func(topic cli.HelpTopic) bool { return topic.Name == positionals[0] }
+	isTopic := func(topic help.Topic) bool { return topic.Name == positionals[0] }
 	_, _, err := root.Find(positionals)
-	if err != nil && !slices.ContainsFunc(cli.CommandTopics(), isTopic) {
+	if err != nil && !slices.ContainsFunc(help.CommandTopics(), isTopic) {
 		return fmt.Errorf("unknown help topic or command %q", positionals[0])
 	}
 

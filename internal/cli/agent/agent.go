@@ -1,4 +1,5 @@
-package cli
+// Package agent holds the agent command, which prints what an agent needs to use coroner.
+package agent
 
 import (
 	"io"
@@ -8,7 +9,8 @@ import (
 	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
-func newAgentCommand(app clikit.App) *cobra.Command {
+// NewCommand returns the agent command group.
+func NewCommand(app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
 		Short: "Print what coding agents need to drive coroner",

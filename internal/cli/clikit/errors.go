@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -266,4 +267,22 @@ func writeEnvelope(w io.Writer, e *Error) error {
 	}
 
 	return WriteJSON(w, false, Envelope{Error: body})
+}
+
+// TypedHook returns run with its errors and panics made *Error.
+func TypedHook(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = &Error{
+					Kind:    KindInternal,
+					Message: fmt.Sprintf("unexpected panic: %v", r),
+					Hint:    InternalHint,
+					Err:     fmt.Errorf("%v\n%s", r, debug.Stack()),
+				}
+			}
+		}()
+
+		return AsInternal(run(cmd, args))
+	}
 }

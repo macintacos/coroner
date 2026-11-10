@@ -1,4 +1,7 @@
-package cli
+// Package internalcmd holds the hidden __internal command group, for debugging coroner itself.
+// A directory named internal would limit who may import it, so the package cannot take the
+// command's name.
+package internalcmd
 
 import (
 	"context"
@@ -8,7 +11,8 @@ import (
 	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
-func newInternalCommand(ctx context.Context, app clikit.App) *cobra.Command {
+// NewCommand returns the hidden __internal command group.
+func NewCommand(ctx context.Context, app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "__internal",
 		Short: "Debug coroner itself",
@@ -19,7 +23,7 @@ func newInternalCommand(ctx context.Context, app clikit.App) *cobra.Command {
 		Annotations: map[string]string{clikit.DiagnosticLogAnnotation: "off"},
 		RunE:        clikit.RunNoun,
 	}
-	cmd.AddCommand(newInternalLogCommand(ctx, app))
+	cmd.AddCommand(newLogCommand(ctx, app))
 
 	return cmd
 }

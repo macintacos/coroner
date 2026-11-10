@@ -1,4 +1,4 @@
-package cli
+package importcmd
 
 import (
 	"context"
@@ -119,7 +119,7 @@ var _ = Describe("mergeImport", func() {
 		dbPath := filepath.Join(GinkgoT().TempDir(), "coroner.db")
 		createSchemaV2(ctx, dbPath)
 		app := clikit.App{OpenStore: store.Open, OpenStoreReadOnly: store.OpenReadOnly}
-		file, err := os.Open(filepath.Join("..", "..", "testdata", "export", "v1.2", "links.jsonl"))
+		file, err := os.Open(filepath.Join("..", "..", "..", "testdata", "export", "v1.2", "links.jsonl"))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(file.Close)
 		records, _, err := export.Decode(file)
@@ -136,7 +136,7 @@ var _ = Describe("mergeImport", func() {
 // createSchemaV2 writes a database at dbPath migrated only through schema 2.
 func createSchemaV2(ctx context.Context, dbPath string) {
 	GinkgoHelper()
-	all := os.DirFS(filepath.Join("..", "store", "migrations"))
+	all := os.DirFS(filepath.Join("..", "..", "store", "migrations"))
 	migrations := fstest.MapFS{}
 	for _, name := range []string{"00001_initial_schema.sql", "00002_attachments.sql"} {
 		data, err := fs.ReadFile(all, name)
