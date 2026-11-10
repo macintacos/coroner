@@ -85,6 +85,8 @@ For a stable or candidate-stable element, each of these is a breaking change:
 - New commands, flags, JSON keys, JSONL record types, enum values, exit codes or error
   kinds.
 - Relaxed validation.
+- The diagnostic log's lines, including their JSON shape, which may change in any release.
+- Every command under `__internal`, which may change or disappear in any release.
 - The SQLite schema, which is internal. A database an older coroner wrote still opens in
   every later release ([the migration policy](docs/contributing/migrations.md)), but only
   exports are shared.

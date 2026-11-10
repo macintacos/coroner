@@ -20,6 +20,8 @@ way it does, see the [explanation pages](../explanation/index.md).
   scripts can rely on in JSON output.
 - [Configuration](configuration.md): the config file, its keys, and how flags, environment
   variables and the file take precedence.
+- [Diagnostic log](diagnostic-log.md): where coroner logs what its commands did, when the
+  log rotates, and what its lines hold.
 - [CLI](cli/coroner.md): every command and flag, generated from coroner itself. In a
   terminal, `coroner help reference` prints them all as one Markdown page, matching the
   installed version.

@@ -144,6 +144,12 @@ directory beside the database.
 
 _Avoid_: object, asset
 
+**Diagnostic log**: coroner's own record of what its commands did, as JSON lines in a file
+beside the database. It is never part of a timeline, unlike an incident's log lines, which
+a timeline holds as events or evidence.
+
+_Avoid_: log, debug log, audit log
+
 **Source**: The system, service or person an event or annotation came from, such as
 `slack` or `db-2/mongod`.
 

@@ -18,7 +18,7 @@ Images show inline only with color on and outside a multiplexer.
 | `CORONER_DB` | The database file, as `--db` sets it |
 | `CORONER_CONFIG` | The config file, as `--config` sets it; the file must exist |
 | `CORONER_TIMELINE` | The timeline to act on when `-t` names none; it wins over `coroner timeline use` |
-| `CORONER_DEBUG` | Print debug detail on stderr, as `--debug` does, unless it is a false value |
+| `CORONER_DEBUG` | Add debug lines to the diagnostic log and print its lines on stderr, as `--debug` does, unless it is a false value |
 | `CORONER_NO_INPUT` | Never open a form, picker or viewer, as `--no-input` does, unless it is a false value |
 | `NO_COLOR`, `CORONER_NO_COLOR` | Any non-empty value disables color, as `--no-color` does |
 | `TERM` | `dumb` disables color, the forms, the picker and the viewer; `xterm-kitty` or `xterm-ghostty` shows images inline, and a `tmux` or `screen` value shows placeholders instead |
