@@ -383,13 +383,14 @@ func (m Model) load(match Match) (Model, tea.Cmd) {
 	}
 }
 
-// logLoad logs at debug how a load went: what it read, or why it failed, and how long it took.
+// logLoad logs at debug how a load went: what narrowed it, what it read or why it failed, and
+// how long it took.
 func logLoad(log *slog.Logger, msg loadedMsg, took time.Duration) {
 	if msg.err != nil {
-		log.Debug("timelines not reloaded", "duration", took, "error", msg.err)
+		log.Debug("timelines not reloaded", "filter", msg.match, "duration", took, "error", msg.err)
 		return
 	}
-	log.Debug("timelines reloaded", "counts", msg.snapshot.Counts(), "duration", took)
+	log.Debug("timelines reloaded", "filter", msg.match, "counts", msg.snapshot.Counts(), "duration", took)
 }
 
 // loaded shows the snapshot msg read, and reads the images it gained on expanded events.

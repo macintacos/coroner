@@ -151,8 +151,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   how it shows images: `kitty`, or `none` without color, in a multiplexer, or on a
   terminal that cannot;
 - the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
-  new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
-  `error`, when that read fails; and `attachment image not shown`.
+  new filter, with `filter`, what narrowed them (as `records read` gives it, without
+  `order` and `limit`), `counts` and `duration`; `timelines not reloaded`, with `filter`,
+  `duration` and `error`, when that read fails; and `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds
 its stderr lines until it closes. stdout and the JSON error envelope never change, and the
