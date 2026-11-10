@@ -51,7 +51,7 @@ process for people.
    - one bullet per user-visible change, written from the PR's title and body, ending with
      its PR link; leave out internal-only work such as CI, refactors and tests;
    - check each PR's `stability` against `contract_hints` (changed contract scripts and
-     schema files, added or removed `deprecateCommand` and `deprecateFlag` calls), and say
+     schema files, added or removed `DeprecateCommand` and `DeprecateFlag` calls), and say
      in step 6 when a contract changed under a PR that claims no contract change;
    - a last line `**Full Changelog**: <compare_url>`.
 

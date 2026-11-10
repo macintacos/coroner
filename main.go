@@ -1,4 +1,4 @@
-// Command coroner is the coroner CLI. It builds a cli.App from the process and exits with
+// Command coroner is the coroner CLI. It builds a clikit.App from the process and exits with
 // cli.Run's code.
 package main
 
@@ -19,6 +19,7 @@ import (
 	"github.com/mattn/go-isatty"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/skills"
 )
@@ -32,7 +33,7 @@ func main() {
 	if build, ok := debug.ReadBuildInfo(); ok {
 		version = build.Main.Version
 	}
-	code := cli.Run(ctx, cli.App{
+	code := cli.Run(ctx, clikit.App{
 		Args:              os.Args[1:],
 		In:                os.Stdin,
 		Out:               os.Stdout,

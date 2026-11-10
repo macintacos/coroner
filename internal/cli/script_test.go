@@ -33,6 +33,7 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/skills"
@@ -241,7 +242,7 @@ func bumpSchemaVersion(ctx context.Context, path string) error {
 
 // runCoroner runs coroner as scripts do, through run (cli.Run or a test variant): processApp
 // with the clock and IDs pinned.
-func runCoroner(run func(context.Context, cli.App) int) {
+func runCoroner(run func(context.Context, clikit.App) int) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	context.AfterFunc(ctx, stop)
 
@@ -259,12 +260,12 @@ func runCoroner(run func(context.Context, cli.App) int) {
 
 // processApp is main.go's App, built from this process. Keep the two in sync: a seam main.go sets
 // reaches scripts only through here.
-func processApp() cli.App {
+func processApp() clikit.App {
 	version := "(devel)"
 	if build, ok := debug.ReadBuildInfo(); ok {
 		version = build.Main.Version
 	}
-	return cli.App{
+	return clikit.App{
 		Args:              os.Args[1:],
 		In:                os.Stdin,
 		Out:               os.Stdout,
@@ -297,7 +298,7 @@ var _ = Describe("processApp", func() {
 	})
 })
 
-func withTestClock(app cli.App) (cli.App, error) {
+func withTestClock(app clikit.App) (clikit.App, error) {
 	value, _ := app.LookupEnv("CORONER_TEST_NOW")
 	now, err := time.Parse(time.RFC3339, value)
 	if err != nil {
@@ -316,7 +317,7 @@ func fakeLookupEnv(key, value string) func(string) (string, bool) {
 
 var _ = Describe("withTestClock", func() {
 	It("pins App.Now to the instant in CORONER_TEST_NOW", func() {
-		app, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("CORONER_TEST_NOW", "2026-09-12T21:30:00-04:00"), Now: time.Now})
+		app, err := withTestClock(clikit.App{LookupEnv: fakeLookupEnv("CORONER_TEST_NOW", "2026-09-12T21:30:00-04:00"), Now: time.Now})
 
 		Expect(err).NotTo(HaveOccurred())
 		want := time.Date(2026, time.September, 13, 1, 30, 0, 0, time.UTC)
@@ -324,14 +325,14 @@ var _ = Describe("withTestClock", func() {
 	})
 
 	It("returns the pinned instant in the local zone, as time.Now does", func() {
-		app, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("CORONER_TEST_NOW", "2026-09-12T21:30:00+13:07"), Now: time.Now})
+		app, err := withTestClock(clikit.App{LookupEnv: fakeLookupEnv("CORONER_TEST_NOW", "2026-09-12T21:30:00+13:07"), Now: time.Now})
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(app.Now().Location().String()).To(Equal(time.Local.String()))
 	})
 
 	It("rejects a CORONER_TEST_NOW that is not RFC 3339", func() {
-		_, err := withTestClock(cli.App{LookupEnv: fakeLookupEnv("CORONER_TEST_NOW", "yesterday"), Now: time.Now})
+		_, err := withTestClock(clikit.App{LookupEnv: fakeLookupEnv("CORONER_TEST_NOW", "yesterday"), Now: time.Now})
 
 		Expect(err).To(MatchError(ContainSubstring("CORONER_TEST_NOW")))
 	})
@@ -341,7 +342,7 @@ var _ = Describe("withTestClock", func() {
 // processes of one script continue a single sequence. Apply after withTestClock: every ID
 // carries app.Now's millisecond.
 // ponytail: the counter file is unlocked, so a script must not run coroner in the background.
-func withTestIDs(app cli.App) (cli.App, error) {
+func withTestIDs(app clikit.App) (clikit.App, error) {
 	path, _ := app.LookupEnv("CORONER_TEST_IDS")
 	if path == "" {
 		return app, errors.New("CORONER_TEST_IDS is not set")
@@ -373,7 +374,7 @@ var _ = Describe("withTestIDs", func() {
 
 	It("gives UUIDv7 IDs stamped with App.Now's millisecond and numbered from 1", func() {
 		lookupEnv := fakeLookupEnv("CORONER_TEST_IDS", filepath.Join(GinkgoT().TempDir(), "ids"))
-		app, err := withTestIDs(cli.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile})
+		app, err := withTestIDs(clikit.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile})
 		Expect(err).NotTo(HaveOccurred())
 
 		first, err := app.NewID()
@@ -389,12 +390,12 @@ var _ = Describe("withTestIDs", func() {
 
 	It("continues the numbering across apps sharing CORONER_TEST_IDS, as a script's coroner processes do", func() {
 		lookupEnv := fakeLookupEnv("CORONER_TEST_IDS", filepath.Join(GinkgoT().TempDir(), "ids"))
-		earlier, err := withTestIDs(cli.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile})
+		earlier, err := withTestIDs(clikit.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = earlier.NewID()
 		Expect(err).NotTo(HaveOccurred())
 
-		later, err := withTestIDs(cli.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile})
+		later, err := withTestIDs(clikit.App{LookupEnv: lookupEnv, Now: pinned, ReadFile: os.ReadFile})
 		Expect(err).NotTo(HaveOccurred())
 		id, err := later.NewID()
 
@@ -406,13 +407,13 @@ var _ = Describe("withTestIDs", func() {
 		path := filepath.Join(GinkgoT().TempDir(), "ids")
 		Expect(os.WriteFile(path, []byte("seven"), 0o600)).To(Succeed())
 
-		_, err := withTestIDs(cli.App{LookupEnv: fakeLookupEnv("CORONER_TEST_IDS", path), Now: pinned, ReadFile: os.ReadFile})
+		_, err := withTestIDs(clikit.App{LookupEnv: fakeLookupEnv("CORONER_TEST_IDS", path), Now: pinned, ReadFile: os.ReadFile})
 
 		Expect(err).To(MatchError(ContainSubstring("CORONER_TEST_IDS")))
 	})
 
 	It("rejects an unset CORONER_TEST_IDS", func() {
-		_, err := withTestIDs(cli.App{LookupEnv: fakeLookupEnv("CORONER_TEST_IDS", ""), Now: pinned, ReadFile: os.ReadFile})
+		_, err := withTestIDs(clikit.App{LookupEnv: fakeLookupEnv("CORONER_TEST_IDS", ""), Now: pinned, ReadFile: os.ReadFile})
 
 		Expect(err).To(MatchError(ContainSubstring("CORONER_TEST_IDS")))
 	})

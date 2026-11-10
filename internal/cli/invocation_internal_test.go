@@ -8,16 +8,17 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/store"
 )
 
 var _ = Describe("invocation", func() {
 	// invocationApp is an App with stdin, stdout and stderr on terminals, env and, when configFile
 	// is not empty, that config file; it fails the spec if anything opens the store.
-	invocationApp := func(env map[string]string, configFile string) App {
+	invocationApp := func(env map[string]string, configFile string) clikit.App {
 		env = maps.Clone(env)
 		env["HOME"] = "/home/priya"
-		return App{
+		return clikit.App{
 			InIsTTY: true, OutIsTTY: true, ErrIsTTY: true,
 			LookupEnv: envOf(env),
 			ReadFile: func(string) ([]byte, error) {
@@ -38,22 +39,22 @@ var _ = Describe("invocation", func() {
 		}
 	}
 
-	read := func(ctx context.Context, app App, args ...string) invocation {
+	read := func(ctx context.Context, app clikit.App, args ...string) clikit.Invocation {
 		cmd, rest, err := NewRoot(ctx, app).Find(append([]string{"event", "list"}, args...))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cmd.ParseFlags(rest)).To(Succeed())
 
-		inv, err := readInvocation(cmd, app)
+		inv, err := clikit.ReadInvocation(cmd, app)
 		Expect(err).NotTo(HaveOccurred())
 		return inv
 	}
 
 	DescribeTable("resolves the zone only when asked, from --tz, then default_timezone, then UTC",
 		func(ctx SpecContext, configFile string, args []string, want string) {
-			z, err := read(ctx, invocationApp(map[string]string{}, configFile), args...).zone()
+			z, err := read(ctx, invocationApp(map[string]string{}, configFile), args...).Zone()
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(z.label).To(Equal(want))
+			Expect(z.Label).To(Equal(want))
 		},
 		Entry("--tz", `default_timezone = "Asia/Tokyo"`, []string{"--tz", "Europe/Berlin"}, "Europe/Berlin"),
 		Entry("default_timezone", `default_timezone = "Asia/Tokyo"`, nil, "Asia/Tokyo"),
@@ -63,34 +64,34 @@ var _ = Describe("invocation", func() {
 	It("reads the timeline input with the command's rule", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{}, ""), "-t", "alpha", "-t", "beta")
 
-		Expect(inv.timelines).To(Equal(timelineInput{
-			names: []string{"alpha", "beta"},
-			rule:  timelineRule{command: "coroner event list", several: true},
+		Expect(inv.Timelines).To(Equal(clikit.TimelineInput{
+			Names: []string{"alpha", "beta"},
+			Rule:  clikit.TimelineRule{Command: "coroner event list", Several: true},
 		}))
 	})
 
 	It("reads a command line with a bad --tz, and fails only zone()", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{}, ""), "--tz", "Bogus/Zone")
 
-		_, err := inv.zone()
-		Expect(err).To(BeAssignableToTypeOf(&Error{}))
-		Expect(err).To(HaveField("Kind", KindUsage))
+		_, err := inv.Zone()
+		Expect(err).To(BeAssignableToTypeOf(&clikit.Error{}))
+		Expect(err).To(HaveField("Kind", clikit.KindUsage))
 	})
 
 	It("reads a config with a bad default_timezone, and fails only zone()", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{}, `default_timezone = "Bogus/Zone"`))
 
-		_, err := inv.zone()
-		Expect(err).To(BeAssignableToTypeOf(&Error{}))
-		Expect(err).To(HaveField("Kind", KindUsage))
+		_, err := inv.Zone()
+		Expect(err).To(BeAssignableToTypeOf(&clikit.Error{}))
+		Expect(err).To(HaveField("Kind", clikit.KindUsage))
 	})
 
 	DescribeTable("turns input off, and finds a terminal only when stdin and stdout are one, TERM can draw and input is on",
-		func(ctx SpecContext, app App, args []string, wantOff, wantTerminal bool) {
+		func(ctx SpecContext, app clikit.App, args []string, wantOff, wantTerminal bool) {
 			inv := read(ctx, app, args...)
 
-			Expect(inv.inputOff).To(Equal(wantOff))
-			Expect(inv.terminal).To(Equal(wantTerminal))
+			Expect(inv.InputOff).To(Equal(wantOff))
+			Expect(inv.Terminal).To(Equal(wantTerminal))
 		},
 		Entry("neither", invocationApp(map[string]string{}, ""), nil, false, true),
 		Entry("--no-input", invocationApp(map[string]string{}, ""), []string{"--no-input"}, true, false),
@@ -104,11 +105,11 @@ var _ = Describe("invocation", func() {
 	)
 
 	DescribeTable("colours each stream",
-		func(ctx SpecContext, app App, args []string, wantOut, wantErr bool) {
+		func(ctx SpecContext, app clikit.App, args []string, wantOut, wantErr bool) {
 			inv := read(ctx, app, args...)
 
-			Expect(inv.outColor).To(Equal(wantOut))
-			Expect(inv.errColor).To(Equal(wantErr))
+			Expect(inv.OutColor).To(Equal(wantOut))
+			Expect(inv.ErrColor).To(Equal(wantErr))
 		},
 		Entry("both on", invocationApp(map[string]string{}, ""), nil, true, true),
 		Entry("--no-color", invocationApp(map[string]string{}, ""), []string{"--no-color"}, false, false),
@@ -121,33 +122,33 @@ var _ = Describe("invocation", func() {
 
 	It("repeats only the --db and --config the command line gave", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{}, `default_timezone = "local"`), "--config", "y", "--db", "x")
-		Expect(inv.echoArgs).To(Equal([]string{"--db", "x", "--config", "y"}))
+		Expect(inv.EchoArgs).To(Equal([]string{"--db", "x", "--config", "y"}))
 
 		inv = read(ctx, invocationApp(map[string]string{"CORONER_DB": "/tmp/env.db"}, ""))
-		Expect(inv.echoArgs).To(BeEmpty())
+		Expect(inv.EchoArgs).To(BeEmpty())
 	})
 
 	It("colours both streams under --no-color=false, whatever NO_COLOR says", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{"NO_COLOR": "1", "CORONER_NO_COLOR": "1"}, ""), "--no-color=false")
 
-		Expect([]bool{inv.outColor, inv.errColor}).To(Equal([]bool{true, true}))
+		Expect([]bool{inv.OutColor, inv.ErrColor}).To(Equal([]bool{true, true}))
 	})
 
 	It("never opens the store", func(ctx SpecContext) {
 		inv := read(ctx, invocationApp(map[string]string{}, ""))
 
-		Expect(inv.cfg.DBPath).NotTo(BeEmpty())
+		Expect(inv.Cfg.DBPath).NotTo(BeEmpty())
 	})
 
 	It("lets a viewer open on a terminal until --format or --json is given", func(ctx SpecContext) {
-		Expect(read(ctx, invocationApp(map[string]string{}, "")).interactive()).To(BeTrue())
-		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--format", "text").interactive()).To(BeFalse())
-		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--json").interactive()).To(BeFalse())
+		Expect(read(ctx, invocationApp(map[string]string{}, "")).Interactive()).To(BeTrue())
+		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--format", "text").Interactive()).To(BeFalse())
+		Expect(read(ctx, invocationApp(map[string]string{}, ""), "--json").Interactive()).To(BeFalse())
 	})
 })
 
 // withTTY returns app with stdin, stdout and stderr on a terminal as given.
-func withTTY(app App, in, out, errOut bool) App {
+func withTTY(app clikit.App, in, out, errOut bool) clikit.App {
 	app.InIsTTY, app.OutIsTTY, app.ErrIsTTY = in, out, errOut
 	return app
 }

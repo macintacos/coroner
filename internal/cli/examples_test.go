@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 var _ = Describe("exampleLines", func() {
@@ -179,7 +180,7 @@ var _ = Describe("checkInvocation", func() {
 		args, err := splitWords(line)
 		Expect(err).NotTo(HaveOccurred())
 
-		return checkInvocation(cli.NewRoot(ctx, cli.App{}), args)
+		return checkInvocation(cli.NewRoot(ctx, clikit.App{}), args)
 	}
 
 	DescribeTable("accepts a command line that parses",
@@ -248,7 +249,7 @@ var _ = Describe("checkInvocation", func() {
 
 var _ = Describe("checkExamples", func() {
 	It("names the command, the line and the parse error of each broken example", func(ctx SpecContext) {
-		tree := cli.NewRoot(ctx, cli.App{})
+		tree := cli.NewRoot(ctx, clikit.App{})
 		create, _, err := tree.Find([]string{"timeline", "create"})
 		Expect(err).NotTo(HaveOccurred())
 		create.Example = "  $ coroner timeline create mongo\n  $ coroner timeline create mongo --sorce\n  $ coroner timeline create 'mongo"
@@ -260,7 +261,7 @@ var _ = Describe("checkExamples", func() {
 	})
 
 	It("checks hidden commands, and reports a line it cannot check as skipped", func(ctx SpecContext) {
-		tree := cli.NewRoot(ctx, cli.App{})
+		tree := cli.NewRoot(ctx, clikit.App{})
 		tree.AddCommand(&cobra.Command{
 			Use: "legacy", Hidden: true,
 			Example: "  $ coroner nosuch\n  $ coroner timeline use $(coroner timeline list | head -1)",
@@ -273,7 +274,7 @@ var _ = Describe("checkExamples", func() {
 	})
 
 	It("reports an Example with no coroner line as skipped", func(ctx SpecContext) {
-		tree := cli.NewRoot(ctx, cli.App{})
+		tree := cli.NewRoot(ctx, clikit.App{})
 		tree.AddCommand(&cobra.Command{Use: "legacy", Example: "  $ corner timeline list"})
 
 		Expect(checkExamples(tree, freshRoots(ctx)).Skipped).To(ConsistOf("coroner legacy: no coroner line"))
@@ -290,7 +291,7 @@ var _ = Describe("checkExamples", func() {
 	})
 
 	It("finds no broken example among coroner's commands", func(ctx SpecContext) {
-		found := checkExamples(cli.NewRoot(ctx, cli.App{}), freshRoots(ctx))
+		found := checkExamples(cli.NewRoot(ctx, clikit.App{}), freshRoots(ctx))
 
 		for _, line := range found.Skipped {
 			AddReportEntry("skipped example", line)
@@ -335,7 +336,7 @@ var _ = Describe("checkDocExamples", func() {
 
 // freshRoots returns a func that builds a new coroner root command on each call.
 func freshRoots(ctx SpecContext) func() *cobra.Command {
-	return func() *cobra.Command { return cli.NewRoot(ctx, cli.App{}) }
+	return func() *cobra.Command { return cli.NewRoot(ctx, clikit.App{}) }
 }
 
 // exampleReport is what a check of example lines found. Each entry reads
@@ -447,7 +448,7 @@ func checkInvocation(root *cobra.Command, args []string) error {
 	}
 
 	positionals := cmd.Flags().Args()
-	// Find leaves an unknown verb under a noun as a positional, which runNoun rejects.
+	// Find leaves an unknown verb under a noun as a positional, which RunNoun rejects.
 	if cmd.HasSubCommands() && len(positionals) > 0 {
 		return fmt.Errorf("unknown command %q for %q", positionals[0], cmd.CommandPath())
 	}

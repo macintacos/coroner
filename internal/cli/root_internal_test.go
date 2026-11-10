@@ -6,6 +6,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 type hookFunc = func(*cobra.Command, []string) error
@@ -13,7 +15,7 @@ type hookFunc = func(*cobra.Command, []string) error
 var _ = Describe("wrapRunErrors", func() {
 	newCommand := func() *cobra.Command {
 		cmd := &cobra.Command{Use: "throwaway"}
-		cmd.Flags().AddFlagSet(globalFlags())
+		cmd.Flags().AddFlagSet(clikit.GlobalFlags())
 		return cmd
 	}
 
@@ -25,7 +27,7 @@ var _ = Describe("wrapRunErrors", func() {
 			wrapRunErrors(cmd)
 
 			Expect((*hook(cmd))(cmd, nil)).To(SatisfyAll(
-				HaveField("Kind", KindInternal), HaveField("Message", "disk on fire")))
+				HaveField("Kind", clikit.KindInternal), HaveField("Message", "disk on fire")))
 		},
 		Entry("PersistentPreRunE", func(cmd *cobra.Command) *hookFunc { return &cmd.PersistentPreRunE }),
 		Entry("PreRunE", func(cmd *cobra.Command) *hookFunc { return &cmd.PreRunE }),
@@ -41,14 +43,14 @@ var _ = Describe("wrapRunErrors", func() {
 		wrapRunErrors(cmd)
 
 		Expect(cmd.RunE(cmd, nil)).To(SatisfyAll(
-			HaveField("Kind", KindInternal), HaveField("Message", ContainSubstring("nil map"))))
+			HaveField("Kind", clikit.KindInternal), HaveField("Message", ContainSubstring("nil map"))))
 	})
 })
 
 var _ = Describe("NewRoot", func() {
 	It("gives every command an example", func(ctx SpecContext) {
 		var missing []string
-		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
+		walkCommands(NewRoot(ctx, clikit.App{}), func(cmd *cobra.Command) {
 			if !cmd.Hidden && cmd.Example == "" {
 				missing = append(missing, cmd.CommandPath())
 			}
@@ -59,7 +61,7 @@ var _ = Describe("NewRoot", func() {
 
 	It("completes -t on every command that accepts it", func(ctx SpecContext) {
 		var missing []string
-		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
+		walkCommands(NewRoot(ctx, clikit.App{}), func(cmd *cobra.Command) {
 			if _, ok := cmd.GetFlagCompletionFunc("timeline"); cmd.Flag("timeline") != nil && !ok {
 				missing = append(missing, cmd.CommandPath())
 			}
@@ -71,7 +73,7 @@ var _ = Describe("NewRoot", func() {
 
 var _ = Describe("asInternal", func() {
 	It("makes a kindless *Error internal, keeping its message", func() {
-		Expect(asInternal(&Error{Message: "oops"})).To(SatisfyAll(
-			HaveField("Kind", KindInternal), HaveField("Message", "oops"), HaveField("Hint", Not(BeEmpty()))))
+		Expect(clikit.AsInternal(&clikit.Error{Message: "oops"})).To(SatisfyAll(
+			HaveField("Kind", clikit.KindInternal), HaveField("Message", "oops"), HaveField("Hint", Not(BeEmpty()))))
 	})
 })

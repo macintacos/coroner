@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/skills"
 )
 
@@ -26,7 +27,7 @@ var _ = Describe("agent skill", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		// No OpenStore: calling it would panic, and Run would exit 1.
-		code := cli.Run(ctx, cli.App{
+		code := cli.Run(ctx, clikit.App{
 			Args:      []string{"agent", "skill"},
 			Out:       &out,
 			Err:       &errOut,

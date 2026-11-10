@@ -4,6 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -11,7 +12,7 @@ var _ = Describe("the picker's shadowing messages", func() {
 	picked := timeline.Timeline{ID: "0199a1b2-0000-7000-8000-000000000001", Name: "mongo-outage"}
 	DescribeTable("a notice names CORONER_TIMELINE when it selects a timeline",
 		func(env map[string]string, wantNotice bool) {
-			notice := shadowNotice(envOf(env))
+			notice := clikit.ShadowNotice(envOf(env))
 
 			if wantNotice {
 				Expect(notice).To(ContainSubstring(`CORONER_TIMELINE="db-2"`))
@@ -26,7 +27,7 @@ var _ = Describe("the picker's shadowing messages", func() {
 
 	DescribeTable("a warning after a pick names CORONER_TIMELINE when it selects another timeline",
 		func(env map[string]string, wantWarning bool) {
-			warning := shadowWarning(envOf(env), picked)
+			warning := clikit.ShadowWarning(envOf(env), picked)
 
 			if wantWarning {
 				Expect(warning).To(ContainSubstring(`CORONER_TIMELINE="db-2"`))

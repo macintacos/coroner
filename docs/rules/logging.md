@@ -29,7 +29,7 @@ rules say what a line holds; a new or changed line also updates that page.
    attachment by its `attachment` id, with its `size` and `sha256`. Only the error for an
    `--attach` file coroner cannot read quotes that path, since nothing was stored.
 4. **Error text never quotes record content:** `message` and `error` carry an error's text
-   as it is, so a `*cli.Error`'s message, and any error it wraps, names a record by its
+   as it is, so a `*clikit.Error`'s message, and any error it wraps, names a record by its
    id, name or `<timeline>#<seq>` ref, never by its title, text, body or filename.
 5. **Attributes use the shared names:** a line uses the name below for what it carries,
    never a synonym. A change that adds an attribute name adds it to this list in the same
@@ -41,8 +41,8 @@ rules say what a line holds; a new or changed line also updates that page.
    - `exit_code`: the process exit code.
    - `duration`: how long a command or step took, as a `time.Duration`.
    - `flags`: the names of the flags given, never their values.
-   - `message`: a `*cli.Error`'s message (rule 4).
-   - `error`: the error a `*cli.Error` wraps, or a recovered problem's error (rule 4).
+   - `message`: a `*clikit.Error`'s message (rule 4).
+   - `error`: the error a `*clikit.Error` wraps, or a recovered problem's error (rule 4).
    - `event`: an event's id.
    - `annotation`: an annotation's id.
    - `timeline`: the name of the timeline the line is about.
@@ -94,7 +94,7 @@ rules say what a line holds; a new or changed line also updates that page.
    annotation carries both its `annotation` and its `event`. Records it changes as a side
    effect, such as an import's records or a deleted timeline's events, get one info line
    with their `count`, and their ids at debug. A command that only reads names its records
-   at debug instead, in its `records read` line, which `logRead` writes.
+   at debug instead, in its `records read` line, which `LogRead` writes.
 7. **A file written outside the database is logged at info:** an export, an exported
    attachment, the backup made before migrating, or any other file a command writes, with
    its `path` and `size`. A blob is not logged as a file: the store logs one it stores at

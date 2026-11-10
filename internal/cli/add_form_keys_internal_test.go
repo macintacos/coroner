@@ -21,6 +21,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/graphics"
 )
 
@@ -35,7 +38,7 @@ type keyScript struct {
 	asks [][]string
 }
 
-func (s *keyScript) typed(text string) *keyScript {
+func (s *keyScript) Typed(text string) *keyScript {
 	s.keys = append(s.keys, scriptKey{text: text})
 	return s
 }
@@ -69,23 +72,23 @@ func namedKey(name string) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: r, Text: name}
 }
 
-// keyedForms returns forms that press script's keys through each form terminalForms would run,
+// keyedForms returns forms that press script's keys through each form TerminalForms would run,
 // at size, calling check, when non-nil, after each counted key and each typed step. It must run
 // inside a synctest bubble.
-func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*fittedForm)) func(bool, graphics.Protocol) askFunc {
-	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
-			d := keyDriver{form: newForm(f.edges("📝 New event"), groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
-			var keys formKeys
-			script.asks = append(script.asks, d.press(t, script, keys.filter(f, fieldsOf(groups)), check))
-			return keys.ended(d.form.State, nil)
+func keyedForms(t *testing.T, size tea.WindowSizeMsg, script *keyScript, check func(*clikit.FittedForm)) func(bool, graphics.Protocol) clikit.AskFunc {
+	return func(bool, graphics.Protocol) clikit.AskFunc {
+		return func(_ context.Context, f clikit.FormFrame, groups ...clikit.FormGroup) (bool, error) {
+			d := keyDriver{form: clikit.NewForm(f.Edges("📝 New event"), groups...), size: size, pending: make(chan tea.Msg), done: make(chan struct{})}
+			var keys clikit.FormKeys
+			script.asks = append(script.asks, d.press(t, script, keys.Filter(f, clikit.FieldsOf(groups)), check))
+			return keys.Ended(d.form.State, nil)
 		}
 	}
 }
 
 // keyDriver runs a form as bubbletea would: each command in a goroutine, its message fed back.
 type keyDriver struct {
-	form    *fittedForm
+	form    *clikit.FittedForm
 	size    tea.WindowSizeMsg
 	pending chan tea.Msg
 	// done ends every command still waiting to deliver its message.
@@ -94,7 +97,7 @@ type keyDriver struct {
 
 // press presses script's keys into the form, through filter, until the form ends, and returns the
 // counted keys it took.
-func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model, tea.Msg) tea.Msg, check func(*fittedForm)) []string {
+func (d keyDriver) press(t *testing.T, script *keyScript, filter func(tea.Model, tea.Msg) tea.Msg, check func(*clikit.FittedForm)) []string {
 	t.Helper()
 	var counted []string
 	d.run(d.form.Init())
@@ -220,7 +223,7 @@ func formSize() tea.WindowSizeMsg { return tea.WindowSizeMsg{Width: 60, Height: 
 // keyedRun runs event add with no arguments against a scratch database, in a working directory
 // holding files/p99.png, files/q01.png and docs/r1.txt, through forms that press script's keys at
 // 60×20.
-func keyedRun(t *testing.T, script *keyScript, check func(*fittedForm)) App {
+func keyedRun(t *testing.T, script *keyScript, check func(*clikit.FittedForm)) clikit.App {
 	t.Helper()
 	home := t.TempDir()
 	db := filepath.Join(home, "coroner.db")
@@ -259,13 +262,13 @@ func keyedRun(t *testing.T, script *keyScript, check func(*fittedForm)) App {
 	app.InIsTTY, app.OutIsTTY = true, true
 
 	synctest.Test(t, func(t *testing.T) {
-		event := &cobra.Command{Use: "event"}
-		addTimelineFlag(event.PersistentFlags())
-		add := &cobra.Command{Use: "add", Annotations: map[string]string{formatsAnnotation: "text,json"}}
-		event.AddCommand(eventAddForm().attach(t.Context(), add, app, keyedForms(t, formSize(), script, check)))
+		events := &cobra.Command{Use: "event"}
+		clikit.AddTimelineFlag(events.PersistentFlags())
+		add := &cobra.Command{Use: "add", Annotations: map[string]string{clikit.FormatsAnnotation: "text,json"}}
+		events.AddCommand(event.AddForm(timelinecmd.AskCreate).Attach(t.Context(), add, app, keyedForms(t, formSize(), script, check)))
 		root := &cobra.Command{Use: "coroner", SilenceErrors: true, SilenceUsage: true}
-		root.PersistentFlags().AddFlagSet(globalFlags())
-		root.AddCommand(event)
+		root.PersistentFlags().AddFlagSet(clikit.GlobalFlags())
+		root.AddCommand(events)
 		root.SetOut(io.Discard)
 		root.SetArgs([]string{"--db", db, "event", "add"})
 		err := root.ExecuteContext(t.Context())
@@ -285,7 +288,7 @@ func keyedRun(t *testing.T, script *keyScript, check func(*fittedForm)) App {
 }
 
 // storedEvents returns the events event list prints for mongo-outage.
-func storedEvents(t *testing.T, app App) []map[string]any {
+func storedEvents(t *testing.T, app clikit.App) []map[string]any {
 	t.Helper()
 	var out strings.Builder
 	app.Out = &out
@@ -305,7 +308,7 @@ func storedEvents(t *testing.T, app App) []map[string]any {
 
 // baselineEntry is the issue's typical event, up to the More options answer.
 func baselineEntry() *keyScript {
-	return filesEntry().typed("files/p99.png").press("enter", "enter").press("enter")
+	return filesEntry().Typed("files/p99.png").press("enter", "enter").press("enter")
 }
 
 func TestEventAddFormKeys(t *testing.T) {
@@ -331,7 +334,7 @@ func TestEventAddFormKeys(t *testing.T) {
 
 	t.Run("another", func(t *testing.T) {
 		script := baselineEntry().press("y").
-			typed("Failover confirmed").press("enter", "enter", "enter", "enter", "enter", "enter").
+			Typed("Failover confirmed").press("enter", "enter", "enter", "enter", "enter", "enter").
 			press("n")
 
 		keyedRun(t, script, nil)
@@ -346,18 +349,18 @@ func TestEventAddFormKeys(t *testing.T) {
 
 	t.Run("more options", func(t *testing.T) {
 		titles := map[string]string{"more-options": "🔧 More options?"}
-		for _, f := range eventAddDefinition().fields {
-			titles[f.name] = fieldIcon(f.name) + " " + f.formTitle()
+		for _, f := range event.AddDefinition().Fields {
+			titles[f.Name] = clikit.FieldIcon(f.Name) + " " + f.FormTitle()
 		}
 		script := new(keyScript).
 			press("down", "enter").
-			typed("Failover finished").press("enter", "enter", "enter", "enter", "enter").
+			Typed("Failover finished").press("enter", "enter", "enter", "enter", "enter").
 			press("y").
-			typed("Asia/Tokyo").press("enter", "enter", "enter", "enter", "enter", "enter").
+			Typed("Asia/Tokyo").press("enter", "enter", "enter", "enter", "enter", "enter").
 			press("n")
 		// The terminal keeps only a frame's last rows, and a title is a whole line, since
 		// descriptions start with their titles.
-		check := func(form *fittedForm) {
+		check := func(form *clikit.FittedForm) {
 			t.Helper()
 			title, ok := titles[form.GetFocusedField().GetKey()]
 			if !ok {
@@ -397,12 +400,12 @@ func TestEventAddFormKeys(t *testing.T) {
 
 func testSwitchTimeline(t *testing.T) {
 	script := new(keyScript).press("down", "enter").
-		typed("Edge slower").press("ctrl+t").
+		Typed("Edge slower").press("ctrl+t").
 		press("up", "enter").
 		press("enter", "enter", "enter", "enter", "enter", "enter").
 		press("n")
 	var top string
-	check := func(form *fittedForm) {
+	check := func(form *clikit.FittedForm) {
 		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
 		if form.GetFocusedField().GetKey() == "text" && strings.Contains(lines[1], "api-latency") {
 			top = lines[1]
@@ -430,12 +433,12 @@ func testSwitchTimeline(t *testing.T) {
 
 func testAttachDirectories(t *testing.T) {
 	script := filesEntry().
-		typed("fi").press("ctrl+e").typed("p").press("ctrl+e", "enter").
-		typed("do").press("ctrl+e", "ctrl+e", "enter").
+		Typed("fi").press("ctrl+e").Typed("p").press("ctrl+e", "enter").
+		Typed("do").press("ctrl+e", "ctrl+e", "enter").
 		press("enter", "enter", "n")
-	rows := map[string]string{"fi": suggestionsLabel + "files/", "files/": suggestionsLabel + "files/p99.png · files/q01.png", "docs/": suggestionsLabel + "docs/r1.txt"}
+	rows := map[string]string{"fi": clikit.SuggestionsLabel + "files/", "files/": clikit.SuggestionsLabel + "files/p99.png · files/q01.png", "docs/": clikit.SuggestionsLabel + "docs/r1.txt"}
 	seen := map[string]bool{}
-	check := func(form *fittedForm) {
+	check := func(form *clikit.FittedForm) {
 		t.Helper()
 		typed := focusedTyped(form)
 		row, ok := rows[typed]
@@ -464,17 +467,17 @@ func testAttachDirectories(t *testing.T) {
 
 func testAttachCycleAndPick(t *testing.T) {
 	script := filesEntry().
-		typed("files/p99.png").press("enter").
-		typed("files/").press("down", "ctrl+e", "enter").
+		Typed("files/p99.png").press("enter").
+		Typed("files/").press("down", "ctrl+e", "enter").
 		press("enter", "enter", "n")
 	var typingHelp, pickHelp []string
-	check := func(form *fittedForm) {
-		l, ok := form.GetFocusedField().(*listField)
+	check := func(form *clikit.FittedForm) {
+		l, ok := form.GetFocusedField().(*clikit.ListField)
 		switch {
 		case !ok:
-		case typingHelp == nil && l.typed() == "files/":
+		case typingHelp == nil && l.Typed() == "files/":
 			typingHelp = helpTexts(l)
-		case pickHelp == nil && l.typed() == "" && len(l.values) == 2:
+		case pickHelp == nil && l.Typed() == "" && len(l.Values) == 2:
 			pickHelp = helpTexts(l)
 		}
 	}
@@ -493,7 +496,7 @@ func testAttachCycleAndPick(t *testing.T) {
 }
 
 // addedAttachments returns the file names attached to the event the form added, Failover finished.
-func addedAttachments(t *testing.T, app App) []string {
+func addedAttachments(t *testing.T, app clikit.App) []string {
 	t.Helper()
 	data, err := json.Marshal(addedEvent(t, app)["attachments"])
 	if err != nil {
@@ -514,16 +517,16 @@ func addedAttachments(t *testing.T, app App) []string {
 }
 
 func testAttachCompletion(t *testing.T) {
-	script := filesEntry().typed("files/p").press("ctrl+e", "enter").press("enter", "enter", "n")
+	script := filesEntry().Typed("files/p").press("ctrl+e", "enter").press("enter", "enter", "n")
 	checked := false
-	check := func(form *fittedForm) {
+	check := func(form *clikit.FittedForm) {
 		t.Helper()
 		if focusedTyped(form) != "files/p" {
 			return
 		}
 		checked = true
 		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
-		if !showsRow(lines, suggestionsLabel+"files/p99.png") {
+		if !showsRow(lines, clikit.SuggestionsLabel+"files/p99.png") {
 			t.Errorf("no row of matches leading with files/p99.png:\n%s", strings.Join(lines, "\n"))
 		}
 		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> files/p99.png") }) {
@@ -544,23 +547,23 @@ func testAttachCompletion(t *testing.T) {
 // filesEntry is the start of an entry, up to typing into Files.
 func filesEntry() *keyScript {
 	return new(keyScript).press("down", "enter").
-		typed("Failover finished").press("enter").
-		typed("03:25").press("enter").
-		typed("m").press("ctrl+e", "enter").
-		typed("election").press("enter").typed("db").press("tab")
+		Typed("Failover finished").press("enter").
+		Typed("03:25").press("enter").
+		Typed("m").press("ctrl+e", "enter").
+		Typed("election").press("enter").Typed("db").press("tab")
 }
 
 func testTagSuggestion(t *testing.T) {
-	script := tagsEntry().typed("e").press("ctrl+e", "enter").press("enter", "enter", "enter", "n")
+	script := tagsEntry().Typed("e").press("ctrl+e", "enter").press("enter", "enter", "enter", "n")
 	checked := false
-	check := func(form *fittedForm) {
+	check := func(form *clikit.FittedForm) {
 		t.Helper()
 		if focusedTyped(form) != "e" {
 			return
 		}
 		checked = true
 		lines := strings.Split(ansi.Strip(form.View().Content), "\n")
-		if !showsRow(lines, suggestionsLabel+"election") {
+		if !showsRow(lines, clikit.SuggestionsLabel+"election") {
 			t.Errorf("no row of matches leading with election:\n%s", strings.Join(lines, "\n"))
 		}
 		if !slices.ContainsFunc(lines, func(line string) bool { return strings.Contains(line, "> election") }) {
@@ -580,18 +583,18 @@ func testTagSuggestion(t *testing.T) {
 
 func testCycleAndPick(t *testing.T) {
 	script := tagsEntry().
-		typed("e").press("down", "ctrl+e", "enter").
+		Typed("e").press("down", "ctrl+e", "enter").
 		press("up", "backspace").
-		typed("e").press("ctrl+n", "ctrl+n", "ctrl+e", "enter").
+		Typed("e").press("ctrl+n", "ctrl+n", "ctrl+e", "enter").
 		press("enter", "enter", "enter", "n")
 	var typingHelp, pickHelp []string
-	check := func(form *fittedForm) {
-		l, ok := form.GetFocusedField().(*listField)
+	check := func(form *clikit.FittedForm) {
+		l, ok := form.GetFocusedField().(*clikit.ListField)
 		switch {
 		case !ok:
-		case typingHelp == nil && l.typed() == "e":
+		case typingHelp == nil && l.Typed() == "e":
 			typingHelp = helpTexts(l)
-		case pickHelp == nil && l.typed() == "" && len(l.values) == 1:
+		case pickHelp == nil && l.Typed() == "" && len(l.Values) == 1:
 			pickHelp = helpTexts(l)
 		}
 	}
@@ -611,7 +614,7 @@ func testCycleAndPick(t *testing.T) {
 
 func testRemoveCarriedTag(t *testing.T) {
 	script := baselineEntry().press("y").
-		typed("Failover confirmed").press("enter", "enter", "enter", "up", "backspace", "enter", "enter", "enter").
+		Typed("Failover confirmed").press("enter", "enter", "enter", "up", "backspace", "enter", "enter", "enter").
 		press("n")
 
 	app := keyedRun(t, script, nil)
@@ -627,7 +630,7 @@ func testRemoveCarriedTag(t *testing.T) {
 }
 
 func testEscInTags(t *testing.T) {
-	script := tagsEntry().typed("db").press("esc")
+	script := tagsEntry().Typed("db").press("esc")
 
 	app := keyedRun(t, script, nil)
 
@@ -637,9 +640,9 @@ func testEscInTags(t *testing.T) {
 }
 
 func testEscFinish(t *testing.T) {
-	script := baselineEntry().press("y").typed("Failover confirmed").press("esc")
+	script := baselineEntry().press("y").Typed("Failover confirmed").press("esc")
 	var bottom string
-	check := func(form *fittedForm) {
+	check := func(form *clikit.FittedForm) {
 		if form.GetFocusedField().GetKey() == "text" {
 			lines := strings.Split(ansi.Strip(form.View().Content), "\n")
 			bottom = lines[len(lines)-1]
@@ -664,16 +667,16 @@ func testEscFinish(t *testing.T) {
 func tagsEntry() *keyScript {
 	return new(keyScript).
 		press("down", "enter").
-		typed("Failover finished").press("enter", "enter", "enter")
+		Typed("Failover finished").press("enter", "enter", "enter")
 }
 
 // focusedTyped returns what is typed into the focused list field, or "" when no list field has focus.
-func focusedTyped(form *fittedForm) string {
-	l, ok := form.GetFocusedField().(*listField)
+func focusedTyped(form *clikit.FittedForm) string {
+	l, ok := form.GetFocusedField().(*clikit.ListField)
 	if !ok {
 		return ""
 	}
-	return l.typed()
+	return l.Typed()
 }
 
 // helpTexts returns the help the field shows for each of its keys, as "key description".
@@ -686,7 +689,7 @@ func helpTexts(f huh.Field) []string {
 }
 
 // addedTags returns the tags of the event the form added, Failover finished.
-func addedTags(t *testing.T, app App) []string {
+func addedTags(t *testing.T, app clikit.App) []string {
 	t.Helper()
 	data, err := json.Marshal(addedEvent(t, app)["tags"])
 	if err != nil {
@@ -701,7 +704,7 @@ func addedTags(t *testing.T, app App) []string {
 }
 
 // addedEvent returns the event the form added, Failover finished.
-func addedEvent(t *testing.T, app App) map[string]any {
+func addedEvent(t *testing.T, app clikit.App) map[string]any {
 	t.Helper()
 	events := storedEvents(t, app)
 	i := slices.IndexFunc(events, func(e map[string]any) bool { return e["text"] == "Failover finished" })
@@ -731,7 +734,7 @@ func TestTerminalFormClearsWhenItEnds(t *testing.T) {
 				}()
 				pick := huh.NewSelect[string]().Key("timeline").Options(huh.NewOptions("api-latency", "mongo-outage")...)
 
-				_, err := terminalForms(App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), formFrame{}, formGroup{fields: []huh.Field{pick}})
+				_, err := clikit.TerminalForms(clikit.App{In: keys, Out: screen}, "📝 New event")(false, graphics.None)(t.Context(), clikit.FormFrame{}, clikit.FormGroup{Fields: []huh.Field{pick}})
 				_ = typing.Close()
 				if !errors.Is(err, end.want) {
 					t.Fatalf("the form ended with %v; want %v", err, end.want)

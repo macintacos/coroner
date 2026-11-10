@@ -11,6 +11,8 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 var _ = Describe("writeReference", func() {
@@ -121,7 +123,7 @@ Global flags:
 	})
 
 	It("gives every available coroner command a section, and help and the completion shells a listed line", func(ctx SpecContext) {
-		root := NewRoot(ctx, App{})
+		root := NewRoot(ctx, clikit.App{})
 		page := render(root)
 
 		expected := []string{"# coroner"}
@@ -149,7 +151,7 @@ Global flags:
 
 	It("writes no Markdown that renders as HTML, so placeholders such as <id> survive", func(ctx SpecContext) {
 		var html []string
-		walkMarkdown(render(NewRoot(ctx, App{})), func(n ast.Node, source []byte) {
+		walkMarkdown(render(NewRoot(ctx, clikit.App{})), func(n ast.Node, source []byte) {
 			switch n := n.(type) {
 			case *ast.RawHTML:
 				html = append(html, string(n.Segments.Value(source)))
@@ -166,7 +168,7 @@ Global flags:
 		Expect(err).NotTo(HaveOccurred(), "rumdl is not on PATH: run the suite through mise run test")
 
 		cmd := exec.CommandContext(ctx, "rumdl", "check", "-")
-		cmd.Stdin = strings.NewReader(render(NewRoot(ctx, App{})))
+		cmd.Stdin = strings.NewReader(render(NewRoot(ctx, clikit.App{})))
 		out, err := cmd.CombinedOutput()
 
 		Expect(err).NotTo(HaveOccurred(), string(out))

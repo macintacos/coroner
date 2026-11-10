@@ -5,16 +5,17 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/export"
 )
 
-func newVersionCommand(app App) *cobra.Command {
+func newVersionCommand(app clikit.App) *cobra.Command {
 	return &cobra.Command{
 		Use:         "version",
 		Short:       "Show coroner's version",
-		GroupID:     additionalCommands,
+		GroupID:     clikit.AdditionalCommands,
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text,json", diagnosticLogAnnotation: "off"},
+		Annotations: map[string]string{clikit.FormatsAnnotation: "text,json", clikit.DiagnosticLogAnnotation: "off"},
 		Example:     "  $ coroner version\n  $ coroner version --json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return writeVersion(cmd, app)
@@ -27,14 +28,14 @@ type versionJSON struct {
 	FormatVersions []string `json:"format_versions"`
 }
 
-func writeVersion(cmd *cobra.Command, app App) error {
-	chosen, err := outputFormat(cmd)
+func writeVersion(cmd *cobra.Command, app clikit.App) error {
+	chosen, err := clikit.OutputFormat(cmd)
 	if err != nil {
 		return err
 	}
 
-	if chosen == formatJSON {
-		return writeJSON(app.Out, app.OutIsTTY, versionJSON{CoronerVersion: app.Version, FormatVersions: export.FormatVersions()})
+	if chosen == clikit.FormatJSON {
+		return clikit.WriteJSON(app.Out, app.OutIsTTY, versionJSON{CoronerVersion: app.Version, FormatVersions: export.FormatVersions()})
 	}
 
 	_, err = fmt.Fprintln(app.Out, "coroner version", app.Version)

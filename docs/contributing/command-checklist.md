@@ -16,7 +16,7 @@ never renumber a rule, only retire it.
 - **B-3** Primary output, and anything machine-readable, goes to stdout.
   ([clig.dev](https://clig.dev/#the-basics))
 - **B-4** Messages, warnings, progress, and errors go to stderr. Data goes to `app.Out`,
-  messages to `app.Err` (the `cli.App` writers). Never `root.SetOut`: cobra prints
+  messages to `app.Err` (the `clikit.App` writers). Never `root.SetOut`: cobra prints
   deprecation notices via `OutOrStderr()`, so they would corrupt JSON on stdout. The one
   exception: set around `InitDefaultCompletionCmd`, which captures the writer once, and
   cleared before anything runs. ([clig.dev](https://clig.dev/#the-basics))

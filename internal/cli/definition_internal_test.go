@@ -13,31 +13,38 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/cli/annotation"
+	"github.com/macintacos/coroner/internal/cli/attachment"
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
+	"github.com/macintacos/coroner/internal/cli/overlay"
+	"github.com/macintacos/coroner/internal/cli/source"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
 )
 
 // writeDefinitions returns every write command's definition, by its path below coroner.
-func writeDefinitions() map[string]definition {
-	return map[string]definition{
-		"timeline create": timelineCreateDefinition(),
-		"timeline edit":   timelineEditDefinition(),
-		"timeline delete": timelineDeleteDefinition(),
-		"timeline use":    timelineUseDefinition(),
-		"event add":       eventAddDefinition(),
-		"event edit":      eventEditDefinition(),
-		"event delete":    eventDeleteDefinition(),
-		"event link":      eventLinkDefinition(),
-		"event unlink":    eventUnlinkDefinition(),
+func writeDefinitions() map[string]clikit.Definition {
+	return map[string]clikit.Definition{
+		"timeline create": timelinecmd.CreateDefinition(),
+		"timeline edit":   timelinecmd.EditDefinition(),
+		"timeline delete": timelinecmd.DeleteDefinition(),
+		"timeline use":    timelinecmd.UseDefinition(),
+		"event add":       event.AddDefinition(),
+		"event edit":      event.EditDefinition(),
+		"event delete":    event.DeleteDefinition(),
+		"event link":      event.LinkDefinition(),
+		"event unlink":    event.UnlinkDefinition(),
 
-		"annotation add":    annotationAddDefinition(),
-		"annotation edit":   annotationEditDefinition(),
-		"annotation delete": annotationDeleteDefinition(),
+		"annotation add":    annotation.AddDefinition(),
+		"annotation edit":   annotation.EditDefinition(),
+		"annotation delete": annotation.DeleteDefinition(),
 
-		"attachment delete": attachmentDeleteDefinition(),
+		"attachment delete": attachment.DeleteDefinition(),
 
-		"overlay create": overlayCreateDefinition(),
+		"overlay create": overlay.CreateDefinition(),
 
-		"source edit": sourceEditDefinition(),
+		"source edit": source.EditDefinition(),
 	}
 }
 
@@ -63,7 +70,7 @@ func definitionExempt() map[string]string {
 var _ = Describe("write command definitions", func() {
 	It("give every command a write verb names a definition, or an exemption with its reason", func(ctx SpecContext) {
 		var missing []string
-		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
+		walkCommands(NewRoot(ctx, clikit.App{}), func(cmd *cobra.Command) {
 			path := strings.TrimPrefix(cmd.CommandPath(), "coroner ")
 			_, defined := writeDefinitions()[path]
 			if slices.Contains(writeVerbs(), cmd.Name()) && !defined && definitionExempt()[path] == "" {
@@ -75,7 +82,7 @@ var _ = Describe("write command definitions", func() {
 	})
 
 	It("give every flag a form field with its help and default, and every form field a flag", func(ctx SpecContext) {
-		root := NewRoot(ctx, App{})
+		root := NewRoot(ctx, clikit.App{})
 
 		var problems []string
 		for path, def := range writeDefinitions() {
@@ -88,10 +95,10 @@ var _ = Describe("write command definitions", func() {
 	It("accept every optional form field's zero value, which a form reads as not given, and reject a required one's", func() {
 		var problems []string
 		for path, def := range writeDefinitions() {
-			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
+			for i, formField := range def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}) {
 				formField.Blur()
 				err := formField.Error()
-				switch required := def.fields[i].required; {
+				switch required := def.Fields[i].Required; {
 				case required && err == nil:
 					problems = append(problems, fmt.Sprintf("coroner %s: required form field %s accepts its zero value", path, formField.GetKey()))
 				case !required && err != nil:
@@ -106,19 +113,19 @@ var _ = Describe("write command definitions", func() {
 	It("return usage by flag for each required field left out", func(ctx SpecContext) {
 		given := map[string]string{"text": "Pager fires", "body": "Election timeout", "kind": "comment"}
 		for path, def := range writeDefinitions() {
-			for _, missing := range def.fields {
-				if !missing.required {
+			for _, missing := range def.Fields {
+				if !missing.Required {
 					continue
 				}
 				args := strings.Fields(path)
-				for _, f := range def.fields {
-					if f.required && f.name != missing.name {
-						Expect(given).To(HaveKey(f.name), "no value to give coroner %s's required field", path)
-						args = append(args, fieldArg(f, given[f.name]))
+				for _, f := range def.Fields {
+					if f.Required && f.Name != missing.Name {
+						Expect(given).To(HaveKey(f.Name), "no value to give coroner %s's required field", path)
+						args = append(args, fieldArg(f, given[f.Name]))
 					}
 				}
 
-				Expect(flagError(ctx, args)).To(HaveField("Kind", KindUsage), "coroner %s", strings.Join(args, " "))
+				Expect(flagError(ctx, args)).To(HaveField("Kind", clikit.KindUsage), "coroner %s", strings.Join(args, " "))
 			}
 		}
 	})
@@ -145,13 +152,13 @@ var _ = Describe("write command definitions", func() {
 
 		var missing []string
 		for path, def := range writeDefinitions() {
-			for _, f := range def.fields {
+			for _, f := range def.Fields {
 				// -t's and --add-ref's checks reject only a blank value, which a form reads as not given.
 				// --title's rejects only bytes that are not UTF-8, which a form's input replaces.
-				exempt := (f.name == "timeline" && !f.arg) || f.name == "add-ref" ||
-					path+" "+f.name == "timeline create title" || path+" "+f.name == "timeline edit title"
-				if f.check != nil && !exempt && !covered[path+" "+f.name] {
-					missing = append(missing, path+" "+f.name)
+				exempt := (f.Name == "timeline" && !f.Arg) || f.Name == "add-ref" ||
+					path+" "+f.Name == "timeline create title" || path+" "+f.Name == "timeline edit title"
+				if f.Check != nil && !exempt && !covered[path+" "+f.Name] {
+					missing = append(missing, path+" "+f.Name)
 				}
 			}
 		}
@@ -165,9 +172,9 @@ var _ = Describe("write command definitions", func() {
 			if !strings.HasSuffix(path, " edit") {
 				continue
 			}
-			for _, f := range def.fields {
-				if !f.arg && !f.inherited && f.name != "dry-run" && !f.changes {
-					unmarked = append(unmarked, "coroner "+path+" --"+f.name)
+			for _, f := range def.Fields {
+				if !f.Arg && !f.Inherited && f.Name != "dry-run" && !f.Changes {
+					unmarked = append(unmarked, "coroner "+path+" --"+f.Name)
 				}
 			}
 		}
@@ -177,129 +184,129 @@ var _ = Describe("write command definitions", func() {
 })
 
 var _ = Describe("definition", func() {
-	def := definition{fields: []field{
-		{name: "target", arg: true},
-		{name: "title"},
-		{name: "ref", typ: stringsField},
-		{name: "yes", typ: boolField},
-		{name: "untouched"},
+	def := clikit.Definition{Fields: []clikit.Field{
+		{Name: "target", Arg: true},
+		{Name: "title"},
+		{Name: "ref", Typ: clikit.StringsField},
+		{Name: "yes", Typ: clikit.BoolField},
+		{Name: "untouched"},
 	}}
 
 	It("reads the arguments and only the flags given, keeping a repeatable flag's lone empty value", func() {
 		flags := pflag.NewFlagSet("throwaway", pflag.ContinueOnError)
-		def.addFlags(flags)
+		def.AddFlags(flags)
 		Expect(flags.Parse([]string{"--ref", "", "--yes=false", "--title", "Primary election storm"})).To(Succeed())
 
-		Expect(def.read(flags, []string{"12", "14"})).To(Equal(fieldValues{
+		Expect(def.Read(flags, []string{"12", "14"})).To(Equal(clikit.FieldValues{
 			"target": {"12", "14"}, "title": {"Primary election storm"}, "ref": {""}, "yes": {"false"},
 		}))
 	})
 
 	It("tells a boolean given false from one not given", func() {
-		in := fieldValues{"yes": {"false"}}
+		in := clikit.FieldValues{"yes": {"false"}}
 
-		value, given := in.boolean("yes")
+		value, given := in.Boolean("yes")
 		Expect(value).To(BeFalse())
 		Expect(given).To(BeTrue())
-		_, given = in.boolean("untouched")
+		_, given = in.Boolean("untouched")
 		Expect(given).To(BeFalse())
 	})
 
 	It("checks every value of a repeatable field, by flag and by form line", func() {
-		rejectBad := withoutEnv(func(tag string) error {
+		rejectBad := clikit.WithoutEnv(func(tag string) error {
 			if tag == "Bad Tag" {
 				return errors.New("bad tag")
 			}
 			return nil
 		})
-		tags := definition{fields: []field{{name: "tag", typ: stringsField, check: rejectBad}}}
+		tags := clikit.Definition{Fields: []clikit.Field{{Name: "tag", Typ: clikit.StringsField, Check: rejectBad}}}
 
-		Expect(tags.check(fieldValues{"tag": {"election", "Bad Tag"}}, checkEnv{})).To(MatchError("bad tag"))
+		Expect(tags.Check(clikit.FieldValues{"tag": {"election", "Bad Tag"}}, clikit.CheckEnv{})).To(MatchError("bad tag"))
 		Expect(formError(tags, "tag", "election\nBad Tag")).To(MatchError("bad tag"))
 		Expect(formError(tags, "tag", "")).To(Succeed())
 	})
 
-	edit := definition{fields: []field{
-		{name: "id", arg: true},
-		{name: "body", changes: true},
-		{name: "author"},
-		{name: "kind", changes: true},
-		{name: "url", changes: true},
+	edit := clikit.Definition{Fields: []clikit.Field{
+		{Name: "id", Arg: true},
+		{Name: "body", Changes: true},
+		{Name: "author"},
+		{Name: "kind", Changes: true},
+		{Name: "url", Changes: true},
 	}}
 
 	It("refuses no change, naming the changing flags in field order", func() {
-		in := fieldValues{"id": {"0199a1b2"}, "author": {"priya"}}
+		in := clikit.FieldValues{"id": {"0199a1b2"}, "author": {"priya"}}
 
-		Expect(edit.changed(in)).To(BeFalse())
-		failure, ok := errors.AsType[*Error](edit.requireChange(in))
+		Expect(edit.Changed(in)).To(BeFalse())
+		failure, ok := errors.AsType[*clikit.Error](edit.RequireChange(in))
 		Expect(ok).To(BeTrue())
 		Expect(failure).To(SatisfyAll(
-			HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", "Pass --body, --kind or --url.")))
+			HaveField("Kind", clikit.KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", "Pass --body, --kind or --url.")))
 	})
 
 	It("accepts any one change", func() {
 		for _, name := range []string{"body", "kind", "url"} {
-			in := fieldValues{"id": {"0199a1b2"}, name: {"x"}}
+			in := clikit.FieldValues{"id": {"0199a1b2"}, name: {"x"}}
 
-			Expect(edit.changed(in)).To(BeTrue(), name)
-			Expect(edit.requireChange(in)).To(Succeed(), name)
+			Expect(edit.Changed(in)).To(BeTrue(), name)
+			Expect(edit.RequireChange(in)).To(Succeed(), name)
 		}
 	})
 })
 
 var _ = Describe("write run functions", func() {
 	DescribeTable("return usage, not a panic, when given no value for the positional argument their command requires",
-		func(ctx SpecContext, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) {
+		func(ctx SpecContext, run func(context.Context, clikit.App, config.Config, clikit.FieldValues) error, in clikit.FieldValues) {
 			err := runWithoutStore(ctx, run, in)
 
-			failure, ok := errors.AsType[*Error](err)
+			failure, ok := errors.AsType[*clikit.Error](err)
 			Expect(ok).To(BeTrue(), "returned %v", err)
-			Expect(failure.Kind).To(Equal(KindUsage))
+			Expect(failure.Kind).To(Equal(clikit.KindUsage))
 		},
-		Entry("timeline create", errorOf(createTimeline), fieldValues{}),
-		Entry("timeline edit", errorOf(editTimeline), fieldValues{"title": {"Primary election storm"}}),
-		Entry("timeline delete", errorOf(deleteTimeline), fieldValues{"yes": {"true"}}),
-		Entry("timeline use", errorOf(useTimeline), fieldValues{}),
-		Entry("event edit", errorOf(editEvent), fieldValues{"author": {"sre"}}),
-		Entry("event delete", errorOf(deleteEvents), fieldValues{}),
-		Entry("event link", errorOf(linkEvents), fieldValues{"kind": {"led_to"}}),
-		Entry("event unlink", errorOf(unlinkEvents), fieldValues{"kind": {"led_to"}}),
-		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"kind": {"comment"}}),
-		Entry("annotation delete", errorOf(deleteAnnotations), fieldValues{}),
-		Entry("attachment delete", errorOf(deleteAttachments), fieldValues{}),
-		Entry("overlay create", errorOf(createOverlay), fieldValues{"timeline": {"mongo-failover"}}),
-		Entry("source edit", errorOf(editSource), fieldValues{"name": {"mongodb"}}),
+		Entry("timeline create", errorOf(timelinecmd.Create), clikit.FieldValues{}),
+		Entry("timeline edit", errorOf(timelinecmd.Edit), clikit.FieldValues{"title": {"Primary election storm"}}),
+		Entry("timeline delete", errorOf(timelinecmd.Delete), clikit.FieldValues{"yes": {"true"}}),
+		Entry("timeline use", errorOf(timelinecmd.Use), clikit.FieldValues{}),
+		Entry("event edit", errorOf(event.Edit), clikit.FieldValues{"author": {"sre"}}),
+		Entry("event delete", errorOf(event.Delete), clikit.FieldValues{}),
+		Entry("event link", errorOf(event.Link), clikit.FieldValues{"kind": {"led_to"}}),
+		Entry("event unlink", errorOf(event.Unlink), clikit.FieldValues{"kind": {"led_to"}}),
+		Entry("annotation edit", errorOf(annotation.Edit), clikit.FieldValues{"kind": {"comment"}}),
+		Entry("annotation delete", errorOf(annotation.Delete), clikit.FieldValues{}),
+		Entry("attachment delete", errorOf(attachment.Delete), clikit.FieldValues{}),
+		Entry("overlay create", errorOf(overlay.Create), clikit.FieldValues{"timeline": {"mongo-failover"}}),
+		Entry("source edit", errorOf(source.Edit), clikit.FieldValues{"name": {"mongodb"}}),
 	)
 
 	DescribeTable("return nothing to edit, naming every changing flag, when an edit is given no change",
-		func(ctx SpecContext, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues, hint string) {
+		func(ctx SpecContext, run func(context.Context, clikit.App, config.Config, clikit.FieldValues) error, in clikit.FieldValues, hint string) {
 			err := runWithoutStore(ctx, run, in)
 
-			failure, ok := errors.AsType[*Error](err)
+			failure, ok := errors.AsType[*clikit.Error](err)
 			Expect(ok).To(BeTrue(), "returned %v", err)
 			Expect(failure).To(SatisfyAll(
-				HaveField("Kind", KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", hint)))
+				HaveField("Kind", clikit.KindUsage), HaveField("Message", "nothing to edit"), HaveField("Hint", hint)))
 		},
-		Entry("event edit", errorOf(editEvent), fieldValues{"event": {"12"}},
+		Entry("event edit", errorOf(event.Edit), clikit.FieldValues{"event": {"12"}},
 			"Pass --text, --at, --ended, --approximate, --source, --add-tag, --remove-tag, --url, --author or --attach."),
-		Entry("annotation edit", errorOf(editAnnotation), fieldValues{"id": {"0199a1b2"}},
+		Entry("annotation edit", errorOf(annotation.Edit), clikit.FieldValues{"id": {"0199a1b2"}},
 			"Pass --body, --kind, --source, --url or --attach."),
-		Entry("timeline edit", errorOf(editTimeline), fieldValues{"timeline": {"mongo-outage"}},
+		Entry("timeline edit", errorOf(timelinecmd.Edit), clikit.FieldValues{"timeline": {"mongo-outage"}},
 			"Pass --name, --title, --add-ref or --remove-ref."),
-		Entry("source edit", errorOf(editSource), fieldValues{"source": {"mongo"}}, "Pass --name."),
+		Entry("source edit", errorOf(source.Edit), clikit.FieldValues{"source": {"mongo"}}, "Pass --name."),
 	)
 })
 
 // runWithoutStore calls run with an App whose store fails the spec when opened.
-func runWithoutStore(ctx context.Context, run func(context.Context, App, config.Config, fieldValues) error, in fieldValues) error {
+func runWithoutStore(ctx context.Context, run func(context.Context, clikit.App, config.Config, clikit.FieldValues) error, in clikit.FieldValues) error {
 	return run(ctx, storelessApp(nil), config.Config{DBPath: "/nonexistent/coroner.db", DefaultTimezone: "local"}, in)
 }
 
 // errorOf returns run with its result dropped.
 func errorOf[R any](
-	run func(context.Context, App, config.Config, fieldValues) (R, error),
-) func(context.Context, App, config.Config, fieldValues) error {
-	return func(ctx context.Context, app App, cfg config.Config, in fieldValues) error {
+	run func(context.Context, clikit.App, config.Config, clikit.FieldValues) (R, error),
+) func(context.Context, clikit.App, config.Config, clikit.FieldValues) error {
+	return func(ctx context.Context, app clikit.App, cfg config.Config, in clikit.FieldValues) error {
 		_, err := run(ctx, app, cfg, in)
 		return err
 	}
@@ -307,7 +314,7 @@ func errorOf[R any](
 
 // parityProblems names each flag of the command at path with no matching form field, each form
 // field with no flag, each field declared twice, and how a matching pair differs.
-func parityProblems(root *cobra.Command, path string, def definition) []string {
+func parityProblems(root *cobra.Command, path string, def clikit.Definition) []string {
 	cmd, _, err := root.Find(strings.Fields(path))
 	if err != nil || cmd.CommandPath() != "coroner "+path {
 		return []string{"coroner " + path + ": no such command"}
@@ -315,12 +322,12 @@ func parityProblems(root *cobra.Command, path string, def definition) []string {
 
 	problems := duplicateFieldProblems(path, def)
 	form := map[string]huh.Field{}
-	declared := map[string]field{}
-	for i, formField := range def.formFields(checkEnv{}, fieldValues{}, formChoices{}) {
+	declared := map[string]clikit.Field{}
+	for i, formField := range def.FormFields(clikit.CheckEnv{}, clikit.FieldValues{}, clikit.FormChoices{}) {
 		// A positional argument's form field never stands for a flag.
-		if !def.fields[i].arg {
+		if !def.Fields[i].Arg {
 			form[formField.GetKey()] = formField
-			declared[def.fields[i].name] = def.fields[i]
+			declared[def.Fields[i].Name] = def.Fields[i]
 		}
 	}
 	flags := pflag.NewFlagSet(path, pflag.ContinueOnError)
@@ -337,9 +344,9 @@ func parityProblems(root *cobra.Command, path string, def definition) []string {
 			problems = append(problems, flagShapeProblems(path, flag, declared[flag.Name])...)
 		}
 	})
-	for _, f := range def.fields {
-		if !f.arg && flags.Lookup(f.name) == nil {
-			problems = append(problems, fmt.Sprintf("coroner %s: form field %s has no flag", path, f.name))
+	for _, f := range def.Fields {
+		if !f.Arg && flags.Lookup(f.Name) == nil {
+			problems = append(problems, fmt.Sprintf("coroner %s: form field %s has no flag", path, f.Name))
 		}
 	}
 
@@ -347,30 +354,30 @@ func parityProblems(root *cobra.Command, path string, def definition) []string {
 }
 
 // duplicateFieldProblems names each field def declares more than once.
-func duplicateFieldProblems(path string, def definition) []string {
+func duplicateFieldProblems(path string, def clikit.Definition) []string {
 	var problems []string
 	seen := map[string]bool{}
-	for _, f := range def.fields {
-		if seen[f.name] {
-			problems = append(problems, fmt.Sprintf("coroner %s: field %s is declared twice", path, f.name))
+	for _, f := range def.Fields {
+		if seen[f.Name] {
+			problems = append(problems, fmt.Sprintf("coroner %s: field %s is declared twice", path, f.Name))
 		}
-		seen[f.name] = true
+		seen[f.Name] = true
 	}
 
 	return problems
 }
 
 // flagShapeProblems names how flag's type or shorthand differs from the field f declares.
-func flagShapeProblems(path string, flag *pflag.Flag, f field) []string {
+func flagShapeProblems(path string, flag *pflag.Flag, f clikit.Field) []string {
 	var problems []string
-	flagType := map[fieldType]string{stringField: "string", boolField: "bool", stringsField: "stringArray"}[f.typ]
+	flagType := map[clikit.FieldType]string{clikit.StringField: "string", clikit.BoolField: "bool", clikit.StringsField: "stringArray"}[f.Typ]
 	if flag.Value.Type() != flagType {
 		problems = append(problems, fmt.Sprintf("coroner %s: field %s is a %s, flag --%s a %s",
-			path, f.name, flagType, flag.Name, flag.Value.Type()))
+			path, f.Name, flagType, flag.Name, flag.Value.Type()))
 	}
-	if flag.Shorthand != f.shorthand {
+	if flag.Shorthand != f.Shorthand {
 		problems = append(problems, fmt.Sprintf("coroner %s: field %s has shorthand %q, flag --%s %q",
-			path, f.name, f.shorthand, flag.Name, flag.Shorthand))
+			path, f.Name, f.Shorthand, flag.Name, flag.Shorthand))
 	}
 
 	return problems
@@ -464,7 +471,7 @@ func badValueEntries() []TableEntry {
 
 // commandLine returns the arguments that give bad's field its value, as its positional argument
 // or its flag, after bad's other arguments.
-func commandLine(def definition, bad badValue) []string {
+func commandLine(def clikit.Definition, bad badValue) []string {
 	GinkgoHelper()
 	args := append(strings.Fields(bad.path), bad.otherArgs...)
 
@@ -473,29 +480,29 @@ func commandLine(def definition, bad badValue) []string {
 
 // fieldArg returns the argument that gives f value: value itself for the positional argument, or
 // f's flag.
-func fieldArg(f field, value string) string {
-	if f.arg {
+func fieldArg(f clikit.Field, value string) string {
+	if f.Arg {
 		return value
 	}
 
-	return "--" + f.name + "=" + value
+	return "--" + f.Name + "=" + value
 }
 
 // flagError runs args, with a store that fails the spec when opened, and returns the *Error it
 // fails with.
-func flagError(ctx context.Context, args []string) *Error {
+func flagError(ctx context.Context, args []string) *clikit.Error {
 	GinkgoHelper()
 	return executeError(ctx, storelessApp(args), args...)
 }
 
 // executeError runs args through app's root and returns the *Error it fails with.
-func executeError(ctx context.Context, app App, args ...string) *Error {
+func executeError(ctx context.Context, app clikit.App, args ...string) *clikit.Error {
 	GinkgoHelper()
 	root := NewRoot(ctx, app)
 	root.SetArgs(args)
 
 	_, err := root.ExecuteContextC(ctx)
-	failure, ok := errors.AsType[*Error](err)
+	failure, ok := errors.AsType[*clikit.Error](err)
 	Expect(ok).To(BeTrue(), "coroner %s returned %v", strings.Join(args, " "), err)
 
 	return failure
@@ -503,9 +510,9 @@ func executeError(ctx context.Context, app App, args ...string) *Error {
 
 // formError returns the error def's form field called name shows once it holds value and loses
 // focus, with times read as the flag side reads them.
-func formError(def definition, name, value string) error {
+func formError(def clikit.Definition, name, value string) error {
 	GinkgoHelper()
-	formField := namedField(def.formFields(formCheckEnv(), fieldValues{}, formChoices{}), name)
+	formField := namedField(def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), name)
 	typeInto(formField, value)
 	formField.Blur()
 
@@ -513,10 +520,10 @@ func formError(def definition, name, value string) error {
 }
 
 // formCheckEnv is what form fields check time input against, as the flag side reads it.
-func formCheckEnv() checkEnv {
+func formCheckEnv() clikit.CheckEnv {
 	GinkgoHelper()
-	z, err := timeZone(nil, "local", testNow().Location())
+	z, err := clikit.TimeZone(nil, "local", testNow().Location())
 	Expect(err).NotTo(HaveOccurred())
 
-	return checkEnv{now: testNow(), zone: z}
+	return clikit.CheckEnv{Now: testNow(), Zone: z}
 }

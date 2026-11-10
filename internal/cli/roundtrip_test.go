@@ -77,7 +77,7 @@ func checkInRun(runs string, check func(t *rapid.T, dir string) error) func(*rap
 	}
 }
 
-// importCounts holds the inserted and conflicting counts of one record type in import's result object.
+// ImportCounts holds the inserted and conflicting counts of one record type in import's result object.
 type importCounts struct {
 	Inserted    int `json:"inserted"`
 	Conflicting int `json:"conflicting"`

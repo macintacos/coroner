@@ -12,6 +12,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 var _ = Describe("internal log", func() {
@@ -36,9 +38,9 @@ var _ = Describe("internal log", func() {
 			out: io.Discard, loc: time.UTC,
 		}
 		_, err := p.printFiles(context.Background(), "/logs/coroner.log")
-		var cliErr *Error
+		var cliErr *clikit.Error
 		Expect(errors.As(err, &cliErr)).To(BeTrue())
-		Expect(cliErr.Kind).To(Equal(KindUsage))
+		Expect(cliErr.Kind).To(Equal(clikit.KindUsage))
 		Expect(strings.Count(cliErr.Error(), "/logs/coroner.log")).To(Equal(1))
 	})
 
@@ -128,10 +130,10 @@ var _ = Describe("internal log", func() {
 
 	Describe("readLogFilter", func() {
 		read := func(args ...string) error {
-			cmd := newInternalLogCommand(context.Background(), App{})
-			NewRoot(context.Background(), App{}).AddCommand(cmd)
+			cmd := newInternalLogCommand(context.Background(), clikit.App{})
+			NewRoot(context.Background(), clikit.App{}).AddCommand(cmd)
 			Expect(cmd.ParseFlags(args)).To(Succeed())
-			_, err := readLogFilter(slog.New(slog.DiscardHandler), cmd, time.Now(), zone{loc: time.UTC})
+			_, err := readLogFilter(slog.New(slog.DiscardHandler), cmd, time.Now(), clikit.Zone{Loc: time.UTC})
 			return err
 		}
 

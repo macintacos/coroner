@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 // newReference builds a fresh reference per call: generating pages mutates its root, adding a help command.
@@ -90,8 +91,8 @@ var _ = Describe("docgen", func() {
 
 	It("leaves the __internal group out of the CLI reference and the man pages", func() {
 		refDir, manDir := GinkgoT().TempDir(), GinkgoT().TempDir()
-		Expect(write(reference{root: cli.NewRoot(context.Background(), cli.App{}), topics: cli.HelpTopics()}, refDir)).To(Succeed())
-		Expect(writeMan(cli.NewRoot(context.Background(), cli.App{}), manDir, time.Unix(0, 0))).To(Succeed())
+		Expect(write(reference{root: cli.NewRoot(context.Background(), clikit.App{}), topics: cli.HelpTopics()}, refDir)).To(Succeed())
+		Expect(writeMan(cli.NewRoot(context.Background(), clikit.App{}), manDir, time.Unix(0, 0))).To(Succeed())
 
 		refPages, err := readPages(os.DirFS(refDir))
 		Expect(err).NotTo(HaveOccurred())

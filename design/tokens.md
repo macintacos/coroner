@@ -41,12 +41,12 @@ theme supplies every shade.
   sources, tags, gaps, evidence, failures, notices and an overlay's timelines.
 - The picker's list, help and filter styles: `listStyles()`, `helpStyles()` and
   `filterStyles()` in [`internal/viewer/picker.go`](../internal/viewer/picker.go).
-- The forms' frame: `frameBox()` and `frame()` in
-  [`internal/cli/add_form.go`](../internal/cli/add_form.go), and the session summary's
-  `newNoteStyles()` beside them.
-- Command output: the error label in `writeError()` in
-  [`internal/cli/errors.go`](../internal/cli/errors.go), and `colorEnabled()` beside it,
-  the one check for whether a stream gets colour.
+- The forms' frame: `frameBox()` and `Frame()` in
+  [`internal/cli/clikit/add_form.go`](../internal/cli/clikit/add_form.go), and the session
+  summary's `newNoteStyles()` beside them.
+- Command output: the error label in `WriteError()` in
+  [`internal/cli/clikit/errors.go`](../internal/cli/clikit/errors.go), and
+  `colorEnabled()` beside it, the one check for whether a stream gets colour.
 
 ## Colour: the docs site
 
@@ -70,9 +70,9 @@ terminal uses the user's own font.
 
 ## Icons
 
-- The forms' field icons: `fieldIcon()` in
-  [`internal/cli/form.go`](../internal/cli/form.go).
-- The timeline mark in a form's frame: `formFrame.edges()` in
-  [`internal/cli/add_form.go`](../internal/cli/add_form.go).
-- The suggestions mark: `suggestionsLabel` in
-  [`internal/cli/form_match.go`](../internal/cli/form_match.go).
+- The forms' field icons: `FieldIcon()` in
+  [`internal/cli/clikit/form.go`](../internal/cli/clikit/form.go).
+- The timeline mark in a form's frame: `FormFrame.edges()` in
+  [`internal/cli/clikit/add_form.go`](../internal/cli/clikit/add_form.go).
+- The suggestions mark: `SuggestionsLabel` in
+  [`internal/cli/clikit/form_match.go`](../internal/cli/clikit/form_match.go).

@@ -11,6 +11,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -22,15 +24,15 @@ var _ = Describe("timeline forms", func() {
 		home, db    string
 		ids         int
 		asked       [][]huh.Field
-		formLog     *diagnosticLog
+		formLog     *clikit.DiagnosticLog
 	)
 
 	// appOn returns a terminal App on home, logging to formLog when a spec sets it.
-	appOn := func() App {
+	appOn := func() clikit.App {
 		app := scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 		app.InIsTTY, app.OutIsTTY = true, true
 		if formLog != nil {
-			app.log = formLog
+			app.Log = formLog
 		}
 		return app
 	}
@@ -49,8 +51,8 @@ var _ = Describe("timeline forms", func() {
 		return runOn(ctx, db, args...)
 	}
 
-	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
-		return scriptedForms(&asked, new([]formFrame), answers...)
+	answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) clikit.AskFunc {
+		return scriptedForms(&asked, new([]clikit.FormFrame), answers...)
 	}
 
 	// runForm runs args against a root whose timeline command holds command, as RunE runs on a
@@ -60,7 +62,7 @@ var _ = Describe("timeline forms", func() {
 		out.Reset()
 		errOut.Reset()
 		root := &cobra.Command{Use: "coroner", SilenceErrors: true, SilenceUsage: true}
-		root.PersistentFlags().AddFlagSet(globalFlags())
+		root.PersistentFlags().AddFlagSet(clikit.GlobalFlags())
 		parent := &cobra.Command{Use: "timeline"}
 		parent.AddCommand(command)
 		root.AddCommand(parent)
@@ -91,9 +93,9 @@ var _ = Describe("timeline forms", func() {
 	})
 
 	Describe("timeline create", func() {
-		create := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
-			command := &cobra.Command{Use: "create", Annotations: map[string]string{formatsAnnotation: "text,json"}}
-			return timelineCreateForm(ctx, appOn()).attach(command, appOn(), forms)
+		create := func(ctx SpecContext, forms func(bool, graphics.Protocol) clikit.AskFunc) *cobra.Command {
+			command := &cobra.Command{Use: "create", Annotations: map[string]string{clikit.FormatsAnnotation: "text,json"}}
+			return timelinecmd.CreateForm(ctx, appOn()).Attach(command, appOn(), forms)
 		}
 		// named fills in a timeline's name and title, enters each of refs, and submits.
 		named := func(name, title string, refs ...string) func([]huh.Field) (bool, error) {
@@ -133,7 +135,7 @@ var _ = Describe("timeline forms", func() {
 
 			err := runForm(ctx, command, "timeline", "create")
 
-			Expect(err).To(HaveField("Kind", KindInterrupted))
+			Expect(err).To(HaveField("Kind", clikit.KindInterrupted))
 			Expect(run(ctx, "timeline", "list", "--json")).To(Equal(0), errOut.String())
 			Expect(out.String()).NotTo(ContainSubstring("mongo-outage"))
 		})
@@ -205,9 +207,9 @@ var _ = Describe("timeline forms", func() {
 	})
 
 	Describe("timeline edit", func() {
-		edit := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
-			command := &cobra.Command{Use: "edit", Annotations: map[string]string{formatsAnnotation: "text,json"}}
-			return timelineEditForm(ctx, appOn()).attach(command, appOn(), forms)
+		edit := func(ctx SpecContext, forms func(bool, graphics.Protocol) clikit.AskFunc) *cobra.Command {
+			command := &cobra.Command{Use: "edit", Annotations: map[string]string{clikit.FormatsAnnotation: "text,json"}}
+			return timelinecmd.EditForm(ctx, appOn()).Attach(command, appOn(), forms)
 		}
 		seed := func(ctx SpecContext, path string) {
 			GinkgoHelper()
@@ -235,7 +237,7 @@ var _ = Describe("timeline forms", func() {
 		})
 
 		It("replace a rejected new name with the one its field suggests on ctrl+e", func() {
-			name := namedField(timelineEditFormDefinition(nil).formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
+			name := namedField(timelinecmd.EditFormDefinition(nil).FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "name")
 			typeInto(name, "Mongo Failover")
 
 			name.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
@@ -274,11 +276,11 @@ var _ = Describe("timeline forms", func() {
 		})
 
 		It("log the same change lines as the command they echo", func(ctx SpecContext) {
-			formLog = newDiagnosticLog(appOn())
+			formLog = clikit.NewDiagnosticLog(appOn())
 			command := edit(ctx, answers(renamed("mongo-failover")))
 
 			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--interactive")).To(Succeed())
-			submitted := changeShapes(formLog.held)
+			submitted := changeShapes(formLog.Lines())
 			formLog = nil
 
 			var logPath string
@@ -311,7 +313,7 @@ var _ = Describe("timeline forms", func() {
 
 			err := runForm(ctx, command, "timeline", "edit")
 
-			Expect(err).To(HaveField("Kind", KindTimelineRequired))
+			Expect(err).To(HaveField("Kind", clikit.KindTimelineRequired))
 			Expect(err).To(HaveField("Message", "no timeline selected"))
 			Expect(err).To(HaveField("Hint", ContainSubstring("coroner timeline create")))
 		})
@@ -338,34 +340,34 @@ var _ = Describe("timeline forms", func() {
 })
 
 var _ = DescribeTable("timelineEditValues gives edit the changes a form made to a timeline",
-	func(submitted, want fieldValues) {
+	func(submitted, want clikit.FieldValues) {
 		t := timeline.Timeline{Name: "mongo-outage", Title: "Primary election storm", Refs: []string{"INC-1", "INC-2"}}
-		unchanged := fieldValues{"name": {"mongo-outage"}, "title": {"Primary election storm"}, "ref": {"INC-1", "INC-2"}}
+		unchanged := clikit.FieldValues{"name": {"mongo-outage"}, "title": {"Primary election storm"}, "ref": {"INC-1", "INC-2"}}
 		maps.Copy(unchanged, submitted)
 		maps.DeleteFunc(unchanged, func(_ string, values []string) bool { return values == nil })
 
-		Expect(timelineEditValues(t, "mongo-outage", unchanged)).To(Equal(want))
+		Expect(timelinecmd.EditValues(t, "mongo-outage", unchanged)).To(Equal(want))
 	},
-	Entry("nothing when nothing changed", fieldValues{}, fieldValues{"timeline": {"mongo-outage"}}),
-	Entry("a new name", fieldValues{"name": {"mongo-failover"}},
-		fieldValues{"timeline": {"mongo-outage"}, "name": {"mongo-failover"}}),
-	Entry("a cleared title as an empty one", fieldValues{"title": nil},
-		fieldValues{"timeline": {"mongo-outage"}, "title": {""}}),
-	Entry("the refs added and those removed", fieldValues{"ref": {"INC-2", "INC-3", "INC-4"}},
-		fieldValues{"timeline": {"mongo-outage"}, "add-ref": {"INC-3", "INC-4"}, "remove-ref": {"INC-1"}}),
-	Entry("nothing for the same refs in another order", fieldValues{"ref": {"INC-2", "INC-1"}},
-		fieldValues{"timeline": {"mongo-outage"}}),
-	Entry("every ref removed", fieldValues{"ref": nil},
-		fieldValues{"timeline": {"mongo-outage"}, "remove-ref": {"INC-1", "INC-2"}}),
-	Entry("a dry run", fieldValues{"dry-run": {"true"}},
-		fieldValues{"timeline": {"mongo-outage"}, "dry-run": {"true"}}),
+	Entry("nothing when nothing changed", clikit.FieldValues{}, clikit.FieldValues{"timeline": {"mongo-outage"}}),
+	Entry("a new name", clikit.FieldValues{"name": {"mongo-failover"}},
+		clikit.FieldValues{"timeline": {"mongo-outage"}, "name": {"mongo-failover"}}),
+	Entry("a cleared title as an empty one", clikit.FieldValues{"title": nil},
+		clikit.FieldValues{"timeline": {"mongo-outage"}, "title": {""}}),
+	Entry("the refs added and those removed", clikit.FieldValues{"ref": {"INC-2", "INC-3", "INC-4"}},
+		clikit.FieldValues{"timeline": {"mongo-outage"}, "add-ref": {"INC-3", "INC-4"}, "remove-ref": {"INC-1"}}),
+	Entry("nothing for the same refs in another order", clikit.FieldValues{"ref": {"INC-2", "INC-1"}},
+		clikit.FieldValues{"timeline": {"mongo-outage"}}),
+	Entry("every ref removed", clikit.FieldValues{"ref": nil},
+		clikit.FieldValues{"timeline": {"mongo-outage"}, "remove-ref": {"INC-1", "INC-2"}}),
+	Entry("a dry run", clikit.FieldValues{"dry-run": {"true"}},
+		clikit.FieldValues{"timeline": {"mongo-outage"}, "dry-run": {"true"}}),
 )
 
 var _ = DescribeTable("a name field's preview",
 	func(name string, want OmegaMatcher) {
-		preview := namePreview([]string{"mongo-outage"}, func(name string) string { return "Timeline `" + name + "` exists." })
+		preview := timelinecmd.NamePreview([]string{"mongo-outage"}, func(name string) string { return "Timeline `" + name + "` exists." })
 
-		Expect(preview(name, checkEnv{})).To(want)
+		Expect(preview(name, clikit.CheckEnv{})).To(want)
 	},
 	Entry("shows nothing for no name", "", BeEmpty()),
 	Entry("shows nothing for a free name", "mongo-failover", BeEmpty()),

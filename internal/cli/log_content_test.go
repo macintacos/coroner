@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/config"
 )
 
@@ -169,7 +170,7 @@ var _ = Describe("log content guard", func() {
 
 	It("has a row for every write command", func(ctx SpecContext) {
 		var walked []string
-		cli.WalkCommands(cli.NewRoot(ctx, cli.App{}), func(cmd *cobra.Command) {
+		cli.WalkCommands(cli.NewRoot(ctx, clikit.App{}), func(cmd *cobra.Command) {
 			if cmd.Runnable() && slices.Contains(cli.WriteVerbs(), cmd.Name()) {
 				walked = append(walked, cmd.CommandPath())
 			}

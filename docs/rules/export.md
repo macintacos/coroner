@@ -12,7 +12,7 @@
    `jsontext.EscapeForHTML(true)`,** never `encoding/json` v1: the JSON envelope, JSONL
    and the HTML page's embedded JSON. `export.Write` applies both and writes nothing when
    encoding fails; a caller needing another presentation, such as indentation, adds
-   options without dropping those two. Command `--json` is `writeJSON`'s v1 encoding with
+   options without dropping those two. Command `--json` is `WriteJSON`'s v1 encoding with
    HTML unescaped, as `coroner help formatting` describes, and its timeline and link
    objects are `Timeline` and `Link`, and its event and annotation objects embed `Event`
    and `Annotation` and add `attachments`, so a field change to one is a `--json` change

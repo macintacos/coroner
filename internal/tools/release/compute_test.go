@@ -15,22 +15,22 @@ const (
 	contractA = "internal/cli/testdata/script/contract/help.txtar"
 )
 
-const deprecationDiff = `diff --git a/internal/cli/event.go b/internal/cli/event.go
---- a/internal/cli/event.go
-+++ b/internal/cli/event.go
-@@ -10 +10 @@ func newEventCommand
--	deprecateFlag(cmd.Flags(), "gone",
-+	deprecateFlag(cmd.Flags(), "old",
-diff --git a/internal/cli/deprecation.go b/internal/cli/deprecation.go
---- a/internal/cli/deprecation.go
-+++ b/internal/cli/deprecation.go
+const deprecationDiff = `diff --git a/internal/cli/event/event.go b/internal/cli/event/event.go
+--- a/internal/cli/event/event.go
++++ b/internal/cli/event/event.go
+@@ -10 +10 @@ func NewCommand
+-	clikit.DeprecateFlag(cmd.Flags(), "gone",
++	clikit.DeprecateFlag(cmd.Flags(), "old",
+diff --git a/internal/cli/clikit/deprecation.go b/internal/cli/clikit/deprecation.go
+--- a/internal/cli/clikit/deprecation.go
++++ b/internal/cli/clikit/deprecation.go
 @@ -1,0 +2 @@
-+func deprecateFlag(flags *pflag.FlagSet, name string) {
++func DeprecateFlag(flags *pflag.FlagSet, name string) {
 diff --git a/internal/cli/legacy.go b/internal/cli/legacy.go
 --- a/internal/cli/legacy.go
 +++ /dev/null
 @@ -5 +4,0 @@
--	deprecateCommand(cmd, "legacy",
+-	clikit.DeprecateCommand(cmd, "legacy",
 `
 
 // computeFake answers a compute run over one PR and one stray commit, with the given tags
@@ -88,9 +88,9 @@ var _ = Describe("compute", func() {
 					map[string]any{"status": "deleted", "path": "internal/cli/testdata/script/contract/old.txtar"},
 				},
 				"deprecations": []any{
-					map[string]any{"change": "removed", "path": "internal/cli/event.go", "line": "deprecateFlag(cmd.Flags(), \"gone\","},
-					map[string]any{"change": "added", "path": "internal/cli/event.go", "line": "deprecateFlag(cmd.Flags(), \"old\","},
-					map[string]any{"change": "removed", "path": "internal/cli/legacy.go", "line": "deprecateCommand(cmd, \"legacy\","},
+					map[string]any{"change": "removed", "path": "internal/cli/event/event.go", "line": "clikit.DeprecateFlag(cmd.Flags(), \"gone\","},
+					map[string]any{"change": "added", "path": "internal/cli/event/event.go", "line": "clikit.DeprecateFlag(cmd.Flags(), \"old\","},
+					map[string]any{"change": "removed", "path": "internal/cli/legacy.go", "line": "clikit.DeprecateCommand(cmd, \"legacy\","},
 				},
 			},
 		}))

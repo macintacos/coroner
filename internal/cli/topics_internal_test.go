@@ -15,6 +15,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 var _ = DescribeTable("closest returns the candidate the fewest edits away, within two, the first on a tie",
@@ -46,11 +48,11 @@ var _ = Describe("help topics", func() {
 		table := documentedExitCodes(topicBody("exit-codes"))
 
 		codes := map[int]bool{0: true}
-		for _, code := range exitCodes() {
+		for _, code := range clikit.ExitCodes() {
 			codes[code] = true
 		}
 		Expect(table.codes).To(Equal(codes))
-		Expect(table.kinds).To(Equal(exitCodes()))
+		Expect(table.kinds).To(Equal(clikit.ExitCodes()))
 		Expect(table.duplicates).To(BeEmpty(), "kinds listed under two codes")
 	})
 
@@ -75,8 +77,8 @@ func topicBody(name string) string {
 
 type exitCodeTable struct {
 	codes      map[int]bool
-	kinds      map[Kind]int
-	duplicates []Kind
+	kinds      map[clikit.Kind]int
+	duplicates []clikit.Kind
 }
 
 // documentedExitCodes reads each "| code | meaning | kinds |" table row: its code, and the
@@ -85,7 +87,7 @@ func documentedExitCodes(body string) exitCodeTable {
 	// The outer pipes leave an empty cell at each end of a three-column row.
 	const rowCells = 5
 	kindPattern := regexp.MustCompile("`([a-z_]+)`")
-	table := exitCodeTable{codes: map[int]bool{}, kinds: map[Kind]int{}}
+	table := exitCodeTable{codes: map[int]bool{}, kinds: map[clikit.Kind]int{}}
 
 	for line := range strings.Lines(body) {
 		cells := strings.Split(strings.TrimSpace(line), "|")
@@ -100,7 +102,7 @@ func documentedExitCodes(body string) exitCodeTable {
 
 		table.codes[code] = true
 		for _, match := range kindPattern.FindAllStringSubmatch(cells[3], -1) {
-			kind := Kind(match[1])
+			kind := clikit.Kind(match[1])
 			if _, ok := table.kinds[kind]; ok {
 				table.duplicates = append(table.duplicates, kind)
 			}

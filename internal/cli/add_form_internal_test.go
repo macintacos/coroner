@@ -25,6 +25,10 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli/annotation"
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
@@ -33,38 +37,38 @@ import (
 
 var _ = Describe("add forms", func() {
 	DescribeTable("open on a terminal when --interactive asks, or when the command line is not ready and no machine format is asked for",
-		func(gate formGate, wantOpen bool) {
-			Expect(formMode(gate)).To(Equal(wantOpen))
+		func(gate clikit.FormGate, wantOpen bool) {
+			Expect(clikit.FormMode(gate)).To(Equal(wantOpen))
 		},
-		Entry("a required field missing on a terminal", formGate{terminal: true}, true),
-		Entry("--interactive with every required field on a terminal", formGate{interactive: true, ready: true, terminal: true}, true),
-		Entry("--interactive with a required field missing on a terminal", formGate{interactive: true, terminal: true}, true),
-		Entry("every required field on a terminal", formGate{ready: true, terminal: true}, false),
-		Entry("a required field missing under a machine format on a terminal", formGate{machine: true, terminal: true}, false),
-		Entry("--interactive under a machine format on a terminal", formGate{interactive: true, machine: true, terminal: true}, true),
-		Entry("a required field missing off a terminal", formGate{}, false),
-		Entry("every required field off a terminal", formGate{ready: true}, false),
+		Entry("a required field missing on a terminal", clikit.FormGate{Terminal: true}, true),
+		Entry("--interactive with every required field on a terminal", clikit.FormGate{Interactive: true, Ready: true, Terminal: true}, true),
+		Entry("--interactive with a required field missing on a terminal", clikit.FormGate{Interactive: true, Terminal: true}, true),
+		Entry("every required field on a terminal", clikit.FormGate{Ready: true, Terminal: true}, false),
+		Entry("a required field missing under a machine format on a terminal", clikit.FormGate{Machine: true, Terminal: true}, false),
+		Entry("--interactive under a machine format on a terminal", clikit.FormGate{Interactive: true, Machine: true, Terminal: true}, true),
+		Entry("a required field missing off a terminal", clikit.FormGate{}, false),
+		Entry("every required field off a terminal", clikit.FormGate{Ready: true}, false),
 	)
 
 	DescribeTable("ask a form again when its submission is rejected as usage, not found or a taken name, but not for the timeline it writes to",
 		func(err error, want bool) {
-			Expect(correctable(err)).To(Equal(want))
+			Expect(clikit.Correctable(err)).To(Equal(want))
 		},
-		Entry("usage", &Error{Kind: KindUsage}, true),
-		Entry("an invalid time", &Error{Kind: KindInvalidTime}, true),
-		Entry("an event not found", &Error{Kind: KindEventNotFound}, true),
-		Entry("no timeline selected", &Error{Kind: KindTimelineRequired}, false),
-		Entry("a timeline not found", &Error{Kind: KindTimelineNotFound}, false),
-		Entry("a timeline that exists", &Error{Kind: KindTimelineExists}, true),
+		Entry("usage", &clikit.Error{Kind: clikit.KindUsage}, true),
+		Entry("an invalid time", &clikit.Error{Kind: clikit.KindInvalidTime}, true),
+		Entry("an event not found", &clikit.Error{Kind: clikit.KindEventNotFound}, true),
+		Entry("no timeline selected", &clikit.Error{Kind: clikit.KindTimelineRequired}, false),
+		Entry("a timeline not found", &clikit.Error{Kind: clikit.KindTimelineNotFound}, false),
+		Entry("a timeline that exists", &clikit.Error{Kind: clikit.KindTimelineExists}, true),
 		Entry("an error of no kind", errors.New("disk full"), false),
 	)
 
 	DescribeTable("read times in UTC, not the clock's zone, when the config file's default_timezone is UTC or unknown",
 		func(defaultTimezone string) {
 			now := func() time.Time { return testNow().In(time.FixedZone("Test/Local", -3*3600)) }
-			env := baseCheckEnv(formSession{app: App{Now: now}, inv: invocation{cfg: config.Config{DefaultTimezone: defaultTimezone}}})
+			env := clikit.BaseCheckEnv(clikit.FormSession{App: clikit.App{Now: now}, Inv: clikit.Invocation{Cfg: config.Config{DefaultTimezone: defaultTimezone}}})
 
-			Expect(env.zone).To(Equal(zone{loc: time.UTC, label: "UTC"}))
+			Expect(env.Zone).To(Equal(clikit.Zone{Loc: time.UTC, Label: "UTC"}))
 		},
 		Entry("UTC", "UTC"),
 		Entry("unknown", "Mars/Olympus_Mons"),
@@ -72,15 +76,15 @@ var _ = Describe("add forms", func() {
 
 	It("read times in --tz over the config file's default_timezone", func() {
 		tz := "UTC"
-		env := baseCheckEnv(formSession{app: App{Now: testNow}, inv: invocation{tz: &tz, cfg: config.Config{DefaultTimezone: "Asia/Tokyo"}}})
+		env := clikit.BaseCheckEnv(clikit.FormSession{App: clikit.App{Now: testNow}, Inv: clikit.Invocation{TZ: &tz, Cfg: config.Config{DefaultTimezone: "Asia/Tokyo"}}})
 
-		Expect(env.zone.loc).To(Equal(time.UTC))
+		Expect(env.Zone.Loc).To(Equal(time.UTC))
 	})
 
 	It("abort the form on Esc and record it as cancelled, passing other keys through", func() {
 		cancelled := false
 		text := huh.NewInput().Key("text")
-		filter := escCancels(&cancelled, []huh.Field{text})
+		filter := clikit.EscCancels(&cancelled, []huh.Field{text})
 		form := huh.NewForm(huh.NewGroup(text))
 		letter := tea.KeyPressMsg{Code: 'a', Text: "a"}
 
@@ -101,46 +105,46 @@ var _ = Describe("add forms", func() {
 		Expect(pick.GetFiltering()).To(BeTrue())
 		esc := tea.KeyPressMsg{Code: tea.KeyEscape}
 
-		Expect(escCancels(&cancelled, []huh.Field{pick})(nil, esc)).To(Equal(esc))
+		Expect(clikit.EscCancels(&cancelled, []huh.Field{pick})(nil, esc)).To(Equal(esc))
 		Expect(cancelled).To(BeFalse())
 	})
 
 	It("leave an entry on ctrl+t as the form's own abort, which its ask returns as a timeline switch", func() {
-		var keys formKeys
+		var keys clikit.FormKeys
 		text := huh.NewInput().Key("text")
 		form := huh.NewForm(huh.NewGroup(text))
 		ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 
-		form.Update(keys.filter(formFrame{entry: true}, []huh.Field{text})(nil, ctrlT))
+		form.Update(keys.Filter(clikit.FormFrame{Entry: true}, []huh.Field{text})(nil, ctrlT))
 
 		Expect(form.State).To(Equal(huh.StateAborted))
-		Expect(keys.ended(form.State, nil)).Error().To(MatchError(errSwitchTimeline))
+		Expect(keys.Ended(form.State, nil)).Error().To(MatchError(clikit.ErrSwitchTimeline))
 	})
 
 	It("pass ctrl+t through to a form other than an entry", func() {
-		var keys formKeys
+		var keys clikit.FormKeys
 		ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
 
-		Expect(keys.filter(formFrame{timeline: "mongo-outage"}, nil)(nil, ctrlT)).To(Equal(ctrlT))
+		Expect(keys.Filter(clikit.FormFrame{Timeline: "mongo-outage"}, nil)(nil, ctrlT)).To(Equal(ctrlT))
 	})
 
 	It("carry forward everything but the fields another entry clears", func() {
-		values := fieldValues{
+		values := clikit.FieldValues{
 			"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "at": {"03:14"}, "ended": {"03:20"},
 			"approximate": {"true"}, "source": {"mongod"}, "tag": {"election"}, "url": {"https://example.com/1"},
 			"author": {"sre"}, "tz": {"UTC"},
 		}
 
-		Expect(carryForward(values, eventAddDefinition())).To(Equal(fieldValues{
+		Expect(clikit.CarryForward(values, event.AddDefinition())).To(Equal(clikit.FieldValues{
 			"timeline": {"mongo-outage"}, "source": {"mongod"}, "tag": {"election"}, "author": {"sre"}, "tz": {"UTC"},
 		}))
 		Expect(values).To(HaveKey("text"))
 	})
 
 	It("align a summary's columns to their widest cell", func() {
-		rows := summaryRows([]summaryLine{
-			{cells: []string{"#9", "03:14:07Z", "Primary stepped down"}},
-			{cells: []string{"#10", "03:15:00Z", "Election timeout on db-3"}},
+		rows := clikit.SummaryRows([]clikit.SummaryLine{
+			{Cells: []string{"#9", "03:14:07Z", "Primary stepped down"}},
+			{Cells: []string{"#10", "03:15:00Z", "Election timeout on db-3"}},
 		}, lipgloss.NewStyle())
 
 		Expect(rows).To(Equal("  #9   03:14:07Z  Primary stepped down\n  #10  03:15:00Z  Election timeout on db-3"))
@@ -149,11 +153,11 @@ var _ = Describe("add forms", func() {
 	Describe("session", func() {
 		var (
 			out, errOut bytes.Buffer
-			app         App
+			app         clikit.App
 			db          string
 			ids         int
 			asked       [][]huh.Field
-			framed      []formFrame
+			framed      []clikit.FormFrame
 		)
 
 		// runArgs runs exactly args through Run.
@@ -173,20 +177,20 @@ var _ = Describe("add forms", func() {
 		// eventOptions returns what the annotation form's event field picks from in mongo-outage.
 		eventOptions := func(ctx SpecContext) []huh.Option[string] {
 			GinkgoHelper()
-			var choices formChoices
-			Expect(withStorePath(ctx, app, db, func(s *store.Store) error {
+			var choices clikit.FormChoices
+			Expect(clikit.WithStorePath(ctx, app, db, func(s *store.Store) error {
 				t, err := s.TimelineByName(ctx, "mongo-outage")
 				if err != nil {
 					return err
 				}
-				choices, err = annotationChoices(ctx, s, t, zone{loc: time.UTC, label: "UTC"})
+				choices, err = annotation.Choices(ctx, s, t, clikit.Zone{Loc: time.UTC, Label: "UTC"})
 				return err
 			})).To(Succeed())
 
-			return choices.options["event"]
+			return choices.Options["event"]
 		}
 
-		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+		answers := func(answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) clikit.AskFunc {
 			return scriptedForms(&asked, &framed, answers...)
 		}
 
@@ -197,25 +201,25 @@ var _ = Describe("add forms", func() {
 			out.Reset()
 			errOut.Reset()
 			root := &cobra.Command{Use: "coroner", SilenceErrors: true, SilenceUsage: true}
-			root.PersistentFlags().AddFlagSet(globalFlags())
+			root.PersistentFlags().AddFlagSet(clikit.GlobalFlags())
 			root.AddCommand(parent)
 			root.SetArgs(append([]string{"--db", db}, args...))
 			return root.ExecuteContext(ctx)
 		}
 
 		addCommand := func() *cobra.Command {
-			return &cobra.Command{Use: "add", Annotations: map[string]string{formatsAnnotation: "text,json"}}
+			return &cobra.Command{Use: "add", Annotations: map[string]string{clikit.FormatsAnnotation: "text,json"}}
 		}
-		eventAdd := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
-			event := &cobra.Command{Use: "event"}
-			addTimelineFlag(event.PersistentFlags())
-			event.AddCommand(eventAddForm().attach(ctx, addCommand(), app, forms))
-			return event
+		eventAdd := func(ctx SpecContext, forms func(bool, graphics.Protocol) clikit.AskFunc) *cobra.Command {
+			events := &cobra.Command{Use: "event"}
+			clikit.AddTimelineFlag(events.PersistentFlags())
+			events.AddCommand(event.AddForm(timelinecmd.AskCreate).Attach(ctx, addCommand(), app, forms))
+			return events
 		}
-		annotationAdd := func(ctx SpecContext, forms func(bool, graphics.Protocol) askFunc) *cobra.Command {
-			annotation := &cobra.Command{Use: "annotation"}
-			annotation.AddCommand(annotationAddForm().attach(ctx, addCommand(), app, forms))
-			return annotation
+		annotationAdd := func(ctx SpecContext, forms func(bool, graphics.Protocol) clikit.AskFunc) *cobra.Command {
+			annotations := &cobra.Command{Use: "annotation"}
+			annotations.AddCommand(annotation.AddForm(timelinecmd.AskCreate).Attach(ctx, addCommand(), app, forms))
+			return annotations
 		}
 
 		BeforeEach(func(ctx SpecContext) {
@@ -258,17 +262,17 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("log the same change lines as the command they echo", func(ctx SpecContext) {
-				app.log = newDiagnosticLog(app)
+				app.Log = clikit.NewDiagnosticLog(app)
 				command := eventAdd(ctx, answers(submit(map[string]string{
 					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
 				}), confirm(false)))
 
 				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
-				submitted := changeShapes(app.log.held)
+				submitted := changeShapes(app.Log.Lines())
 				echoed := echoedArgs(ctx, errOut.String())[1:]
 				Expect(echoed[:2]).To(Equal([]string{"--db", db}))
 
-				app.log = nil
+				app.Log = nil
 				fresh := filepath.Join(GinkgoT().TempDir(), "coroner.db")
 				writeMigratedDatabase(fresh)
 				Expect(runArgs(ctx, "--db", fresh, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
@@ -486,10 +490,10 @@ var _ = Describe("add forms", func() {
 
 					Expect(opened).To(Equal("mongo-outage"))
 					Expect(offered).To(Equal([]string{"", "api-latency", "mongo-outage"}))
-					Expect(framed[1]).To(Equal(formFrame{noun: "event"}))
+					Expect(framed[1]).To(Equal(clikit.FormFrame{Noun: "event"}))
 					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
 					Expect(fieldText(asked[2], "source")).To(Equal("cloudflare"))
-					Expect(framed[2].timeline).To(Equal("api-latency"))
+					Expect(framed[2].Timeline).To(Equal("api-latency"))
 					Expect(errOut.String()).To(ContainSubstring(" event add 'Edge slow' -t api-latency --source cloudflare\n"))
 					Expect(listed(ctx, "api-latency")).To(Equal([]string{"Edge slow"}))
 				})
@@ -523,7 +527,7 @@ var _ = Describe("add forms", func() {
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 					Expect(fieldText(asked[2], "text")).To(Equal("Edge slow"))
-					Expect(framed[2].timeline).To(Equal("mongo-outage"))
+					Expect(framed[2].Timeline).To(Equal("mongo-outage"))
 					Expect(echoedArgs(ctx, errOut.String())).NotTo(ContainElement("-t"))
 					Expect(listed(ctx, "mongo-outage")).To(Equal([]string{"Edge slow"}))
 				})
@@ -543,10 +547,10 @@ var _ = Describe("add forms", func() {
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 					Expect(label).To(ContainSubstring("✨ New timeline"))
-					Expect(framed[2]).To(Equal(formFrame{title: "📒 New timeline", noun: "event"}))
+					Expect(framed[2]).To(Equal(clikit.FormFrame{Title: "📒 New timeline", Noun: "event"}))
 					Expect(errOut.String()).To(ContainSubstring("Created timeline `db-migration`."))
 					Expect(errOut.String()).To(ContainSubstring("Equivalent command: coroner --db " + db + " timeline create db-migration\n"))
-					Expect(framed[3].timeline).To(Equal("db-migration"))
+					Expect(framed[3].Timeline).To(Equal("db-migration"))
 					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
 					Expect(listed(ctx, "db-migration")).To(Equal([]string{"Migration paused"}))
 					Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
@@ -563,7 +567,7 @@ var _ = Describe("add forms", func() {
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
 					Expect(errOut.String()).To(ContainSubstring("Would create timeline `db-migration`."))
-					Expect(framed[3].timeline).To(Equal("mongo-outage"))
+					Expect(framed[3].Timeline).To(Equal("mongo-outage"))
 				})
 
 				It("reopen the entry on its own timeline when Esc leaves the new timeline form", func(ctx SpecContext) {
@@ -574,7 +578,7 @@ var _ = Describe("add forms", func() {
 
 					Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-					Expect(framed[3].timeline).To(Equal("mongo-outage"))
+					Expect(framed[3].Timeline).To(Equal("mongo-outage"))
 					Expect(fieldText(asked[3], "text")).To(Equal("Migration paused"))
 				})
 			})
@@ -620,7 +624,7 @@ var _ = Describe("add forms", func() {
 
 				err := runForm(ctx, command, "event", "add")
 
-				Expect(err).To(HaveField("Kind", KindInterrupted))
+				Expect(err).To(HaveField("Kind", clikit.KindInterrupted))
 				Expect(run(ctx, "event", "list", "--json")).To(Equal(0), errOut.String())
 				Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("total", 0.0))
 			})
@@ -668,11 +672,11 @@ var _ = Describe("add forms", func() {
 
 				Expect(runForm(ctx, command, "event", "add")).To(Succeed())
 
-				Expect(framed).To(Equal([]formFrame{
-					{timeline: "mongo-outage", entry: true, noun: "event"},
-					{timeline: "mongo-outage", added: 1, noun: "event"},
-					{timeline: "mongo-outage", entry: true, added: 1, noun: "event"},
-					{timeline: "mongo-outage", added: 1, noun: "event"},
+				Expect(framed).To(Equal([]clikit.FormFrame{
+					{Timeline: "mongo-outage", Entry: true, Noun: "event"},
+					{Timeline: "mongo-outage", Added: 1, Noun: "event"},
+					{Timeline: "mongo-outage", Entry: true, Added: 1, Noun: "event"},
+					{Timeline: "mongo-outage", Added: 1, Noun: "event"},
 				}))
 			})
 
@@ -754,7 +758,7 @@ var _ = Describe("add forms", func() {
 
 				Expect(runForm(ctx, command, "annotation", "add")).To(Succeed())
 
-				Expect(view).To(ContainSubstring(suggestionsLabel + "files/p99.png"))
+				Expect(view).To(ContainSubstring(clikit.SuggestionsLabel + "files/p99.png"))
 			})
 
 			It("reject an attach path that does not exist as --attach does", func(ctx SpecContext) {
@@ -776,13 +780,13 @@ var _ = Describe("add forms", func() {
 
 		Describe("source suggestions", func() {
 			var s *store.Store
-			sourcesFor := func(ctx SpecContext, choices func(context.Context, *store.Store, timeline.Timeline, zone) (formChoices, error), name string) []string {
+			sourcesFor := func(ctx SpecContext, choices func(context.Context, *store.Store, timeline.Timeline, clikit.Zone) (clikit.FormChoices, error), name string) []string {
 				GinkgoHelper()
 				t, err := s.TimelineByName(ctx, name)
 				Expect(err).NotTo(HaveOccurred())
-				got, err := choices(ctx, s, t, zone{loc: time.UTC, label: "UTC"})
+				got, err := choices(ctx, s, t, clikit.Zone{Loc: time.UTC, Label: "UTC"})
 				Expect(err).NotTo(HaveOccurred())
-				return got.suggestions["source"]
+				return got.Suggestions["source"]
 			}
 
 			BeforeEach(func(ctx SpecContext) {
@@ -796,17 +800,17 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("suggest the timeline's own sources first, then every other", func(ctx SpecContext) {
-				choices := eventAddForm().choices
+				choices := event.AddForm(timelinecmd.AskCreate).Choices
 				mongo := sourcesFor(ctx, choices, "mongo-outage")
 				Expect(mongo).To(Equal([]string{"cassandra", "cloudflare"}))
 				Expect(sourcesFor(ctx, choices, "api-latency")).To(Equal([]string{"cloudflare", "cassandra"}))
 
-				source := namedField(eventAddDefinition().formFields(formCheckEnv(), fieldValues{},
-					formChoices{suggestions: map[string][]string{"source": mongo}}), "source")
+				source := namedField(event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{},
+					clikit.FormChoices{Suggestions: map[string][]string{"source": mongo}}), "source")
 				source.WithKeyMap(huh.NewDefaultKeyMap())
 				source.Focus()
 				typeText(source, "c")
-				Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "cassandra · cloudflare"))
+				Expect(fieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "cassandra · cloudflare"))
 			})
 
 			It("mark the source typed as one already stored, or as a new one submitting creates", func(ctx SpecContext) {
@@ -830,7 +834,7 @@ var _ = Describe("add forms", func() {
 			})
 
 			It("scope annotation add's source suggestions to the timeline the same way", func(ctx SpecContext) {
-				choices := annotationAddForm().choices
+				choices := annotation.AddForm(timelinecmd.AskCreate).Choices
 				Expect(sourcesFor(ctx, choices, "mongo-outage")).To(Equal([]string{"cassandra", "cloudflare"}))
 				Expect(sourcesFor(ctx, choices, "api-latency")).To(Equal([]string{"cloudflare", "cassandra"}))
 			})
@@ -839,16 +843,16 @@ var _ = Describe("add forms", func() {
 		Describe("tag suggestions", func() {
 			tagsFor := func(ctx SpecContext, name string) []string {
 				GinkgoHelper()
-				var got formChoices
-				Expect(withStorePath(ctx, app, db, func(s *store.Store) error {
+				var got clikit.FormChoices
+				Expect(clikit.WithStorePath(ctx, app, db, func(s *store.Store) error {
 					t, err := s.TimelineByName(ctx, name)
 					if err != nil {
 						return err
 					}
-					got, err = eventAddForm().choices(ctx, s, t, zone{loc: time.UTC, label: "UTC"})
+					got, err = event.AddForm(timelinecmd.AskCreate).Choices(ctx, s, t, clikit.Zone{Loc: time.UTC, Label: "UTC"})
 					return err
 				})).To(Succeed())
-				return got.suggestions["tag"]
+				return got.Suggestions["tag"]
 			}
 
 			BeforeEach(func(ctx SpecContext) {
@@ -1011,7 +1015,7 @@ var _ = Describe("add forms", func() {
 
 			err := runForm(ctx, command, "event", "add")
 
-			Expect(err).To(HaveField("Kind", KindTimelineRequired))
+			Expect(err).To(HaveField("Kind", clikit.KindTimelineRequired))
 			Expect(err).To(HaveField("Hint", "Run 'coroner timeline create <name>' to create one."))
 		})
 
@@ -1028,7 +1032,7 @@ var _ = Describe("add forms", func() {
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add"}, args...)...)
 
-				Expect(err).To(HaveField("Kind", KindUsage))
+				Expect(err).To(HaveField("Kind", clikit.KindUsage))
 				Expect(err).To(HaveField("Message", "event add needs the event's text"))
 			},
 			Entry("--no-input", nil, "--no-input"),
@@ -1041,7 +1045,7 @@ var _ = Describe("add forms", func() {
 
 			err := runForm(ctx, command, "event", "add", "--interactive", "-t", "mongo-outage", "--id", "not-a-uuid")
 
-			Expect(err).To(HaveField("Kind", KindUsage))
+			Expect(err).To(HaveField("Kind", clikit.KindUsage))
 			Expect(asked).To(BeEmpty())
 		})
 
@@ -1051,7 +1055,7 @@ var _ = Describe("add forms", func() {
 
 				err := runForm(ctx, eventAdd(ctx, answers()), append([]string{"event", "add", "Pager fires", "--interactive"}, flags...)...)
 
-				Expect(err).To(HaveField("Kind", KindUsage))
+				Expect(err).To(HaveField("Kind", clikit.KindUsage))
 				Expect(err).To(HaveField("Message", message))
 			},
 			Entry("--no-input", nil, []string{"--no-input"}, "--interactive conflicts with --no-input"),
@@ -1077,9 +1081,9 @@ var _ = Describe("add forms", func() {
 				Approximate bool   `json:"approximate"`
 			}
 			Expect(json.Unmarshal(out.Bytes(), &resolved)).To(Succeed())
-			def := eventAddDefinition()
+			def := event.AddDefinition()
 			at := fieldNamed(def, "at")
-			preview := at.preview(input, formCheckEnv())
+			preview := at.Preview(input, formCheckEnv())
 			occurredAt, err := timeline.ParseInstant(resolved.OccurredAt)
 			Expect(err).NotTo(HaveOccurred())
 			shown, err := time.Parse(time.RFC3339Nano, strings.Trim(strings.Fields(preview)[0], "~,"))
@@ -1099,14 +1103,14 @@ var _ = Describe("add forms", func() {
 var _ = Describe("inlineImages", func() {
 	DescribeTable("decides how a form shows images, and logs it under --debug",
 		func(outColor bool, env map[string]string, want graphics.Protocol, logged string) {
-			log := &diagnosticLog{debug: true, now: testNow}
-			app := App{log: log, Err: &bytes.Buffer{}, LookupEnv: func(key string) (string, bool) {
+			log := &clikit.DiagnosticLog{Debug: true, Now: testNow}
+			app := clikit.App{Log: log, Err: &bytes.Buffer{}, LookupEnv: func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
 			}}
 
-			Expect(inlineImages(app, invocation{outColor: outColor})).To(Equal(want))
-			Expect(log.held).To(ContainElement(And(
+			Expect(clikit.InlineImages(app, clikit.Invocation{OutColor: outColor})).To(Equal(want))
+			Expect(log.Lines()).To(ContainElement(And(
 				ContainSubstring(`"msg":"inline images decided"`),
 				ContainSubstring(`"protocol":"`+logged+`"`),
 			)))
@@ -1118,8 +1122,8 @@ var _ = Describe("inlineImages", func() {
 })
 
 // scratchApp returns an App on home, with no config file, the fixed clock and a real store.
-func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, error)) App {
-	return App{
+func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, error)) clikit.App {
+	return clikit.App{
 		Out: out, Err: errOut,
 		LookupEnv:         func(key string) (string, bool) { return map[string]string{"HOME": home}[key], key == "HOME" },
 		ReadFile:          func(string) ([]byte, error) { return nil, fs.ErrNotExist },
@@ -1180,8 +1184,8 @@ func fileSize(path string) int {
 
 // storelessApp returns an App that runs args, with no config file, and fails the spec when it
 // opens the store.
-func storelessApp(args []string) App {
-	return App{
+func storelessApp(args []string) clikit.App {
+	return clikit.App{
 		Args: args, In: strings.NewReader(""), Out: io.Discard, Err: io.Discard,
 		LookupEnv: envOf(map[string]string{"HOME": "/nonexistent", "CORONER_DB": "/nonexistent/coroner.db"}),
 		ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
@@ -1216,7 +1220,7 @@ func envOf(env map[string]string) func(string) (string, bool) {
 }
 
 // withEnv sets env over app's environment.
-func withEnv(app *App, env map[string]string) {
+func withEnv(app *clikit.App, env map[string]string) {
 	lookupEnv := app.LookupEnv
 	app.LookupEnv = func(key string) (string, bool) {
 		if value, ok := env[key]; ok {
@@ -1227,14 +1231,14 @@ func withEnv(app *App, env map[string]string) {
 }
 
 // fieldNamed returns def's field called name.
-func fieldNamed(def definition, name string) field {
+func fieldNamed(def clikit.Definition, name string) clikit.Field {
 	GinkgoHelper()
-	i := def.fieldIndex(name)
+	i := def.FieldIndex(name)
 	if i == -1 {
 		Fail("no field " + name)
 	}
 
-	return def.fields[i]
+	return def.Fields[i]
 }
 
 // shellSplit returns line's words, split as a shell splits them.
@@ -1248,14 +1252,14 @@ func shellSplit(ctx context.Context, line string) []string {
 
 // scriptedForms returns forms that answer each ask in turn with the next of answers, appending
 // what each ask showed to asked, and the frame it was asked in to framed.
-func scriptedForms(asked *[][]huh.Field, framed *[]formFrame, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) askFunc {
+func scriptedForms(asked *[][]huh.Field, framed *[]clikit.FormFrame, answers ...func([]huh.Field) (bool, error)) func(bool, graphics.Protocol) clikit.AskFunc {
 	DeferCleanup(func() {
 		Expect(answers).To(BeEmpty(), "%d scripted answers were never asked for", len(answers))
 	})
-	return func(bool, graphics.Protocol) askFunc {
-		return func(_ context.Context, f formFrame, groups ...formGroup) (bool, error) {
+	return func(bool, graphics.Protocol) clikit.AskFunc {
+		return func(_ context.Context, f clikit.FormFrame, groups ...clikit.FormGroup) (bool, error) {
 			GinkgoHelper()
-			fields := fieldsOf(groups)
+			fields := clikit.FieldsOf(groups)
 			*asked = append(*asked, fields)
 			*framed = append(*framed, f)
 			Expect(answers).NotTo(BeEmpty(), "asked a form no answer was scripted for")
@@ -1279,7 +1283,7 @@ func submit(values map[string]string) func([]huh.Field) (bool, error) {
 func ctrlT(values map[string]string) func([]huh.Field) (bool, error) {
 	return func(fields []huh.Field) (bool, error) {
 		fill(fields, values)
-		return false, errSwitchTimeline
+		return false, clikit.ErrSwitchTimeline
 	}
 }
 
@@ -1307,7 +1311,7 @@ func fill(fields []huh.Field, values map[string]string) {
 		case *huh.Confirm:
 			b := value == "true"
 			f.Value(&b)
-		case *listField:
+		case *clikit.ListField:
 			for line := range strings.Lines(value) {
 				enter(f, strings.TrimSuffix(line, "\n"))
 			}

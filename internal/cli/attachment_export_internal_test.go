@@ -9,6 +9,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/cli/attachment"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 var _ = Describe("newFileWriter", func() {
@@ -19,7 +22,7 @@ var _ = Describe("newFileWriter", func() {
 	})
 
 	It("writes a file that does not exist", func() {
-		Expect(newFileWriter(openFile, os.Remove)(path, []byte("GIF89a"), 0o600)).To(Succeed())
+		Expect(attachment.NewFileWriter(openFile, os.Remove)(path, []byte("GIF89a"), 0o600)).To(Succeed())
 
 		Expect(os.ReadFile(filepath.Clean(path))).To(Equal([]byte("GIF89a")))
 	})
@@ -27,7 +30,7 @@ var _ = Describe("newFileWriter", func() {
 	It("refuses a file that exists, keeping its bytes", func() {
 		Expect(os.WriteFile(path, []byte("kept"), 0o600)).To(Succeed())
 
-		Expect(newFileWriter(openFile, os.Remove)(path, []byte("GIF89a"), 0o600)).To(MatchError(fs.ErrExist))
+		Expect(attachment.NewFileWriter(openFile, os.Remove)(path, []byte("GIF89a"), 0o600)).To(MatchError(fs.ErrExist))
 
 		Expect(os.ReadFile(filepath.Clean(path))).To(Equal([]byte("kept")))
 	})
@@ -38,7 +41,7 @@ var _ = Describe("newFileWriter", func() {
 			return failingWriter{f}, err
 		}
 
-		Expect(newFileWriter(failingWrite, os.Remove)(path, []byte("GIF89a"), 0o600)).To(MatchError(errDiskFull))
+		Expect(attachment.NewFileWriter(failingWrite, os.Remove)(path, []byte("GIF89a"), 0o600)).To(MatchError(errDiskFull))
 
 		Expect(path).NotTo(BeAnExistingFile())
 	})
@@ -49,7 +52,7 @@ var _ = It("attachment export refuses to write to stdout on a terminal, before o
 	app := storelessApp(args)
 	app.OutIsTTY = true
 
-	Expect(executeError(ctx, app, args...)).To(HaveField("Kind", KindUsage))
+	Expect(executeError(ctx, app, args...)).To(HaveField("Kind", clikit.KindUsage))
 })
 
 var errDiskFull = errors.New("disk full")

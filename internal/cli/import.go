@@ -1,28 +1,27 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"log/slog"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/merge"
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 )
 
-func newImportCommand(ctx context.Context, app App) *cobra.Command {
+func newImportCommand(ctx context.Context, app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "import {<file> | -}",
 		Short:   "Import records from a JSONL export",
-		GroupID: coreCommands,
+		GroupID: clikit.CoreCommands,
 		Long: "Import the records of a coroner JSONL export, as 'coroner timeline export --format jsonl'\n" +
 			"writes it, into the database: its timelines, sources, events, annotations, attachments and\n" +
 			"links. Pass - to read the export from stdin, so concatenated exports import together. Every\n" +
@@ -40,7 +39,7 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 			"-t names a stored timeline that every record must belong to. Without -t, the export decides\n" +
 			"which timelines it imports into.",
 		Args:        cobra.ExactArgs(1),
-		Annotations: map[string]string{formatsAnnotation: "text,json", timelinesAnnotation: "guard"},
+		Annotations: map[string]string{clikit.FormatsAnnotation: "text,json", clikit.TimelinesAnnotation: "guard"},
 		Example: "  $ coroner import colleague-annotations.jsonl --dry-run --json\n" +
 			"  $ coroner import colleague-annotations.jsonl\n" +
 			"  $ cat a.jsonl b.jsonl | coroner import -\n" +
@@ -50,24 +49,24 @@ func newImportCommand(ctx context.Context, app App) *cobra.Command {
 		},
 	}
 
-	addTimelineFlag(cmd.Flags())
-	cmd.Flags().String("on-conflict", string(onConflictFail), "What to do with a record stored with different content, as a `policy`: {fail | skip | replace}")
+	clikit.AddTimelineFlag(cmd.Flags())
+	cmd.Flags().String("on-conflict", string(merge.OnConflictFail), "What to do with a record stored with different content, as a `policy`: {fail | skip | replace}")
 	cmd.Flags().Bool("dry-run", false, "Show what the import would change, and write nothing")
 
 	return cmd
 }
 
-func importExport(ctx context.Context, cmd *cobra.Command, app App, path string) error {
+func importExport(ctx context.Context, cmd *cobra.Command, app clikit.App, path string) error {
 	policy, err := readConflictPolicy(cmd.Flags())
 	if err != nil {
 		return err
 	}
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	inv, err := readInvocation(cmd, app)
+	inv, err := clikit.ReadInvocation(cmd, app)
 	if err != nil {
 		return err
 	}
-	records, err := readImportRecords(app.logger(), jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
+	records, err := merge.ReadImportRecords(app.Logger(), merge.JSONLSource{Path: path, ReadFile: app.ReadFile, Stdin: app.In, StdinIsTTY: app.InIsTTY}, merge.InvalidImportHint)
 	if err != nil {
 		return err
 	}
@@ -76,27 +75,27 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return err
 	}
 
-	in := mergeInput{
-		records: records, sidecars: sidecars, localBlobs: localBlobs(inv.cfg.DBPath, records, app.Stat),
-		onConflict: policy, newID: app.NewID, now: app.Now(),
-		timelines: inv.timelines, lookupEnv: app.LookupEnv, logger: app.logger(),
+	in := merge.Input{
+		Records: records, Sidecars: sidecars, LocalBlobs: localBlobs(inv.Cfg.DBPath, records, app.Stat),
+		OnConflict: policy, NewID: app.NewID, Now: app.Now(),
+		Timelines: inv.Timelines, LookupEnv: app.LookupEnv, Logger: app.Logger(),
 	}
-	plan, err := mergeImport(ctx, app, inv.cfg.DBPath, in, dryRun)
+	plan, err := mergeImport(ctx, app, inv.Cfg.DBPath, in, dryRun)
 	if err != nil {
 		return err
 	}
-	if len(plan.problems) > 0 {
-		return invalidImportError(plan.problems, invalidImportHint)
+	if len(plan.Problems) > 0 {
+		return merge.InvalidImportError(plan.Problems, merge.InvalidImportHint)
 	}
-	if plan.takenName != "" {
-		return timelineNameTakenError(plan.takenName)
+	if plan.TakenName != "" {
+		return timelineNameTakenError(plan.TakenName)
 	}
 
-	if plan.canWrite() {
-		logImportPlan(ctx, withDryRun(app.logger(), dryRun), plan.decisions)
+	if plan.CanWrite() {
+		merge.LogImportPlan(ctx, clikit.WithDryRun(app.Logger(), dryRun), plan.Decisions)
 	}
-	plan.result.DryRun = dryRun
-	err = renderImport(inv.out, plan, dryRun || !plan.canWrite())
+	plan.Result.DryRun = dryRun
+	err = renderImport(inv.Out, plan, dryRun || !plan.CanWrite())
 	if err != nil {
 		return err
 	}
@@ -104,31 +103,11 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	return importBlockedError(plan)
 }
 
-// invalidImportError returns problems as one invalid_input error: how many records they name,
-// each problem's text before its first ": ", then the first few problems and
-// how many more there are, with hint.
-func invalidImportError(problems []string, hint string) *Error {
-	records := map[string]bool{}
-	for _, p := range problems {
-		record, _, _ := strings.Cut(p, ": ")
-		records[record] = true
-	}
-	header := fmt.Sprintf("%d records cannot be imported:", len(records))
-	if len(records) == 1 {
-		header = "1 record cannot be imported:"
-	}
-	lines := append([]string{header}, firstFew(problems, shownImportProblems)...)
-
-	return &Error{Kind: KindInvalidInput, Message: strings.Join(lines, "\n"), Hint: hint}
-}
-
-const invalidImportHint = "Nothing was imported. Fix those records, or export the file again."
-
 // timelineNameTakenError returns timeline_exists for an incoming timeline named name, which a
 // stored timeline with another id holds.
-func timelineNameTakenError(name string) *Error {
-	return &Error{
-		Kind:    KindTimelineExists,
+func timelineNameTakenError(name string) *clikit.Error {
+	return &clikit.Error{
+		Kind:    clikit.KindTimelineExists,
 		Message: fmt.Sprintf("timeline `%s` already exists here as another timeline, so nothing was imported", name),
 		Hint:    fmt.Sprintf("Rename it with 'coroner timeline edit %s --name <new-name>', then import again.", name),
 	}
@@ -136,22 +115,22 @@ func timelineNameTakenError(name string) *Error {
 
 // importBlockedError returns the id_conflict that stops plan from writing, or nil when nothing
 // blocks it.
-func importBlockedError(plan importPlan) error {
-	switch plan.blocked {
-	case blockConflicts:
-		return &Error{
-			Kind:    KindIDConflict,
-			Message: conflictCount(len(plan.result.Conflicts)) + " with what is stored, so nothing was imported",
+func importBlockedError(plan merge.ImportPlan) error {
+	switch plan.Blocked {
+	case merge.BlockConflicts:
+		return &clikit.Error{
+			Kind:    clikit.KindIDConflict,
+			Message: conflictCount(len(plan.Result.Conflicts)) + " with what is stored, so nothing was imported",
 			Hint:    "Pass --on-conflict skip to keep what is stored, or --on-conflict replace to take the import's.",
 		}
-	case blockUnreplaceable:
-		return &Error{
-			Kind: KindIDConflict,
-			Message: fmt.Sprintf("%d %s", len(plan.unreplaceable), pluralNoun(len(plan.unreplaceable), "record")) +
+	case merge.BlockUnreplaceable:
+		return &clikit.Error{
+			Kind: clikit.KindIDConflict,
+			Message: fmt.Sprintf("%d %s", len(plan.Unreplaceable), clikit.PluralNoun(len(plan.Unreplaceable), "record")) +
 				" cannot be replaced, so nothing was imported: an attachment or link never changes, and an event or annotation never moves",
 			Hint: "Pass --on-conflict skip to keep what is stored.",
 		}
-	case blockNone:
+	case merge.BlockNone:
 	}
 
 	return nil
@@ -166,46 +145,25 @@ func conflictCount(n int) string {
 	return fmt.Sprintf("%d records conflict", n)
 }
 
-// logImportPlan logs, for each record type and action, the count at info and each record's id
-// at debug.
-func logImportPlan(ctx context.Context, logger *slog.Logger, decisions []importDecision) {
-	for _, typ := range []string{"timeline", "source", "event", "annotation", "attachment", "link"} {
-		for _, action := range []importAction{importInserted, importSkipped, importReplaced} {
-			logCounted(ctx, logger, typ+"s "+string(action), idKey(typ), decidedIDs(decisions, typ, action))
-		}
-	}
-}
-
-// decidedIDs returns the ids of the records of type typ the plan decided action for.
-func decidedIDs(decisions []importDecision, typ string, action importAction) []string {
-	var ids []string
-	for _, d := range decisions {
-		if d.typ == typ && d.action == action {
-			ids = append(ids, d.id)
-		}
-	}
-	return ids
-}
-
 // mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens
 // the database read-only, migrating it first only when it is below the latest schema, and
 // plans against an empty one when it does not exist yet.
-func mergeImport(ctx context.Context, app App, dbPath string, in mergeInput, dryRun bool) (importPlan, error) {
-	var out mergeOutcome
-	mergeInto := func(mode mergeMode) func(*store.Store) error {
+func mergeImport(ctx context.Context, app clikit.App, dbPath string, in merge.Input, dryRun bool) (merge.ImportPlan, error) {
+	var out merge.Outcome
+	mergeInto := func(mode merge.Mode) func(*store.Store) error {
 		return func(s *store.Store) error {
 			var err error
-			out, err = merge(ctx, s, in, mode)
+			out, err = merge.Merge(ctx, s, in, mode)
 			return err
 		}
 	}
 	if !dryRun {
-		err := withStoreOpenedBy(ctx, app.OpenStore, dbPath, mergeInto(mergeWrite))
-		return out.plan, err
+		err := clikit.WithStoreOpenedBy(ctx, app.OpenStore, dbPath, mergeInto(merge.Write))
+		return out.Plan, err
 	}
 
 	migrate := false
-	err := withStoreOpenedBy(ctx, app.OpenStoreReadOnly, dbPath, func(s *store.Store) error {
+	err := clikit.WithStoreOpenedBy(ctx, app.OpenStoreReadOnly, dbPath, func(s *store.Store) error {
 		schema, err := s.Schema(ctx)
 		if err != nil {
 			return err
@@ -214,88 +172,35 @@ func mergeImport(ctx context.Context, app App, dbPath string, in mergeInput, dry
 		if migrate {
 			return nil
 		}
-		return mergeInto(mergePlanOnly)(s)
+		return mergeInto(merge.PlanOnly)(s)
 	})
 	if err == nil && migrate {
-		err = withStoreOpenedBy(ctx, app.OpenStore, dbPath, mergeInto(mergePlanOnly))
+		err = clikit.WithStoreOpenedBy(ctx, app.OpenStore, dbPath, mergeInto(merge.PlanOnly))
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		return out.plan, err
+		return out.Plan, err
 	}
-	err = in.timelines.withoutStore()
+	err = in.Timelines.WithoutStore()
 	if err != nil {
-		return importPlan{}, err
+		return merge.ImportPlan{}, err
 	}
 
-	return planImport(ctx, in.importInput, storedRecords{})
+	return merge.PlanImport(ctx, in.ImportInput, merge.StoredRecords{})
 }
 
 // readConflictPolicy returns the policy --on-conflict names.
-func readConflictPolicy(flags *pflag.FlagSet) (conflictPolicy, error) {
+func readConflictPolicy(flags *pflag.FlagSet) (merge.ConflictPolicy, error) {
 	value, _ := flags.GetString("on-conflict")
-	policy := conflictPolicy(value)
+	policy := merge.ConflictPolicy(value)
 	switch policy {
-	case onConflictFail, onConflictSkip, onConflictReplace:
+	case merge.OnConflictFail, merge.OnConflictSkip, merge.OnConflictReplace:
 		return policy, nil
 	}
 
-	return "", &Error{
-		Kind: KindUsage, Message: fmt.Sprintf("--on-conflict %q is not fail, skip or replace", value),
+	return "", &clikit.Error{
+		Kind: clikit.KindUsage, Message: fmt.Sprintf("--on-conflict %q is not fail, skip or replace", value),
 		Hint: "Pass --on-conflict fail, --on-conflict skip or --on-conflict replace.",
 	}
-}
-
-// jsonlSource is where JSONL records come from: the file at path, or stdin when path is -.
-type jsonlSource struct {
-	path       string
-	readFile   func(string) ([]byte, error)
-	stdin      io.Reader
-	stdinIsTTY bool
-}
-
-// readImportRecords reads and decodes the export src names, putting hint on a decode error. It
-// never reads a terminal stdin.
-func readImportRecords(logger *slog.Logger, src jsonlSource, hint string) ([]export.Record, error) {
-	path, stdin := src.path, src.stdin
-	switch {
-	case path == "-" && src.stdinIsTTY:
-		return nil, &Error{
-			Kind: KindUsage, Message: "- reads the export from stdin, which is a terminal",
-			Hint: "Pipe an export in, as in: cat inc-4821.jsonl | coroner import -",
-		}
-	case path != "-":
-		data, err := src.readFile(path)
-		if err != nil {
-			return nil, &Error{
-				Kind: KindUsage, Message: "cannot read " + path, Err: err,
-				Hint: "Pass an export file that exists and you can read, or - to read one from stdin.",
-			}
-		}
-		stdin = bytes.NewReader(data)
-	}
-
-	records, stats, err := export.Decode(stdin)
-	if invalid, ok := errors.AsType[*export.DecodeError](err); ok {
-		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: hint, Err: err}
-	}
-	if err != nil {
-		return nil, fmt.Errorf("read the export: %w", err)
-	}
-	logger.Debug("export decoded", "path", src.path, "lines", stats.Lines, "format_versions", stats.FormatVersions)
-
-	return records, nil
-}
-
-// sidecarBlobs returns the contents of the sidecars whose blob local does not hold.
-func sidecarBlobs(sidecars map[string][]byte, local map[string]bool) []io.Reader {
-	var blobs []io.Reader
-	for sha, content := range sidecars {
-		if !local[sha] {
-			blobs = append(blobs, bytes.NewReader(content))
-		}
-	}
-
-	return blobs
 }
 
 // readSidecars returns the content of the attachments' files in the attachments/ directory beside
@@ -343,7 +248,7 @@ func readSidecars(
 }
 
 func unreadableSidecar(path string, err error) error {
-	return &Error{Kind: KindUsage, Message: "cannot read " + path, Hint: "Check its permissions, then import again.", Err: err}
+	return &clikit.Error{Kind: clikit.KindUsage, Message: "cannot read " + path, Hint: "Check its permissions, then import again.", Err: err}
 }
 
 // localBlobs reports, by sha256, whether each attachment in records has its blob beside the
@@ -365,19 +270,19 @@ func localBlobs(dbPath string, records []export.Record, stat func(string) (fs.Fi
 
 // renderImport says on stderr what plan did, or would do when unwritten, and prints its result
 // object under --json.
-func renderImport(o output, plan importPlan, unwritten bool) error {
+func renderImport(o clikit.Output, plan merge.ImportPlan, unwritten bool) error {
 	verb := "Imported"
 	if unwritten {
 		verb = "Would import"
 	}
-	r := plan.result
+	r := plan.Result
 	lines := make([]string, 0, 8+len(r.Conflicts))
-	if n := len(plan.timelineNames); n > 0 {
-		lines = append(lines, fmt.Sprintf("%s into %s %s", verb, pluralNoun(n, "timeline"), codeList(plan.timelineNames)))
+	if n := len(plan.TimelineNames); n > 0 {
+		lines = append(lines, fmt.Sprintf("%s into %s %s", verb, clikit.PluralNoun(n, "timeline"), clikit.CodeList(plan.TimelineNames)))
 	}
 	for _, c := range []struct {
 		name   string
-		counts importCounts
+		counts merge.ImportCounts
 	}{
 		{"timelines", r.Timelines},
 		{"sources", r.Sources},
@@ -395,17 +300,17 @@ func renderImport(o output, plan importPlan, unwritten bool) error {
 	if n := len(r.MissingAttachments); n > 0 {
 		lines = append(lines, fmt.Sprintf(
 			"Left out %d %s whose files are neither beside the export nor in the database; import an export written with -o <directory>/ to bring them",
-			n, pluralNoun(n, "attachment")))
+			n, clikit.PluralNoun(n, "attachment")))
 	}
 
 	for _, line := range lines {
-		err := o.notify("%s", line)
+		err := o.Notify("%s", line)
 		if err != nil {
 			return err
 		}
 	}
-	if o.format == formatJSON {
-		return o.json(r)
+	if o.Format == clikit.FormatJSON {
+		return o.JSON(r)
 	}
 
 	return nil

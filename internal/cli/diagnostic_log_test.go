@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 )
@@ -88,7 +89,7 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	// run runs args against h, recording whether the command opened the database.
-	run := func(ctx context.Context, app cli.App) int {
+	run := func(ctx context.Context, app clikit.App) int {
 		openedTheDB = false
 		openStore, openReadOnly := app.OpenStore, app.OpenStoreReadOnly
 		app.OpenStore = func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error) {
@@ -260,7 +261,7 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	DescribeTable("changes nothing about a command when the log cannot be written",
-		func(ctx SpecContext, logSize int64, breakLog func(app *cli.App)) {
+		func(ctx SpecContext, logSize int64, breakLog func(app *clikit.App)) {
 			Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
 			out.Reset()
 			errOut.Reset()
@@ -290,7 +291,7 @@ var _ = Describe("diagnostic log", func() {
 			}
 			Expect(logPath + ".1").NotTo(BeAnExistingFile())
 		},
-		Entry("OpenFile fails for the log", int64(0), func(app *cli.App) {
+		Entry("OpenFile fails for the log", int64(0), func(app *clikit.App) {
 			open := app.OpenFile
 			app.OpenFile = func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error) {
 				if strings.HasSuffix(name, ".log") {
@@ -299,7 +300,7 @@ var _ = Describe("diagnostic log", func() {
 				return open(name, flag, perm)
 			}
 		}),
-		Entry("Rename fails for a log past the rotation size", int64(cli.LogRotateSize+1), func(app *cli.App) {
+		Entry("Rename fails for a log past the rotation size", int64(cli.LogRotateSize+1), func(app *clikit.App) {
 			app.Rename = func(string, string) error { return fs.ErrPermission }
 		}),
 	)

@@ -11,6 +11,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 )
@@ -29,12 +31,12 @@ func (u *unreadable) Read([]byte) (int, error) {
 var _ = Describe("timeline list on a terminal", func() {
 	var (
 		out, errOut bytes.Buffer
-		app         App
+		app         clikit.App
 		env         map[string]string
 		terminal    *unreadable
 	)
 
-	run := func(ctx SpecContext, a App, args ...string) int {
+	run := func(ctx SpecContext, a clikit.App, args ...string) int {
 		GinkgoHelper()
 		out.Reset()
 		errOut.Reset()
@@ -199,7 +201,7 @@ var _ = Describe("timeline list on a terminal", func() {
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)
 
-		rows, err := readTimelineRows(ctx, s)
+		rows, err := timelinecmd.ReadRows(ctx, s)
 
 		Expect(err).NotTo(HaveOccurred())
 		type summary struct {

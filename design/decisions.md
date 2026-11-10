@@ -37,15 +37,15 @@ Open items first, then the log, newest first.
   control's key on the control, hides the hints behind a setting and on touch screens.
 - **Viewer bold.** `newStyles()` in `internal/viewer/render.go` drops bold from the
   timeline name, the day breaks and the times, and keeps it on the gaps.
-- **Form icons.** `fieldIcon()`, `formFrame.edges()` and `suggestionsLabel` switch to Nerd
+- **Form icons.** `FieldIcon()`, `FormFrame.edges()` and `SuggestionsLabel` switch to Nerd
   Font glyphs where coroner can tell the terminal draws them. How it tells is still to
   decide: the terminals that bundle the symbols themselves, such as Ghostty and WezTerm,
   are the likely start, and any rule needs a way to force either choice.
-- **Command output.** On a colour terminal, `notify()` in `internal/cli/output.go` marks
-  each change with ✓ and each next command with →, and `writeError()` in
-  `internal/cli/errors.go` frames the error. The change goes through
-  [the command checklist](../docs/contributing/command-checklist.md), and docs pages that
-  show this output under a `console` prompt change with it.
+- **Command output.** On a colour terminal, `Output.Notify()` in
+  `internal/cli/clikit/output.go` marks each change with ✓ and each next command with →,
+  and `WriteError()` in `internal/cli/clikit/errors.go` frames the error. The change goes
+  through [the command checklist](../docs/contributing/command-checklist.md), and docs
+  pages that show this output under a `console` prompt change with it.
 - **Docs site.** `zensical.toml` takes its palette from the export's tokens.
 
 ## 2026-10-24: direction set

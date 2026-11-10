@@ -18,9 +18,9 @@ var prNumber = regexp.MustCompile(`\(#(\d+)\)$`)
 // stabilityWord matches the word filled in after stability:, whatever punctuation surrounds it.
 var stabilityWord = regexp.MustCompile(`stability:\W*(breaking|additive|experimental)\b`)
 
-// deprecationCall matches a line that calls deprecateCommand or deprecateFlag, and their
+// deprecationCall matches a line that calls DeprecateCommand or DeprecateFlag, and their
 // declarations, which parseDeprecations filters out.
-var deprecationCall = regexp.MustCompile(`deprecate(Command|Flag)\(`)
+var deprecationCall = regexp.MustCompile(`Deprecate(Command|Flag)\(`)
 
 type commit struct {
 	SHA     string `json:"sha"`
@@ -267,7 +267,7 @@ func parseNameStatus(out string) []contractFile {
 	return files
 }
 
-// parseDeprecations finds the deprecateCommand and deprecateFlag calls a git diff -U0 adds or
+// parseDeprecations finds the DeprecateCommand and DeprecateFlag calls a git diff -U0 adds or
 // removes. A call spans lines, so only its opening line is kept.
 func parseDeprecations(diff string) []deprecation {
 	var deprecations []deprecation
@@ -294,7 +294,7 @@ func parseDeprecations(diff string) []deprecation {
 			text, ok = strings.CutPrefix(line, "-")
 		}
 		text = strings.TrimSpace(text)
-		if ok && deprecationCall.MatchString(text) && !strings.HasPrefix(text, "func deprecate") {
+		if ok && deprecationCall.MatchString(text) && !strings.HasPrefix(text, "func Deprecate") {
 			deprecations = append(deprecations, deprecation{Change: change, Path: path, Line: text})
 		}
 	}

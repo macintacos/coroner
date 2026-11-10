@@ -4,17 +4,19 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
-func newAgentCommand(app App) *cobra.Command {
+func newAgentCommand(app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
 		Short: "Print what coding agents need to drive coroner",
 		Long: "coroner ships an Agent Skill that teaches coding agents to build timelines with flags and\n" +
 			"JSON. 'coroner agent skill' prints the one this binary was built with.",
-		GroupID: additionalCommands,
+		GroupID: clikit.AdditionalCommands,
 		Example: "  $ coroner agent skill",
-		RunE:    runNoun,
+		RunE:    clikit.RunNoun,
 	}
 
 	cmd.AddCommand(newAgentSkillCommand(app))
@@ -22,7 +24,7 @@ func newAgentCommand(app App) *cobra.Command {
 	return cmd
 }
 
-func newAgentSkillCommand(app App) *cobra.Command {
+func newAgentSkillCommand(app clikit.App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "skill",
 		Short: "Print the Agent Skill for this version of coroner",
@@ -30,7 +32,7 @@ func newAgentSkillCommand(app App) *cobra.Command {
 			"agent reads matches the commands it runs. Its references ship with the skill's directory\n" +
 			"in the repository, not in the binary.",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text", diagnosticLogAnnotation: "off"},
+		Annotations: map[string]string{clikit.FormatsAnnotation: "text", clikit.DiagnosticLogAnnotation: "off"},
 		Example: "  $ coroner agent skill\n" +
 			"  $ coroner agent skill | diff - ~/.claude/skills/coroner/SKILL.md",
 		RunE: func(*cobra.Command, []string) error {

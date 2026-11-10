@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/export"
 )
@@ -24,8 +25,8 @@ var _ = Describe("Run", func() {
 		env         map[string]string
 	)
 
-	newApp := func(args ...string) cli.App {
-		return cli.App{
+	newApp := func(args ...string) clikit.App {
+		return clikit.App{
 			Args:    args,
 			Out:     &out,
 			Err:     &errOut,
@@ -183,7 +184,7 @@ var _ = Describe("Run", func() {
 		})
 
 		It("names no help topic like a command, which help would then hide", func(ctx SpecContext) {
-			for _, cmd := range cli.NewRoot(ctx, cli.App{}).Commands() {
+			for _, cmd := range cli.NewRoot(ctx, clikit.App{}).Commands() {
 				Expect(cli.CommandTopics()).NotTo(ContainElement(HaveField("Name", cmd.Name())), cmd.Name())
 			}
 		})

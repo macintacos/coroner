@@ -1,27 +1,28 @@
 package cli
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"runtime/debug"
-	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-)
 
-const (
-	coreCommands       = "core"
-	additionalCommands = "additional"
+	"github.com/macintacos/coroner/internal/cli/annotation"
+	"github.com/macintacos/coroner/internal/cli/attachment"
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
+	"github.com/macintacos/coroner/internal/cli/overlay"
+	"github.com/macintacos/coroner/internal/cli/source"
+	"github.com/macintacos/coroner/internal/cli/tag"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 )
 
 // NewRoot builds coroner's command tree, whose commands run against app. Execute it only
 // through Run, which supplies its arguments, streams and exit codes. Commands use ctx, the
 // context Run executes them with, not cmd.Context(): contextcheck accepts only a context
 // that arrives as a parameter.
-func NewRoot(ctx context.Context, app App) *cobra.Command {
+func NewRoot(ctx context.Context, app clikit.App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "coroner <command> [flags]",
 		Short: "Build root-cause investigation timelines",
@@ -30,7 +31,7 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		Example: "  $ coroner timeline create checkout-outage --title \"Checkout outage\"\n" +
 			"  $ coroner event add -t checkout-outage \"Error rate crossed 5%\" --at 2026-09-11T03:14Z --source datadog\n" +
 			"  $ coroner event list -t checkout-outage",
-		Annotations: map[string]string{formatsAnnotation: "text,json"},
+		Annotations: map[string]string{clikit.FormatsAnnotation: "text,json"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion, _ := cmd.Flags().GetBool("version"); showVersion {
 				return writeVersion(cmd, app)
@@ -40,14 +41,14 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 		},
 	}
 
-	root.PersistentFlags().AddFlagSet(globalFlags())
+	root.PersistentFlags().AddFlagSet(clikit.GlobalFlags())
 	// Cobra's own Version field would print through OutOrStdout rather than app.Out.
 	root.Flags().Bool("version", false, "Show coroner's version")
 	// Run prints errors once, and usage only on request.
 	root.SilenceErrors = true
 	root.SilenceUsage = true
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		return usageError(cmd, err)
+		return clikit.UsageError(cmd, err)
 	})
 
 	topics := commandTopics()
@@ -59,20 +60,20 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 	})
 
 	root.AddGroup(
-		&cobra.Group{ID: coreCommands, Title: "CORE COMMANDS"},
-		&cobra.Group{ID: additionalCommands, Title: "ADDITIONAL COMMANDS"},
+		&cobra.Group{ID: clikit.CoreCommands, Title: "CORE COMMANDS"},
+		&cobra.Group{ID: clikit.AdditionalCommands, Title: "ADDITIONAL COMMANDS"},
 	)
-	root.SetCompletionCommandGroupID(additionalCommands)
+	root.SetCompletionCommandGroupID(clikit.AdditionalCommands)
 	root.AddCommand(
-		newVersionCommand(app), newTimelineCommand(ctx, app), newStatusCommand(ctx, app), newEventCommand(ctx, app),
-		newAnnotationCommand(ctx, app), newAttachmentCommand(ctx, app), newSourceCommand(ctx, app), newTagCommand(ctx, app),
-		newImportCommand(ctx, app), newOverlayCommand(ctx, app), newAgentCommand(app), newInternalCommand(ctx, app),
+		newVersionCommand(app), timelinecmd.NewCommand(ctx, app), newStatusCommand(ctx, app), event.NewCommand(ctx, app, timelinecmd.AskCreate),
+		annotation.NewCommand(ctx, app, timelinecmd.AskCreate), attachment.NewCommand(ctx, app), source.NewCommand(ctx, app), tag.NewCommand(ctx, app),
+		newImportCommand(ctx, app), overlay.NewCommand(ctx, app), newAgentCommand(app), newInternalCommand(ctx, app),
 	)
 
 	// Last, in this order: cobra adds help and completion only to a root with subcommands,
-	// and addTimelineCompletion and wrapRunErrors reach only the commands already added, so
+	// and AddTimelineCompletion and wrapRunErrors reach only the commands already added, so
 	// help, like --help, ignores --format and --json.
-	addTimelineCompletion(ctx, root, app)
+	clikit.AddTimelineCompletion(ctx, root, app)
 	addCompletionCommand(root, app)
 	wrapRunErrors(root)
 	addHelpCommand(root, app, topics)
@@ -80,44 +81,10 @@ func NewRoot(ctx context.Context, app App) *cobra.Command {
 	return root
 }
 
-// runNoun is the RunE of a command that only groups verbs. It prints help without a verb
-// and rejects an unknown one, which cobra checks only on root.
-func runNoun(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return cmd.Help()
-	}
-
-	message := fmt.Sprintf("unknown command %q for %q", args[0], cmd.CommandPath())
-	// cobra defaults the distance to 2 only when it suggests for root.
-	cmd.SuggestionsMinimumDistance = cmp.Or(cmd.SuggestionsMinimumDistance, 2)
-	if suggestions := cmd.SuggestionsFor(args[0]); len(suggestions) > 0 {
-		message += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t")
-	}
-
-	return usageError(cmd, errors.New(message))
-}
-
-// globalFlags declares the flags every command accepts. Each call returns a fresh set.
-func globalFlags() *pflag.FlagSet {
-	flags := pflag.NewFlagSet("global", pflag.ContinueOnError)
-	flags.String("db", "", "Database file `path` (env: CORONER_DB)")
-	flags.String("config", "", "Config file `path` (env: CORONER_CONFIG)")
-	flags.String("format", string(formatText), "Output `format`: {text | json | jsonl}, and more on timeline export")
-	flags.Bool("json", false, "Short for --format json")
-	flags.BoolP("quiet", "q", false, "Print only essential output")
-	flags.Bool("no-color", false, "Disable color (env: NO_COLOR, CORONER_NO_COLOR)")
-	flags.Bool("no-input", false, "Never open a form, picker or viewer (env: CORONER_NO_INPUT)")
-	flags.String("tz", "", tzUsage)
-	flags.Bool("debug", false, "Print debug detail on stderr (env: CORONER_DEBUG)")
-	flags.BoolP("help", "h", false, "Show help for a command")
-
-	return flags
-}
-
 // addCompletionCommand adds cobra's completion command now rather than at execution, so its
 // scripts go to app.Out: it captures root's OutOrStdout when added. Out is set for that call
 // only, before anything can print a deprecation notice through it.
-func addCompletionCommand(root *cobra.Command, app App) {
+func addCompletionCommand(root *cobra.Command, app clikit.App) {
 	root.SetOut(app.Out)
 	root.InitDefaultCompletionCmd()
 	root.SetOut(nil)
@@ -137,7 +104,7 @@ func addCompletionCommand(root *cobra.Command, app App) {
 			if cmd.Annotations == nil {
 				cmd.Annotations = map[string]string{}
 			}
-			cmd.Annotations[diagnosticLogAnnotation] = "off"
+			cmd.Annotations[clikit.DiagnosticLogAnnotation] = "off"
 			for _, shell := range cmd.Commands() {
 				shell.Example = examples[shell.Name()]
 			}
@@ -161,8 +128,8 @@ func wrapRunErrors(cmd *cobra.Command) {
 	if check := cmd.Args; check != nil {
 		cmd.Args = func(cmd *cobra.Command, args []string) error {
 			err := check(cmd, args)
-			if _, ok := errors.AsType[*Error](err); err != nil && !ok {
-				return argsError(cmd, err)
+			if _, ok := errors.AsType[*clikit.Error](err); err != nil && !ok {
+				return clikit.ArgsError(cmd, err)
 			}
 
 			return err
@@ -185,17 +152,17 @@ func wrapRunErrors(cmd *cobra.Command) {
 	}
 }
 
-// checkCommandLine accepts cmd's --format and --json through outputFormat, and its -t,
-// --overlay and positional timeline through readTimelineInput. A command with subcommands
+// checkCommandLine accepts cmd's --format and --json through OutputFormat, and its -t,
+// --overlay and positional timeline through ReadTimelineInput. A command with subcommands
 // prints only help or an error, so any format passes it.
 func checkCommandLine(cmd *cobra.Command, args []string) error {
 	if !cmd.HasSubCommands() {
-		_, err := outputFormat(cmd)
+		_, err := clikit.OutputFormat(cmd)
 		if err != nil {
 			return err
 		}
 	}
-	_, err := readTimelineInput(cmd.Flags(), args, ruleOf(cmd))
+	_, err := clikit.ReadTimelineInput(cmd.Flags(), args, clikit.RuleOf(cmd))
 
 	return err
 }
@@ -205,15 +172,15 @@ func typedHook(run func(*cobra.Command, []string) error) func(*cobra.Command, []
 	return func(cmd *cobra.Command, args []string) (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				err = &Error{
-					Kind:    KindInternal,
+				err = &clikit.Error{
+					Kind:    clikit.KindInternal,
 					Message: fmt.Sprintf("unexpected panic: %v", r),
-					Hint:    internalHint,
+					Hint:    clikit.InternalHint,
 					Err:     fmt.Errorf("%v\n%s", r, debug.Stack()),
 				}
 			}
 		}()
 
-		return asInternal(run(cmd, args))
+		return clikit.AsInternal(run(cmd, args))
 	}
 }

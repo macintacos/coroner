@@ -8,6 +8,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
 )
@@ -24,11 +26,11 @@ var _ = Describe("time input", func() {
 
 	DescribeTable("timeZone reads naive input in --tz, else the config default, labelled local for the local zone",
 		func(tz *string, defaultTimezone, wantZone, wantLabel string) {
-			got, err := timeZone(tz, defaultTimezone, local)
+			got, err := clikit.TimeZone(tz, defaultTimezone, local)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(got.loc.String()).To(Equal(wantZone))
-			Expect(got.label).To(Equal(wantLabel))
+			Expect(got.Loc.String()).To(Equal(wantZone))
+			Expect(got.Label).To(Equal(wantLabel))
 		},
 		Entry("local when the config default says so", nil, "local", "Test/Local", "local"),
 		Entry("the config default when --tz is not given", nil, "Asia/Tokyo", "Asia/Tokyo", "Asia/Tokyo"),
@@ -38,14 +40,14 @@ var _ = Describe("time input", func() {
 	)
 
 	It("timeZone reads UTC in any case as time.UTC, labelled UTC", func() {
-		Expect(timeZone(new("utc"), "local", local)).To(Equal(zone{loc: time.UTC, label: "UTC"}))
+		Expect(clikit.TimeZone(new("utc"), "local", local)).To(Equal(clikit.Zone{Loc: time.UTC, Label: "UTC"}))
 	})
 
 	DescribeTable("timeZone rejects a zone it cannot load as usage, naming where the zone came from",
 		func(tz *string, defaultTimezone, source string) {
-			_, err := timeZone(tz, defaultTimezone, local)
+			_, err := clikit.TimeZone(tz, defaultTimezone, local)
 
-			Expect(err).To(SatisfyAll(HaveField("Kind", KindUsage), MatchError(ContainSubstring(source))))
+			Expect(err).To(SatisfyAll(HaveField("Kind", clikit.KindUsage), MatchError(ContainSubstring(source))))
 		},
 		Entry("an empty --tz", new(""), "local", "--tz"),
 		Entry("an unknown --tz", new("Mars/Olympus"), "local", "--tz"),
@@ -56,7 +58,7 @@ var _ = Describe("time input", func() {
 		now := time.Date(2026, time.September, 13, 1, 30, 5, 123456789, time.UTC)
 
 		It("resolves no input to now at second precision, in loc's offset", func() {
-			got, err := resolveTime("--at", nil, now, loadZone("Asia/Tokyo"))
+			got, err := clikit.ResolveTime("--at", nil, now, loadZone("Asia/Tokyo"))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got.Instant).To(BeTemporally("==", time.Date(2026, time.September, 13, 1, 30, 5, 0, time.UTC)))
@@ -67,34 +69,34 @@ var _ = Describe("time input", func() {
 		})
 
 		It("keeps the offset an input states over loc's", func() {
-			got, err := resolveTime("--at", new("2026-09-11T03:14:07+02:00"), now, loadZone("Asia/Tokyo"))
+			got, err := clikit.ResolveTime("--at", new("2026-09-11T03:14:07+02:00"), now, loadZone("Asia/Tokyo"))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got.Offset).To(HaveValue(Equal(2 * 60 * 60)))
 		})
 
 		It("reads a naive wall clock in loc", func() {
-			got, err := resolveTime("--at", new("2026-09-11 03:14"), now, loadZone("Asia/Tokyo"))
+			got, err := clikit.ResolveTime("--at", new("2026-09-11 03:14"), now, loadZone("Asia/Tokyo"))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(got.Instant).To(BeTemporally("==", time.Date(2026, time.September, 10, 18, 14, 0, 0, time.UTC)))
 		})
 
 		It("rejects a wall clock a DST change skips as invalid_time, naming the flag and the offsets", func() {
-			_, err := resolveTime("--ended", new("2026-03-08 02:30"), now, loadZone("America/New_York"))
+			_, err := clikit.ResolveTime("--ended", new("2026-03-08 02:30"), now, loadZone("America/New_York"))
 
 			Expect(err).To(SatisfyAll(
-				HaveField("Kind", KindInvalidTime),
+				HaveField("Kind", clikit.KindInvalidTime),
 				MatchError(ContainSubstring("--ended")),
 				HaveField("Hint", ContainSubstring("-05:00"))))
 		})
 
 		DescribeTable("rejects an instant outside the years 0000 to 9999 in UTC as invalid_time, naming the flag",
 			func(input string) {
-				_, err := resolveTime("--at", &input, now, time.UTC)
+				_, err := clikit.ResolveTime("--at", &input, now, time.UTC)
 
 				Expect(err).To(SatisfyAll(
-					HaveField("Kind", KindInvalidTime),
+					HaveField("Kind", clikit.KindInvalidTime),
 					MatchError(ContainSubstring("--at")),
 					HaveField("Hint", ContainSubstring("0000 to 9999"))))
 			},
@@ -105,10 +107,10 @@ var _ = Describe("time input", func() {
 
 	DescribeTable("formatResolved shows the UTC instant to its precision, then the wall clock in any zone but UTC",
 		func(r timeparse.Resolved, zoneName, want string) {
-			z, err := timeZone(&zoneName, "local", local)
+			z, err := clikit.TimeZone(&zoneName, "local", local)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(formatResolved(r, z)).To(Equal(want))
+			Expect(clikit.FormatResolved(r, z)).To(Equal(want))
 		},
 		Entry("milliseconds, in local",
 			resolved(412_000_000, timeline.PrecisionMillisecond, false), "local",
@@ -138,7 +140,7 @@ var _ = Describe("time input", func() {
 			newYork, err := time.LoadLocation("America/New_York")
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(occurredText(e, zone{loc: newYork, label: "America/New_York"})).To(Equal(want))
+			Expect(clikit.OccurredText(e, clikit.Zone{Loc: newYork, Label: "America/New_York"})).To(Equal(want))
 		},
 		Entry("a day recorded in UTC", "2026-09-11T00:00:00Z", timeline.PrecisionDay, 0,
 			"2026-09-11T00:00:00Z"),
@@ -150,12 +152,12 @@ var _ = Describe("time input", func() {
 
 	DescribeTable("event add's time previews show what a time resolves to in the zone, or why its check rejects it",
 		func(name, input string, want types.GomegaMatcher) {
-			z, err := timeZone(new("America/New_York"), "local", local)
+			z, err := clikit.TimeZone(new("America/New_York"), "local", local)
 			Expect(err).NotTo(HaveOccurred())
-			found := fieldNamed(eventAddDefinition(), name)
+			found := fieldNamed(event.AddDefinition(), name)
 
 			// testNow is 2026-09-12T17:30:00-04:00.
-			Expect(found.preview(input, checkEnv{now: testNow(), zone: z})).To(want)
+			Expect(found.Preview(input, clikit.CheckEnv{Now: testNow(), Zone: z})).To(want)
 		},
 		Entry("RFC 3339", "at", "2026-09-11T03:14:07Z",
 			Equal("2026-09-11T03:14:07Z (-04:00 America/New_York: 23:14:07), second precision")),
@@ -171,20 +173,20 @@ var _ = Describe("time input", func() {
 		Entry("a DST gap's rejection, then its hint naming the offsets", "ended", "2026-03-08 02:30",
 			MatchRegexp(`^--ended: .+\n.*-05:00`)),
 		Entry("an approximate --ended's rejection, then its hint", "ended", "~ 2026-09-11 14:20",
-			Equal("--ended must not be approximate\n"+addedEndedHint)),
+			Equal("--ended must not be approximate\n"+event.AddedEndedHint)),
 	)
 
 	It("timePreview shows an error that carries no hint as its text", func() {
-		Expect(timePreview(timeparse.Resolved{}, errors.New("disk on fire"), zone{loc: time.UTC, label: "UTC"})).
+		Expect(clikit.TimePreview(timeparse.Resolved{}, errors.New("disk on fire"), clikit.Zone{Loc: time.UTC, Label: "UTC"})).
 			To(Equal("disk on fire"))
 	})
 
 	DescribeTable("displayTime shows an instant's wall clock in the zone, to its precision, with the zone's offset",
 		func(nanos int, precision timeline.Precision, zoneName, want string) {
-			z, err := timeZone(&zoneName, "local", local)
+			z, err := clikit.TimeZone(&zoneName, "local", local)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(displayTime(resolved(nanos, precision, false).Instant, precision, z)).To(Equal(want))
+			Expect(clikit.DisplayTime(resolved(nanos, precision, false).Instant, precision, z)).To(Equal(want))
 		},
 		Entry("seconds, in local", 0, timeline.PrecisionSecond, "local", "2026-09-11T00:14:07-03:00"),
 		Entry("milliseconds, across midnight in a named zone",

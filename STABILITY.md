@@ -123,11 +123,11 @@ removing it outright.
 
 1. **Deprecate it in favour of something at least as stable.** A stable element is never
    deprecated in favour of an experimental one.
-2. **Warn whenever the command line parses.** Mark the command with `deprecateCommand` or
-   the flag with `deprecateFlag`
-   ([`internal/cli/deprecation.go`](internal/cli/deprecation.go)). Each panics on a notice
-   that does not name the replacement, the earliest removal version and the earliest
-   removal date, and cobra prints the notice on stderr:
+2. **Warn whenever the command line parses.** Mark the command with `DeprecateCommand` or
+   the flag with `DeprecateFlag`
+   ([`internal/cli/clikit/deprecation.go`](internal/cli/clikit/deprecation.go)). Each
+   panics on a notice that does not name the replacement, the earliest removal version and
+   the earliest removal date, and cobra prints the notice on stderr:
 
    ```text
    Flag --old-name has been deprecated, use --new-name instead; it may be removed in v0.9.0 or later, and no earlier than 2027-03-14

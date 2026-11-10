@@ -21,6 +21,6 @@
    where its start is. Every event is still filed under the day its instant falls on in
    the zone, so a part on another day shows its date.
 5. **Two surfaces keep their own rules:** plain-text output's RFC 3339 times
-   (`displayTime` in `internal/cli/timeinput.go`), which scripts read and which take only
-   `Location` from here, and the HTML page's `internal/export/html/viewer.js`, until the
-   page reads its times from this package.
+   (`DisplayTime` in `internal/cli/clikit/timeinput.go`), which scripts read and which
+   take only `Location` from here, and the HTML page's `internal/export/html/viewer.js`,
+   until the page reads its times from this package.

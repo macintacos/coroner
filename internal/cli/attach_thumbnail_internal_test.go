@@ -14,11 +14,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/graphics"
 )
 
 var _ = Describe("the attach field's thumbnail", func() {
-	attach := definition{fields: []field{attachField()}}
+	attach := clikit.Definition{Fields: []clikit.Field{clikit.AttachField()}}
 	var dir string
 
 	writeFile := func(name string, content []byte) string {
@@ -35,8 +36,8 @@ var _ = Describe("the attach field's thumbnail", func() {
 	}
 	fieldReading := func(readFile func(string) ([]byte, error), images graphics.Protocol) huh.Field {
 		GinkgoHelper()
-		choices := formChoices{thumbnails: map[string]func(string) (string, tea.Cmd){"attach": attachThumbnail(readFile, images)}}
-		return namedField(attach.formFields(formCheckEnv(), fieldValues{}, choices), "attach")
+		choices := clikit.FormChoices{Thumbnails: map[string]func(string) (string, tea.Cmd){"attach": clikit.AttachThumbnail(readFile, images)}}
+		return namedField(attach.FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "attach")
 	}
 	osField := func(images graphics.Protocol) huh.Field {
 		GinkgoHelper()
@@ -146,7 +147,7 @@ var _ = Describe("the attach field's thumbnail", func() {
 
 	DescribeTable("the color profile a form pins",
 		func(color bool, images graphics.Protocol, attach bool, want colorprofile.Profile) {
-			Expect(formProfile(color, images, attach)).To(Equal(want))
+			Expect(clikit.FormProfile(color, images, attach)).To(Equal(want))
 		},
 		Entry("16 colors", true, graphics.None, true, colorprofile.ANSI),
 		Entry("24-bit color for an attach field where images show, since an image's id travels as a color",

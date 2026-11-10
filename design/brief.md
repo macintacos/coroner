@@ -22,8 +22,8 @@ the keyboard.
 | HTML export: timeline, filters, event detail, draft comments | `internal/export/html/`, `internal/export/theme.go` | Read, then comment |
 | SVG export, a still picture pasted into other pages | `internal/export/svg/`, `internal/export/svg.go` | Read |
 | Terminal viewer (`timeline view`) and picker (`timeline list`) | `internal/viewer/` | Operate |
-| Forms (`event add`, `annotation add`, `timeline create`, `timeline edit`) | `internal/cli/add_form.go`, `internal/cli/form.go` | Operate |
-| Command output: confirmations, next steps, errors | `internal/cli/output.go`, `internal/cli/errors.go` | Operate |
+| Forms (`event add`, `annotation add`, `timeline create`, `timeline edit`) | `internal/cli/clikit/add_form.go`, `internal/cli/clikit/form.go` | Operate |
+| Command output: confirmations, next steps, errors | `internal/cli/clikit/output.go`, `internal/cli/clikit/errors.go` | Operate |
 | Docs site | `docs/`, `zensical.toml` | Read |
 
 ## Direction

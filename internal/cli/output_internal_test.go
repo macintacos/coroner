@@ -11,6 +11,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli/annotation"
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -19,7 +22,7 @@ var _ = Describe("output.rows", func() {
 	It("aligns columns on a terminal", func() {
 		var out bytes.Buffer
 
-		Expect(output{out: &out, outTTY: true}.rows([][]string{{"*", "a", "x"}, {"", "long-name", "y"}})).To(Succeed())
+		Expect(clikit.Output{Out: &out, OutTTY: true}.Rows([][]string{{"*", "a", "x"}, {"", "long-name", "y"}})).To(Succeed())
 
 		Expect(out.String()).To(Equal("*  a          x\n   long-name  y\n"))
 	})
@@ -28,7 +31,7 @@ var _ = Describe("output.rows", func() {
 		func(tty bool, field, want string) {
 			var out bytes.Buffer
 
-			Expect(output{out: &out, outTTY: tty}.rows([][]string{{field}})).To(Succeed())
+			Expect(clikit.Output{Out: &out, OutTTY: tty}.Rows([][]string{{field}})).To(Succeed())
 
 			Expect(out.String()).To(Equal(want + "\n"))
 		},
@@ -92,28 +95,28 @@ var _ = Describe("command record objects", func() {
 	DescribeTable("encode under --json as their export record's JSONL keys and values, then their output-only keys",
 		func(object, record any, outputOnly []json.Token) {
 			var cli, jsonl bytes.Buffer
-			Expect(writeJSON(&cli, false, object)).To(Succeed())
+			Expect(clikit.WriteJSON(&cli, false, object)).To(Succeed())
 			Expect(export.Write(&jsonl, record)).To(Succeed())
 			want := tokens(jsonl.Bytes())
 			Expect(tokens(cli.Bytes())).To(Equal(slices.Insert(want, len(want)-1, outputOnly...)))
 		},
-		Entry("an event with every field set", newEventJSON(fullEvent, nil), export.NewEvent(fullEvent), attachments),
-		Entry("an event with no seq, no tags and every nullable field null", newEventJSON(bareEvent, nil), export.NewEvent(bareEvent), attachments),
-		Entry("an annotation on an event with every field set", newAnnotationJSON(fullAnnotation, nil), export.NewAnnotation(fullAnnotation), attachments),
-		Entry("an annotation on its whole timeline with every nullable field null", newAnnotationJSON(bareAnnotation, nil), export.NewAnnotation(bareAnnotation), attachments),
-		Entry("a timeline with refs", newTimelineJSON(refsTimeline), export.NewTimeline(refsTimeline), nil),
-		Entry("a timeline with nil refs", newTimelineJSON(bareTimeline), export.NewTimeline(bareTimeline), nil),
+		Entry("an event with every field set", event.NewJSON(fullEvent, nil), export.NewEvent(fullEvent), attachments),
+		Entry("an event with no seq, no tags and every nullable field null", event.NewJSON(bareEvent, nil), export.NewEvent(bareEvent), attachments),
+		Entry("an annotation on an event with every field set", annotation.NewJSON(fullAnnotation, nil), export.NewAnnotation(fullAnnotation), attachments),
+		Entry("an annotation on its whole timeline with every nullable field null", annotation.NewJSON(bareAnnotation, nil), export.NewAnnotation(bareAnnotation), attachments),
+		Entry("a timeline with refs", clikit.NewTimelineJSON(refsTimeline), export.NewTimeline(refsTimeline), nil),
+		Entry("a timeline with nil refs", clikit.NewTimelineJSON(bareTimeline), export.NewTimeline(bareTimeline), nil),
 		Entry("a link with an author", export.NewLink(authoredLink), export.NewLink(authoredLink), nil),
 		Entry("a link with no author", export.NewLink(bareLink), export.NewLink(bareLink), nil),
 	)
 
 	It("encodes a record with no tags or refs as [] under --json", func() {
-		var event, tl bytes.Buffer
+		var ev, tl bytes.Buffer
 
-		Expect(writeJSON(&event, false, newEventJSON(bareEvent, nil))).To(Succeed())
-		Expect(writeJSON(&tl, false, newTimelineJSON(bareTimeline))).To(Succeed())
+		Expect(clikit.WriteJSON(&ev, false, event.NewJSON(bareEvent, nil))).To(Succeed())
+		Expect(clikit.WriteJSON(&tl, false, clikit.NewTimelineJSON(bareTimeline))).To(Succeed())
 
-		Expect(event.String()).To(ContainSubstring(`"tags":[]`))
+		Expect(ev.String()).To(ContainSubstring(`"tags":[]`))
 		Expect(tl.String()).To(ContainSubstring(`"refs":[]`))
 	})
 })

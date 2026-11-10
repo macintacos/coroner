@@ -8,6 +8,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/merge"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -55,7 +57,7 @@ var _ = Describe("eventDiff", func() {
 			incoming := stored()
 			change(&incoming)
 
-			Expect(eventDiff(stored(), incoming, keyCreatedAt, keyUpdatedAt)).To(HaveExactElements(want))
+			Expect(merge.EventDiff(stored(), incoming, clikit.KeyCreatedAt, clikit.KeyUpdatedAt)).To(HaveExactElements(want))
 		},
 		Entry("none when only what the store sets differs: seq, created and updated at", func(e *timeline.Event) {
 			e.Seq = 0
@@ -78,7 +80,7 @@ var _ = Describe("eventDiff", func() {
 		incoming := stored()
 		incoming.Seq = 9
 
-		Expect(eventDiff(stored(), incoming)).To(BeEmpty())
+		Expect(merge.EventDiff(stored(), incoming)).To(BeEmpty())
 	})
 
 	It("ignores the keys it is told to", func() {
@@ -86,14 +88,14 @@ var _ = Describe("eventDiff", func() {
 		incoming.Text = "Election timeout on db-4"
 		incoming.UpdatedAt = incoming.UpdatedAt.Add(time.Hour)
 
-		Expect(eventDiff(stored(), incoming, keyUpdatedAt)).To(Equal([]string{"text"}))
-		Expect(eventDiff(stored(), incoming)).To(Equal([]string{"text", "updated_at"}))
+		Expect(merge.EventDiff(stored(), incoming, clikit.KeyUpdatedAt)).To(Equal([]string{"text"}))
+		Expect(merge.EventDiff(stored(), incoming)).To(Equal([]string{"text", "updated_at"}))
 	})
 
 	It("compares tags sorted and once each", func() {
 		incoming := stored()
 		incoming.Tags = []string{"phase:detect", "election", "election"}
 
-		Expect(eventDiff(stored(), incoming)).To(BeEmpty())
+		Expect(merge.EventDiff(stored(), incoming)).To(BeEmpty())
 	})
 })

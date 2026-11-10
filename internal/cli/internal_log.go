@@ -15,10 +15,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/config"
 )
 
-func newInternalLogCommand(ctx context.Context, app App) *cobra.Command {
+func newInternalLogCommand(ctx context.Context, app clikit.App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "log",
 		Short: "Print the diagnostic log as text",
@@ -31,29 +32,25 @@ func newInternalLogCommand(ctx context.Context, app App) *cobra.Command {
 			"  $ coroner __internal log --level warn\n" +
 			"  $ coroner __internal log --command \"event add\" --since \"2026-09-11T03:00Z\" --until \"2026-09-11T04:00Z\"",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text"},
+		Annotations: map[string]string{clikit.FormatsAnnotation: "text"},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			inv, err := readInvocation(cmd, app)
+			inv, z, err := clikit.ReadInvocationInZone(cmd, app)
 			if err != nil {
 				return err
 			}
-			z, err := inv.zone()
-			if err != nil {
-				return err
-			}
-			filter, err := readLogFilter(app.logger(), cmd, inv.now(), z)
+			filter, err := readLogFilter(app.Logger(), cmd, inv.Now(), z)
 			if err != nil {
 				return err
 			}
 
-			path := config.DiagnosticLogPath(inv.cfg.DBPath)
-			p := logPrinter{open: app.Open, out: inv.out.out, keep: filter, loc: z.loc}
+			path := config.DiagnosticLogPath(inv.Cfg.DBPath)
+			p := logPrinter{open: app.Open, out: inv.Out.Out, keep: filter, loc: z.Loc}
 			printed, err := p.printFiles(ctx, path+".1", path)
 			if err != nil || printed {
 				return err
 			}
 
-			return inv.out.notify("No diagnostic log at %s yet; coroner writes it once a command opens that database.", path)
+			return inv.Out.Notify("No diagnostic log at %s yet; coroner writes it once a command opens that database.", path)
 		},
 	}
 
@@ -81,22 +78,22 @@ func (f *logFilter) keeps(line logLine) bool {
 }
 
 // readLogFilter returns the filter cmd's flags ask for.
-func readLogFilter(logger *slog.Logger, cmd *cobra.Command, now time.Time, z zone) (logFilter, error) {
+func readLogFilter(logger *slog.Logger, cmd *cobra.Command, now time.Time, z clikit.Zone) (logFilter, error) {
 	flags := cmd.Flags()
 	var f logFilter
-	err := f.readLevel(changedString(flags, "level"))
+	err := f.readLevel(clikit.ChangedString(flags, "level"))
 	if err != nil {
 		return f, err
 	}
-	f.command, err = readCommandPath(cmd.Root(), changedString(flags, "command"))
+	f.command, err = readCommandPath(cmd.Root(), clikit.ChangedString(flags, "command"))
 	if err != nil {
 		return f, err
 	}
-	f.since, _, err = readBound(logger, flags, "since", now, z)
+	f.since, _, err = clikit.ReadBound(logger, flags, "since", now, z)
 	if err != nil {
 		return f, err
 	}
-	f.until, _, err = readBound(logger, flags, "until", now, z)
+	f.until, _, err = clikit.ReadBound(logger, flags, "until", now, z)
 
 	return f, err
 }
@@ -110,8 +107,8 @@ func (f *logFilter) readLevel(value *string) error {
 	var level slog.Level
 	err := level.UnmarshalText([]byte(*value))
 	if err != nil {
-		return &Error{
-			Kind: KindUsage, Message: fmt.Sprintf("--level %q is not debug, info, warn or error", *value), Hint: "Pass --level debug, info, warn or error.",
+		return &clikit.Error{
+			Kind: clikit.KindUsage, Message: fmt.Sprintf("--level %q is not debug, info, warn or error", *value), Hint: "Pass --level debug, info, warn or error.",
 		}
 	}
 	f.level = &level
@@ -127,8 +124,8 @@ func readCommandPath(root *cobra.Command, value *string) (string, error) {
 
 	found, rest, err := root.Find(strings.Fields(*value))
 	if err != nil || len(rest) > 0 || found == root {
-		return "", &Error{
-			Kind: KindUsage, Message: fmt.Sprintf("--command %q names no coroner command", *value), Hint: "Pass a command path below coroner, as --command \"event add\".",
+		return "", &clikit.Error{
+			Kind: clikit.KindUsage, Message: fmt.Sprintf("--command %q names no coroner command", *value), Hint: "Pass a command path below coroner, as --command \"event add\".",
 		}
 	}
 
@@ -263,8 +260,8 @@ func (p logPrinter) printFile(ctx context.Context, name string) (bool, error) {
 	return true, errors.Join(p.printLines(ctx, file, name), file.Close())
 }
 
-func unreadableLog(name string, err error) *Error {
-	return &Error{Kind: KindUsage, Message: "cannot read " + name, Hint: "Check that the path is a file you can read.", Err: err}
+func unreadableLog(name string, err error) *clikit.Error {
+	return &clikit.Error{Kind: clikit.KindUsage, Message: "cannot read " + name, Hint: "Check that the path is a file you can read.", Err: err}
 }
 
 // printLines reads the file name from r line by line, writing each kept line before reading the next.
@@ -291,7 +288,7 @@ func (p logPrinter) printLine(ctx context.Context, raw []byte) error {
 	line, ok := parseLogLine(raw)
 	if !ok {
 		var b strings.Builder
-		writeEscaped(&b, string(raw))
+		clikit.WriteEscaped(&b, string(raw))
 		b.WriteByte('\n')
 		_, err := io.WriteString(p.out, b.String())
 		return err

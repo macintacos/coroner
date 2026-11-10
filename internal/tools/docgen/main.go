@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra/doc"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 const outDir = "docs/reference/cli"
@@ -40,7 +41,7 @@ func main() {
 	}
 
 	// A zero App is enough: rendering pages runs no command.
-	ref := reference{root: cli.NewRoot(context.Background(), cli.App{}), topics: cli.HelpTopics()}
+	ref := reference{root: cli.NewRoot(context.Background(), clikit.App{}), topics: cli.HelpTopics()}
 
 	var err error
 	switch {

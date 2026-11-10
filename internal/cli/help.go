@@ -8,6 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 // helpTemplate renders help for any command.
@@ -59,7 +61,7 @@ GLOBAL FLAGS
 
 LEARN MORE
   Use ` + "`coroner <command> --help`" + ` for more information about a command.
-  Report bugs and send feedback at ` + issuesURL + `
+  Report bugs and send feedback at ` + clikit.IssuesURL + `
 `
 
 func newHelpTemplate(topics []HelpTopic) *template.Template {
@@ -134,11 +136,11 @@ func namePadding(cmd *cobra.Command, topics []HelpTopic) int {
 
 // addHelpCommand adds the help command, which prints a help topic, or else a command's
 // help. Topics are not commands, so a topic's name never becomes a runnable one.
-func addHelpCommand(root *cobra.Command, app App, topics []HelpTopic) {
+func addHelpCommand(root *cobra.Command, app clikit.App, topics []HelpTopic) {
 	root.SetHelpCommand(&cobra.Command{
 		Use:     "help [<command> | <topic>]",
 		Short:   "Help about any command or topic",
-		GroupID: additionalCommands,
+		GroupID: clikit.AdditionalCommands,
 		Example: "  $ coroner help\n  $ coroner help version\n  $ coroner help time\n  $ coroner help reference",
 		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 			var completions []cobra.Completion
@@ -204,7 +206,7 @@ func helpNames(root *cobra.Command, args []string, topics []HelpTopic) []helpNam
 	return names
 }
 
-func unknownHelpError(root *cobra.Command, name string, topics []HelpTopic, err error) *Error {
+func unknownHelpError(root *cobra.Command, name string, topics []HelpTopic, err error) *clikit.Error {
 	names := helpNames(root, nil, topics)
 	candidates := make([]string, len(names))
 	for i, candidate := range names {
@@ -216,8 +218,8 @@ func unknownHelpError(root *cobra.Command, name string, topics []HelpTopic, err 
 		hint = fmt.Sprintf("Did you mean '%s help %s'?", root.Name(), suggestion)
 	}
 
-	return &Error{
-		Kind:    KindUsage,
+	return &clikit.Error{
+		Kind:    clikit.KindUsage,
 		Message: fmt.Sprintf("unknown help topic or command %q", name),
 		Hint:    hint,
 		Err:     err,

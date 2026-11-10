@@ -13,61 +13,66 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/cli/annotation"
+	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/event"
+	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 )
 
 var _ = Describe("form fields", func() {
-	eventOptions := formChoices{options: map[string][]huh.Option[string]{
+	eventOptions := clikit.FormChoices{Options: map[string][]huh.Option[string]{
 		"event": {huh.NewOption("none (the whole timeline)", ""), huh.NewOption("#12  Primary stepped down", "12")},
 	}}
 	kinds := []huh.Option[string]{huh.NewOption("evidence", "evidence"), huh.NewOption("comment", "comment")}
-	kindOptions := formChoices{options: map[string][]huh.Option[string]{"kind": kinds}}
-	every := fieldValues{
+	kindOptions := clikit.FormChoices{Options: map[string][]huh.Option[string]{"kind": kinds}}
+	every := clikit.FieldValues{
 		"timeline": {"mongo-outage"}, "text": {"Primary stepped down"}, "tz": {"America/New_York"},
 		"at": {"2026-09-11 03:14"}, "approximate": {"true"}, "source": {"mongod"},
 		"tag": {"election", "phase:detect"}, "dry-run": {"true"},
 	}
 
 	DescribeTable("give back the values they hold as the command line would give them",
-		func(def definition, in fieldValues, choices formChoices, want fieldValues) {
-			Expect(def.formValues(def.formFields(formCheckEnv(), in, choices))).To(Equal(want))
+		func(def clikit.Definition, in clikit.FieldValues, choices clikit.FormChoices, want clikit.FieldValues) {
+			Expect(def.FormValues(def.FormFields(formCheckEnv(), in, choices))).To(Equal(want))
 		},
-		Entry("every value they open with", eventAddDefinition(), every, formChoices{}, every),
-		Entry("only the non-blank lines of a repeatable field", eventAddDefinition(),
-			fieldValues{"tag": {"election", "", " ", "phase:detect"}}, formChoices{},
-			fieldValues{"tag": {"election", "phase:detect"}}),
-		Entry("nothing for a confirm left false", eventAddDefinition(),
-			fieldValues{"approximate": {"false"}, "dry-run": {"false"}}, formChoices{}, fieldValues{}),
-		Entry("nothing for an empty input", eventAddDefinition(),
-			fieldValues{"url": {""}}, formChoices{}, fieldValues{}),
-		Entry("nothing for a select on an empty option", annotationAddDefinition(),
-			fieldValues{}, eventOptions, fieldValues{}),
-		Entry("a select's chosen option", annotationAddDefinition(),
-			fieldValues{"event": {"12"}}, eventOptions, fieldValues{"event": {"12"}}),
-		Entry("a select's first option when it opens blank", annotationAddDefinition(),
-			fieldValues{}, kindOptions, fieldValues{"kind": {"evidence"}}),
-		Entry("an event no option holds, for its check to judge", annotationAddDefinition(),
-			fieldValues{"event": {"mongo-outage#12"}}, eventOptions, fieldValues{"event": {"mongo-outage#12"}}),
-		Entry("a kind no option holds, for its check to judge", annotationAddDefinition(),
-			fieldValues{"kind": {"Evidence"}}, kindOptions, fieldValues{"kind": {"Evidence"}}),
-		Entry("the positional argument as one value", annotationAddDefinition(),
-			fieldValues{"body": {"Step-down lands 5 s after the COLLSCAN burst"}}, formChoices{},
-			fieldValues{"body": {"Step-down lands 5 s after the COLLSCAN burst"}}),
+		Entry("every value they open with", event.AddDefinition(), every, clikit.FormChoices{}, every),
+		Entry("only the non-blank lines of a repeatable field", event.AddDefinition(),
+			clikit.FieldValues{"tag": {"election", "", " ", "phase:detect"}}, clikit.FormChoices{},
+			clikit.FieldValues{"tag": {"election", "phase:detect"}}),
+		Entry("nothing for a confirm left false", event.AddDefinition(),
+			clikit.FieldValues{"approximate": {"false"}, "dry-run": {"false"}}, clikit.FormChoices{}, clikit.FieldValues{}),
+		Entry("nothing for an empty input", event.AddDefinition(),
+			clikit.FieldValues{"url": {""}}, clikit.FormChoices{}, clikit.FieldValues{}),
+		Entry("nothing for a select on an empty option", annotation.AddDefinition(),
+			clikit.FieldValues{}, eventOptions, clikit.FieldValues{}),
+		Entry("a select's chosen option", annotation.AddDefinition(),
+			clikit.FieldValues{"event": {"12"}}, eventOptions, clikit.FieldValues{"event": {"12"}}),
+		Entry("a select's first option when it opens blank", annotation.AddDefinition(),
+			clikit.FieldValues{}, kindOptions, clikit.FieldValues{"kind": {"evidence"}}),
+		Entry("an event no option holds, for its check to judge", annotation.AddDefinition(),
+			clikit.FieldValues{"event": {"mongo-outage#12"}}, eventOptions, clikit.FieldValues{"event": {"mongo-outage#12"}}),
+		Entry("a kind no option holds, for its check to judge", annotation.AddDefinition(),
+			clikit.FieldValues{"kind": {"Evidence"}}, kindOptions, clikit.FieldValues{"kind": {"Evidence"}}),
+		Entry("the positional argument as one value", annotation.AddDefinition(),
+			clikit.FieldValues{"body": {"Step-down lands 5 s after the COLLSCAN burst"}}, clikit.FormChoices{},
+			clikit.FieldValues{"body": {"Step-down lands 5 s after the COLLSCAN burst"}}),
 	)
 
 	It("mark a required field and refuse it blank", func() {
-		choices := formChoices{options: map[string][]huh.Option[string]{
+		choices := clikit.FormChoices{Options: map[string][]huh.Option[string]{
 			"kind": append([]huh.Option[string]{huh.NewOption("choose…", "")}, kinds...),
 		}}
-		kind := namedField(annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "kind")
+		kind := namedField(annotation.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "kind")
 
 		kind.Blur()
 
-		Expect(kind.Error()).To(SatisfyAll(HaveField("Kind", KindUsage), MatchError("kind is required")))
+		Expect(kind.Error()).To(SatisfyAll(HaveField("Kind", clikit.KindUsage), MatchError("kind is required")))
 		Expect(fieldView(kind)).To(ContainSubstring("kind (required)"))
 	})
 
 	It("title each event add field for people", func() {
-		fields := eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, formChoices{})
+		fields := event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 
 		for name, title := range map[string]string{
 			"text": "What happened (required)", "at": "When", "source": "Source", "tag": "Tags", "attach": "Files", "url": "url",
@@ -77,29 +82,29 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("head the timeline picker of each form command 📒 Timeline", func() {
-		for _, def := range []definition{eventAddDefinition(), annotationAddDefinition(), timelineEditDefinition()} {
-			picker := onlyField(def, "timeline").formFields(formCheckEnv(), fieldValues{}, formChoices{})
+		for _, def := range []clikit.Definition{event.AddDefinition(), annotation.AddDefinition(), timelinecmd.EditDefinition()} {
+			picker := clikit.OnlyField(def, "timeline").FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 
 			Expect(fieldView(namedField(picker, "timeline"))).To(ContainSubstring("📒 Timeline"))
 		}
 	})
 
 	It("head each field of the form commands with an icon before its title", func() {
-		forms := []definition{
-			withoutField(eventAddDefinition(), "id"), annotationAddDefinition(),
-			withoutField(timelineCreateDefinition(), "if-not-exists"), timelineEditFormDefinition(nil),
+		forms := []clikit.Definition{
+			clikit.WithoutField(event.AddDefinition(), "id"), annotation.AddDefinition(),
+			clikit.WithoutField(timelinecmd.CreateDefinition(), "if-not-exists"), timelinecmd.EditFormDefinition(nil),
 		}
 		for _, def := range forms {
-			for i, formField := range def.formFields(formCheckEnv(), fieldValues{}, formChoices{}) {
-				f := def.fields[i]
-				Expect(fieldIcon(f.name)).NotTo(BeEmpty(), f.name)
-				Expect(fieldView(formField)).To(ContainSubstring(fieldIcon(f.name)+" "+f.formTitle()), f.name)
+			for i, formField := range def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}) {
+				f := def.Fields[i]
+				Expect(clikit.FieldIcon(f.Name)).NotTo(BeEmpty(), f.Name)
+				Expect(fieldView(formField)).To(ContainSubstring(clikit.FieldIcon(f.Name)+" "+f.FormTitle()), f.Name)
 			}
 		}
 	})
 
 	It("frame a form's view in a border as wide as asked, with its title set into the top edge and a blank row under it", func() {
-		lines := strings.Split(ansi.Strip(frame(frameEdges{title: "📝 New event"}, "What happened\n> Primary stepped down", 40)), "\n")
+		lines := strings.Split(ansi.Strip(clikit.Frame(clikit.FrameEdges{Title: "📝 New event"}, "What happened\n> Primary stepped down", 40)), "\n")
 
 		Expect(lines).To(HaveLen(5))
 		Expect(lines[0]).To(HavePrefix("╭─ 📝 New event ─"))
@@ -113,7 +118,7 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("clip a line wider than the frame's inside, so the frame keeps the rows the form planned", func() {
-		lines := strings.Split(ansi.Strip(frame(frameEdges{title: "📝 New event"}, strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
+		lines := strings.Split(ansi.Strip(clikit.Frame(clikit.FrameEdges{Title: "📝 New event"}, strings.Repeat("x", 50)+"\n> typed", 40)), "\n")
 
 		Expect(lines).To(HaveLen(5))
 		Expect(lines[3]).To(HavePrefix("│ > typed"))
@@ -123,11 +128,11 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("set an edge's pieces into its right end, two spaces apart", func() {
-		edges := frameEdges{
-			title: "📝 New event", top: []string{"📒 inc-4821", "ctrl+t switch"}, bottom: []string{"✓ 2 events added", "esc finish"},
+		edges := clikit.FrameEdges{
+			Title: "📝 New event", Top: []string{"📒 inc-4821", "ctrl+t switch"}, Bottom: []string{"✓ 2 events added", "esc finish"},
 		}
 
-		lines := strings.Split(ansi.Strip(frame(edges, "What happened", 80)), "\n")
+		lines := strings.Split(ansi.Strip(clikit.Frame(edges, "What happened", 80)), "\n")
 
 		Expect(lines[0]).To(Equal("╭─ 📝 New event " + strings.Repeat("─", 34) + " 📒 inc-4821  ctrl+t switch ─╮"))
 		Expect(lines[len(lines)-1]).To(Equal("╰" + strings.Repeat("─", 47) + " ✓ 2 events added  esc finish ─╯"))
@@ -137,11 +142,11 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("drop an edge's last pieces, then cut the first short, where the edge is too narrow, keeping a rule cell", func() {
-		edges := frameEdges{
-			title: "📝 New event", top: []string{"📒 inc-4821", "ctrl+t switch"}, bottom: []string{"✓ 2 events added", "esc finish"},
+		edges := clikit.FrameEdges{
+			Title: "📝 New event", Top: []string{"📒 inc-4821", "ctrl+t switch"}, Bottom: []string{"✓ 2 events added", "esc finish"},
 		}
 
-		lines := strings.Split(ansi.Strip(frame(edges, "What happened", 30)), "\n")
+		lines := strings.Split(ansi.Strip(clikit.Frame(edges, "What happened", 30)), "\n")
 
 		Expect(lines[0]).To(Equal("╭─ 📝 New event ─ 📒 inc-4… ─╮"))
 		Expect(lines[len(lines)-1]).To(Equal("╰" + strings.Repeat("─", 9) + " ✓ 2 events added ─╯"))
@@ -151,30 +156,30 @@ var _ = Describe("form fields", func() {
 	})
 
 	DescribeTable("show an add session's timeline and the records it added in the edges of each form it asks",
-		func(f formFrame, title string, top, bottom []string) {
-			edges := f.edges("📝 New event")
+		func(f clikit.FormFrame, title string, top, bottom []string) {
+			edges := f.Edges("📝 New event")
 
-			Expect(edges.title).To(Equal(title))
-			Expect(stripped(edges.top)).To(Equal(top))
-			Expect(stripped(edges.bottom)).To(Equal(bottom))
+			Expect(edges.Title).To(Equal(title))
+			Expect(stripped(edges.Top)).To(Equal(top))
+			Expect(stripped(edges.Bottom)).To(Equal(bottom))
 		},
 		Entry("an entry before any was added",
-			formFrame{timeline: "inc-4821", entry: true, noun: "event"}, "📝 New event",
+			clikit.FormFrame{Timeline: "inc-4821", Entry: true, Noun: "event"}, "📝 New event",
 			[]string{"📒 inc-4821", "ctrl+t switch"}, nil),
 		Entry("an entry after two were added",
-			formFrame{timeline: "inc-4821", entry: true, added: 2, noun: "event"}, "📝 New event",
+			clikit.FormFrame{Timeline: "inc-4821", Entry: true, Added: 2, Noun: "event"}, "📝 New event",
 			[]string{"📒 inc-4821", "ctrl+t switch"}, []string{"✓ 2 events added", "esc finish"}),
 		Entry("Add another",
-			formFrame{timeline: "inc-4821", added: 2, noun: "event"}, "📝 New event", []string{"📒 inc-4821"}, []string{"✓ 2 events added"}),
+			clikit.FormFrame{Timeline: "inc-4821", Added: 2, Noun: "event"}, "📝 New event", []string{"📒 inc-4821"}, []string{"✓ 2 events added"}),
 		Entry("the timeline picker",
-			formFrame{added: 1, noun: "annotation"}, "📝 New event", nil, []string{"✓ 1 annotation added"}),
+			clikit.FormFrame{Added: 1, Noun: "annotation"}, "📝 New event", nil, []string{"✓ 1 annotation added"}),
 		Entry("the new timeline form",
-			formFrame{title: "📒 New timeline", added: 1, noun: "event"}, "📒 New timeline", nil, []string{"✓ 1 event added"}),
-		Entry("the first timeline picker", formFrame{}, "📝 New event", nil, nil),
+			clikit.FormFrame{Title: "📒 New timeline", Added: 1, Noun: "event"}, "📒 New timeline", nil, []string{"✓ 1 event added"}),
+		Entry("the first timeline picker", clikit.FormFrame{}, "📝 New event", nil, nil),
 	)
 
 	It("frame a form at most 80 cells wide on a wider terminal", func() {
-		form := newForm(frameEdges{title: "📝 New event"}, formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+		form := clikit.NewForm(clikit.FrameEdges{Title: "📝 New event"}, clikit.FormGroup{Fields: []huh.Field{huh.NewInput().Title("What happened")}})
 
 		form.Update(tea.WindowSizeMsg{Width: 200, Height: 20})
 
@@ -184,7 +189,7 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("draw a blank row between the output above a form and its frame", func() {
-		form := newForm(frameEdges{title: "📝 New event"}, formGroup{fields: []huh.Field{huh.NewInput().Title("What happened")}})
+		form := clikit.NewForm(clikit.FrameEdges{Title: "📝 New event"}, clikit.FormGroup{Fields: []huh.Field{huh.NewInput().Title("What happened")}})
 
 		form.Update(tea.WindowSizeMsg{Width: 60, Height: 20})
 
@@ -194,66 +199,66 @@ var _ = Describe("form fields", func() {
 	})
 
 	Describe("event add's groups", func() {
-		def := withoutField(eventAddDefinition(), "id")
-		groupsFor := func(in fieldValues) []formGroup {
-			return def.formGroups(def.formFields(formCheckEnv(), in, formChoices{}), in)
+		def := clikit.WithoutField(event.AddDefinition(), "id")
+		groupsFor := func(in clikit.FieldValues) []clikit.FormGroup {
+			return def.FormGroups(def.FormFields(formCheckEnv(), in, clikit.FormChoices{}), in)
 		}
 
 		It("show the fields most events use first, and the rest behind More options", func() {
-			groups := groupsFor(fieldValues{})
+			groups := groupsFor(clikit.FieldValues{})
 
 			Expect(groups).To(HaveLen(2))
-			Expect(fieldKeys(groups[0].fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
-			Expect(fieldKeys(groups[1].fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "dry-run"}))
-			Expect(fieldView(namedField(groups[0].fields, "more-options"))).To(
+			Expect(fieldKeys(groups[0].Fields)).To(Equal([]string{"timeline", "text", "at", "source", "tag", "attach", "more-options"}))
+			Expect(fieldKeys(groups[1].Fields)).To(Equal([]string{"tz", "ended", "approximate", "url", "author", "dry-run"}))
+			Expect(fieldView(namedField(groups[0].Fields, "more-options"))).To(
 				ContainSubstring("tz, ended, approximate, url, author, dry-run"))
 		})
 
 		It("hide the More options fields until it is Yes", func() {
-			groups := groupsFor(fieldValues{})
-			Expect(groups[1].hide()).To(BeTrue())
+			groups := groupsFor(clikit.FieldValues{})
+			Expect(groups[1].Hide()).To(BeTrue())
 
-			fill(groups[0].fields, map[string]string{"more-options": "true"})
+			fill(groups[0].Fields, map[string]string{"more-options": "true"})
 
-			Expect(groups[1].hide()).To(BeFalse())
+			Expect(groups[1].Hide()).To(BeFalse())
 		})
 
 		It("open More options when a field behind it holds a value", func() {
-			groups := groupsFor(fieldValues{"url": {"https://e.example"}})
+			groups := groupsFor(clikit.FieldValues{"url": {"https://e.example"}})
 
-			Expect(namedField(groups[0].fields, "more-options").GetValue()).To(BeTrue())
-			Expect(groups[1].hide()).To(BeFalse())
+			Expect(namedField(groups[0].Fields, "more-options").GetValue()).To(BeTrue())
+			Expect(groups[1].Hide()).To(BeFalse())
 		})
 	})
 
 	It("keep one group for annotation add, timeline create and timeline edit", func() {
-		for _, def := range []definition{annotationAddDefinition(), timelineCreateDefinition(), timelineEditDefinition()} {
-			fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+		for _, def := range []clikit.Definition{annotation.AddDefinition(), timelinecmd.CreateDefinition(), timelinecmd.EditDefinition()} {
+			fields := def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 
-			groups := def.formGroups(fields, fieldValues{})
+			groups := def.FormGroups(fields, clikit.FieldValues{})
 
 			Expect(groups).To(HaveLen(1))
-			Expect(groups[0].fields).To(Equal(fields))
-			Expect(groups[0].hide).To(BeNil())
+			Expect(groups[0].Fields).To(Equal(fields))
+			Expect(groups[0].Hide).To(BeNil())
 		}
 	})
 
 	It("read a line holding only spaces as no value, and check only the others", func() {
-		def := eventEditDefinition()
-		fields := def.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+		def := event.EditDefinition()
+		fields := def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 		tag := namedField(fields, "add-tag")
 		typeInto(tag, "election\n  ")
 
 		tag.Blur()
 
 		Expect(tag.Error()).NotTo(HaveOccurred())
-		Expect(def.formValues(fields)).To(HaveKeyWithValue("add-tag", []string{"election"}))
+		Expect(def.FormValues(fields)).To(HaveKeyWithValue("add-tag", []string{"election"}))
 	})
 
 	It("pick from options in a select, and suggest in an input", func() {
 		choices := eventOptions
-		choices.suggestions = map[string][]string{"source": {"mongod", "slack"}}
-		fields := annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices)
+		choices.Suggestions = map[string][]string{"source": {"mongod", "slack"}}
+		fields := annotation.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices)
 
 		event := namedField(fields, "event")
 		Expect(event).To(BeAssignableToTypeOf(&huh.Select[string]{}))
@@ -269,10 +274,10 @@ var _ = Describe("form fields", func() {
 	Describe("a time field", func() {
 		// 02:30 on 2026-03-08 is a wall clock New York's DST change skips, and a real time in UTC.
 		const gap = "2026-03-08 02:30"
-		utc := checkEnv{now: testNow(), zone: zone{loc: time.UTC, label: "UTC"}}
+		utc := clikit.CheckEnv{Now: testNow(), Zone: clikit.Zone{Loc: time.UTC, Label: "UTC"}}
 
 		It("checks its time in the zone typed into the form", func() {
-			fields := eventAddDefinition().formFields(utc, fieldValues{}, formChoices{})
+			fields := event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{})
 			at := namedField(fields, "at")
 			typeInto(at, gap)
 
@@ -281,12 +286,12 @@ var _ = Describe("form fields", func() {
 
 			typeInto(namedField(fields, "tz"), "America/New_York")
 			at.Blur()
-			Expect(at.Error()).To(HaveField("Kind", KindInvalidTime))
+			Expect(at.Error()).To(HaveField("Kind", clikit.KindInvalidTime))
 		})
 
 		DescribeTable("previews its time under its help, in the zone typed into the form",
 			func(tz, want string) {
-				fields := eventAddDefinition().formFields(utc, fieldValues{}, formChoices{})
+				fields := event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{})
 				at := namedField(fields, "at")
 				typeInto(at, gap)
 				typeInto(namedField(fields, "tz"), tz)
@@ -298,20 +303,20 @@ var _ = Describe("form fields", func() {
 		)
 
 		It("preview the time in the zone typed into the zone field", func() {
-			fields := eventAddDefinition().formFields(utc, fieldValues{}, formChoices{})
+			fields := event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{})
 			typeInto(namedField(fields, "at"), "03:25")
 			tz := namedField(fields, "tz")
 			typeInto(tz, "Asia/Tokyo")
 
 			Expect(renderedDescription(tz)).To(ContainSubstring("(+09:00 Asia/Tokyo: 03:25:00)"))
 
-			unknown := namedField(eventAddDefinition().formFields(utc, fieldValues{}, formChoices{}), "tz")
+			unknown := namedField(event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{}), "tz")
 			typeInto(unknown, "Mars/Olympus")
-			Expect(renderedDescription(unknown)).To(ContainSubstring(zoneHint))
+			Expect(renderedDescription(unknown)).To(ContainSubstring(clikit.ZoneHint))
 		})
 
 		It("shows a failing check's hint under the help of a field with no preview", func() {
-			source := namedField(eventAddDefinition().formFields(utc, fieldValues{}, formChoices{}), "source")
+			source := namedField(event.AddDefinition().FormFields(utc, clikit.FieldValues{}, clikit.FormChoices{}), "source")
 			typeInto(source, "DB 2")
 
 			Expect(renderedDescription(source)).To(ContainSubstring("Did you mean `db-2`?"))
@@ -319,27 +324,27 @@ var _ = Describe("form fields", func() {
 	})
 
 	Describe("a list field", func() {
-		rejectBad := withoutEnv(func(ref string) error {
+		rejectBad := clikit.WithoutEnv(func(ref string) error {
 			if ref == "Bad Ref" {
 				return errors.New("bad ref")
 			}
 			return nil
 		})
-		refs := definition{fields: []field{{name: "ref", typ: stringsField, list: true, usage: "Ticket key or URL", check: rejectBad}}}
+		refs := clikit.Definition{Fields: []clikit.Field{{Name: "ref", Typ: clikit.StringsField, List: true, Usage: "Ticket key or URL", Check: rejectBad}}}
 
 		It("adds each value typed and entered, once, after the values it opens with", func() {
-			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 
 			enter(ref, "INC-2")
 			enter(ref, "INC-1")
 
-			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1", "INC-2"}}))
+			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1", "INC-2"}}))
 			Expect(fieldView(ref)).To(SatisfyAll(ContainSubstring("Ticket key or URL"), ContainSubstring("INC-2")))
 		})
 
 		It("moves on when enter finds nothing typed, and stays while it adds", func() {
-			ref := namedField(refs.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "ref")
+			ref := namedField(refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "ref")
 			ref.WithKeyMap(huh.NewDefaultKeyMap())
 
 			typeInto(ref, "INC-1")
@@ -353,46 +358,46 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("removes the value up picks, counting back from the last", func() {
-			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1", "INC-2", "INC-3"}}, formChoices{})
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1", "INC-2", "INC-3"}}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 
 			press(ref, tea.KeyUp, tea.KeyUp)
 			Expect(fieldView(ref)).To(SatisfyAll(ContainSubstring("× INC-2"), ContainSubstring("✓ INC-3")))
 			press(ref, tea.KeyBackspace)
 
-			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1", "INC-3"}}))
+			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1", "INC-3"}}))
 		})
 
 		It("goes back to typing when down passes the last value", func() {
-			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 
 			press(ref, tea.KeyUp, tea.KeyDown, tea.KeyBackspace)
 
-			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1"}}))
+			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1"}}))
 			Expect(fieldView(ref)).NotTo(ContainSubstring("×"))
 		})
 
 		It("adds a value left typed when it loses focus", func() {
-			fields := refs.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 			typeInto(ref, "INC-1")
 
 			ref.Blur()
 
 			Expect(ref.Error()).NotTo(HaveOccurred())
-			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"INC-1"}}))
+			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"INC-1"}}))
 		})
 
 		It("gives back a value it opens with unchanged, even one holding a newline", func() {
-			in := fieldValues{"ref": {"INC-1\nfollow-up"}}
+			in := clikit.FieldValues{"ref": {"INC-1\nfollow-up"}}
 
-			Expect(refs.formValues(refs.formFields(formCheckEnv(), in, formChoices{}))).To(Equal(in))
+			Expect(refs.FormValues(refs.FormFields(formCheckEnv(), in, clikit.FormChoices{}))).To(Equal(in))
 		})
 
 		It("shows the last five values while typing, and five around the picked one, counting the rest", func() {
-			in := fieldValues{"ref": {"INC-1", "INC-2", "INC-3", "INC-4", "INC-5", "INC-6", "INC-7", "INC-8"}}
-			ref := namedField(refs.formFields(formCheckEnv(), in, formChoices{}), "ref")
+			in := clikit.FieldValues{"ref": {"INC-1", "INC-2", "INC-3", "INC-4", "INC-5", "INC-6", "INC-7", "INC-8"}}
+			ref := namedField(refs.FormFields(formCheckEnv(), in, clikit.FormChoices{}), "ref")
 
 			Expect(fieldView(ref)).To(SatisfyAll(
 				ContainSubstring("… 3 more"), ContainSubstring("INC-4"), ContainSubstring("INC-8"), Not(ContainSubstring("INC-3"))))
@@ -403,7 +408,7 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("shows in its help only the keys that act on what it holds", func() {
-			ref := namedField(refs.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "ref")
+			ref := namedField(refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "ref")
 			ref.WithKeyMap(huh.NewDefaultKeyMap())
 			Expect(helpKeys(ref)).To(Equal([]string{"shift+tab back", "enter submit", "enter next"}))
 
@@ -418,8 +423,8 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("keeps its typing line on screen inside a form after a dozen values", func() {
-			def := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}, refs.fields[0]}}
-			form := huh.NewForm(huh.NewGroup(def.formFields(formCheckEnv(), fieldValues{}, formChoices{})...))
+			def := clikit.Definition{Fields: []clikit.Field{{Name: "name", Arg: true, Check: clikit.WithoutEnv(timelinecmd.CheckName), Suggest: timelinecmd.SuggestName}, refs.Fields[0]}}
+			form := huh.NewForm(huh.NewGroup(def.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})...))
 			size := tea.WindowSizeMsg{Width: 100, Height: 12}
 			form.Init()
 			form.Update(size)
@@ -438,8 +443,8 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("suggests nothing for the empty input after an add", func() {
-			choices := formChoices{suggestions: map[string][]string{"ref": {"election", "escalation"}}}
-			fields := refs.formFields(formCheckEnv(), fieldValues{}, choices)
+			choices := clikit.FormChoices{Suggestions: map[string][]string{"ref": {"election", "escalation"}}}
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{}, choices)
 			ref := namedField(fields, "ref")
 			ref.WithKeyMap(huh.NewDefaultKeyMap())
 			ref.Focus()
@@ -451,11 +456,11 @@ var _ = Describe("form fields", func() {
 			ref.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 			press(ref, tea.KeyEnter)
 
-			Expect(refs.formValues(fields)).To(Equal(fieldValues{"ref": {"e"}}))
+			Expect(refs.FormValues(fields)).To(Equal(clikit.FieldValues{"ref": {"e"}}))
 		})
 
 		It("picks values with up and down only while nothing is typed", func() {
-			fields := refs.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1"}}, formChoices{})
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1"}}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 			typeInto(ref, "INC-2")
 
@@ -465,23 +470,23 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("picks timeline create's refs with up and down", func() {
-			def := timelineCreateDefinition()
-			fields := def.formFields(formCheckEnv(), fieldValues{"ref": {"INC-1", "INC-2"}}, formChoices{})
+			def := timelinecmd.CreateDefinition()
+			fields := def.FormFields(formCheckEnv(), clikit.FieldValues{"ref": {"INC-1", "INC-2"}}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 
 			press(ref, tea.KeyUp, tea.KeyBackspace)
 
-			Expect(def.formValues(fields)["ref"]).To(Equal([]string{"INC-1"}))
+			Expect(def.FormValues(fields)["ref"]).To(Equal([]string{"INC-1"}))
 		})
 
 		It("refuses a value its check rejects, and adds nothing", func() {
-			fields := refs.formFields(formCheckEnv(), fieldValues{}, formChoices{})
+			fields := refs.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{})
 			ref := namedField(fields, "ref")
 
 			enter(ref, "Bad Ref")
 
 			Expect(ref.Error()).To(MatchError("bad ref"))
-			Expect(refs.formValues(fields)).To(BeEmpty())
+			Expect(refs.FormValues(fields)).To(BeEmpty())
 		})
 	})
 
@@ -489,8 +494,8 @@ var _ = Describe("form fields", func() {
 		seven := []string{"db-1", "db-2", "db-3", "db-4", "db-5", "db-6", "db-7"}
 		sourceWith := func(suggestions ...string) huh.Field {
 			GinkgoHelper()
-			choices := formChoices{suggestions: map[string][]string{"source": suggestions}}
-			source := namedField(annotationAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "source")
+			choices := clikit.FormChoices{Suggestions: map[string][]string{"source": suggestions}}
+			source := namedField(annotation.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "source")
 			source.WithKeyMap(huh.NewDefaultKeyMap())
 			source.Focus()
 
@@ -498,8 +503,8 @@ var _ = Describe("form fields", func() {
 		}
 		tagWith := func(suggestions ...string) huh.Field {
 			GinkgoHelper()
-			choices := formChoices{suggestions: map[string][]string{"tag": suggestions}}
-			tag := namedField(eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "tag")
+			choices := clikit.FormChoices{Suggestions: map[string][]string{"tag": suggestions}}
+			tag := namedField(event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "tag")
 			tag.WithKeyMap(huh.NewDefaultKeyMap())
 			tag.Focus()
 
@@ -515,7 +520,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(source, "MON")
 
-			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring(suggestionsLabel+"Mongod · mongos"), Not(ContainSubstring("slack"))))
+			Expect(fieldView(source)).To(SatisfyAll(ContainSubstring(clikit.SuggestionsLabel+"Mongod · mongos"), Not(ContainSubstring("slack"))))
 		})
 
 		It("keeps the match up and down cycle to in its window", func() {
@@ -523,11 +528,11 @@ var _ = Describe("form fields", func() {
 			typeText(source, "db")
 
 			press(source, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown, tea.KeyDown)
-			Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
+			Expect(fieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
 			ctrlE(source)
 
 			Expect(source.GetValue()).To(Equal("db-7"))
-			Expect(fieldView(source)).To(ContainSubstring(suggestionsLabel + "db-7"))
+			Expect(fieldView(source)).To(ContainSubstring(clikit.SuggestionsLabel + "db-7"))
 		})
 
 		It("wraps up and down around the matches, as the inline suggestion does", func() {
@@ -540,21 +545,21 @@ var _ = Describe("form fields", func() {
 			up := sourceWith(seven...)
 			typeText(up, "db")
 			press(up, tea.KeyUp)
-			Expect(fieldView(up)).To(ContainSubstring(suggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
+			Expect(fieldView(up)).To(ContainSubstring(clikit.SuggestionsLabel + "db-3 · db-4 · db-5 · db-6 · db-7"))
 			ctrlE(up)
 			Expect(up.GetValue()).To(Equal("db-7"))
 		})
 
 		It("shows the first five suggestions again once a list field adds what was typed on leaving", func() {
-			choices := formChoices{suggestions: map[string][]string{"tag": {"election", "escalation", "edge"}}}
-			tag := namedField(eventAddDefinition().formFields(formCheckEnv(), fieldValues{}, choices), "tag")
+			choices := clikit.FormChoices{Suggestions: map[string][]string{"tag": {"election", "escalation", "edge"}}}
+			tag := namedField(event.AddDefinition().FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "tag")
 			tag.WithKeyMap(huh.NewDefaultKeyMap())
 			tag.Focus()
 			typeText(tag, "el")
 
 			tag.Blur()
 
-			Expect(fieldView(tag)).To(ContainSubstring(suggestionsLabel + "election · escalation · edge"))
+			Expect(fieldView(tag)).To(ContainSubstring(clikit.SuggestionsLabel + "election · escalation · edge"))
 		})
 
 		It("matches what a paste leaves in a list field", func() {
@@ -580,11 +585,11 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("opens a suggested field that comes before the tz field", func() {
-			source := field{name: "source", usage: "System it came from", check: withoutEnv(checkSource)}
-			def := definition{fields: []field{source, tzField()}}
-			choices := formChoices{suggestions: map[string][]string{"source": {"mongod"}}}
+			source := clikit.Field{Name: "source", Usage: "System it came from", Check: clikit.WithoutEnv(clikit.CheckSource)}
+			def := clikit.Definition{Fields: []clikit.Field{source, clikit.TzField()}}
+			choices := clikit.FormChoices{Suggestions: map[string][]string{"source": {"mongod"}}}
 
-			Expect(func() { def.formFields(formCheckEnv(), fieldValues{}, choices) }).NotTo(Panic())
+			Expect(func() { def.FormFields(formCheckEnv(), clikit.FieldValues{}, choices) }).NotTo(Panic())
 		})
 
 		It("shows no row when nothing matches", func() {
@@ -592,7 +597,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(source, "zz")
 
-			Expect(fieldView(source)).NotTo(ContainSubstring(suggestionsLabel))
+			Expect(fieldView(source)).NotTo(ContainSubstring(clikit.SuggestionsLabel))
 		})
 
 		It("names the cycling keys in its help only while something matches", func() {
@@ -605,12 +610,12 @@ var _ = Describe("form fields", func() {
 		})
 
 		It("binds ctrl+e once on every field of the form commands", func() {
-			choices := formChoices{suggestions: map[string][]string{"source": {"mongod"}, "tag": {"election"}}}
-			for _, def := range []definition{
-				eventAddDefinition(), annotationAddDefinition(), timelineCreateDefinition(), timelineEditDefinition(),
+			choices := clikit.FormChoices{Suggestions: map[string][]string{"source": {"mongod"}, "tag": {"election"}}}
+			for _, def := range []clikit.Definition{
+				event.AddDefinition(), annotation.AddDefinition(), timelinecmd.CreateDefinition(), timelinecmd.EditDefinition(),
 			} {
-				in := fieldValues{"source": {"mongo"}, "name": {"Mongo Outage"}}
-				for _, formField := range def.formFields(formCheckEnv(), in, choices) {
+				in := clikit.FieldValues{"source": {"mongo"}, "name": {"Mongo Outage"}}
+				for _, formField := range def.FormFields(formCheckEnv(), in, choices) {
 					formField.WithKeyMap(huh.NewDefaultKeyMap())
 					bound := 0
 					for _, binding := range formField.KeyBinds() {
@@ -634,9 +639,9 @@ var _ = Describe("form fields", func() {
 					return !strings.HasPrefix(entry, typed)
 				})
 			}
-			def := definition{fields: []field{{name: "path", typ: stringsField, list: true, usage: "Files to attach"}}}
-			choices := formChoices{completions: map[string]func(string) []string{"path": complete}}
-			path := namedField(def.formFields(formCheckEnv(), fieldValues{}, choices), "path")
+			def := clikit.Definition{Fields: []clikit.Field{{Name: "path", Typ: clikit.StringsField, List: true, Usage: "Files to attach"}}}
+			choices := clikit.FormChoices{Completions: map[string]func(string) []string{"path": complete}}
+			path := namedField(def.FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "path")
 			path.WithKeyMap(huh.NewDefaultKeyMap())
 			path.Focus()
 
@@ -648,7 +653,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(path, "fi")
 
-			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring(suggestionsLabel+"files/"), ContainSubstring("> files/")))
+			Expect(fieldView(path)).To(SatisfyAll(ContainSubstring(clikit.SuggestionsLabel+"files/"), ContainSubstring("> files/")))
 		})
 
 		It("completes what a paste leaves", func() {
@@ -674,9 +679,9 @@ var _ = Describe("form fields", func() {
 		It("completes nothing again for a key that leaves the typed text as it was", func() {
 			calls := 0
 			complete := func(string) []string { calls++; return []string{"files/p99.png", "files/q01.png"} }
-			def := definition{fields: []field{{name: "path", typ: stringsField, list: true, usage: "Files to attach"}}}
-			choices := formChoices{completions: map[string]func(string) []string{"path": complete}}
-			path := namedField(def.formFields(formCheckEnv(), fieldValues{}, choices), "path")
+			def := clikit.Definition{Fields: []clikit.Field{{Name: "path", Typ: clikit.StringsField, List: true, Usage: "Files to attach"}}}
+			choices := clikit.FormChoices{Completions: map[string]func(string) []string{"path": complete}}
+			path := namedField(def.FormFields(formCheckEnv(), clikit.FieldValues{}, choices), "path")
 			path.WithKeyMap(huh.NewDefaultKeyMap())
 			path.Focus()
 			typeText(path, "files/")
@@ -694,7 +699,7 @@ var _ = Describe("form fields", func() {
 			ctrlE(path)
 
 			Expect(fieldView(path)).To(SatisfyAll(
-				ContainSubstring("> files/"), ContainSubstring(suggestionsLabel+"files/p99.png · files/q01.png")))
+				ContainSubstring("> files/"), ContainSubstring(clikit.SuggestionsLabel+"files/p99.png · files/q01.png")))
 		})
 
 		It("completes the empty input again after an add", func() {
@@ -704,7 +709,7 @@ var _ = Describe("form fields", func() {
 
 			typeText(path, "d")
 
-			Expect(fieldView(path)).To(ContainSubstring(suggestionsLabel + "docs/"))
+			Expect(fieldView(path)).To(ContainSubstring(clikit.SuggestionsLabel + "docs/"))
 		})
 
 		It("ghosts nothing over the empty input after an add when nothing completes it", func() {
@@ -735,8 +740,8 @@ var _ = Describe("form fields", func() {
 	})
 
 	It("replace a rejected value with the one its field suggests on ctrl+e, clearing its error", func() {
-		names := definition{fields: []field{{name: "name", arg: true, check: withoutEnv(checkName), suggest: suggestName}}}
-		name := namedField(names.formFields(formCheckEnv(), fieldValues{}, formChoices{}), "name")
+		names := clikit.Definition{Fields: []clikit.Field{{Name: "name", Arg: true, Check: clikit.WithoutEnv(timelinecmd.CheckName), Suggest: timelinecmd.SuggestName}}}
+		name := namedField(names.FormFields(formCheckEnv(), clikit.FieldValues{}, clikit.FormChoices{}), "name")
 		name.WithKeyMap(huh.NewDefaultKeyMap())
 		typeInto(name, "Mongo Outage")
 		press(name, tea.KeyEnter)
@@ -751,7 +756,7 @@ var _ = Describe("form fields", func() {
 
 var _ = DescribeTable("suggestName offers a valid timeline name only for a rejected one",
 	func(name, want string) {
-		Expect(suggestName(name)).To(Equal(want))
+		Expect(timelinecmd.SuggestName(name)).To(Equal(want))
 	},
 	Entry("spaces and capitals", "Mongo Outage", "mongo-outage"),
 	Entry("a valid name", "mongo-outage", ""),

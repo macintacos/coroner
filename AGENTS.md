@@ -112,28 +112,37 @@ readme!: Load design/README.md
 
 ## Where things live and what to call them
 
-- Commands: `internal/cli`. Store: `internal/store`. Domain types: `internal/timeline`.
-  Typed time input: `internal/timeparse`. How an event's time reads to people:
-  `internal/timetext`. Config file, XDG paths and precedence, and the attachment blob
-  directory and the diagnostic log's path (`config.DiagnosticLogPath`) beside the
-  database: `internal/config`, whose spec fails when
-  [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a key the
-  config file accepts. JSON export types, envelope, encoder and JSONL decoder, and the
-  Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`, the JSON
-  described by [the export format reference](docs/reference/export-format.md); the HTML
-  page's viewer and vendored vis-timeline live in `internal/export/html/`, its colour
-  tokens in `internal/export/theme.go`, and the SVG picture's template in
+- Commands: `internal/cli`, one package per noun (`event`, `timeline`, `annotation`,
+  `attachment`, `source`, `tag`, `overlay`), each a `NewCommand` and a file per verb, but
+  `overlay`, one file. The root package holds `NewRoot`, `Run` and the top-level verbs
+  (`import`, `status`, `version`, `agent`, `help`, `__internal`), and the specs that walk
+  the whole command tree. What commands share lives in `internal/cli/clikit`: `App`,
+  `Error`, output, selection, definitions, forms and logging. `internal/cli/merge` plans
+  and writes what `import` and `event add --from-file` merge. A noun package imports
+  `clikit` and `merge`, never another noun or the root; the root hands `event` and
+  `annotation` the form step that creates a timeline (`timelinecmd.AskCreate`). Store:
+  `internal/store`. Domain types: `internal/timeline`. Typed time input:
+  `internal/timeparse`. How an event's time reads to people: `internal/timetext`. Config
+  file, XDG paths and precedence, and the attachment blob directory and the diagnostic
+  log's path (`config.DiagnosticLogPath`) beside the database: `internal/config`, whose
+  spec fails when [`docs/reference/configuration.md`](docs/reference/configuration.md)
+  misses a key the config file accepts. JSON export types, envelope, encoder and JSONL
+  decoder, and the Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`,
+  the JSON described by [the export format reference](docs/reference/export-format.md);
+  the HTML page's viewer and vendored vis-timeline live in `internal/export/html/`, its
+  colour tokens in `internal/export/theme.go`, and the SVG picture's template in
   `internal/export/svg/`. The terminal viewer `timeline view` opens and the picker
   `timeline list` opens: `internal/viewer`. Which terminals show images inline, the Kitty
   graphics sequences and the placeholder text shown where none can: `internal/graphics`,
-  pure. `main.go` builds `cli.App` from the process; code below it takes everything from
-  `cli.App`, never from `os`. Dev tools run with `go run`: `internal/tools/` (`docgen`
-  writes the CLI reference, and with `--man <dir>` the man pages a release packs;
-  `schemagen` the export schema; `compatfixture` a release's fixture database; `release`
-  the deterministic steps of `/release-coroner`, plus the release workflow's `tag-notes`
-  step). [`.claude/skills/release-coroner/`](.claude/skills/release-coroner/SKILL.md) is
-  the maintainer-only project skill that cuts a release; it ships neither with `skills/`
-  nor in the marketplace.
+  pure. `main.go` builds `clikit.App` from the process; code below it takes everything
+  from `clikit.App`, never from `os`. Dev tools run with `go run`: `internal/tools/`
+  (`docgen` writes the CLI reference, and with `--man <dir>` the man pages a release
+  packs; `schemagen` the export schema; `compatfixture` a release's fixture database;
+  `release` the deterministic steps of `/release-coroner`, plus the release workflow's
+  `tag-notes` step).
+  [`.claude/skills/release-coroner/`](.claude/skills/release-coroner/SKILL.md) is the
+  maintainer-only project skill that cuts a release; it ships neither with `skills/` nor
+  in the marketplace.
 - Help topics: `internal/cli/topics/<topic>.md`, embedded and printed as-is by
   `coroner help <topic>`, and copied into the CLI reference by `docgen`; those pages are
   also the site's reference pages for the topics. Specs fail when `exit-codes` disagrees
@@ -143,29 +152,30 @@ readme!: Load design/README.md
   `docgen` writes no page for it.
   [`help-reference.txtar`](internal/cli/testdata/script/help-reference.txtar) pins the
   page, and any command or flag change rewrites it.
-- Global flags and environment: `readInvocation`
-  ([`invocation.go`](internal/cli/invocation.go)) reads them once at the top of a RunE,
-  and resolves `--tz` only when a command asks for the zone. `agent skill`, `version`,
-  shell completion and `errorStyleFor`, which runs when cobra failed to parse, never call
-  it, so a malformed config file cannot break them.
-- Errors and exit codes: a command's hooks or body return a `*cli.Error` whose `Kind`
-  picks the exit code; `exitCodes` in [`internal/cli/errors.go`](internal/cli/errors.go)
-  is the table. A domain validation problem becomes an exit kind in one table, `kindOf` in
-  [`internal/cli/validation.go`](internal/cli/validation.go); commands turn a record's
-  `Validate` error into an `*Error` with `recordError`, and `storeError` routes a
-  store-side `*timeline.ValidationError` through it. Any other error, or a panic, exits 1
-  as `internal`. A command declares the output formats it supports in its `formats`
+- Global flags and environment: `ReadInvocation`
+  ([`invocation.go`](internal/cli/clikit/invocation.go)) reads them once at the top of a
+  RunE, and resolves `--tz` only when a command asks for the zone. `agent skill`,
+  `version`, shell completion and `ErrorStyleFor`, which runs when cobra failed to parse,
+  never call it, so a malformed config file cannot break them.
+- Errors and exit codes: a command's hooks or body return a `*clikit.Error` whose `Kind`
+  picks the exit code; `ExitCodes` in
+  [`internal/cli/clikit/errors.go`](internal/cli/clikit/errors.go) is the table. A domain
+  validation problem becomes an exit kind in one table, `KindOf` in
+  [`internal/cli/clikit/validation.go`](internal/cli/clikit/validation.go); commands turn
+  a record's `Validate` error into an `*Error` with `RecordError`, and `storeError` routes
+  a store-side `*timeline.ValidationError` through it. Any other error, or a panic, exits
+  1 as `internal`. A command declares the output formats it supports in its `formats`
   annotation, and any other `--format` or `--json` exits 2 as `usage`. `-t` names one
   timeline, and naming more exits 2 as `usage`, unless the command reads several, as
   `event list`, `timeline export`, `timeline view` and `overlay create` do. A command that
   reads `-t`, `--overlay`, `CORONER_TIMELINE` or the current timeline selects only through
-  [`selection.go`](internal/cli/selection.go): `readTimelineInput` reads the command line
-  before the store opens (from `wrapRunErrors` and `readInvocation`), `timelineInputOf`
-  builds the same input from a write command's or form's fields, and `selectTimelines`
-  selects against the store. A command declares how many timelines it reads in its
-  `timelines` annotation (`several`, `positional`, `guard`), and the formats that print
-  only one in its `oneTimelineFormats` annotation. A command whose
-  `diagnosticLogAnnotation` is `off` keeps it and every command under it out of the
+  [`selection.go`](internal/cli/clikit/selection.go): `ReadTimelineInput` reads the
+  command line before the store opens (from `wrapRunErrors` and `ReadInvocation`),
+  `TimelineInputOf` builds the same input from a write command's or form's fields, and
+  `SelectTimelines` selects against the store. A command declares how many timelines it
+  reads in its `timelines` annotation (`several`, `positional`, `guard`), and the formats
+  that print only one in its `oneTimelineFormats` annotation. A command whose
+  `DiagnosticLogAnnotation` is `off` keeps it and every command under it out of the
   diagnostic log; a spec in
   [`diagnostic_log_internal_test.go`](internal/cli/diagnostic_log_internal_test.go) pins
   the opted-out set (`agent skill`, `completion`, `version`, `__internal`), and a new
@@ -173,30 +183,31 @@ readme!: Load design/README.md
   saved overlay's name, in place of `-t`, and read their events through
   `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the JSON
   error envelope under `--format json|jsonl`.
-- Deprecating a command or flag: `deprecateCommand` and `deprecateFlag` in
-  [`internal/cli/deprecation.go`](internal/cli/deprecation.go), under the process in
-  [`STABILITY.md`](STABILITY.md#deprecation).
+- Deprecating a command or flag: `DeprecateCommand` and `DeprecateFlag` in
+  [`internal/cli/clikit/deprecation.go`](internal/cli/clikit/deprecation.go), under the
+  process in [`STABILITY.md`](STABILITY.md#deprecation).
   [`deprecation.txtar`](internal/cli/testdata/script/deprecation.txtar) runs a throwaway
   deprecated flag to prove its notice stays off stdout.
 - Write commands (`timeline create|edit|delete|use`, `event add|edit|delete|link|unlink`,
   `annotation add|edit|delete`, `attachment delete`, `overlay create`, `source edit`):
-  each declares its flags, positional argument and their checks once, in a `definition`
-  ([`internal/cli/definition.go`](internal/cli/definition.go)), which registers the flags
-  and builds the `huh` form fields ([`form.go`](internal/cli/form.go)). A field also
-  marks, with `changes`, whether it changes the record, which an edit needs at least one
-  of, with `perEntry`, whether another form entry opens without it, with `title`, what the
-  form calls it, and with `more`, that the form asks it behind More options. `fieldIcon`
-  gives each field name the icon its title shows; a spec in
+  each declares its flags, positional argument and their checks once, in a `Definition`
+  ([`internal/cli/clikit/definition.go`](internal/cli/clikit/definition.go)), which
+  registers the flags and builds the `huh` form fields
+  ([`form.go`](internal/cli/clikit/form.go)). A field also marks, with `Changes`, whether
+  it changes the record, which an edit needs at least one of, with `PerEntry`, whether
+  another form entry opens without it, with `Title`, what the form calls it, and with
+  `More`, that the form asks it behind More options. `FieldIcon` gives each field name the
+  icon its title shows; a spec in
   [`form_internal_test.go`](internal/cli/form_internal_test.go), which lists each form
   command's form definition, fails when one of its fields has none, and a new form command
   joins that list.
   [`add_form_keys_internal_test.go`](internal/cli/add_form_keys_internal_test.go) is the
   `testing/synctest` spec that presses a form's keys and pins `event add`'s key counts.
   `RunE` reads the definition's values, calls a plain run function that returns a result,
-  and renders it. The run function does its find, apply and write in one `withChange`
-  ([`store.go`](internal/cli/store.go)), and `--dry-run` is that change rolled back;
-  `import` and `--from-file` instead merge through `merge`, which plans and writes in one
-  `Change` and plans a dry run in one `Read`. Specs in
+  and renders it. The run function does its find, apply and write in one `WithChange`
+  ([`store.go`](internal/cli/clikit/store.go)), and `--dry-run` is that change rolled
+  back; `import` and `--from-file` instead merge through `merge`, which plans and writes
+  in one `Change` and plans a dry run in one `Read`. Specs in
   [`definition_internal_test.go`](internal/cli/definition_internal_test.go) fail when a
   flag has no form field, a form field has no flag, or the two reject a bad value
   differently; when a command a write verb names has neither a definition nor a
@@ -204,16 +215,16 @@ readme!: Load design/README.md
   inherited, `--dry-run` nor marked `changes`. One in
   [`write_commands_internal_test.go`](internal/cli/write_commands_internal_test.go) fails
   when a command named by a write verb from the verb glossary lacks `--dry-run` or
-  `--json`. A create prints only its new id under `-q` through `output.printID`
-  ([`output.go`](internal/cli/output.go)). On a terminal, `event add`, `annotation add`,
-  `timeline create` and `timeline edit` open that form, attached through `formCommand`
-  ([`add_form.go`](internal/cli/add_form.go)), run each submit through the same run
-  function, and print the flags-only command it equals
-  ([`command_echo.go`](internal/cli/command_echo.go)). `interactiveTerminal` in
-  [`invocation.go`](internal/cli/invocation.go) is the terminal decision every form, the
-  viewer and the picker share: stdin and stdout on a terminal, `TERM` not `dumb`, and no
-  `--no-input` or `CORONER_NO_INPUT`. Each command also checks its format: under `--json`
-  a form opens only with `--interactive`.
+  `--json`. A create prints only its new id under `-q` through `Output.PrintID`
+  ([`output.go`](internal/cli/clikit/output.go)). On a terminal, `event add`,
+  `annotation add`, `timeline create` and `timeline edit` open that form, attached through
+  `FormCommand` ([`add_form.go`](internal/cli/clikit/add_form.go)), run each submit
+  through the same run function, and print the flags-only command it equals
+  ([`command_echo.go`](internal/cli/clikit/command_echo.go)). `interactiveTerminal` in
+  [`invocation.go`](internal/cli/clikit/invocation.go) is the terminal decision every
+  form, the viewer and the picker share: stdin and stdout on a terminal, `TERM` not
+  `dumb`, and no `--no-input` or `CORONER_NO_INPUT`. Each command also checks its format:
+  under `--json` a form opens only with `--interactive`.
   [`no-input.txtar`](internal/cli/testdata/script/no-input.txtar) runs each such command
   with no terminal, and a spec in [`no_input_test.go`](internal/cli/no_input_test.go)
   fails when a command with `--interactive`, or `timeline view` or `timeline list`, which
@@ -221,18 +232,18 @@ readme!: Load design/README.md
   that list.
 - `import` ([`internal/cli/import.go`](internal/cli/import.go)), a top-level verb since it
   ingests every record type (S-2's glossary lists `import`), and `--from-file` read JSONL
-  only through `export.Decode`, and merge through `merge`
-  ([`merge.go`](internal/cli/merge.go)). `merge` decides what to insert, skip or replace
-  in `planImport` ([`import_plan.go`](internal/cli/import_plan.go)), which reads the
+  only through `export.Decode`, and merge through `merge.Merge`
+  ([`merge.go`](internal/cli/merge/merge.go)). `merge` decides what to insert, skip or
+  replace in `PlanImport` ([`plan.go`](internal/cli/merge/plan.go)), which reads the
   database only through the lookup it is handed and does no other I/O; `merge` then writes
   the plan with `Tx.Import` in the same `Change`. A dry run plans in one `Read`, or, when
-  the database does not exist yet, against the empty `storedRecords`. `import` takes a
+  the database does not exist yet, against the empty `StoredRecords`. `import` takes a
   file rather than typed values, so it declares plain flags and no `definition`, and opens
-  no form. `event add --from-file` ([`event_add_file.go`](internal/cli/event_add_file.go))
-  is its insert-only subset: event records through the same `export.Decode`, `merge` and
-  `planImport`, never a second reader or validator. It is `event add`'s one flag outside
+  no form. `event add --from-file` ([`add_file.go`](internal/cli/event/add_file.go)) is
+  its insert-only subset: event records through the same `export.Decode`, `merge` and
+  `PlanImport`, never a second reader or validator. It is `event add`'s one flag outside
   its definition, exempted by name in the form parity spec. `event add --id` shares the
-  "same event" rule through `eventDiff`.
+  "same event" rule through `EventDiff`.
 - End-to-end scripts: `internal/cli/testdata/script/*.txtar`, run by `TestScripts` in
   [`internal/cli/script_test.go`](internal/cli/script_test.go) against a scratch `$WORK`,
   the fixed clock `CORONER_TEST_NOW` and the ID counter `CORONER_TEST_IDS`. Contract

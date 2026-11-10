@@ -20,11 +20,12 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/skills"
 )
 
-// harness builds the cli.App an external spec runs: every seam set to the real file system and
+// harness builds the clikit.App an external spec runs: every seam set to the real file system and
 // store, with a fixed clock, counted IDs and a config file held in memory. A spec sets the fields
 // it varies, and may adjust the App app returns.
 type harness struct {
@@ -46,7 +47,7 @@ type harness struct {
 	newID func() (uuid.UUID, error)
 }
 
-func (h harness) app(args ...string) cli.App {
+func (h harness) app(args ...string) clikit.App {
 	if h.db != "" {
 		args = append([]string{"--db", h.db}, args...)
 	}
@@ -63,7 +64,7 @@ func (h harness) app(args ...string) cli.App {
 		}
 	}
 
-	return cli.App{
+	return clikit.App{
 		Args:              args,
 		In:                cmp.Or[io.Reader](h.in, strings.NewReader("")),
 		Out:               cmp.Or[io.Writer](h.out, io.Discard),
@@ -126,10 +127,10 @@ func countedID(n int) string {
 
 // nilSeams returns the name of each func field of app that is nil, which a command would panic
 // calling.
-func nilSeams(app cli.App) []string {
+func nilSeams(app clikit.App) []string {
 	var missing []string
 	value := reflect.ValueOf(app)
-	for field := range reflect.TypeFor[cli.App]().Fields() {
+	for field := range reflect.TypeFor[clikit.App]().Fields() {
 		if field.Type.Kind() == reflect.Func && value.FieldByIndex(field.Index).IsNil() {
 			missing = append(missing, field.Name)
 		}

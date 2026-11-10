@@ -13,6 +13,7 @@ import (
 	"github.com/onsi/gomega/gbytes"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -26,7 +27,7 @@ var _ = Describe("timeline", func() {
 		ids         int
 	)
 
-	newApp := func(args ...string) cli.App {
+	newApp := func(args ...string) clikit.App {
 		return harness{
 			home: home, db: filepath.Join(home, "coroner.db"), env: env, out: &out, errOut: &errOut,
 			now:   func() time.Time { return now },

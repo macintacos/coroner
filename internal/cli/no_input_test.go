@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 // noInputScript is the script that runs each interactive command with no terminal.
@@ -25,7 +26,7 @@ var _ = Describe("interactive commands off a terminal", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		var missing []string
-		for _, cmd := range interactiveCommands(cli.NewRoot(ctx, cli.App{})) {
+		for _, cmd := range interactiveCommands(cli.NewRoot(ctx, clikit.App{})) {
 			if !noTerminalRun(cmd).Match(script) {
 				missing = append(missing, cmd.CommandPath())
 			}

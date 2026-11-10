@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 func CommandTopics() []HelpTopic { return commandTopics() }
@@ -21,17 +23,19 @@ func WalkCommands(cmd *cobra.Command, visit func(*cobra.Command)) { walkCommands
 
 func WriteVerbs() []string { return writeVerbs() }
 
-func CommandOf(root *cobra.Command, args []string) (string, bool) { return commandOf(root, args) }
+func CommandOf(root *cobra.Command, args []string) (string, bool) {
+	return clikit.CommandOf(root, args)
+}
 
-const LogRotateSize = logRotateSize
+const LogRotateSize = clikit.LogRotateSize
 
 // RunWithThrowawayDeprecation is Run with one more global flag, --throwaway, deprecated in
 // favour of --json.
-func RunWithThrowawayDeprecation(ctx context.Context, app App) int {
+func RunWithThrowawayDeprecation(ctx context.Context, app clikit.App) int {
 	app, root := newRun(ctx, app)
 	root.PersistentFlags().Bool("throwaway", false, "A flag only tests declare")
-	deprecateFlag(root.PersistentFlags(), "throwaway",
-		deprecation{replacement: "use --json instead", removalVersion: "v0.9.0", removalDate: "2027-03-14"})
+	clikit.DeprecateFlag(root.PersistentFlags(), "throwaway",
+		clikit.Deprecation{Replacement: "use --json instead", RemovalVersion: "v0.9.0", RemovalDate: "2027-03-14"})
 
 	return execute(ctx, app, root)
 }

@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/cli/clikit"
 )
 
 type ran struct {
@@ -20,13 +22,13 @@ type ran struct {
 
 // kind is the error kind named by the JSON error envelope that ends ran's stderr, or "" when it
 // exited 0.
-func (r ran) kind() Kind {
+func (r ran) kind() clikit.Kind {
 	GinkgoHelper()
 	if r.code == 0 {
 		return ""
 	}
 	lines := strings.Split(strings.TrimSpace(r.errOut), "\n")
-	var e envelope
+	var e clikit.Envelope
 	Expect(json.Unmarshal([]byte(lines[len(lines)-1]), &e)).To(Succeed(), r.errOut)
 	return e.Error.Kind
 }
@@ -73,7 +75,7 @@ var _ = Describe("a write racing another", func() {
 			Expect(deleted.code).To(Equal(0), deleted.errOut)
 			if edited.code != 0 {
 				Expect(edited.code).To(Equal(3), edited.errOut)
-				Expect(edited.kind()).To(Equal(KindTimelineNotFound))
+				Expect(edited.kind()).To(Equal(clikit.KindTimelineNotFound))
 			}
 		}
 	})
@@ -94,7 +96,7 @@ var _ = Describe("a write racing another", func() {
 			Expect(deleted.code).To(Equal(0), deleted.errOut)
 			if overlaid.code != 0 {
 				Expect(overlaid.code).To(Equal(3), overlaid.errOut)
-				Expect(overlaid.kind()).To(Equal(KindTimelineNotFound))
+				Expect(overlaid.kind()).To(Equal(clikit.KindTimelineNotFound))
 			}
 		}
 	})
@@ -113,7 +115,7 @@ var _ = Describe("a write racing another", func() {
 			Expect(deleted.code).To(Equal(0), deleted.errOut)
 			if used.code != 0 {
 				Expect(used.code).To(Equal(3), used.errOut)
-				Expect(used.kind()).To(Equal(KindTimelineNotFound))
+				Expect(used.kind()).To(Equal(clikit.KindTimelineNotFound))
 			}
 		}
 	})
@@ -132,7 +134,7 @@ var _ = Describe("a write racing another", func() {
 				[]string{"source", "edit", "mongo", "--name", "b", "--json"})
 
 			Expect([]int{a.code, b.code}).To(ConsistOf(0, 3), a.errOut+b.errOut)
-			Expect([]Kind{a.kind(), b.kind()}).To(ConsistOf(Kind(""), KindSourceNotFound))
+			Expect([]clikit.Kind{a.kind(), b.kind()}).To(ConsistOf(clikit.Kind(""), clikit.KindSourceNotFound))
 		}
 	})
 })
