@@ -50,14 +50,14 @@ var _ = Describe("log content guard", func() {
 		h = harness{home: dir, db: filepath.Join(dir, "coroner.db"), out: &out, errOut: &errOut, newID: countedIDs(&ids)}
 		logPath = config.DiagnosticLogPath(h.db)
 
-		attach := filepath.Join(dir, sentinelFilename+".txt")
-		Expect(os.WriteFile(attach, []byte(sentinelContent), 0o600)).To(Succeed())
+		attachmentPath := filepath.Join(dir, sentinelFilename+".txt")
+		Expect(os.WriteFile(attachmentPath, []byte(sentinelContent), 0o600)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(dir, "existing.bin"), nil, 0o600)).To(Succeed())
 
 		mustRun(ctx, "timeline", "create", "inc", "--title", sentinelTitle)
-		mustRun(ctx, "event", "add", sentinelText, "-t", "inc", "--attach", attach)
+		mustRun(ctx, "event", "add", sentinelText, "-t", "inc", "--attach", attachmentPath)
 		mustRun(ctx, "annotation", "add", sentinelBody, "-t", "inc", "-e", "1", "--kind", "comment", "-q")
-		annotation := strings.TrimSpace(out.String())
+		annotationID := strings.TrimSpace(out.String())
 		mustRun(ctx, "attachment", "list", "-t", "inc", "--json")
 		var listed struct {
 			Attachments []struct {
@@ -68,7 +68,7 @@ var _ = Describe("log content guard", func() {
 		Expect(listed.Attachments).To(HaveLen(1))
 
 		placeholders = strings.NewReplacer(
-			"{dir}", dir, "{attach}", attach, "{annotation}", annotation, "{attachment}", listed.Attachments[0].ID,
+			"{dir}", dir, "{attach}", attachmentPath, "{annotation}", annotationID, "{attachment}", listed.Attachments[0].ID,
 		)
 	})
 
