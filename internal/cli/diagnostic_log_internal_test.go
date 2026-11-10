@@ -211,11 +211,12 @@ var _ = Describe("diagnostic log", func() {
 		Entry(nil, []string{"agent", "skill"}, "coroner agent skill", true),
 		Entry(nil, []string{"completion", "zsh"}, "coroner completion zsh", true),
 		Entry(nil, []string{"__complete", "event", "list", "-t", ""}, "coroner __complete", true),
+		Entry(nil, []string{"__internal"}, "coroner __internal", true),
 		Entry(nil, []string{"timeline", "list"}, "coroner timeline list", false),
 		Entry(nil, []string{"help"}, "coroner help", false),
 	)
 
-	It("lets only agent skill, completion and version stay out of the log", func(ctx SpecContext) {
+	It("lets only agent skill, completion, version and __internal stay out of the log", func(ctx SpecContext) {
 		var off []string
 		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
 			if cmd.Annotations[diagnosticLogAnnotation] == "off" {
@@ -223,6 +224,6 @@ var _ = Describe("diagnostic log", func() {
 			}
 		})
 
-		Expect(off).To(ConsistOf("coroner agent skill", "coroner completion", "coroner version"))
+		Expect(off).To(ConsistOf("coroner agent skill", "coroner completion", "coroner version", "coroner __internal"))
 	})
 })

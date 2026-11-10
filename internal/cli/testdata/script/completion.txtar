@@ -8,6 +8,11 @@ cmp stdout mo.txt
 exec coroner __complete status -t mo
 cmp stdout mo.txt
 
+# The commands complete without the hidden __internal group.
+exec coroner __complete ''
+stdout '^event\t'
+! stdout __internal
+
 # A timeline positional completes every name, and nothing once it or -t is given.
 exec coroner __complete timeline use ''
 cmp stdout all.txt
