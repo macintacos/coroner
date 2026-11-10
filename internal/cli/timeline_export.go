@@ -147,6 +147,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	env := newExport(input)
+	logRead(app.logger(), exportCounts(env), "filter", filterValue(filter))
 	dir := exportDirectory(path, o.format, app.Stat)
 	var copies []fileCopy
 	if dir != "" {

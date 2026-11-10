@@ -91,6 +91,13 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   `size`;
 - `blobs collected`, once garbage collection after a delete finishes, with the `count` of
   blobs it removed, which may be 0;
+- `records read`, once for each read a command that only reads makes (`annotation list`,
+  `attachment list`, `attachment export`, `event list`, `event view`, `source list`,
+  `status`, `tag list`, `timeline list`, `timeline export` and `timeline view`), with
+  `counts`, how many records of each kind it read, such as `{"events":12}`; `filter`, what
+  narrowed the events: the `sources` and `tags` given, `contains`, true when `--contains`
+  was given (never its text), `order`, `desc` when `--order desc` reversed them, and
+  `limit`; and `event` or `attachment`, the id of the record `-e` or the argument named;
 - the viewer's `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds
@@ -105,6 +112,9 @@ line's own keys:
 ```json
 {"time":"2026-11-09T19:35:41.934803-05:00","level":"INFO","msg":"command finished","command":"coroner timeline create","kind":"ok","exit_code":0,"duration":8667667}
 ```
+
+A group, such as `counts`, is a nested object; on stderr its keys print dotted, such as
+`counts.events=12`.
 
 The line shape is not a contract: it may change in any release
 ([STABILITY.md](https://github.com/macintacos/coroner/blob/main/STABILITY.md)).

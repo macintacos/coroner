@@ -35,6 +35,7 @@ func newSourceListCommand(ctx context.Context, app App) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				logRead(app.logger(), countOf("sources", len(usages)))
 
 				return printSources(inv.out, z, usages)
 			})

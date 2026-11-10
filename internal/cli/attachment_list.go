@@ -53,6 +53,7 @@ func listAttachments(ctx context.Context, cmd *cobra.Command, app App) error {
 			if err != nil {
 				return err
 			}
+			logRead(app.logger(), countOf("attachments", len(attachments)), readEventArgs(ref, events)...)
 			if inv.out.format == formatJSON {
 				return inv.out.json(newAttachmentListJSON(newAttachmentJSONs(attachments, inv.cfg.DBPath)))
 			}

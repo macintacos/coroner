@@ -31,6 +31,14 @@ type Snapshot struct {
 	Attachments []timeline.Attachment
 }
 
+// Counts is how many records of each kind s holds.
+func (s Snapshot) Counts() slog.Value {
+	return slog.GroupValue(
+		slog.Int("timelines", len(s.Timelines)), slog.Int("events", len(s.Events)),
+		slog.Int("annotations", len(s.Annotations)), slog.Int("attachments", len(s.Attachments)),
+	)
+}
+
 // Match picks events by source (any of), tag (all of) and text, as event list's flags do.
 type Match struct {
 	Sources, Tags []string

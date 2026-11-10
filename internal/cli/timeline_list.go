@@ -41,6 +41,7 @@ func newTimelineListCommand(ctx context.Context, app App) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				logRead(app.logger(), countOf("timelines", len(timelines)))
 
 				return printTimelines(inv.out, timelines, currentID)
 			})

@@ -94,6 +94,7 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
+		logRead(app.logger(), countOf("events", len(page.Events)), "filter", filterValue(filter))
 		listing := eventListing{timelines: timelines, page: page}
 		if inv.out.format.machine() {
 			attachments, err := readEach(timelines, func(id string) ([]timeline.Attachment, error) {

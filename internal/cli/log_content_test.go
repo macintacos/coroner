@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/config"
@@ -83,12 +85,66 @@ var _ = Describe("log content guard", func() {
 		}
 	})
 
+	resolve := func(args []string) []string {
+		resolved := make([]string, 0, len(args)+1)
+		for _, arg := range args {
+			resolved = append(resolved, placeholders.Replace(arg))
+		}
+		return resolved
+	}
+
+	expectNoRecordContent := func(written string) {
+		GinkgoHelper()
+		for _, sentinel := range sentinels {
+			Expect(written).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
+		}
+	}
+
+	It("logs what each read command read, and no record content", func(ctx SpecContext) {
+		for _, args := range readCommands() {
+			cmd, _, err := cli.NewRoot(ctx, h.app()).Find(args)
+			Expect(err).NotTo(HaveOccurred())
+			before := len(readIfExists(logPath))
+			Expect(run(ctx, append(resolve(args), "--debug")...)).To(Equal(0), errOut.String())
+
+			written := readFile(logPath)[before:]
+			Expect(readLines(written)).To(ContainElement(SatisfyAll(
+				HaveKeyWithValue("level", "DEBUG"),
+				HaveKeyWithValue("msg", "records read"),
+				HaveKeyWithValue("command", cmd.CommandPath()),
+				HaveKey("counts"),
+			)), cmd.CommandPath()+" logged no records read line")
+			expectNoRecordContent(written)
+		}
+	})
+
+	It("lists every command that only reads records", func(ctx SpecContext) {
+		root := cli.NewRoot(ctx, h.app())
+		var leaves []string
+		cli.WalkCommands(root, func(cmd *cobra.Command) {
+			if !cmd.Runnable() || cmd.HasSubCommands() || cmd.Name() == "help" ||
+				slices.Contains(cli.WriteVerbs(), cmd.Name()) {
+				return
+			}
+			words := strings.Fields(cmd.CommandPath())[1:]
+			if _, off := cli.CommandOf(root, words); off {
+				return
+			}
+			leaves = append(leaves, cmd.CommandPath())
+		})
+
+		var listed []string
+		for _, args := range readCommands() {
+			cmd, _, err := root.Find(args)
+			Expect(err).NotTo(HaveOccurred())
+			listed = append(listed, cmd.CommandPath())
+		}
+		Expect(listed).To(ConsistOf(leaves))
+	})
+
 	DescribeTable("keeps record content out of the diagnostic log",
 		func(ctx SpecContext, wantExit int, args ...string) {
-			resolved := make([]string, 0, len(args)+1)
-			for _, arg := range args {
-				resolved = append(resolved, placeholders.Replace(arg))
-			}
+			resolved := resolve(args)
 			before := len(readIfExists(logPath))
 			Expect(run(ctx, append(resolved, "--debug")...)).To(Equal(wantExit), errOut.String())
 
@@ -101,30 +157,24 @@ var _ = Describe("log content guard", func() {
 			if wantExit != 0 {
 				Expect(written).To(ContainSubstring(`"msg":"command failed"`))
 			}
-			for _, sentinel := range sentinels {
-				Expect(written).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
-			}
+			expectNoRecordContent(written)
 		},
-		Entry("timeline list", 0, "timeline", "list"),
-		Entry("timeline export as JSONL", 0, "timeline", "export", "-t", "inc", "--format", "jsonl"),
 		Entry("timeline export as HTML to a file", 0, "timeline", "export", "-t", "inc", "--format", "html", "-o", "{dir}/inc.html"),
 		Entry("timeline edit", 0, "timeline", "edit", "inc", "--title", "edited "+sentinelTitle),
 		Entry("timeline delete", 0, "timeline", "delete", "inc", "--yes"),
-		Entry("event list", 0, "event", "list", "-t", "inc"),
+		Entry("event list filtered by source, tag and text", 0, "event", "list", "-t", "inc", "--source", "pagerduty", "--tag", "db", "--contains", sentinelText),
+		Entry("timeline view filtered by text", 0, "timeline", "view", "-t", "inc", "--contains", sentinelText),
+		Entry("timeline export filtered by text", 0, "timeline", "export", "-t", "inc", "--format", "jsonl", "--contains", sentinelText),
 		Entry("event list between typed times", 0, "event", "list", "-t", "inc", "--since", "2020-01-01", "--until", "now"),
-		Entry("event view", 0, "event", "view", "inc#1"),
 		Entry("event add with an attachment", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach}"),
 		Entry("event add with new attachment content", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach2}"),
 		Entry("event add as a dry run", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--dry-run"),
 		Entry("event add at typed times", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--at", "2026-01-02 03:04", "--ended", "2026-01-02 04:00"),
 		Entry("event edit", 0, "event", "edit", "inc#1", "--text", "edited "+sentinelText),
 		Entry("event edit at a typed time", 0, "event", "edit", "1", "-t", "inc", "--at", "2026-01-02 03:04"),
-		Entry("annotation list", 0, "annotation", "list", "-t", "inc"),
 		Entry("annotation add", 0, "annotation", "add", "another "+sentinelBody, "-t", "inc", "-e", "1", "--kind", "evidence"),
 		Entry("annotation edit", 0, "annotation", "edit", "{annotation}", "--body", "edited "+sentinelBody),
-		Entry("attachment list", 0, "attachment", "list", "-t", "inc"),
 		Entry("attachment delete", 0, "attachment", "delete", "{attachment}"),
-		Entry("attachment export to a file", 0, "attachment", "export", "{attachment}", "-o", "{dir}/export.bin"),
 		Entry("timeline create on a taken name", 4, "timeline", "create", "inc", "--title", sentinelTitle),
 		Entry("timeline edit on a missing timeline", 3, "timeline", "edit", "missing", "--title", sentinelTitle),
 		Entry("event add to a missing timeline", 3, "event", "add", sentinelText, "-t", "missing"),
@@ -135,3 +185,33 @@ var _ = Describe("log content guard", func() {
 		Entry("attachment export over an existing file", 4, "attachment", "export", "{attachment}", "-o", "{dir}/existing.bin"),
 	)
 })
+
+// readCommands runs every command that only reads records, so the specs below can check that
+// each logs what it read and no record content. A new read command joins this list.
+func readCommands() [][]string {
+	return [][]string{
+		{"annotation", "list", "-t", "inc"},
+		{"attachment", "list", "-t", "inc"},
+		{"attachment", "export", "{attachment}", "-o", "{dir}/export.bin"},
+		{"event", "list", "-t", "inc"},
+		{"event", "view", "inc#1"},
+		{"source", "list"},
+		{"status", "-t", "inc"},
+		{"tag", "list"},
+		{"timeline", "list"},
+		{"timeline", "export", "-t", "inc", "--format", "jsonl"},
+		{"timeline", "view", "-t", "inc"},
+	}
+}
+
+// readLines decodes written, one JSON object per line.
+func readLines(written string) []map[string]any {
+	GinkgoHelper()
+	var lines []map[string]any
+	for line := range strings.Lines(written) {
+		var decoded map[string]any
+		Expect(json.Unmarshal([]byte(line), &decoded)).To(Succeed(), line)
+		lines = append(lines, decoded)
+	}
+	return lines
+}
