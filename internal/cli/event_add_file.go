@@ -44,7 +44,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 	}
 	input := mergeInput{
 		records: records, onConflict: onConflictFail, newID: app.NewID, now: app.Now(),
-		timelines: timelineInputOf(in), lookupEnv: app.LookupEnv,
+		timelines: timelineInputOf(in), lookupEnv: app.LookupEnv, logger: app.logger(),
 	}
 	var added eventsAdded
 	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {

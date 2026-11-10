@@ -112,7 +112,7 @@ func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValu
 	created, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
 		func(tx *store.Tx) (overlayCreated, error) {
 			created := overlayCreated{dryRun: dryRun}
-			sel, err := selectTimelines(ctx, tx, timelines, app.LookupEnv)
+			sel, err := selectTimelines(ctx, app.logger(), tx, timelines, app.LookupEnv)
 			if err != nil {
 				return created, err
 			}

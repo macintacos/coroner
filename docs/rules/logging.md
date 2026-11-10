@@ -49,8 +49,11 @@ rules say what a line holds; a new or changed line also updates that page.
    - `size`: a file's or blob's size in bytes.
    - `attachment`: an attachment's id.
    - `sha256`: an attachment's SHA-256.
-   - `by`: which setting supplied a value: `flag`, `env`, `file` (the config file) or
-     `default`.
+   - `by`: which setting supplied a value or selected the timelines: `flag`, `env`, `file`
+     (the config file), `default`, `use` (`coroner timeline use`), `name` (a timeline
+     argument) or `overlay`.
+   - `timelines`: the ids of the timelines a command selected, in the order it selected
+     them.
    - `zone`: a time zone's name: `local`, `UTC` or an IANA name such as
      `America/New_York`.
 6. **A command logs the records it names, and counts the ones it sweeps:** it logs one

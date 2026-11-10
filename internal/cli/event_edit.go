@@ -121,7 +121,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[eventEdited], error) {
 			b := attached[eventEdited]{result: eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}}
-			e, t, err := findEvent(ctx, tx, ref, timelineInputOf(in), app.LookupEnv)
+			e, t, err := findEvent(ctx, app.logger(), tx, ref, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return b, err
 			}

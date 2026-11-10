@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -139,7 +140,7 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 				link:   timeline.Link{ID: id.String(), Kind: kind, CreatedAt: now, Author: author},
 				dryRun: dryRun, verb: "link", done: "Linked", preposition: "to",
 			}
-			ends, err := findLinkEnds(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
+			ends, err := findLinkEnds(ctx, app.logger(), tx, refs, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return change, err
 			}
@@ -170,7 +171,7 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	change, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
 		func(tx *store.Tx) (linkChange, error) {
 			change := linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from"}
-			ends, err := findLinkEnds(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
+			ends, err := findLinkEnds(ctx, app.logger(), tx, refs, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return change, err
 			}
@@ -220,12 +221,12 @@ func readLinkRequest(command string, def definition, in fieldValues) ([2]eventRe
 
 // findLinkEnds finds the events refs name.
 func findLinkEnds(
-	ctx context.Context, s records, refs [2]eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, logger *slog.Logger, s records, refs [2]eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (linkEnds, error) {
 	var ends linkEnds
 	for i, ref := range refs {
 		var err error
-		ends.events[i], ends.timelines[i], err = findEvent(ctx, s, ref, timelines, lookupEnv)
+		ends.events[i], ends.timelines[i], err = findEvent(ctx, logger, s, ref, timelines, lookupEnv)
 		if err != nil {
 			return ends, err
 		}

@@ -112,6 +112,7 @@ var _ = Describe("log content guard", func() {
 		Entry("timeline create on a taken name", 4, "timeline", "create", "inc", "--title", sentinelTitle),
 		Entry("timeline edit on a missing timeline", 3, "timeline", "edit", "missing", "--title", sentinelTitle),
 		Entry("event add to a missing timeline", 3, "event", "add", sentinelText, "-t", "missing"),
+		Entry("event edit of a missing seq selected by -t", 3, "event", "edit", "9", "-t", "inc", "--text", "edited "+sentinelText),
 		Entry("event edit on a missing event", 3, "event", "edit", "inc#9", "--text", sentinelText),
 		Entry("annotation edit on a missing annotation", 3, "annotation", "edit", "0199ffff", "--body", sentinelBody),
 		Entry("attachment export over an existing file", 4, "attachment", "export", "{attachment}", "-o", "{dir}/existing.bin"),

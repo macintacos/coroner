@@ -47,7 +47,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		return s.Read(ctx, func(tx *store.Tx) error {
-			e, t, err := findEvent(ctx, tx, parsed, inv.timelines, app.LookupEnv)
+			e, t, err := findEvent(ctx, app.logger(), tx, parsed, inv.timelines, app.LookupEnv)
 			if err != nil {
 				return err
 			}

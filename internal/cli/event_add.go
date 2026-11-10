@@ -171,7 +171,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 			b := attached[eventAdded]{
 				result: eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}, owner: owner,
 			}
-			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
+			t, err := selectOne(ctx, app.logger(), tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return b, err
 			}

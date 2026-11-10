@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -45,7 +46,7 @@ var _ = Describe("timeline selection", func() {
 	// selected returns the names of the timelines in, env or the current timeline select, and
 	// the layer that selected them.
 	selected := func(ctx context.Context, in timelineInput, env map[string]string) ([]string, selectedBy, error) {
-		sel, err := selectTimelines(ctx, s, in, envOf(env))
+		sel, err := selectTimelines(ctx, slog.New(slog.DiscardHandler), s, in, envOf(env))
 		if err != nil || sel.by == "" {
 			return nil, sel.by, err
 		}
@@ -56,7 +57,7 @@ var _ = Describe("timeline selection", func() {
 	// required returns the error a command that needs a timeline fails with when no layer
 	// selects one.
 	required := func(ctx context.Context, env map[string]string) error {
-		sel, err := selectTimelines(ctx, s, timelineInput{}, envOf(env))
+		sel, err := selectTimelines(ctx, slog.New(slog.DiscardHandler), s, timelineInput{}, envOf(env))
 		if err != nil {
 			return err
 		}

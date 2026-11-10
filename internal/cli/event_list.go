@@ -80,7 +80,7 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
+		sel, err := selectTimelines(ctx, app.logger(), s, inv.timelines, app.LookupEnv)
 		if err != nil {
 			return err
 		}

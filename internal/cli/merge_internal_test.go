@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,6 +61,7 @@ var _ = Describe("merge", func() {
 			importInput: planInput(records),
 			timelines:   timelineInput{rule: timelineRule{guard: true}},
 			lookupEnv:   func(string) (string, bool) { return "", false },
+			logger:      slog.New(slog.DiscardHandler),
 		}
 	}
 

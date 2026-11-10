@@ -530,7 +530,7 @@ func newNoteStyles(color bool) noteStyles {
 func chooseTimeline(ctx context.Context, s formSession, picker timelinePicker, in fieldValues) (fieldValues, bool, error) {
 	var by selectedBy
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		sel, err := selectTimelines(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		sel, err := selectTimelines(ctx, s.app.logger(), st, timelineInputOf(in), s.app.LookupEnv)
 		if err != nil || sel.by != "" {
 			by = sel.by
 			return err
@@ -647,7 +647,7 @@ func selectedTimeline(ctx context.Context, s formSession, in fieldValues) (timel
 	var t timeline.Timeline
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		var err error
-		t, err = selectOne(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		t, err = selectOne(ctx, s.app.logger(), st, timelineInputOf(in), s.app.LookupEnv)
 		return err
 	})
 
@@ -745,7 +745,7 @@ func (s formSession) askUntil(
 func (f addForm[R]) entryChoices(ctx context.Context, s formSession, in fieldValues, z zone) (formChoices, error) {
 	var choices formChoices
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		t, err := selectOne(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		t, err := selectOne(ctx, s.app.logger(), st, timelineInputOf(in), s.app.LookupEnv)
 		if err != nil {
 			return err
 		}

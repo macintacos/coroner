@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -61,7 +62,7 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 	var report statusJSON
 	err = withStoreOpenedBy(ctx, app.OpenStoreReadOnly, inv.cfg.DBPath, func(s *store.Store) error {
 		var err error
-		report, err = readStatus(ctx, s, inv.timelines, app.LookupEnv)
+		report, err = readStatus(ctx, app.logger(), s, inv.timelines, app.LookupEnv)
 		return err
 	})
 	switch {
@@ -78,7 +79,7 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 // readStatus reads the schema version of the database s, and the timeline -t,
 // CORONER_TIMELINE or the current timeline selects.
 func readStatus(
-	ctx context.Context, s *store.Store, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, logger *slog.Logger, s *store.Store, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (statusJSON, error) {
 	schema, err := s.Schema(ctx)
 	if err != nil {
@@ -90,7 +91,7 @@ func readStatus(
 		return report, nil
 	}
 
-	sel, err := selectTimelines(ctx, s, timelines, lookupEnv)
+	sel, err := selectTimelines(ctx, logger, s, timelines, lookupEnv)
 	if err != nil || sel.by == "" {
 		return report, err
 	}

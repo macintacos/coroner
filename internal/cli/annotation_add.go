@@ -96,7 +96,7 @@ func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValu
 	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[annotationAdded], error) {
 			b := attached[annotationAdded]{result: annotationAdded{dryRun: req.dryRun}}
-			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
+			t, err := selectOne(ctx, app.logger(), tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return b, err
 			}

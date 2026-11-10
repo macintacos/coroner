@@ -63,6 +63,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   setting that supplied it: `flag`, `env`, `file` (the config file's `db`) or `default`;
   and `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`)
   or `default`;
+- `timelines selected`, with `by`, the setting that selected them: `flag` for `-t`,
+  `overlay` for `--overlay`, `name` for a timeline argument, `env` for `CORONER_TIMELINE`
+  or `use` for `coroner timeline use`, and `timelines`, their ids;
 - the viewer's `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds

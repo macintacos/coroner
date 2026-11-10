@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -211,7 +212,7 @@ type selection struct {
 // naming a missing timeline is timeline_not_found rather than falling through to the next, so a
 // typo never acts on another timeline.
 func selectTimelines(
-	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, logger *slog.Logger, s records, in timelineInput, lookupEnv func(string) (string, bool),
 ) (selection, error) {
 	sel := selection{oneFormats: in.rule.oneFormats}
 	var err error
@@ -232,15 +233,18 @@ func selectTimelines(
 	if err != nil {
 		return selection{}, err
 	}
+	if sel.by != "" {
+		logger.DebugContext(ctx, "timelines selected", "by", sel.by, "timelines", timelineIDs(sel.timelines))
+	}
 
 	return sel, nil
 }
 
 // selectOne returns the one timeline in selects, or timeline_required when none does.
 func selectOne(
-	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, logger *slog.Logger, s records, in timelineInput, lookupEnv func(string) (string, bool),
 ) (timeline.Timeline, error) {
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	sel, err := selectTimelines(ctx, logger, s, in, lookupEnv)
 	if err != nil {
 		return timeline.Timeline{}, err
 	}
@@ -251,9 +255,9 @@ func selectOne(
 // selectAll returns the timelines in selects, usage when they are several and f prints one, or
 // timeline_required when it selects none.
 func selectAll(
-	ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool), f format,
+	ctx context.Context, logger *slog.Logger, s records, in timelineInput, lookupEnv func(string) (string, bool), f format,
 ) ([]timeline.Timeline, error) {
-	sel, err := selectTimelines(ctx, s, in, lookupEnv)
+	sel, err := selectTimelines(ctx, logger, s, in, lookupEnv)
 	if err != nil {
 		return nil, err
 	}

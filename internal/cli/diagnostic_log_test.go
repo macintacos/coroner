@@ -299,6 +299,46 @@ var _ = Describe("diagnostic log", func() {
 		))
 	})
 
+	DescribeTable("logs which setting selected the timelines under --debug",
+		func(ctx SpecContext, wantBy string, setup func(context.Context), args ...string) {
+			Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+			setup(ctx)
+			out.Reset()
+			Expect(run(ctx, h.app("timeline", "list", "--json"))).To(Equal(0))
+			var listed struct {
+				Timelines []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"timelines"`
+			}
+			Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed(), out.String())
+			var want []any
+			for _, t := range listed.Timelines {
+				if t.Name == "inc" || (wantBy == "overlay" && t.Name == "standby") {
+					want = append(want, t.ID)
+				}
+			}
+
+			Expect(run(ctx, h.app(append(args, "--debug")...))).To(Equal(0), errOut.String())
+
+			Expect(logLines(logPath)).To(ContainElement(And(
+				HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "timelines selected"),
+				HaveKeyWithValue("by", wantBy), HaveKeyWithValue("timelines", ConsistOf(want...)),
+			)))
+		},
+		Entry("-t", "flag", func(context.Context) {}, "event", "list", "-t", "inc"),
+		Entry("--overlay", "overlay", func(ctx context.Context) {
+			Expect(run(ctx, h.app("timeline", "create", "standby"))).To(Equal(0))
+			Expect(run(ctx, h.app("overlay", "create", "pair", "-t", "inc", "-t", "standby"))).To(Equal(0), errOut.String())
+		}, "event", "list", "--overlay", "pair"),
+		Entry("CORONER_TIMELINE", "env", func(context.Context) {
+			h.env = map[string]string{"HOME": h.home, "CORONER_TIMELINE": "inc"}
+		}, "event", "list"),
+		Entry("coroner timeline use", "use", func(ctx context.Context) {
+			Expect(run(ctx, h.app("timeline", "use", "inc"))).To(Equal(0))
+		}, "event", "list"),
+	)
+
 	It("logs the failure under --debug, and shows every line on stderr once", func(ctx SpecContext) {
 		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
 		errOut.Reset()

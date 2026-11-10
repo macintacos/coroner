@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -85,7 +86,7 @@ func parseSeq(s string) (int64, bool) {
 // names; an id prefix searches every timeline. -t applies to a bare seq only: with any other
 // ref it is usage.
 func findEvent(
-	ctx context.Context, s records, ref eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, logger *slog.Logger, s records, ref eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (timeline.Event, timeline.Timeline, error) {
 	if ref.idPrefix != "" || ref.timeline != "" {
 		if len(timelines.names) > 0 {
@@ -97,7 +98,7 @@ func findEvent(
 		return findNamedEvent(ctx, s, ref)
 	}
 
-	t, err := selectOne(ctx, s, timelines, lookupEnv)
+	t, err := selectOne(ctx, logger, s, timelines, lookupEnv)
 	if err != nil {
 		return timeline.Event{}, t, err
 	}
