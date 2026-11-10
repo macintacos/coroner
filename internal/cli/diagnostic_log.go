@@ -28,13 +28,13 @@ const diagnosticLogAnnotation = "diagnostic-log"
 // database that exists, then appended to the log beside it, one write per line. No error it
 // meets reaches the command.
 type diagnosticLog struct {
-	stat    func(name string) (fs.FileInfo, error)
-	open    func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
-	rename  func(oldpath, newpath string) error
-	limit   int64
-	now     func() time.Time
-	debug   bool
-	command string // the command path, set by newRun once the tree is built
+	stat        func(name string) (fs.FileInfo, error)
+	open        func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
+	rename      func(oldpath, newpath string) error
+	limit       int64
+	now         func() time.Time
+	debug       bool
+	commandPath string // set by newRun once the tree is built
 
 	mu   sync.Mutex
 	held [][]byte
@@ -154,16 +154,16 @@ func (d *diagnosticLog) logger(stderr io.Writer) *slog.Logger {
 		handlers = append(handlers, slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: level, ReplaceAttr: replaceTime}))
 	}
 
-	return slog.New(slog.NewMultiHandler(handlers...)).With("command", d.command)
+	return slog.New(slog.NewMultiHandler(handlers...)).With("command", d.commandPath)
 }
 
-// watching returns open, telling d the path of each database it tries to open.
+// watching returns open, telling log the path of each database it tries to open.
 func watching(
-	open func(ctx context.Context, path string) (*store.Store, error), d *diagnosticLog,
+	open func(ctx context.Context, path string) (*store.Store, error), log *diagnosticLog,
 ) func(ctx context.Context, path string) (*store.Store, error) {
 	return func(ctx context.Context, path string) (*store.Store, error) {
 		s, err := open(ctx, path)
-		d.opened(path, err)
+		log.opened(path, err)
 		return s, err
 	}
 }

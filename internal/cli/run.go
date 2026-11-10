@@ -82,7 +82,7 @@ func newRun(ctx context.Context, app App) (App, *cobra.Command) {
 	app.OpenStoreReadOnly = watching(app.OpenStoreReadOnly, log)
 	root := NewRoot(ctx, app)
 	var off bool
-	log.command, off = commandOf(root, app.Args)
+	log.commandPath, off = commandOf(root, app.Args)
 	if off {
 		log.done = true
 	}

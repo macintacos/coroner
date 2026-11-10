@@ -120,8 +120,8 @@ var _ = Describe("diagnostic log", func() {
 	DescribeTable("never fails when the file system does",
 		func(breakLog func(d *diagnosticLog)) {
 			createDB()
-			full := strings.Repeat("x", 65) + "\n"
-			Expect(os.WriteFile(logPath, []byte(full), 0o600)).To(Succeed())
+			overLimit := strings.Repeat("x", 65) + "\n"
+			Expect(os.WriteFile(logPath, []byte(overLimit), 0o600)).To(Succeed())
 			d := testDiagnosticLog()
 			breakLog(d)
 
