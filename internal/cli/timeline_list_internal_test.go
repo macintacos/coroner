@@ -137,8 +137,7 @@ var _ = Describe("timeline list on a terminal", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(logged)).To(SatisfyAll(
 			ContainSubstring(`"msg":"records read"`),
-			ContainSubstring(`"msg":"timeline picked"`),
-			ContainSubstring(`"timeline":"db-2-disk-full"`),
+			ContainSubstring(`"msg":"timeline picked","command":"coroner timeline list","timeline":"db-2-disk-full"`),
 			Not(ContainSubstring("PICKED-TITLE-q7v2")),
 		))
 	})

@@ -8,10 +8,14 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// logRead logs at debug what a read command read: counts, how many records of each kind it
-// returned, after args, the attributes that narrowed the read.
-func logRead(logger *slog.Logger, counts slog.Value, args ...any) {
-	logger.Debug("records read", append(args, "counts", counts)...)
+// logRead logs a read command's records read line at debug: attrs, such as its filter or the
+// record it names, then counts, how many records of each kind it read.
+func logRead(logger *slog.Logger, counts slog.Value, attrs ...slog.Attr) {
+	args := make([]any, 0, len(attrs)+1)
+	for _, a := range attrs {
+		args = append(args, a)
+	}
+	logger.Debug("records read", append(args, slog.Any("counts", counts))...)
 }
 
 // countOf is the counts of a read that returned n records of one kind.
@@ -19,12 +23,13 @@ func countOf(kind string, n int) slog.Value {
 	return slog.GroupValue(slog.Int(kind, n))
 }
 
-// readEventArgs names the event -e named, events' only one, or nothing when ref is nil.
-func readEventArgs(ref *eventRef, events []timeline.Event) []any {
+// eventAttrs names the event ref names, or nothing when ref is nil. It relies on readAnnotations
+// and readAttachments returning exactly the event ref names when ref is set.
+func eventAttrs(ref *eventRef, events []timeline.Event) []slog.Attr {
 	if ref == nil {
 		return nil
 	}
-	return []any{"event", events[0].ID}
+	return []slog.Attr{slog.String("event", events[0].ID)}
 }
 
 // filterValue is what narrowed a read of events under f, never --contains' text. The selected

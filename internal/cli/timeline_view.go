@@ -91,7 +91,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
-		logRead(app.logger(), snapshot.Counts(), "filter", filterValue(filter))
+		logRead(app.logger(), snapshot.Counts(), slog.Any("filter", filterValue(filter)))
 		return nil
 	})
 	switch {

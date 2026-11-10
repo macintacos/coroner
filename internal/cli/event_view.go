@@ -61,7 +61,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 				if err != nil {
 					return err
 				}
-				logRead(app.logger(), slog.GroupValue(slog.Int("links", len(links)), slog.Int("attachments", len(attachments))), "event", e.ID)
+				logRead(app.logger(), slog.GroupValue(slog.Int("links", len(links)), slog.Int("attachments", len(attachments))), slog.String("event", e.ID))
 				return inv.out.json(eventViewJSON{eventJSON: newEventJSON(e, newAttachmentJSONs(attachments, inv.cfg.DBPath)), Links: newLinkJSONs(links)})
 			}
 
@@ -73,7 +73,7 @@ func viewEvent(ctx context.Context, cmd *cobra.Command, app App, ref string) err
 			if err != nil {
 				return err
 			}
-			logRead(app.logger(), slog.GroupValue(slog.Int("links", len(links)), slog.Int("annotations", len(annotations))), "event", e.ID)
+			logRead(app.logger(), slog.GroupValue(slog.Int("links", len(links)), slog.Int("annotations", len(annotations))), slog.String("event", e.ID))
 
 			return writeEventView(inv.out, z, eventView{event: e, timeline: t, annotations: annotations, linkRows: linkRows})
 		})

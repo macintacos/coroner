@@ -100,23 +100,21 @@ var _ = Describe("log content guard", func() {
 		}
 	}
 
-	It("logs what each read command read, and no record content", func(ctx SpecContext) {
-		for _, args := range readCommands() {
-			cmd, _, err := cli.NewRoot(ctx, h.app()).Find(args)
-			Expect(err).NotTo(HaveOccurred())
-			before := len(readIfExists(logPath))
-			Expect(run(ctx, append(resolve(args), "--debug")...)).To(Equal(0), errOut.String())
+	DescribeTable("logs what it read, and no record content", func(ctx SpecContext, read readCommand) {
+		cmd, _, err := cli.NewRoot(ctx, h.app()).Find(read.args)
+		Expect(err).NotTo(HaveOccurred())
+		before := len(readIfExists(logPath))
+		Expect(run(ctx, append(resolve(read.args), "--debug")...)).To(Equal(0), errOut.String())
 
-			written := readFile(logPath)[before:]
-			Expect(readLines(written)).To(ContainElement(SatisfyAll(
-				HaveKeyWithValue("level", "DEBUG"),
-				HaveKeyWithValue("msg", "records read"),
-				HaveKeyWithValue("command", cmd.CommandPath()),
-				HaveKey("counts"),
-			)), cmd.CommandPath()+" logged no records read line")
-			expectNoRecordContent(written)
-		}
-	})
+		written := readFile(logPath)[before:]
+		Expect(decodeLines(written)).To(ContainElement(SatisfyAll(
+			HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("msg", "records read"),
+			HaveKeyWithValue("command", cmd.CommandPath()),
+			HaveKeyWithValue("counts", read.counts),
+		)), written)
+		expectNoRecordContent(written)
+	}, readCommandEntries())
 
 	It("lists every command that only reads records", func(ctx SpecContext) {
 		root := cli.NewRoot(ctx, h.app())
@@ -134,8 +132,8 @@ var _ = Describe("log content guard", func() {
 		})
 
 		var listed []string
-		for _, args := range readCommands() {
-			cmd, _, err := root.Find(args)
+		for _, read := range readCommands() {
+			cmd, _, err := root.Find(read.args)
 			Expect(err).NotTo(HaveOccurred())
 			listed = append(listed, cmd.CommandPath())
 		}
@@ -187,20 +185,39 @@ var _ = Describe("log content guard", func() {
 	)
 })
 
-// readCommands runs every command that only reads records, so the specs below can check that
-// each logs what it read and no record content. A new read command joins this list.
-func readCommands() [][]string {
-	return [][]string{
-		{"annotation", "list", "-t", "inc"},
-		{"attachment", "list", "-t", "inc"},
-		{"attachment", "export", "{attachment}", "-o", "{dir}/export.bin"},
-		{"event", "list", "-t", "inc"},
-		{"event", "view", "inc#1"},
-		{"source", "list"},
-		{"status", "-t", "inc"},
-		{"tag", "list"},
-		{"timeline", "list"},
-		{"timeline", "export", "-t", "inc", "--format", "jsonl"},
-		{"timeline", "view", "-t", "inc"},
+// readCommand is a read command's line, as the read specs run it, and the counts its records
+// read line carries against their one timeline, event, annotation and attachment.
+type readCommand struct {
+	args   []string
+	counts map[string]any
+}
+
+// readCommands is the command line of each command that only reads records, as the read specs
+// run it. A new read command joins this list; a spec fails until it does.
+func readCommands() []readCommand {
+	return []readCommand{
+		{[]string{"annotation", "list", "-t", "inc"}, map[string]any{"annotations": 1.0}},
+		{[]string{"attachment", "list", "-t", "inc"}, map[string]any{"attachments": 1.0}},
+		{[]string{"attachment", "export", "{attachment}", "-o", "{dir}/export.bin"}, map[string]any{"attachments": 1.0}},
+		{[]string{"event", "list", "-t", "inc"}, map[string]any{"events": 1.0}},
+		{[]string{"event", "view", "inc#1"}, map[string]any{"links": 0.0, "annotations": 1.0}},
+		{[]string{"source", "list"}, map[string]any{"sources": 0.0}},
+		{[]string{"status", "-t", "inc"}, map[string]any{"timelines": 1.0}},
+		{[]string{"tag", "list"}, map[string]any{"tags": 0.0}},
+		{[]string{"timeline", "list"}, map[string]any{"timelines": 1.0}},
+		{
+			[]string{"timeline", "export", "-t", "inc", "--format", "jsonl"},
+			map[string]any{"timelines": 1.0, "events": 1.0, "annotations": 1.0, "attachments": 1.0, "links": 0.0, "sources": 0.0},
+		},
+		{[]string{"timeline", "view", "-t", "inc"}, map[string]any{"timelines": 1.0, "events": 1.0, "annotations": 1.0, "attachments": 1.0}},
 	}
+}
+
+// readCommandEntries is readCommands as one table entry each.
+func readCommandEntries() []TableEntry {
+	var entries []TableEntry
+	for _, read := range readCommands() {
+		entries = append(entries, Entry(strings.Join(read.args, " "), read))
+	}
+	return entries
 }

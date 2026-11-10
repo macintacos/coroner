@@ -24,11 +24,11 @@ import (
 // logLines returns the diagnostic log at path, one decoded JSON object per line.
 func logLines(path string) []map[string]any {
 	GinkgoHelper()
-	return readLines(readFile(path))
+	return decodeLines(readFile(path))
 }
 
-// readLines decodes written, one JSON object per line.
-func readLines(written string) []map[string]any {
+// decodeLines decodes written, one JSON object per line.
+func decodeLines(written string) []map[string]any {
 	GinkgoHelper()
 	var lines []map[string]any
 	for line := range strings.Lines(written) {
@@ -460,7 +460,7 @@ var _ = Describe("diagnostic log", func() {
 			before := len(readIfExists(logPath))
 			Expect(run(ctx, h.app(args...))).To(Equal(0), errOut.String())
 			var lines []map[string]any
-			for _, line := range readLines(readFile(logPath)[before:]) {
+			for _, line := range decodeLines(readFile(logPath)[before:]) {
 				if line["msg"] == "file written" {
 					lines = append(lines, line)
 				}

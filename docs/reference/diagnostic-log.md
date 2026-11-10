@@ -97,7 +97,7 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   `size`;
 - `blobs collected`, once garbage collection after a delete finishes, with the `count` of
   blobs it removed, which may be 0;
-- `records read`, once for each read a command that only reads makes (`annotation list`,
+- `records read`, once per run of a command that only reads (`annotation list`,
   `attachment list`, `attachment export`, `event list`, `event view`, `source list`,
   `status`, `tag list`, `timeline list`, `timeline export` and `timeline view`), with
   `counts`, how many records of each kind it read, such as `{"events":12}`; `filter`, what

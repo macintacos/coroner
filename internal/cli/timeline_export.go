@@ -148,16 +148,16 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 
 	env := newExport(input)
-	logRead(app.logger(), exportCounts(env), "filter", filterValue(filter))
+	logRead(app.logger(), exportCounts(env), slog.Any("filter", filterValue(filter)))
 	dir := exportDirectory(path, o.format, app.Stat)
 	var copies []fileCopy
 	if dir != "" {
 		copies = attachmentCopies(dir, cfg.DBPath, env.Attachments)
-		err = copyFiles(fileSystem{readFile: app.ReadFile, writeFile: app.WriteFile, mkdirAll: app.MkdirAll}, dir, copies)
+		copies, err = copyFiles(fileSystem{readFile: app.ReadFile, writeFile: app.WriteFile, mkdirAll: app.MkdirAll}, dir, copies)
+		logCopies(app.logger(), copies)
 		if err != nil {
 			return err
 		}
-		logCopies(app.logger(), copies)
 		// ponytail: NAME_MAX caps an overlay's file name at about four long timeline names; hash or truncate when that bites.
 		path = filepath.Join(dir, strings.Join(namesOf(input.timelines), "+")+"."+string(o.format))
 	}
@@ -171,9 +171,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	if path != "-" {
-		app.logger().Info("file written", "path", path, "size", size, "format", o.format, "counts", exportCounts(env))
-	}
+	logFileWritten(app.logger(), path, size, slog.Any("format", o.format), slog.Any("counts", exportCounts(env)))
 	switch {
 	case linksLocal:
 		err = o.notify("The Markdown links its attachments to files only this machine has; pass -o <directory>/ to write them beside it.")
@@ -321,11 +319,11 @@ func exportDirectory(path string, chosen format, stat func(string) (fs.FileInfo,
 	return ""
 }
 
-// fileCopy is one attachment's file in an export directory and the blob its content comes from.
+// fileCopy is one attachment's file in an export directory and the blob its content comes from;
+// sha256 and size, the bytes copyFiles wrote, are what its file written line carries.
 type fileCopy struct {
-	attachmentID, from, to string
-	sha256                 string
-	size                   int64
+	attachmentID, from, to, sha256 string
+	size                           int
 }
 
 // attachmentCopies returns, once per destination file, the blob beside the database at
@@ -337,7 +335,7 @@ func attachmentCopies(dir, dbPath string, attachments []export.Attachment) []fil
 		to := filepath.Join(dir, filepath.FromSlash(export.AttachmentPath(a)))
 		if !planned[to] {
 			planned[to] = true
-			copies = append(copies, fileCopy{attachmentID: a.ID, from: store.BlobPath(dbPath, a.SHA256), to: to, sha256: a.SHA256, size: a.Size})
+			copies = append(copies, fileCopy{attachmentID: a.ID, from: store.BlobPath(dbPath, a.SHA256), to: to, sha256: a.SHA256})
 		}
 	}
 
@@ -351,38 +349,42 @@ type fileSystem struct {
 	mkdirAll  func(path string, perm fs.FileMode) error
 }
 
-// copyFiles creates dir, then each copy's directory, and writes the source's bytes to it.
+// copyFiles creates dir, then each copy's directory, and writes the source's bytes to it,
+// returning the copies it wrote, each sized by its bytes, even when a later one fails.
 // Call it only once the store is closed: withStorePath would report a permission error
 // reading a blob as the database's.
-func copyFiles(files fileSystem, dir string, copies []fileCopy) error {
+func copyFiles(files fileSystem, dir string, copies []fileCopy) ([]fileCopy, error) {
 	cannotWrite := func(err error) error {
 		return &Error{Kind: KindUsage, Message: "cannot write into " + dir, Err: err, Hint: "Pass -o a directory you can write to, or -o - for stdout."}
 	}
 	err := files.mkdirAll(dir, 0o755)
 	if err != nil {
-		return cannotWrite(err)
+		return nil, cannotWrite(err)
 	}
+	var written []fileCopy
 	for _, c := range copies {
 		content, err := files.readFile(c.from)
 		if err != nil {
-			return fmt.Errorf("read the blob of attachment %s: %w", c.attachmentID, err)
+			return written, fmt.Errorf("read the blob of attachment %s: %w", c.attachmentID, err)
 		}
 		err = files.mkdirAll(filepath.Dir(c.to), 0o755)
 		if err == nil {
 			err = files.writeFile(c.to, content, 0o644)
 		}
 		if err != nil {
-			return cannotWrite(err)
+			return written, cannotWrite(err)
 		}
+		c.size = len(content)
+		written = append(written, c)
 	}
 
-	return nil
+	return written, nil
 }
 
 // logCopies logs each attachment file copies wrote.
 func logCopies(logger *slog.Logger, copies []fileCopy) {
 	for _, c := range copies {
-		logger.Info("file written", "path", c.to, "size", c.size, "attachment", c.attachmentID, "sha256", c.sha256)
+		logFileWritten(logger, c.to, c.size, slog.String("attachment", c.attachmentID), slog.String("sha256", c.sha256))
 	}
 }
 

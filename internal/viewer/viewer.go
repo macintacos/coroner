@@ -31,7 +31,7 @@ type Snapshot struct {
 	Attachments []timeline.Attachment
 }
 
-// Counts is how many records of each kind s holds.
+// Counts is the log group of how many records of each kind s holds.
 func (s Snapshot) Counts() slog.Value {
 	return slog.GroupValue(
 		slog.Int("timelines", len(s.Timelines)), slog.Int("events", len(s.Events)),

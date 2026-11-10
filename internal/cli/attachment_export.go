@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -66,17 +67,17 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 	if err != nil {
 		return err
 	}
-	logRead(app.logger(), countOf("attachments", 1), "attachment", a.ID)
+	logRead(app.logger(), countOf("attachments", 1), slog.String("attachment", a.ID))
 	content, err := app.ReadFile(store.BlobPath(inv.cfg.DBPath, a.SHA256))
 	if err != nil {
 		return fmt.Errorf("read the blob of attachment %s: %w", a.ID, err)
 	}
 
 	err = writeAttachment(inv.out, path, content, writeFile)
-	if err != nil || path == "-" {
+	if err != nil {
 		return err
 	}
-	app.logger().Info("file written", "path", path, "size", len(content), "attachment", a.ID, "sha256", a.SHA256)
+	logFileWritten(app.logger(), path, len(content), slog.String("attachment", a.ID), slog.String("sha256", a.SHA256))
 
 	return nil
 }

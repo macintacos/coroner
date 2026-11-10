@@ -80,7 +80,7 @@ rules say what a line holds; a new or changed line also updates that page.
    annotation carries both its `annotation` and its `event`. Records it changes as a side
    effect, such as an import's records or a deleted timeline's events, get one info line
    with their `count`, and their ids at debug. A command that only reads names its records
-   at debug instead, in its `records read` line.
+   at debug instead, in its `records read` line, which `logRead` writes.
 7. **A file written outside the database is logged at info:** an export, an exported
    attachment, the backup made before migrating, or any other file a command writes, with
    its `path` and `size`. A blob is not logged as a file: the store logs one it stores at
@@ -108,4 +108,6 @@ rules say what a line holds; a new or changed line also updates that page.
     text, annotation bodies, attachment content and filenames hold sentinel strings, and
     fails when a sentinel reaches the log. A change that adds a log line adds a row whose
     run reaches that line, and a failing row when the line is reached by a command that
-    fails after it opens the database.
+    fails after it opens the database. A command that only reads joins `readCommands`
+    instead; a spec walks the command tree and fails when one is missing, and another runs
+    each under `--debug` against the sentinels.
