@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,6 +32,7 @@ var _ = Describe("agent skill", func() {
 			Err:       &errOut,
 			LookupEnv: func(string) (string, bool) { return "", false },
 			Skill:     skills.Coroner,
+			Now:       time.Now,
 		})
 
 		Expect(code).To(Equal(0))

@@ -55,10 +55,10 @@ func readIfExists(path string) string {
 
 var _ = Describe("diagnostic log", func() {
 	var (
-		h            harness
-		logPath      string
-		out, errOut  bytes.Buffer
-		openedTheLog bool
+		h           harness
+		logPath     string
+		out, errOut bytes.Buffer
+		openedTheDB bool
 	)
 
 	BeforeEach(func() {
@@ -67,19 +67,19 @@ var _ = Describe("diagnostic log", func() {
 		dir := GinkgoT().TempDir()
 		ids := 0
 		h = harness{home: dir, db: filepath.Join(dir, "coroner.db"), out: &out, errOut: &errOut, newID: countedIDs(&ids)}
-		logPath = config.LogPath(h.db)
+		logPath = config.DiagnosticLogPath(h.db)
 	})
 
 	// run runs args against h, recording whether the command opened the database.
 	run := func(ctx context.Context, app cli.App) int {
-		openedTheLog = false
+		openedTheDB = false
 		openStore, openReadOnly := app.OpenStore, app.OpenStoreReadOnly
 		app.OpenStore = func(ctx context.Context, path string) (*store.Store, error) {
-			openedTheLog = true
+			openedTheDB = true
 			return openStore(ctx, path)
 		}
 		app.OpenStoreReadOnly = func(ctx context.Context, path string) (*store.Store, error) {
-			openedTheLog = true
+			openedTheDB = true
 			return openReadOnly(ctx, path)
 		}
 		return cli.Run(ctx, app)
@@ -97,16 +97,11 @@ var _ = Describe("diagnostic log", func() {
 		}
 
 		var leaves []*cobra.Command
-		var walk func(cmd *cobra.Command)
-		walk = func(cmd *cobra.Command) {
+		cli.WalkCommands(cli.NewRoot(ctx, h.app()), func(cmd *cobra.Command) {
 			if cmd.Runnable() && !cmd.HasSubCommands() {
 				leaves = append(leaves, cmd)
 			}
-			for _, child := range cmd.Commands() {
-				walk(child)
-			}
-		}
-		walk(cli.NewRoot(ctx, h.app()))
+		})
 		Expect(leaves).NotTo(BeEmpty())
 
 		for _, leaf := range leaves {
@@ -118,7 +113,7 @@ var _ = Describe("diagnostic log", func() {
 				Expect(readIfExists(logPath)).To(Equal(before), path)
 				continue
 			}
-			if !openedTheLog {
+			if !openedTheDB {
 				continue
 			}
 			last := lastLogLine(logPath)
@@ -132,7 +127,7 @@ var _ = Describe("diagnostic log", func() {
 		completion.db = ""
 		completion.env = map[string]string{"HOME": h.home, "CORONER_DB": h.db}
 		run(ctx, completion.app("__complete", "timeline", "use", ""))
-		Expect(openedTheLog).To(BeTrue())
+		Expect(openedTheDB).To(BeTrue())
 		Expect(readFile(logPath)).To(Equal(before))
 	})
 
@@ -178,6 +173,21 @@ var _ = Describe("diagnostic log", func() {
 		}),
 	)
 
+	DescribeTable("keeps no log beside a path that is not a coroner database",
+		func(ctx SpecContext, makeDB func(path string)) {
+			h.db = filepath.Join(h.home, "incidents")
+			makeDB(h.db)
+
+			Expect(run(ctx, h.app("timeline", "list"))).To(Equal(5))
+
+			Expect(config.DiagnosticLogPath(h.db)).NotTo(BeAnExistingFile())
+		},
+		Entry("a directory", func(path string) { Expect(os.Mkdir(path, 0o700)).To(Succeed()) }),
+		Entry("a file coroner did not create", func(path string) {
+			Expect(os.WriteFile(path, []byte("not a database"), 0o600)).To(Succeed())
+		}),
+	)
+
 	It("finishes a command that panicked after opening the database as internal", func(ctx SpecContext) {
 		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
 		h.out = panickingWriter{}
@@ -199,7 +209,7 @@ var _ = Describe("diagnostic log", func() {
 				Expect(os.WriteFile(logPath, nil, 0o600)).To(Succeed())
 				Expect(os.Truncate(logPath, logSize)).To(Succeed())
 			}
-			before := readIfExists(logPath)
+			before, _ := os.Stat(logPath)
 			out.Reset()
 			errOut.Reset()
 
@@ -209,7 +219,13 @@ var _ = Describe("diagnostic log", func() {
 			Expect(run(ctx, app)).To(Equal(wantCode))
 			Expect(out.String()).To(Equal(wantOut))
 			Expect(errOut.String()).To(Equal(wantErr))
-			Expect(readIfExists(logPath)).To(Equal(before))
+			after, _ := os.Stat(logPath)
+			if before == nil {
+				Expect(after).To(BeNil())
+			} else {
+				Expect(after.Size()).To(Equal(before.Size()))
+				Expect(after.ModTime()).To(Equal(before.ModTime()))
+			}
 			Expect(logPath + ".1").NotTo(BeAnExistingFile())
 		},
 		Entry("OpenFile fails for the log", int64(0), func(app *cli.App) {
@@ -221,7 +237,7 @@ var _ = Describe("diagnostic log", func() {
 				return open(name, flag, perm)
 			}
 		}),
-		Entry("Rename fails for a log past 50MB", int64(50<<20+1), func(app *cli.App) {
+		Entry("Rename fails for a log past the rotation size", int64(cli.LogRotateSize+1), func(app *cli.App) {
 			app.Rename = func(string, string) error { return fs.ErrPermission }
 		}),
 	)
@@ -235,7 +251,7 @@ var _ = Describe("diagnostic log", func() {
 			Expect(run(ctx, each.app("timeline", "list"))).To(Equal(0))
 		}
 
-		Expect(readFile(logPath)).To(Equal(readFile(config.LogPath(other.db))))
+		Expect(readFile(logPath)).To(Equal(readFile(config.DiagnosticLogPath(other.db))))
 		Expect(readFile(logPath)).To(ContainSubstring(`"duration":0`))
 	})
 
@@ -273,7 +289,7 @@ var _ = Describe("diagnostic log", func() {
 		Expect(envelope).To(HaveKeyWithValue("kind", "timeline_not_found"))
 	})
 
-	It("prints debug text from a root Run never set up", func(ctx SpecContext) {
+	It("prints debug text from a root the deprecation bridge builds", func(ctx SpecContext) {
 		app := h.app("--debug", "--no-such-flag")
 
 		Expect(func() { cli.RunWithThrowawayDeprecation(ctx, app) }).NotTo(Panic())

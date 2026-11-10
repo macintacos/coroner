@@ -18,7 +18,7 @@ import (
 
 // logRotateSize is the size past which a command that opens the diagnostic log first moves it
 // to <log>.1.
-const logRotateSize = 50 << 20
+const logRotateSize = 50_000_000
 
 // diagnosticLogAnnotation set to "off" on a command keeps it, and every command under it, out
 // of the diagnostic log.
@@ -33,10 +33,8 @@ type diagnosticLog struct {
 	rename  func(oldpath, newpath string) error
 	limit   int64
 	now     func() time.Time
-	start   time.Time
 	debug   bool
-	command string // the command path, set by Run once the tree is built
-	off     bool   // the command opted out: the file gets nothing
+	command string // the command path, set by newRun once the tree is built
 
 	mu   sync.Mutex
 	held [][]byte
@@ -47,14 +45,9 @@ type diagnosticLog struct {
 // newDiagnosticLog returns app's diagnostic log, which opens no file until opened is called.
 func newDiagnosticLog(app App) *diagnosticLog {
 	_, debug := errorStyleFor(app)
-	d := &diagnosticLog{
+	return &diagnosticLog{
 		stat: app.Stat, open: app.OpenFile, rename: app.Rename, limit: logRotateSize, now: app.Now, debug: debug,
 	}
-	if app.Now != nil {
-		d.start = app.Now()
-	}
-
-	return d
 }
 
 // Write holds a copy of p, or appends it to the open log in one write. It always reports
@@ -73,14 +66,14 @@ func (d *diagnosticLog) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// opened is told the path of every database the command tried to open. The first that exists
-// opens the log beside it, rotated, and writes the held lines.
-func (d *diagnosticLog) opened(dbPath string) {
+// opened is told the path of every database the command tried to open and what the open
+// returned. The first that exists and is not foreign opens the log beside it, rotated, and
+// writes the held lines.
+func (d *diagnosticLog) opened(dbPath string, openErr error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	// An App built without the file seams, as many specs build one, keeps no log.
-	if d.done || d.off || d.stat == nil || d.open == nil || d.rename == nil {
+	if d.done || errors.Is(openErr, store.ErrForeignDatabase) {
 		return
 	}
 	_, err := d.stat(dbPath)
@@ -89,32 +82,33 @@ func (d *diagnosticLog) opened(dbPath string) {
 	}
 
 	d.done = true
-	d.file = d.openLog(config.LogPath(dbPath))
-	if d.file != nil {
-		for _, line := range d.held {
-			_, _ = d.file.Write(line)
-		}
-	}
+	held := d.held
 	d.held = nil
+	file, err := d.openLog(config.DiagnosticLogPath(dbPath))
+	if err != nil {
+		return // the log never fails the command
+	}
+	d.file = file
+	for _, line := range held {
+		_, _ = file.Write(line)
+	}
 }
 
 // openLog moves path to path+".1" when it is over d.limit, then opens it for appending,
-// owner-only. It returns nil when anything fails.
-func (d *diagnosticLog) openLog(path string) io.WriteCloser {
+// owner-only.
+func (d *diagnosticLog) openLog(path string) (io.WriteCloser, error) {
 	info, err := d.stat(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil
+		return nil, err
 	}
-	if err == nil && info.Size() > d.limit && d.rename(path, path+".1") != nil {
-		return nil
-	}
-
-	file, err := d.open(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil
+	if err == nil && info.Size() > d.limit {
+		err = d.rename(path, path+".1")
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return file
+	return d.open(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 }
 
 // close closes the log, drops held lines, and drops every later write, such as one from a
@@ -129,13 +123,16 @@ func (d *diagnosticLog) close() {
 	d.file, d.held, d.done = nil, nil, true
 }
 
-// elapsed returns the time since the command started, by the App's clock.
-func (d *diagnosticLog) elapsed() time.Duration {
-	if d.now == nil {
-		return 0
+// finish logs the command's failure, under debug, and its finish line, then closes the log.
+func (d *diagnosticLog) finish(ctx context.Context, stderr io.Writer, cmd *cobra.Command, failure *Error, duration time.Duration) {
+	logger := d.logger(stderr)
+	kind, code := "ok", 0
+	if failure != nil {
+		logFailure(ctx, logger, cmd, failure)
+		kind, code = string(failure.Kind), failure.Kind.ExitCode()
 	}
-
-	return d.now().Sub(d.start)
+	logger.InfoContext(ctx, "command finished", "kind", kind, "exit_code", code, "duration", duration)
+	d.close()
 }
 
 // logger returns a logger whose JSON lines go to d and, under debug, whose text lines go to
@@ -143,7 +140,7 @@ func (d *diagnosticLog) elapsed() time.Duration {
 func (d *diagnosticLog) logger(stderr io.Writer) *slog.Logger {
 	// slog stamps records with the real clock, which the App's clock must replace.
 	replaceTime := func(groups []string, a slog.Attr) slog.Attr {
-		if len(groups) == 0 && a.Key == slog.TimeKey && d.now != nil {
+		if len(groups) == 0 && a.Key == slog.TimeKey {
 			return slog.Time(slog.TimeKey, d.now())
 		}
 		return a
@@ -166,7 +163,7 @@ func watching(
 ) func(ctx context.Context, path string) (*store.Store, error) {
 	return func(ctx context.Context, path string) (*store.Store, error) {
 		s, err := open(ctx, path)
-		d.opened(path)
+		d.opened(path, err)
 		return s, err
 	}
 }

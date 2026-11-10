@@ -245,11 +245,13 @@ var _ = Describe("BlobDir", func() {
 	})
 })
 
-var _ = Describe("LogPath", func() {
+var _ = Describe("DiagnosticLogPath", func() {
 	DescribeTable("places the diagnostic log",
 		func(dbPath, want string) {
-			Expect(config.LogPath(dbPath)).To(Equal(want))
+			Expect(config.DiagnosticLogPath(dbPath)).To(Equal(want))
 		},
+		Entry("for a database named coroner, beside it, where coroner.db's would be",
+			"/srv/inc/coroner", "/srv/inc/coroner.log"),
 		Entry("for the default database, as coroner.log in its data directory",
 			"/home/ada/.local/share/coroner/coroner.db", "/home/ada/.local/share/coroner/coroner.log"),
 		Entry("for any other database, beside it and named after it",
@@ -257,6 +259,6 @@ var _ = Describe("LogPath", func() {
 	)
 
 	It("gives two databases in one directory different logs", func() {
-		Expect(config.LogPath("/srv/inc/coroner.db")).NotTo(Equal(config.LogPath("/srv/inc/other.db")))
+		Expect(config.DiagnosticLogPath("/srv/inc/coroner.db")).NotTo(Equal(config.DiagnosticLogPath("/srv/inc/other.db")))
 	})
 })

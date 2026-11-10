@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,6 +30,7 @@ var _ = Describe("Run", func() {
 			Out:     &out,
 			Err:     &errOut,
 			Version: "v1.2.3",
+			Now:     time.Now,
 			LookupEnv: func(key string) (string, bool) {
 				value, ok := env[key]
 				return value, ok
@@ -350,6 +352,9 @@ var _ = Describe("Run", func() {
 			Entry("CORONER_DEBUG=0", map[string]string{"CORONER_DEBUG": "0"}),
 			Entry("CORONER_DEBUG=false", map[string]string{"CORONER_DEBUG": "false"}),
 			Entry("CORONER_DEBUG=off", map[string]string{"CORONER_DEBUG": "off"}),
+			Entry("CORONER_DEBUG=no", map[string]string{"CORONER_DEBUG": "no"}),
+			Entry("CORONER_DEBUG=OFF", map[string]string{"CORONER_DEBUG": "OFF"}),
+			Entry("CORONER_DEBUG=No", map[string]string{"CORONER_DEBUG": "No"}),
 		)
 
 		It("prints no log lines under --debug=false, whatever CORONER_DEBUG says", func(ctx SpecContext) {
@@ -377,7 +382,7 @@ var _ = Describe("Run", func() {
 
 			Expect(errOut.String()).To(ContainSubstring("command failed"))
 			Expect(errOut.String()).NotTo(ContainSubstring("secret"))
-			Expect(readFile(config.LogPath(db))).NotTo(ContainSubstring("secret"))
+			Expect(readFile(config.DiagnosticLogPath(db))).NotTo(ContainSubstring("secret"))
 		})
 
 		It("logs no error attribute for a failure without a cause", func(ctx SpecContext) {

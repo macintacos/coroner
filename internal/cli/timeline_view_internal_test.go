@@ -213,7 +213,7 @@ var _ = Describe("timelineLoader", func() {
 				Expect(err).NotTo(HaveOccurred())
 				a := snapshot.Attachments[0]
 				errOut.Reset()
-				log := &diagnosticLog{debug: debug}
+				log := &diagnosticLog{debug: debug, now: testNow}
 				logger, flush := viewerDiagnostics(log, &errOut)
 				m := tea.Model(viewer.New(viewer.Options{
 					Snapshot: snapshot, Image: blobReader(readFile, db), Log: logger, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now,
@@ -255,7 +255,7 @@ var _ = Describe("timelineLoader", func() {
 
 	// Only the race detector catches a missing lock here; without -race this catches a deadlock.
 	It("lets a read still running log while the viewer's diagnostics flush", func(ctx SpecContext) {
-		logger, flush := viewerDiagnostics(&diagnosticLog{debug: true}, &errOut)
+		logger, flush := viewerDiagnostics(&diagnosticLog{debug: true, now: testNow}, &errOut)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)

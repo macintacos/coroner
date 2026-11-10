@@ -44,7 +44,7 @@ var _ = Describe("diagnostic log", func() {
 	BeforeEach(func() {
 		dir = GinkgoT().TempDir()
 		db = filepath.Join(dir, "coroner.db")
-		logPath = config.LogPath(db)
+		logPath = config.DiagnosticLogPath(db)
 	})
 
 	createDB := func() {
@@ -59,8 +59,8 @@ var _ = Describe("diagnostic log", func() {
 		_, _ = d.Write([]byte("two\n"))
 		Expect(logPath).NotTo(BeAnExistingFile())
 
-		d.opened(filepath.Join(dir, "missing.db"))
-		d.opened(db)
+		d.opened(filepath.Join(dir, "missing.db"), fs.ErrNotExist)
+		d.opened(db, nil)
 		_, _ = d.Write([]byte("three\n"))
 		d.close()
 
@@ -70,7 +70,7 @@ var _ = Describe("diagnostic log", func() {
 	It("writes nothing and creates nothing when only missing databases are opened", func() {
 		d := testDiagnosticLog()
 		_, _ = d.Write([]byte("one\n"))
-		d.opened(filepath.Join(dir, "sub", "missing.db"))
+		d.opened(filepath.Join(dir, "sub", "missing.db"), fs.ErrNotExist)
 		d.close()
 
 		entries, err := os.ReadDir(dir)
@@ -81,7 +81,7 @@ var _ = Describe("diagnostic log", func() {
 	It("creates the log readable by its owner only", func() {
 		createDB()
 		d := testDiagnosticLog()
-		d.opened(db)
+		d.opened(db, nil)
 		d.close()
 
 		info, err := os.Stat(logPath)
@@ -95,7 +95,7 @@ var _ = Describe("diagnostic log", func() {
 		Expect(os.WriteFile(logPath+".1", []byte("older\n"), 0o600)).To(Succeed())
 		d := testDiagnosticLog()
 		_, _ = d.Write([]byte("new\n"))
-		d.opened(db)
+		d.opened(db, nil)
 		d.close()
 
 		Expect(readLines(logPath)).To(Equal([]string{"new"}))
@@ -110,7 +110,7 @@ var _ = Describe("diagnostic log", func() {
 		Expect(os.WriteFile(logPath, []byte(strings.Repeat("x", 63)+"\n"), 0o600)).To(Succeed())
 		d := testDiagnosticLog()
 		_, _ = d.Write([]byte("new\n"))
-		d.opened(db)
+		d.opened(db, nil)
 		d.close()
 
 		Expect(readLines(logPath)).To(Equal([]string{strings.Repeat("x", 63), "new"}))
@@ -120,7 +120,8 @@ var _ = Describe("diagnostic log", func() {
 	DescribeTable("never fails when the file system does",
 		func(breakLog func(d *diagnosticLog)) {
 			createDB()
-			Expect(os.WriteFile(logPath, []byte(strings.Repeat("x", 65)+"\n"), 0o600)).To(Succeed())
+			full := strings.Repeat("x", 65) + "\n"
+			Expect(os.WriteFile(logPath, []byte(full), 0o600)).To(Succeed())
 			d := testDiagnosticLog()
 			breakLog(d)
 
@@ -128,15 +129,29 @@ var _ = Describe("diagnostic log", func() {
 				n, err := d.Write([]byte("one\n"))
 				Expect(n).To(Equal(4))
 				Expect(err).NotTo(HaveOccurred())
-				d.opened(db)
+				d.opened(db, nil)
 				n, err = d.Write([]byte("two\n"))
 				Expect(n).To(Equal(4))
 				Expect(err).NotTo(HaveOccurred())
 				d.close()
 			}).NotTo(Panic())
+			entries, err := os.ReadDir(dir)
+			Expect(err).NotTo(HaveOccurred())
+			for _, entry := range entries {
+				Expect(entry.Name()).To(BeElementOf("coroner.db", "coroner.log", "coroner.log.1"))
+				Expect(readLines(filepath.Join(dir, entry.Name()))).NotTo(ContainElement(BeElementOf("one", "two")), entry.Name())
+			}
 		},
-		Entry("stat", func(d *diagnosticLog) {
+		Entry("stat of the database", func(d *diagnosticLog) {
 			d.stat = func(string) (fs.FileInfo, error) { return nil, fs.ErrPermission }
+		}),
+		Entry("stat of the log", func(d *diagnosticLog) {
+			d.stat = func(name string) (fs.FileInfo, error) {
+				if strings.HasSuffix(name, ".log") {
+					return nil, fs.ErrPermission
+				}
+				return os.Stat(name)
+			}
 		}),
 		Entry("open", func(d *diagnosticLog) {
 			d.open = func(string, int, fs.FileMode) (io.WriteCloser, error) { return nil, fs.ErrPermission }
@@ -152,7 +167,7 @@ var _ = Describe("diagnostic log", func() {
 	It("drops writes after close", func() {
 		createDB()
 		d := testDiagnosticLog()
-		d.opened(db)
+		d.opened(db, nil)
 		_, _ = d.Write([]byte("one\n"))
 		d.close()
 		_, _ = d.Write([]byte("two\n"))
@@ -165,8 +180,9 @@ var _ = Describe("diagnostic log", func() {
 		var wg sync.WaitGroup
 		for range 2 {
 			d := testDiagnosticLog()
+			// The first writer may be past the 64-byte limit when the second opens, which would rotate it.
 			d.limit = 1 << 30
-			d.opened(db)
+			d.opened(db, nil)
 			logger := d.logger(io.Discard)
 			wg.Go(func() {
 				for i := range 300 {
@@ -202,7 +218,7 @@ var _ = Describe("diagnostic log", func() {
 	It("lets only agent skill, completion and version stay out of the log", func(ctx SpecContext) {
 		var off []string
 		walkCommands(NewRoot(ctx, App{}), func(cmd *cobra.Command) {
-			if _, ok := cmd.Annotations[diagnosticLogAnnotation]; ok {
+			if cmd.Annotations[diagnosticLogAnnotation] == "off" {
 				off = append(off, cmd.CommandPath())
 			}
 		})

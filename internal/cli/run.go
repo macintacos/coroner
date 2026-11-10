@@ -2,7 +2,6 @@
 package cli
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -48,6 +47,8 @@ type App struct {
 	Stat func(name string) (fs.FileInfo, error)
 	// MkdirAll creates the directory at path and any missing parents, as os.MkdirAll does.
 	MkdirAll func(path string, perm fs.FileMode) error
+	// Rename renames oldpath to newpath, replacing newpath, as os.Rename does.
+	Rename func(oldpath, newpath string) error
 	// Now returns the time in the local zone, which --tz local and default_timezone = "local"
 	// name.
 	Now func() time.Time
@@ -59,28 +60,40 @@ type App struct {
 	// OpenStoreReadOnly opens the database at path without creating the database, migrating or
 	// writing it, and must report a missing file as fs.ErrNotExist.
 	OpenStoreReadOnly func(ctx context.Context, path string) (*store.Store, error)
-	// Rename renames oldpath to newpath, replacing newpath, as os.Rename does.
-	Rename func(oldpath, newpath string) error
 
-	// log is the command's diagnostic log; only Run sets it.
+	// log is the command's diagnostic log, set by newRun.
 	log *diagnosticLog
 }
 
-// Run executes the command line in app.Args and returns the process exit code.
+// Run executes the command line in app.Args and returns the process exit code. It appends
+// to the diagnostic log beside the database the command opens.
 func Run(ctx context.Context, app App) int {
+	app, root := newRun(ctx, app)
+
+	return execute(ctx, app, root)
+}
+
+// newRun returns app with its diagnostic log watching every database open, and the root
+// built over it.
+func newRun(ctx context.Context, app App) (App, *cobra.Command) {
 	log := newDiagnosticLog(app)
 	app.log = log
 	app.OpenStore = watching(app.OpenStore, log)
 	app.OpenStoreReadOnly = watching(app.OpenStoreReadOnly, log)
 	root := NewRoot(ctx, app)
-	log.command, log.off = commandOf(root, app.Args)
+	var off bool
+	log.command, off = commandOf(root, app.Args)
+	if off {
+		log.done = true
+	}
 
-	return execute(ctx, app, root)
+	return app, root
 }
 
 // execute runs root, which NewRoot built from the same ctx and app, and returns the process
 // exit code.
 func execute(ctx context.Context, app App, root *cobra.Command) int {
+	start := app.Now()
 	// Cobra falls back to os.Args when given nil.
 	root.SetArgs(append([]string{}, app.Args...))
 	root.SetIn(app.In)
@@ -92,15 +105,8 @@ func execute(ctx context.Context, app App, root *cobra.Command) int {
 	cmd, err := root.ExecuteContextC(ctx)
 	failure := classify(ctx, cmd, err)
 
-	log := cmp.Or(app.log, newDiagnosticLog(app))
-	logger := log.logger(app.Err)
-	kind, code := Kind("ok"), 0
-	if failure != nil {
-		logFailure(ctx, logger, cmd, failure)
-		kind, code = failure.Kind, failure.Kind.ExitCode()
-	}
-	logger.InfoContext(ctx, "command finished", "kind", kind, "exit_code", code, "duration", log.elapsed())
-	log.close()
+	// Before writeError: under --json --debug the error envelope must stay stderr's last line.
+	app.log.finish(ctx, app.Err, cmd, failure, app.Now().Sub(start))
 
 	if failure == nil {
 		return 0

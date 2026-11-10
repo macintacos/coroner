@@ -96,7 +96,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 		return writeTimelineView(o, z, snapshot)
 	}
 
-	logger, flush := viewerDiagnostics(cmp.Or(app.log, newDiagnosticLog(app)), app.Err)
+	logger, flush := viewerDiagnostics(app.log, app.Err)
 	term := viewer.Terminal{
 		In: app.In, Out: app.Out, NoColor: !inv.outColor, Graphics: graphics.Detect(app.LookupEnv), Env: terminalEnv(app.LookupEnv),
 	}
