@@ -89,6 +89,17 @@ coroner help reference
    flags and the JSON fields of `status` and `version` are experimental. Use them only
    when the user asks, and say they may change.
 
+## Diagnostic log
+
+coroner keeps a diagnostic log of its own commands, not an incident's logs, beside the
+database: `coroner.log` beside `coroner.db`, and `incidents.db.log` beside any other name
+such as `incidents.db`. Every command whose database exists when it ends writes a
+`command finished` line carrying `kind` and `exit_code` as the command's last line.
+`version`, `agent skill` and shell completion never log. `--debug` or `CORONER_DEBUG=1`
+adds debug lines, such as `command failed`, and prints every line on stderr, but stdout
+never changes and the JSON error envelope stays stderr's last line. The line shape is not
+a contract and may change in any release.
+
 ## Recipes
 
 ### Start a timeline
