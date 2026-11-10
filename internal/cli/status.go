@@ -66,11 +66,11 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
-		n := 0
+		timelinesRead := 0
 		if report.Timeline != nil {
-			n = 1
+			timelinesRead = 1
 		}
-		logRead(app.logger(), countOf("timelines", n))
+		logRead(app.logger(), countOf("timelines", timelinesRead))
 		return nil
 	})
 	switch {

@@ -434,7 +434,7 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	Describe("files written", func() {
-		var attachmentID, sha string
+		var attachmentID, attachmentSHA256 string
 
 		BeforeEach(func(ctx SpecContext) {
 			file := filepath.Join(h.home, "shot.txt")
@@ -451,7 +451,7 @@ var _ = Describe("diagnostic log", func() {
 			}
 			Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed(), out.String())
 			Expect(listed.Attachments).To(HaveLen(1))
-			attachmentID, sha = listed.Attachments[0].ID, listed.Attachments[0].SHA256
+			attachmentID, attachmentSHA256 = listed.Attachments[0].ID, listed.Attachments[0].SHA256
 		})
 
 		// written runs args and returns the file written lines it logged.
@@ -499,7 +499,7 @@ var _ = Describe("diagnostic log", func() {
 				HaveKeyWithValue("path", copied[0]),
 				HaveKeyWithValue("size", sizeOf(copied[0])),
 				HaveKeyWithValue("attachment", attachmentID),
-				HaveKeyWithValue("sha256", sha),
+				HaveKeyWithValue("sha256", attachmentSHA256),
 			)))
 		})
 
@@ -511,7 +511,7 @@ var _ = Describe("diagnostic log", func() {
 				HaveKeyWithValue("path", file),
 				HaveKeyWithValue("size", sizeOf(file)),
 				HaveKeyWithValue("attachment", attachmentID),
-				HaveKeyWithValue("sha256", sha),
+				HaveKeyWithValue("sha256", attachmentSHA256),
 			)))
 		})
 
