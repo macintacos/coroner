@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -221,7 +222,7 @@ func readEventEdit(in fieldValues, app App, env checkEnv) (eventEdit, error) {
 	}
 
 	edit := eventEdit{now: env.now, editFields: readEditFields(in)}
-	edit.editTimes, err = readEditTimes(in, env)
+	edit.editTimes, err = readEditTimes(app.logger(), in, env)
 	if err != nil {
 		return edit, err
 	}
@@ -268,7 +269,7 @@ func readFieldEdit(in fieldValues, name string) fieldEdit {
 }
 
 // readEditTimes resolves --at and --ended as of env, rejecting an approximate --ended.
-func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
+func readEditTimes(logger *slog.Logger, in fieldValues, env checkEnv) (editTimes, error) {
 	var times editTimes
 	var echoes []string
 	if raw := in.value("at"); raw != nil {
@@ -276,6 +277,7 @@ func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
 		if err != nil {
 			return times, err
 		}
+		logTypedTime(logger, typedTime{flag: "--at", input: *raw, zone: env.zone, resolved: at})
 		times.at, times.raw = &at, raw
 		echoes = append(echoes, "at "+formatResolved(at, env.zone))
 	}
@@ -287,6 +289,7 @@ func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
 		if err != nil {
 			return times, err
 		}
+		logTypedTime(logger, typedTime{flag: "--ended", input: *ended, zone: env.zone, resolved: r})
 		times.ended = &r
 		echoes = append(echoes, "ended "+formatResolved(r, env.zone))
 	}

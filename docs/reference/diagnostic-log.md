@@ -66,6 +66,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 - `timelines selected`, with `by`, the setting that selected them: `flag` for `-t`,
   `overlay` for `--overlay`, `name` for a timeline argument, `env` for `CORONER_TIMELINE`
   or `use` for `coroner timeline use`, and `timelines`, their ids;
+- `time input resolved`, once for each time typed into `--at`, `--ended`, `--since` or
+  `--until`, with the `flag`, the `input` as typed, the `zone` it was read in, and the
+  `instant` and `precision` it resolved to;
 - the viewer's `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds

@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -20,6 +21,19 @@ type zone struct {
 }
 
 const tzUsage = "Time `zone` for this invocation (default: config default_timezone, then UTC)"
+
+// typedTime is a time typed into flag, and what it resolved to in zone.
+type typedTime struct {
+	flag, input string
+	zone        zone
+	resolved    timeparse.Resolved
+}
+
+// logTypedTime logs t at debug.
+func logTypedTime(logger *slog.Logger, t typedTime) {
+	logger.Debug("time input resolved", "flag", t.flag, "input", t.input, "zone", t.zone.label,
+		"instant", t.resolved.Instant, "precision", t.resolved.Precision)
+}
 
 // tzField is --tz, which root registers, as the field of a command that reads time input.
 func tzField() field {

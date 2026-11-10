@@ -111,7 +111,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 	o, cfg := inv.out, inv.cfg
 	now := app.Now()
-	filter, bounds, err := readEventFilter(cmd.Flags(), now, z)
+	filter, bounds, err := readEventFilter(app.logger(), cmd.Flags(), now, z)
 	if err != nil {
 		return err
 	}

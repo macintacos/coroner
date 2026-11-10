@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -338,6 +339,51 @@ var _ = Describe("diagnostic log", func() {
 			Expect(run(ctx, h.app("timeline", "use", "inc"))).To(Equal(0))
 		}, "event", "list"),
 	)
+
+	It("logs each typed time under --debug", func(ctx SpecContext) {
+		resolvedLines := func() []map[string]any {
+			var found []map[string]any
+			for _, line := range logLines(logPath) {
+				if line["msg"] == "time input resolved" {
+					Expect(line).To(HaveKeyWithValue("level", "DEBUG"))
+					found = append(found, line)
+				}
+			}
+			return found
+		}
+		instant := func(value string) time.Time {
+			GinkgoHelper()
+			t, err := time.Parse(time.RFC3339Nano, value)
+			Expect(err).NotTo(HaveOccurred())
+			return t
+		}
+		expectLine := func(line map[string]any, flag, input, zone, want, precision string) {
+			GinkgoHelper()
+			Expect(line).To(HaveKeyWithValue("flag", flag))
+			Expect(line).To(HaveKeyWithValue("input", input))
+			Expect(line).To(HaveKeyWithValue("zone", zone))
+			Expect(line).To(HaveKeyWithValue("precision", precision))
+			logged, ok := line["instant"].(string)
+			Expect(ok).To(BeTrue(), line["instant"])
+			Expect(instant(logged).Equal(instant(want))).To(BeTrue(), logged)
+		}
+		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+
+		Expect(run(ctx, h.app("event", "add", "x", "-t", "inc", "--at", "2026-01-02 03:04",
+			"--ended", "2026-01-02 04:00", "--tz", "America/New_York", "--debug"))).To(Equal(0), errOut.String())
+		lines := resolvedLines()
+		Expect(lines).To(HaveLen(2))
+		expectLine(lines[0], "--at", "2026-01-02 03:04", "America/New_York", "2026-01-02T03:04:00-05:00", "minute")
+		expectLine(lines[1], "--ended", "2026-01-02 04:00", "America/New_York", "2026-01-02T04:00:00-05:00", "minute")
+
+		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--since", "2026-01-01", "--debug"))).To(Equal(0), errOut.String())
+		lines = resolvedLines()
+		Expect(lines).To(HaveLen(3))
+		expectLine(lines[2], "--since", "2026-01-01", "UTC", "2026-01-01T00:00:00Z", "day")
+
+		Expect(run(ctx, h.app("event", "add", "y", "-t", "inc", "--debug"))).To(Equal(0), errOut.String())
+		Expect(resolvedLines()).To(HaveLen(3))
+	})
 
 	It("logs the failure under --debug, and shows every line on stderr once", func(ctx SpecContext) {
 		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))

@@ -12,12 +12,12 @@ rules say what a line holds; a new or changed line also updates that page.
    already sees on stderr is not an error line: `command finished` records its kind at
    info, and `command failed` its detail at debug.
 2. **A line carries only these:** ids, kinds, counts, sizes, durations, flag names, typed
-   time input, timeline, tag and source names, time zone names, the setting that supplied
-   a value or selected the timelines, and the paths of files coroner opens. Everything
-   else stays out, including titles, event text, annotation bodies, attachment content and
-   filenames, and error text that quotes any of these. Name a record by its id, or by its
-   name when it has one. Overlay names and an event's `<timeline>#<seq>` ref, such as
-   `inc#3`, are allowed too.
+   time input, the instant and precision typed time input resolves to, timeline, tag and
+   source names, time zone names, the setting that supplied a value or selected the
+   timelines, and the paths of files coroner opens. Everything else stays out, including
+   titles, event text, annotation bodies, attachment content and filenames, and error text
+   that quotes any of these. Name a record by its id, or by its name when it has one.
+   Overlay names and an event's `<timeline>#<seq>` ref, such as `inc#3`, are allowed too.
 3. **A path is logged only when coroner opens it and it holds no record content:** the
    database, the config file (the path coroner reads it from, or looks at when no file is
    there), the diagnostic log, the blob directory, and a file the user named with `-o` or
@@ -56,6 +56,10 @@ rules say what a line holds; a new or changed line also updates that page.
      them.
    - `zone`: a time zone's name: `local`, `UTC` or an IANA name such as
      `America/New_York`.
+   - `flag`: the one flag a line is about, such as `--at`.
+   - `input`: the text typed into a time flag.
+   - `instant`: the instant typed time input resolved to.
+   - `precision`: the precision typed time input resolved to, such as `minute`.
 6. **A command logs the records it names, and counts the ones it sweeps:** it logs one
    info line per record it names, under that record's key from rule 5, so a line about an
    annotation carries both its `annotation` and its `event`. Records it changes as a side
