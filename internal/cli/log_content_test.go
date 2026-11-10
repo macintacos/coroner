@@ -258,7 +258,7 @@ var _ = Describe("log content guard", func() {
 	})
 
 	DescribeTable("keeps record content out of the diagnostic log",
-		func(ctx SpecContext, wantExit int, args ...string) {
+		func(ctx SpecContext, wantExit int, reaches string, args ...string) {
 			resolved := resolve(args)
 			before := len(readIfExists(logPath))
 			Expect(run(ctx, append(resolved, "--debug")...)).To(Equal(wantExit), errOut.String())
@@ -269,39 +269,40 @@ var _ = Describe("log content guard", func() {
 				"no finish line: a command that fails before opening its database writes no log, "+
 					"so drop its row rather than loosen this",
 			)
+			Expect(written).To(ContainSubstring(fmt.Sprintf(`"msg":%q`, reaches)), "the row must reach the line it names")
 			if wantExit != 0 {
 				Expect(written).To(ContainSubstring(`"msg":"command failed"`))
 			}
 			expectNoRecordContent(written)
 		},
-		Entry("timeline export as Markdown into a directory", 0, "timeline", "export", "-t", "inc", "--format", "md", "-o", "{dir}/out/"),
-		Entry("timeline export as HTML to a file", 0, "timeline", "export", "-t", "inc", "--format", "html", "-o", "{dir}/inc.html"),
-		Entry("timeline edit", 0, "timeline", "edit", "inc", "--title", "edited "+sentinelTitle),
-		Entry("timeline delete", 0, "timeline", "delete", "inc", "--yes"),
-		Entry("event list filtered by source, tag and text", 0, "event", "list", "-t", "inc", "--source", "pagerduty", "--tag", "db", "--contains", sentinelText),
-		Entry("timeline view filtered by text", 0, "timeline", "view", "-t", "inc", "--contains", sentinelText),
-		Entry("timeline export filtered by text", 0, "timeline", "export", "-t", "inc", "--format", "jsonl", "--contains", sentinelText),
-		Entry("event list between typed times", 0, "event", "list", "-t", "inc", "--since", "2020-01-01", "--until", "now"),
-		Entry("event add with an attachment", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach}"),
-		Entry("event add with new attachment content", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach2}"),
-		Entry("event add as a dry run", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--dry-run"),
-		Entry("event add at typed times", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--at", "2026-01-02 03:04", "--ended", "2026-01-02 04:00"),
-		Entry("event edit", 0, "event", "edit", "inc#1", "--text", "edited "+sentinelText),
-		Entry("event edit at a typed time", 0, "event", "edit", "1", "-t", "inc", "--at", "2026-01-02 03:04"),
-		Entry("annotation add", 0, "annotation", "add", "another "+sentinelBody, "-t", "inc", "-e", "1", "--kind", "evidence"),
-		Entry("annotation edit", 0, "annotation", "edit", "{annotation}", "--body", "edited "+sentinelBody),
-		Entry("attachment delete", 0, "attachment", "delete", "{attachment}"),
-		Entry("timeline create on a taken name", 4, "timeline", "create", "inc", "--title", sentinelTitle),
-		Entry("timeline edit on a missing timeline", 3, "timeline", "edit", "missing", "--title", sentinelTitle),
-		Entry("event add to a missing timeline", 3, "event", "add", sentinelText, "-t", "missing"),
-		Entry("event edit of a missing seq selected by -t", 3, "event", "edit", "9", "-t", "inc", "--text", "edited "+sentinelText),
-		Entry("event edit of a missing seq at a typed time", 3, "event", "edit", "9", "-t", "inc", "--at", "2026-01-02 03:04"),
-		Entry("event edit on a missing event", 3, "event", "edit", "inc#9", "--text", sentinelText),
-		Entry("annotation edit on a missing annotation", 3, "annotation", "edit", "0199ffff", "--body", sentinelBody),
-		Entry("attachment export over an existing file", 4, "attachment", "export", "{attachment}", "-o", "{dir}/existing.bin"),
-		Entry("import replacing a changed timeline", 0, "import", "{dir}/inc.jsonl", "--on-conflict", "replace"),
-		Entry("event add from a file", 0, "event", "add", "-t", "inc", "--from-file", "{dir}/events.jsonl"),
-		Entry("import of a conflicting export", 4, "import", "{dir}/inc.jsonl"),
+		Entry("timeline export as Markdown into a directory", 0, "file written", "timeline", "export", "-t", "inc", "--format", "md", "-o", "{dir}/out/"),
+		Entry("timeline export as HTML to a file", 0, "file written", "timeline", "export", "-t", "inc", "--format", "html", "-o", "{dir}/inc.html"),
+		Entry("timeline edit", 0, "timeline edited", "timeline", "edit", "inc", "--title", "edited "+sentinelTitle),
+		Entry("timeline delete", 0, "timeline deleted", "timeline", "delete", "inc", "--yes"),
+		Entry("event list filtered by source, tag and text", 0, "records read", "event", "list", "-t", "inc", "--source", "pagerduty", "--tag", "db", "--contains", sentinelText),
+		Entry("timeline view filtered by text", 0, "records read", "timeline", "view", "-t", "inc", "--contains", sentinelText),
+		Entry("timeline export filtered by text", 0, "records read", "timeline", "export", "-t", "inc", "--format", "jsonl", "--contains", sentinelText),
+		Entry("event list between typed times", 0, "time input resolved", "event", "list", "-t", "inc", "--since", "2020-01-01", "--until", "now"),
+		Entry("event add with an attachment", 0, "attachment added", "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach}"),
+		Entry("event add with new attachment content", 0, "blob stored", "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach2}"),
+		Entry("event add as a dry run", 0, "event added", "event", "add", "another "+sentinelText, "-t", "inc", "--dry-run"),
+		Entry("event add at typed times", 0, "time input resolved", "event", "add", "another "+sentinelText, "-t", "inc", "--at", "2026-01-02 03:04", "--ended", "2026-01-02 04:00"),
+		Entry("event edit", 0, "event edited", "event", "edit", "inc#1", "--text", "edited "+sentinelText),
+		Entry("event edit at a typed time", 0, "time input resolved", "event", "edit", "1", "-t", "inc", "--at", "2026-01-02 03:04"),
+		Entry("annotation add", 0, "annotation added", "annotation", "add", "another "+sentinelBody, "-t", "inc", "-e", "1", "--kind", "evidence"),
+		Entry("annotation edit", 0, "annotation edited", "annotation", "edit", "{annotation}", "--body", "edited "+sentinelBody),
+		Entry("attachment delete", 0, "attachment deleted", "attachment", "delete", "{attachment}"),
+		Entry("timeline create on a taken name", 4, "command failed", "timeline", "create", "inc", "--title", sentinelTitle),
+		Entry("timeline edit on a missing timeline", 3, "command failed", "timeline", "edit", "missing", "--title", sentinelTitle),
+		Entry("event add to a missing timeline", 3, "command failed", "event", "add", sentinelText, "-t", "missing"),
+		Entry("event edit of a missing seq selected by -t", 3, "command failed", "event", "edit", "9", "-t", "inc", "--text", "edited "+sentinelText),
+		Entry("event edit of a missing seq at a typed time", 3, "command failed", "event", "edit", "9", "-t", "inc", "--at", "2026-01-02 03:04"),
+		Entry("event edit on a missing event", 3, "command failed", "event", "edit", "inc#9", "--text", sentinelText),
+		Entry("annotation edit on a missing annotation", 3, "command failed", "annotation", "edit", "0199ffff", "--body", sentinelBody),
+		Entry("attachment export over an existing file", 4, "command failed", "attachment", "export", "{attachment}", "-o", "{dir}/existing.bin"),
+		Entry("import replacing a changed timeline", 0, "timelines replaced", "import", "{dir}/inc.jsonl", "--on-conflict", "replace"),
+		Entry("event add from a file", 0, "events skipped", "event", "add", "-t", "inc", "--from-file", "{dir}/events.jsonl"),
+		Entry("import of a conflicting export", 4, "command failed", "import", "{dir}/inc.jsonl"),
 	)
 })
 

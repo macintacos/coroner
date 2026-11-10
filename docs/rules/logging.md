@@ -117,8 +117,10 @@ rules say what a line holds; a new or changed line also updates that page.
     [`log_content_test.go`](../../internal/cli/log_content_test.go) runs a table of
     commands under `--debug`, failing ones included, against records whose titles, event
     text, annotation bodies, attachment content and filenames hold sentinel strings, and
-    fails when a sentinel reaches the log. A change that adds a log line adds a row whose
-    run reaches that line, and a failing row when the line is reached by a command that
-    fails after it opens the database. A command that only reads joins `readCommands`
-    instead; a spec walks the command tree and fails when one is missing, and another runs
-    each under `--debug` against the sentinels.
+    fails when a sentinel reaches the log. A change that adds a log line adds a row naming
+    the message its run reaches, and a failing row when the line is reached by a command
+    that fails after it opens the database. A line only a form, the viewer or the picker
+    reaches, which the table cannot drive, is pinned instead by a spec that drives that
+    code, finds the line, and finds no record content in it. A command that only reads
+    joins `readCommands` instead; a spec walks the command tree and fails when one is
+    missing, and another runs each under `--debug` against the sentinels.
