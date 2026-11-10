@@ -92,7 +92,7 @@ type eventEdited struct {
 func (e eventEdited) logChanges(ctx context.Context, logger *slog.Logger) {
 	logger = withDryRun(logger, e.dryRun)
 	logger.InfoContext(ctx, "event edited", "event", e.event.ID, "timeline_id", e.timeline.ID, "fields", e.fields)
-	e.attach.logChanges(ctx, logger)
+	e.attach.logAdded(ctx, logger)
 }
 
 func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventEdited, error) {

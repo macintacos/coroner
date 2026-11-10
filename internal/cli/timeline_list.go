@@ -86,6 +86,7 @@ func pickTimeline(ctx context.Context, app App, inv invocation) error {
 	if err != nil {
 		return err
 	}
+	used.logChanges(ctx, app.logger())
 	return used.render(inv.out)
 }
 

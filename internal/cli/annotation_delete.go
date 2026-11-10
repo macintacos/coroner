@@ -43,8 +43,8 @@ func annotationDeleteDefinition() definition {
 }
 
 // annotationsDeleted are the annotations delete removed or, with --dry-run, would remove, with
-// their timelines' names by timeline id, their attachments' objects by annotation id, and why
-// the blobs they left unused were not deleted.
+// their timelines' names by timeline id, their attachments' objects by annotation id, what they
+// sweep along, and why the blobs they left unused were not deleted.
 type annotationsDeleted struct {
 	annotations   []timeline.Annotation
 	timelineNames map[string]string

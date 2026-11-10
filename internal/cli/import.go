@@ -166,8 +166,8 @@ func conflictCount(n int) string {
 	return fmt.Sprintf("%d records conflict", n)
 }
 
-// logImportPlan logs, by record type and then action, how many records the plan decided it
-// for at info, and each record at debug.
+// logImportPlan logs, for each record type and action, the count at info and each record's id
+// at debug.
 func logImportPlan(ctx context.Context, logger *slog.Logger, decisions []importDecision) {
 	for _, typ := range []string{"timeline", "source", "event", "annotation", "attachment", "link"} {
 		for _, action := range []importAction{importInserted, importSkipped, importReplaced} {

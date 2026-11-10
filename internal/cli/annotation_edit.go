@@ -60,7 +60,7 @@ type annotationEdited struct {
 func (e annotationEdited) logChanges(ctx context.Context, logger *slog.Logger) {
 	logger = withDryRun(logger, e.dryRun)
 	logger.InfoContext(ctx, "annotation edited", append(annotationArgs(e.annotation), "fields", e.fields)...)
-	e.attach.logChanges(ctx, logger)
+	e.attach.logAdded(ctx, logger)
 }
 
 func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationEdited, error) {

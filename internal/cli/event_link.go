@@ -103,17 +103,13 @@ type linkChange struct {
 	link            timeline.Link
 	ends            linkEnds
 	dryRun, created bool
-	// verb, done and preposition say what happens to the link: "link", "Linked" and "to", or
-	// "unlink", "Unlinked" and "from".
-	verb, done, preposition string
+	// verb, done, preposition and logged say what happens to the link: "link", "Linked", "to" and
+	// "link added", or "unlink", "Unlinked", "from" and "link deleted".
+	verb, done, preposition, logged string
 }
 
 func (c linkChange) logChanges(ctx context.Context, logger *slog.Logger) {
-	msg := "link deleted"
-	if c.verb == "link" {
-		msg = "link added"
-	}
-	withDryRun(logger, c.dryRun).InfoContext(ctx, msg,
+	withDryRun(logger, c.dryRun).InfoContext(ctx, c.logged,
 		"link", c.link.ID, "kind", c.link.Kind, "from_event", c.link.FromEventID, "to_event", c.link.ToEventID)
 }
 
@@ -147,7 +143,7 @@ func linkEvents(ctx context.Context, app App, cfg config.Config, in fieldValues)
 		func(tx *store.Tx) (linkChange, error) {
 			change := linkChange{
 				link:   timeline.Link{ID: id.String(), Kind: kind, CreatedAt: now, Author: author},
-				dryRun: dryRun, verb: "link", done: "Linked", preposition: "to",
+				dryRun: dryRun, verb: "link", done: "Linked", preposition: "to", logged: "link added",
 			}
 			ends, err := findLinkEnds(ctx, app.logger(), tx, refs, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
@@ -179,7 +175,7 @@ func unlinkEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	dryRun, _ := in.boolean("dry-run")
 	change, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
 		func(tx *store.Tx) (linkChange, error) {
-			change := linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from"}
+			change := linkChange{dryRun: dryRun, verb: "unlink", done: "Unlinked", preposition: "from", logged: "link deleted"}
 			ends, err := findLinkEnds(ctx, app.logger(), tx, refs, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return change, err

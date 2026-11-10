@@ -72,24 +72,33 @@ its `path` and `size` in bytes. `timeline export -o` adds the export's `format` 
 adds its `attachment` id and `sha256`. Output to stdout writes no such line.
 
 A write command also logs, at info, a line for each record it creates, edits or deletes,
-naming it by id. These lines are `timeline created`, `timeline edited` and
-`timeline deleted` with `timeline_id`, and `current timeline set` with `timeline_id` or
-`current timeline cleared`. They are `event added`, `event edited` and `event deleted`
-with `event` and `timeline_id`. They are `annotation added`, `annotation edited` and
-`annotation deleted` with `annotation`, `timeline_id` and, on an event, `event`. They are
-`attachment added`, with `attachment`, its `event` or `annotation`, `size` and `sha256`,
-and `attachment deleted`. They are `link added` and `link deleted` with `link`, `kind`,
-`from_event` and `to_event`. Finally there are `overlay created` with `overlay_id` and
-`source edited` with `source_id`. An edit's line adds `fields`: the names of the fields it
-changed, as the export format spells them, never their values. Under `--dry-run` each line
-carries `dry_run`. A command that finds its record already there, as `--if-not-exists` and
-`event add --id` can, logs no line for it.
+naming it by id:
+
+- `timeline created`, `timeline edited`, `timeline deleted`: `timeline_id`;
+- `current timeline set`: `timeline_id`, from `timeline use` or `timeline list`'s picker;
+  `current timeline cleared` carries no key;
+- `event added`, `event edited`, `event deleted`: `event`, `timeline_id`;
+- `annotation added`, `annotation edited`, `annotation deleted`: `annotation`,
+  `timeline_id`, and `event` when it is on one;
+- `attachment added`: `attachment`, its `event` or `annotation`, `size`, `sha256`; under
+  `--dry-run` nothing is stored, so it carries no `attachment`;
+- `attachment deleted`: `attachment`, its `event` or `annotation`;
+- `link added`, `link deleted`: `link`, `kind`, `from_event`, `to_event`;
+- `overlay created`: `overlay_id`;
+- `source edited`: `source_id`.
+
+An edit's line adds `fields`: the names of the fields it changed, as the export format
+spells them, never their values, and `[]` when nothing changed. Under `--dry-run` each
+line carries `dry_run`. A command that finds its record already there, as
+`--if-not-exists` and `event add --id` can, logs no line for it.
 
 A delete also counts what it removes with the records it names: `events deleted`,
 `annotations deleted`, `attachments deleted` and `links deleted`, and `overlays changed`
 for the overlays a deleted timeline leaves. Each comes with its `count`, and only when
-there are some. Under `--debug` the same message is logged once per record, with its id.
-The stored files a delete leaves unused are not counted.
+there are some. Under `--debug` the same message is logged once per record, with its id
+under `event`, `annotation`, `attachment`, `link` or `overlay_id`. The stored files a
+delete leaves unused are not counted. A delete's `blob deleted` lines come before the
+lines naming the records it deleted.
 
 `import` and `event add --from-file` log, for each record type, how many records they
 insert, skip and replace, such as `timelines replaced`, `events inserted` and

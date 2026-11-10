@@ -144,6 +144,12 @@ var _ = Describe("Decode", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(stats.Lines).To(Equal(1))
 		Expect(stats.FormatVersions).To(BeEmpty())
+
+		_, stats, err = export.Decode(strings.NewReader(sampleExport() + "not json\n"))
+
+		Expect(err).To(BeAssignableToTypeOf(&export.DecodeError{}))
+		Expect(stats.Lines).To(Equal(strings.Count(sampleExport(), "\n") + 1))
+		Expect(stats.FormatVersions).To(Equal([]string{export.FormatVersion}))
 	})
 
 	It("reads events with no header", func() {

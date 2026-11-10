@@ -74,7 +74,7 @@ type annotationAdded struct {
 func (a annotationAdded) logChanges(ctx context.Context, logger *slog.Logger) {
 	logger = withDryRun(logger, a.dryRun)
 	logger.InfoContext(ctx, "annotation added", annotationArgs(a.annotation)...)
-	a.attach.logChanges(ctx, logger)
+	a.attach.logAdded(ctx, logger)
 }
 
 func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationAdded, error) {

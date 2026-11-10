@@ -45,7 +45,7 @@ rules say what a line holds; a new or changed line also updates that page.
    - `event`: an event's id.
    - `annotation`: an annotation's id.
    - `timeline`: the name of the timeline the line is about.
-   - `timeline_id`: a timeline's id; `timeline` is its name.
+   - `timeline_id`: a timeline's id.
    - `source_id`: a source's id.
    - `link`: a link's id.
    - `overlay_id`: an overlay's id.

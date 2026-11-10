@@ -63,6 +63,13 @@ var _ = Describe("planImport", func() {
 		Expect(plan.write.Events).To(Equal([]timeline.Event{stepdown.Domain()}))
 		Expect(plan.write.Annotations).To(Equal([]timeline.Annotation{evidence.Domain()}))
 		Expect(plan.write.Attachments).To(Equal([]timeline.Attachment{screenshot.Domain()}))
+		Expect(plan.decisions).To(Equal([]importDecision{
+			{typ: "timeline", id: tl.ID, action: importInserted},
+			{typ: "event", id: stepdown.ID, action: importInserted},
+			{typ: "annotation", id: evidence.ID, action: importInserted},
+			{typ: "attachment", id: screenshot.ID, action: importInserted},
+			{typ: "source", id: mongod.ID, action: importInserted},
+		}))
 	})
 
 	It("skips every record the database already holds unchanged, and writes nothing", func(ctx SpecContext) {
@@ -70,6 +77,13 @@ var _ = Describe("planImport", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(plan.blocked).To(Equal(blockNone))
+		Expect(plan.decisions).To(Equal([]importDecision{
+			{typ: "timeline", id: tl.ID, action: importSkipped},
+			{typ: "source", id: mongod.ID, action: importSkipped},
+			{typ: "event", id: stepdown.ID, action: importSkipped},
+			{typ: "annotation", id: evidence.ID, action: importSkipped},
+			{typ: "attachment", id: screenshot.ID, action: importSkipped},
+		}))
 		Expect(plan.result.Events).To(Equal(importCounts{Identical: 1}))
 		Expect(plan.result.Attachments).To(Equal(importCounts{Identical: 1}))
 		Expect(plan.result.Conflicts).To(BeEmpty())
@@ -156,6 +170,7 @@ var _ = Describe("planImport", func() {
 			Expect(plan.blocked).To(Equal(blockNone))
 			Expect(plan.result.Conflicts).To(HaveLen(1))
 			Expect(plan.write).To(Equal(store.ImportRecords{}))
+			Expect(plan.decisions).To(ContainElement(importDecision{typ: "event", id: stepdown.ID, action: importSkipped}))
 		})
 
 		It("replaces the stored record under replace", func(ctx SpecContext) {
@@ -168,6 +183,7 @@ var _ = Describe("planImport", func() {
 			Expect(plan.blocked).To(Equal(blockNone))
 			Expect(plan.write.EventReplacements).To(Equal([]timeline.Event{edited.Domain()}))
 			Expect(plan.write.Events).To(BeEmpty())
+			Expect(plan.decisions).To(ContainElement(importDecision{typ: "event", id: stepdown.ID, action: importReplaced}))
 		})
 
 		It("replaces a stored annotation whose body differs under replace", func(ctx SpecContext) {
@@ -207,6 +223,7 @@ var _ = Describe("planImport", func() {
 
 				Expect(err).NotTo(HaveOccurred())
 				Expect(plan.blocked).To(Equal(blockUnreplaceable))
+				Expect(plan.decisions).To(HaveExactElements(WithTransform(func(d importDecision) importAction { return d.action }, Equal(importSkipped))))
 
 				in.onConflict = onConflictSkip
 				plan, err = planImport(ctx, in, storedFrom(stored()...))
@@ -381,6 +398,7 @@ var _ = Describe("planImport", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.result.Links).To(Equal(importCounts{Inserted: 1}))
 			Expect(plan.write.Links).To(Equal([]timeline.Link{ledTo.Domain()}))
+			Expect(plan.decisions).To(ContainElement(importDecision{typ: "link", id: ledTo.ID, action: importInserted}))
 		})
 
 		It("skips a link stored unchanged", func(ctx SpecContext) {
@@ -434,6 +452,7 @@ var _ = Describe("planImport", func() {
 			Expect(plan.write.Sources).To(HaveLen(1))
 			Expect(plan.write.Sources[0].Name).To(Equal("db-2/mongod"))
 			Expect(plan.write.Sources[0].ID).NotTo(Equal(mongod.ID))
+			Expect(plan.decisions).To(Equal([]importDecision{{typ: "source", id: plan.write.Sources[0].ID, action: importInserted}}))
 		})
 
 		It("creates a source an imported event names without a source record", func(ctx SpecContext) {
@@ -442,6 +461,7 @@ var _ = Describe("planImport", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.write.Sources).To(ConsistOf(HaveField("Name", "mongod")))
 			Expect(plan.write.Sources[0].CreatedAt).To(Equal(time.Time(stepdown.CreatedAt)))
+			Expect(plan.decisions).To(ContainElement(importDecision{typ: "source", id: plan.write.Sources[0].ID, action: importInserted}))
 		})
 	})
 
@@ -466,6 +486,7 @@ var _ = Describe("planImport", func() {
 			Expect(plan.write.Attachments).To(BeEmpty())
 			Expect(plan.result.Attachments).To(Equal(importCounts{}))
 			Expect(plan.result.MissingAttachments).To(Equal([]missingAttachment{{ID: screenshot.ID, SHA256: screenshot.SHA256}}))
+			Expect(plan.decisions).To(ContainElement(importDecision{typ: "attachment", id: screenshot.ID, action: importSkipped}))
 		})
 	})
 

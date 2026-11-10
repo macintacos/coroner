@@ -148,7 +148,7 @@ func (a eventAdded) logChanges(ctx context.Context, logger *slog.Logger) {
 	}
 	logger = withDryRun(logger, a.dryRun)
 	logger.InfoContext(ctx, "event added", "event", a.event.ID, "timeline_id", a.timeline.ID)
-	a.attach.logChanges(ctx, logger)
+	a.attach.logAdded(ctx, logger)
 }
 
 func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {

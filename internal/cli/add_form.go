@@ -27,10 +27,7 @@ import (
 )
 
 // formWrite is a write command a form submits to: its path below coroner, definition and run function.
-type formWrite[R interface {
-	renderer
-	changeLogger
-}] struct {
+type formWrite[R writeResult] struct {
 	// path is the command below coroner, as in "event add".
 	path string
 	def  definition

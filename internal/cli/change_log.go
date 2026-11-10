@@ -52,10 +52,13 @@ func idsOf[T any](records []T, id func(T) string) []string {
 	return ids
 }
 
+func eventID(e timeline.Event) string           { return e.ID }
+func annotationID(a timeline.Annotation) string { return a.ID }
 func attachmentID(a timeline.Attachment) string { return a.ID }
+func overlayID(o timeline.Overlay) string       { return o.ID }
 
-// idKey returns rule 5's name for the id of an export record type: timeline_id and
-// source_id for the named ones, the type itself for the rest.
+// idKey returns the log key for the id of an export record of type typ: timeline_id and
+// source_id, since timeline and source carry names, and typ itself otherwise.
 func idKey(typ string) string {
 	switch typ {
 	case "timeline", "source":
@@ -67,7 +70,7 @@ func idKey(typ string) string {
 // changedFields returns the export keys whose values differ between before and after, without
 // updated_at, which every edit moves. It is never nil, so an edit that changed nothing logs [].
 func changedFields[T export.Record](before, after T) []string {
-	keys := slices.DeleteFunc(export.DifferingKeys(before, after), func(key string) bool { return key == "updated_at" })
+	keys := slices.DeleteFunc(export.DifferingKeys(before, after), func(key string) bool { return key == keyUpdatedAt })
 	return append([]string{}, keys...)
 }
 

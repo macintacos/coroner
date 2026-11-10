@@ -68,7 +68,7 @@ func (e *DecodeError) Error() string {
 // record types Decode does not know are ignored. The records after an unsupported header are
 // skipped until the next header; records before any header are read as this version. A
 // failure to read r is returned as it is. The DecodeStats say how many lines it read and
-// which format versions their headers carried, whether or not it fails.
+// the format_version of each supported header, whether or not it fails.
 func Decode(r io.Reader) ([]Record, DecodeStats, error) {
 	reader := bufio.NewReader(r)
 	var d decoder

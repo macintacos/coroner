@@ -75,16 +75,19 @@ func timelineSweep(ctx context.Context, tx *store.Tx, timelineID string, overlay
 	if err != nil {
 		return sweep{}, err
 	}
-	eventIDs := idsOf(events, func(e timeline.Event) string { return e.ID })
+	eventIDs := idsOf(events, eventID)
 	links, err := eventLinkIDs(ctx, tx, eventIDs)
+	if err != nil {
+		return sweep{}, err
+	}
 
 	return sweep{
 		events:      eventIDs,
-		annotations: idsOf(annotations, func(a timeline.Annotation) string { return a.ID }),
+		annotations: idsOf(annotations, annotationID),
 		attachments: idsOf(attachments, attachmentID),
 		links:       links,
-		overlays:    idsOf(overlays, func(o timeline.Overlay) string { return o.ID }),
-	}, err
+		overlays:    idsOf(overlays, overlayID),
+	}, nil
 }
 
 func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineDeleted, error) {

@@ -48,6 +48,15 @@ func lastLogLine(path string) map[string]any {
 	return lines[len(lines)-1]
 }
 
+// logLine matches a decoded log line at level with msg and each of keys' key-value pairs.
+func logLine(level, msg string, keys ...any) types.GomegaMatcher {
+	matchers := []types.GomegaMatcher{HaveKeyWithValue("level", level), HaveKeyWithValue("msg", msg)}
+	for pair := range slices.Chunk(keys, 2) {
+		matchers = append(matchers, HaveKeyWithValue(pair[0], pair[1]))
+	}
+	return And(matchers...)
+}
+
 type panickingWriter struct{}
 
 func (panickingWriter) Write([]byte) (int, error) { panic("stdout went away") }
@@ -91,6 +100,14 @@ var _ = Describe("diagnostic log", func() {
 			return openReadOnly(ctx, path, opts...)
 		}
 		return cli.Run(ctx, app)
+	}
+
+	// linesWritten runs args, expecting exit code want, and returns the log lines it wrote.
+	linesWritten := func(ctx context.Context, want int, args ...string) []map[string]any {
+		GinkgoHelper()
+		before := len(logLines(logPath))
+		Expect(run(ctx, h.app(args...))).To(Equal(want), errOut.String())
+		return logLines(logPath)[before:]
 	}
 
 	It("ends every command that opens a database with its finish line, and keeps opted-out commands out", func(ctx SpecContext) {
@@ -373,23 +390,12 @@ var _ = Describe("diagnostic log", func() {
 		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed"))).To(Equal(0))
 		Expect(run(ctx, h.app("event", "delete", "inc#2"))).To(Equal(0))
 
-		// written runs args and returns the log lines it wrote.
-		written := func(want int, args ...string) []map[string]any {
-			before := len(logLines(logPath))
-			Expect(run(ctx, h.app(args...))).To(Equal(want), errOut.String())
-			return logLines(logPath)[before:]
-		}
+		written := func(want int, args ...string) []map[string]any { return linesWritten(ctx, want, args...) }
 		isPlanLine := func(line map[string]any) bool {
 			msg, _ := line["msg"].(string)
 			return strings.HasSuffix(msg, " inserted") || strings.HasSuffix(msg, " skipped") || strings.HasSuffix(msg, " replaced")
 		}
-		line := func(level, msg string, keys ...any) types.GomegaMatcher {
-			matchers := []types.GomegaMatcher{HaveKeyWithValue("level", level), HaveKeyWithValue("msg", msg)}
-			for i := 0; i < len(keys); i += 2 {
-				matchers = append(matchers, HaveKeyWithValue(keys[i], keys[i+1]))
-			}
-			return And(matchers...)
-		}
+		line := logLine
 
 		Expect(written(0, "import", path, "--on-conflict", "replace", "--dry-run", "--debug")).To(ContainElement(
 			line("INFO", "events inserted", "count", float64(1), "dry_run", true)))
@@ -440,18 +446,8 @@ var _ = Describe("diagnostic log", func() {
 			Expect(json.Unmarshal(out.Bytes(), &r)).To(Succeed(), out.String())
 			return r
 		}
-		written := func(args ...string) []map[string]any {
-			before := len(logLines(logPath))
-			Expect(run(ctx, h.app(args...))).To(Equal(0), errOut.String())
-			return logLines(logPath)[before:]
-		}
-		line := func(level, msg string, keys ...any) types.GomegaMatcher {
-			matchers := []types.GomegaMatcher{HaveKeyWithValue("level", level), HaveKeyWithValue("msg", msg)}
-			for i := 0; i < len(keys); i += 2 {
-				matchers = append(matchers, HaveKeyWithValue(keys[i], keys[i+1]))
-			}
-			return And(matchers...)
-		}
+		written := func(args ...string) []map[string]any { return linesWritten(ctx, 0, args...) }
+		line := logLine
 
 		created("timeline", "create", "inc")
 		created("timeline", "create", "other")
