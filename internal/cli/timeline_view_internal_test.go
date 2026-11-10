@@ -213,7 +213,8 @@ var _ = Describe("timelineLoader", func() {
 				Expect(err).NotTo(HaveOccurred())
 				a := snapshot.Attachments[0]
 				errOut.Reset()
-				logger, flush := viewerDiagnostics(debug, &errOut)
+				log := &diagnosticLog{debug: debug}
+				logger, flush := viewerDiagnostics(log, &errOut)
 				m := tea.Model(viewer.New(viewer.Options{
 					Snapshot: snapshot, Image: blobReader(readFile, db), Log: logger, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now,
 				}))
@@ -232,12 +233,21 @@ var _ = Describe("timelineLoader", func() {
 
 				Expect(flush()).To(Succeed())
 				Expect(errOut.String()).To(logged(a.SHA256))
+				if debug {
+					Expect(log.held).To(ContainElement(WithTransform(func(line []byte) string {
+						var entry struct {
+							Msg string `json:"msg"`
+						}
+						Expect(json.Unmarshal(line, &entry)).To(Succeed())
+						return entry.Msg
+					}, Equal("attachment image not shown"))), "the diagnostic log takes the line as JSON")
+				}
 			},
 			Entry("is logged with its hash once the viewer has closed, under --debug, when its blob is unreadable",
 				func(string) ([]byte, error) { return nil, fs.ErrNotExist }, true, loggedAtDebug),
 			Entry("is logged with its hash under --debug when its blob does not decode",
 				func(string) ([]byte, error) { return []byte("GIF89a not really"), nil }, true, loggedAtDebug),
-			Entry("is logged nowhere without --debug",
+			Entry("is kept off stderr without --debug",
 				func(string) ([]byte, error) { return nil, fs.ErrNotExist }, false,
 				func(string) types.GomegaMatcher { return BeEmpty() }),
 		)
@@ -245,7 +255,7 @@ var _ = Describe("timelineLoader", func() {
 
 	// Only the race detector catches a missing lock here; without -race this catches a deadlock.
 	It("lets a read still running log while the viewer's diagnostics flush", func(ctx SpecContext) {
-		logger, flush := viewerDiagnostics(true, &errOut)
+		logger, flush := viewerDiagnostics(&diagnosticLog{debug: true}, &errOut)
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
