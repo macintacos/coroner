@@ -1,4 +1,4 @@
-package cli_test
+package event_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 )
 
 var _ = Describe("event list", func() {
@@ -25,15 +26,15 @@ var _ = Describe("event list", func() {
 		errOut.Reset()
 		newYork, err := time.LoadLocation("America/New_York")
 		Expect(err).NotTo(HaveOccurred())
-		return cli.Run(ctx, harness{
-			home: home, db: filepath.Join(home, "coroner.db"), out: &out, errOut: &errOut,
-			now:   func() time.Time { return time.Date(2026, time.September, 12, 21, 30, 0, 0, newYork) },
-			newID: countedIDs(&ids),
-		}.app(args...))
+		return cli.Run(ctx, clitest.Harness{
+			Home: home, DB: filepath.Join(home, "coroner.db"), Out: &out, ErrOut: &errOut,
+			Now:   func() time.Time { return time.Date(2026, time.September, 12, 21, 30, 0, 0, newYork) },
+			NewID: clitest.CountedIDs(&ids),
+		}.App(args...))
 	}
 
 	var (
-		seeded    cli.SeededHome
+		seeded    clitest.SeededHome
 		seededIDs int
 	)
 
@@ -64,7 +65,7 @@ var _ = Describe("event list", func() {
 		home = GinkgoT().TempDir()
 		ids = 0
 		seeded.Into(home, func() {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			for _, args := range [][]string{
 				{"timeline", "create", "mongo-outage"},
 				{"timeline", "use", "mongo-outage"},

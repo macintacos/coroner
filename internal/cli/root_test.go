@@ -15,6 +15,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/help"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/export"
@@ -86,12 +87,12 @@ var _ = Describe("Run", func() {
 
 		It("exits 1 with kind internal and a way to report it when Out cannot be written", func(ctx SpecContext) {
 			app := newApp("version", "--json")
-			app.Out = failingWriter{}
+			app.Out = clitest.FailingWriter{}
 
 			code := cli.Run(ctx, app)
 
 			Expect(code).To(Equal(1))
-			envelope := envelopeOf(errOut.String())
+			envelope := clitest.EnvelopeOf(errOut.String())
 			Expect(envelope).To(HaveKeyWithValue("kind", "internal"))
 			Expect(envelope).To(HaveKeyWithValue("hint", SatisfyAll(
 				ContainSubstring("--debug"), ContainSubstring("https://github.com/macintacos/coroner/issues"))))
@@ -124,7 +125,7 @@ var _ = Describe("Run", func() {
 
 			Expect(code).To(Equal(2))
 			Expect(out.String()).To(BeEmpty())
-			Expect(envelopeOf(errOut.String())).To(HaveKeyWithValue("kind", "usage"))
+			Expect(clitest.EnvelopeOf(errOut.String())).To(HaveKeyWithValue("kind", "usage"))
 		},
 		Entry("--json conflicting with --format", "version", "--json", "--format", "text"),
 		Entry("jsonl for version, which prints a single object", "version", "--format", "jsonl"),
@@ -257,7 +258,7 @@ var _ = Describe("Run", func() {
 	It("ends a text-mode error with the fix and prints no JSON", func(ctx SpecContext) {
 		cli.Run(ctx, newApp("--no-such-flag"))
 
-		Expect(lastLine(errOut.String())).To(ContainSubstring("coroner --help"))
+		Expect(clitest.LastLine(errOut.String())).To(ContainSubstring("coroner --help"))
 		Expect(errOut.String()).NotTo(ContainSubstring("{"))
 	})
 
@@ -267,7 +268,7 @@ var _ = Describe("Run", func() {
 
 			Expect(code).To(Equal(2))
 			Expect(out.String()).To(BeEmpty())
-			envelope := envelopeOf(errOut.String())
+			envelope := clitest.EnvelopeOf(errOut.String())
 			Expect(envelope).To(HaveKeyWithValue("kind", "usage"))
 			Expect(envelope).To(HaveKeyWithValue("message", ContainSubstring("--no-such-flag")))
 			Expect(envelope).To(HaveKey("hint"))
@@ -286,7 +287,7 @@ var _ = Describe("Run", func() {
 		code := cli.Run(cancelled, newApp("--json"))
 
 		Expect(code).To(Equal(130))
-		envelope := envelopeOf(errOut.String())
+		envelope := clitest.EnvelopeOf(errOut.String())
 		Expect(envelope).To(HaveKeyWithValue("kind", "interrupted"))
 		Expect(envelope).To(HaveKeyWithValue("hint", BeNil()))
 	})
@@ -377,14 +378,14 @@ var _ = Describe("Run", func() {
 		It("keeps a positional value out of stderr and the log", func(ctx SpecContext) {
 			dir := GinkgoT().TempDir()
 			db := filepath.Join(dir, "coroner.db")
-			h := harness{home: dir, db: db, errOut: &errOut}
-			Expect(cli.Run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+			h := clitest.Harness{Home: dir, DB: db, ErrOut: &errOut}
+			Expect(cli.Run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
 
-			Expect(cli.Run(ctx, h.app("event", "add", "-t", "nope", "secret text", "--debug"))).NotTo(Equal(0))
+			Expect(cli.Run(ctx, h.App("event", "add", "-t", "nope", "secret text", "--debug"))).NotTo(Equal(0))
 
 			Expect(errOut.String()).To(ContainSubstring("command failed"))
 			Expect(errOut.String()).NotTo(ContainSubstring("secret"))
-			Expect(readFile(config.DiagnosticLogPath(db))).NotTo(ContainSubstring("secret"))
+			Expect(clitest.ReadFile(config.DiagnosticLogPath(db))).NotTo(ContainSubstring("secret"))
 		})
 
 		It("logs no error attribute for a failure without a cause", func(ctx SpecContext) {
@@ -396,7 +397,7 @@ var _ = Describe("Run", func() {
 
 		It("logs an internal failure under --debug", func(ctx SpecContext) {
 			app := newApp("--debug", "version")
-			app.Out = failingWriter{}
+			app.Out = clitest.FailingWriter{}
 
 			cli.Run(ctx, app)
 

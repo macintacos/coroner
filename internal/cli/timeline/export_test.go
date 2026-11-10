@@ -1,4 +1,4 @@
-package cli_test
+package timeline_test
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/export"
 )
 
@@ -31,17 +32,17 @@ var _ = Describe("timeline export", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, harness{
-			home: home, db: filepath.Join(home, "coroner.db"), outIsTTY: outTTY, out: &out, errOut: &errOut, config: configFile,
-			now: func() time.Time {
+		return cli.Run(ctx, clitest.Harness{
+			Home: home, DB: filepath.Join(home, "coroner.db"), OutIsTTY: outTTY, Out: &out, ErrOut: &errOut, Config: configFile,
+			Now: func() time.Time {
 				now = now.Add(tick)
 				return now
 			},
-			newID: countedIDs(&ids),
-		}.app(args...))
+			NewID: clitest.CountedIDs(&ids),
+		}.App(args...))
 	}
 	var (
-		seeded    cli.SeededHome
+		seeded    clitest.SeededHome
 		seededIDs int
 		seededNow time.Time
 	)
@@ -59,7 +60,7 @@ var _ = Describe("timeline export", func() {
 		outTTY = false
 		configFile = ""
 		seeded.Into(home, func() {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			for _, args := range [][]string{
 				{"timeline", "create", "mongo-outage"},
 				{"timeline", "use", "mongo-outage"},
@@ -258,7 +259,7 @@ var _ = Describe("timeline export", func() {
 
 			Expect(out.String()).To(BeEmpty())
 			Expect(errOut.String()).To(ContainSubstring(path))
-			Expect(readFile(path)).To(Equal(piped))
+			Expect(clitest.ReadFile(path)).To(Equal(piped))
 		})
 
 		It("says nothing on stderr under --quiet", func(ctx SpecContext) {
@@ -308,7 +309,7 @@ var _ = Describe("timeline export", func() {
 		// files returns every file under dir by its path relative to dir.
 		files := func(dir string) map[string]string {
 			GinkgoHelper()
-			tree, err := readTree(dir)
+			tree, err := clitest.ReadTree(dir)
 			Expect(err).NotTo(HaveOccurred())
 			found := map[string]string{}
 			for path, data := range tree {
@@ -318,7 +319,7 @@ var _ = Describe("timeline export", func() {
 		}
 
 		var (
-			attached    cli.SeededHome
+			attached    clitest.SeededHome
 			attachedIDs int
 			attachedNow time.Time
 		)
@@ -390,11 +391,11 @@ var _ = Describe("timeline export", func() {
 
 			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir+"/")).To(Equal(0), errOut.String())
 
-			linked := destinations(readFile(filepath.Join(dir, "mongo-outage.md")))
+			linked := destinations(clitest.ReadFile(filepath.Join(dir, "mongo-outage.md")))
 			Expect(linked).To(HaveLen(2))
 			var contents []string
 			for _, link := range linked {
-				contents = append(contents, readFile(filepath.Join(dir, link)))
+				contents = append(contents, clitest.ReadFile(filepath.Join(dir, link)))
 			}
 			Expect(contents).To(ConsistOf(string(png), string(log)))
 		})
@@ -404,12 +405,12 @@ var _ = Describe("timeline export", func() {
 
 			Expect(run(ctx, "timeline", "export", "--format", "jsonl", "-o", dir+"/")).To(Equal(0), errOut.String())
 
-			records, _, err := export.Decode(strings.NewReader(readFile(filepath.Join(dir, "mongo-outage.jsonl"))))
+			records, _, err := export.Decode(strings.NewReader(clitest.ReadFile(filepath.Join(dir, "mongo-outage.jsonl"))))
 			Expect(err).NotTo(HaveOccurred())
 			var contents []string
 			for _, record := range records {
 				if a, ok := record.(export.Attachment); ok {
-					contents = append(contents, readFile(filepath.Join(dir, export.AttachmentPath(a))))
+					contents = append(contents, clitest.ReadFile(filepath.Join(dir, export.AttachmentPath(a))))
 				}
 			}
 			Expect(contents).To(ConsistOf(string(png), string(log)))
@@ -430,7 +431,7 @@ var _ = Describe("timeline export", func() {
 				path, md := "-", out.String
 				if file != "" {
 					path = filepath.Join(home, file)
-					md = func() string { return readFile(path) }
+					md = func() string { return clitest.ReadFile(path) }
 				}
 
 				Expect(run(ctx, "timeline", "export", "--format", "md", "-o", path)).To(Equal(0), errOut.String())
@@ -438,7 +439,7 @@ var _ = Describe("timeline export", func() {
 				Expect(errOut.String()).To(ContainSubstring("only this machine"))
 				var contents []string
 				for _, link := range destinations(md()) {
-					contents = append(contents, readFile(link))
+					contents = append(contents, clitest.ReadFile(link))
 				}
 				Expect(contents).To(ConsistOf(string(png), string(log)))
 			},
@@ -449,7 +450,7 @@ var _ = Describe("timeline export", func() {
 		It("writes nothing but the document to stdout", func(ctx SpecContext) {
 			dir := filepath.Join(home, "rca") + "/"
 			Expect(run(ctx, "timeline", "export", "--format", "md", "-o", dir)).To(Equal(0), errOut.String())
-			inDirectory := readFile(filepath.Join(dir, "mongo-outage.md"))
+			inDirectory := clitest.ReadFile(filepath.Join(dir, "mongo-outage.md"))
 
 			Expect(run(ctx, "timeline", "export", "--format", "md")).To(Equal(0), errOut.String())
 
@@ -493,7 +494,7 @@ var _ = Describe("timeline export", func() {
 
 			Expect(run(ctx, "timeline", "export", "--format", "html", "-o", path)).To(Equal(0), errOut.String())
 
-			page := readFile(path)
+			page := clitest.ReadFile(path)
 			Expect(page).To(HavePrefix("<!doctype html>"))
 			Expect(page).To(ContainSubstring(`"text":"Primary stepped down"`))
 		})

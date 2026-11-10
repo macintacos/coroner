@@ -17,6 +17,7 @@ import (
 	"github.com/rogpeppe/go-internal/diff"
 	"pgregory.net/rapid"
 
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -371,7 +372,7 @@ func outcomeOf(code int, stderr string) (dryRunOutcome, error) {
 	if code == 0 {
 		return dryRunOutcome{}, nil
 	}
-	envelope, err := lastEnvelope(stderr)
+	envelope, err := clitest.LastEnvelope(stderr)
 	if err != nil {
 		return dryRunOutcome{code: code}, fmt.Errorf("exited %d: %w", code, err)
 	}

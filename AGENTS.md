@@ -120,22 +120,26 @@ readme!: Load design/README.md
   file per verb but `overlay`, one file, and the verbs `status`, `version`, `agent`,
   `help`, `importcmd` (`import`, a Go keyword) and `internalcmd` (`__internal`, since a
   directory named `internal` limits who may import it). The root package holds only
-  `NewRoot` and `Run`, and the specs that walk the whole command tree. What commands share
-  lives in `internal/cli/clikit`: `App`, `Error`, output, selection, definitions, forms
-  and logging. `internal/cli/merge` plans and writes what `import` and
-  `event add --from-file` merge. A command package imports `clikit` and `merge`, never
-  another command's package or the root; the root hands `event` and `annotation` the form
-  step that creates a timeline (`timelinecmd.AskCreate`). Store: `internal/store`. Domain
-  types: `internal/timeline`. Typed time input: `internal/timeparse`. How an event's time
-  reads to people: `internal/timetext`. Config file, XDG paths and precedence, and the
-  attachment blob directory and the diagnostic log's path (`config.DiagnosticLogPath`)
-  beside the database: `internal/config`, whose spec fails when
-  [`docs/reference/configuration.md`](docs/reference/configuration.md) misses a key the
-  config file accepts. JSON export types, envelope, encoder and JSONL decoder, and the
-  Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`, the JSON
-  described by [the export format reference](docs/reference/export-format.md); the HTML
-  page's viewer and vendored vis-timeline live in `internal/export/html/`, its colour
-  tokens in `internal/export/theme.go`, and the SVG picture's template in
+  `NewRoot` and `Run`, and the specs that walk the whole command tree. A command's own
+  specs sit beside it as an external test package (`package event_test`), which may import
+  the root to run the whole CLI; `internal/cli/clitest` holds what they share: the
+  `Harness` that builds a spec's `App`, a database at the latest schema, and readers of
+  what a command printed. It is test code, so it never imports the root and no command
+  imports it. What commands share lives in `internal/cli/clikit`: `App`, `Error`, output,
+  selection, definitions, forms and logging. `internal/cli/merge` plans and writes what
+  `import` and `event add --from-file` merge. A command package imports `clikit` and
+  `merge`, never another command's package or the root; the root hands `event` and
+  `annotation` the form step that creates a timeline (`timelinecmd.AskCreate`). Store:
+  `internal/store`. Domain types: `internal/timeline`. Typed time input:
+  `internal/timeparse`. How an event's time reads to people: `internal/timetext`. Config
+  file, XDG paths and precedence, and the attachment blob directory and the diagnostic
+  log's path (`config.DiagnosticLogPath`) beside the database: `internal/config`, whose
+  spec fails when [`docs/reference/configuration.md`](docs/reference/configuration.md)
+  misses a key the config file accepts. JSON export types, envelope, encoder and JSONL
+  decoder, and the Markdown, Mermaid, HTML and SVG exports' renderers: `internal/export`,
+  the JSON described by [the export format reference](docs/reference/export-format.md);
+  the HTML page's viewer and vendored vis-timeline live in `internal/export/html/`, its
+  colour tokens in `internal/export/theme.go`, and the SVG picture's template in
   `internal/export/svg/`. The terminal viewer `timeline view` opens and the picker
   `timeline list` opens: `internal/viewer`. Which terminals show images inline, the Kitty
   graphics sequences and the placeholder text shown where none can: `internal/graphics`,

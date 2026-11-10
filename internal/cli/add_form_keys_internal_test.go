@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/event"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/graphics"
@@ -227,7 +228,7 @@ func keyedRun(t *testing.T, script *keyScript, check func(*clikit.FittedForm)) c
 	t.Helper()
 	home := t.TempDir()
 	db := filepath.Join(home, "coroner.db")
-	data, err := migrated()
+	data, err := clitest.MigratedDatabase()
 	if err != nil {
 		t.Fatal(err)
 	}

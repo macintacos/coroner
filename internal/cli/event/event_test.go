@@ -1,4 +1,4 @@
-package cli_test
+package event_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -32,12 +33,12 @@ var _ = Describe("event add", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, harness{
-			home: home, db: filepath.Join(home, "coroner.db"), env: env, in: in, inIsTTY: inIsTTY,
-			out: &out, errOut: &errOut, config: configFile,
-			now:   func() time.Time { return now },
-			newID: countedIDs(&ids),
-		}.app(args...))
+		return cli.Run(ctx, clitest.Harness{
+			Home: home, DB: filepath.Join(home, "coroner.db"), Env: env, In: in, InIsTTY: inIsTTY,
+			Out: &out, ErrOut: &errOut, Config: configFile,
+			Now:   func() time.Time { return now },
+			NewID: clitest.CountedIDs(&ids),
+		}.App(args...))
 	}
 
 	storedEvents := func(ctx SpecContext) []timeline.Event {
@@ -65,13 +66,13 @@ var _ = Describe("event add", func() {
 
 	When("a timeline is current", func() {
 		var (
-			seeded    cli.SeededHome
+			seeded    clitest.SeededHome
 			seededIDs int
 		)
 
 		BeforeEach(func(ctx SpecContext) {
 			seeded.Into(home, func() {
-				cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+				clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 				Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
 				Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0))
 				seededIDs = ids
@@ -196,14 +197,14 @@ var _ = Describe("event add", func() {
 		})
 
 		It("rejects --ended before --at without reading stdin", func(ctx SpecContext) {
-			stdin := &readCounter{r: strings.NewReader("Deploy")}
+			stdin := &clitest.ReadCounter{R: strings.NewReader("Deploy")}
 			in = stdin
 
 			Expect(run(ctx, "event", "add", "-", "--at", "2026-09-11T14:20:00Z", "--ended", "2026-09-11T14:00:00Z",
 				"--json")).To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"invalid_time"`))
-			Expect(stdin.reads).To(BeZero())
+			Expect(stdin.Reads).To(BeZero())
 		})
 
 		DescribeTable("exits 2 with kind invalid_time and a hint to use --approximate on an approximate --ended",
@@ -256,7 +257,7 @@ var _ = Describe("event add", func() {
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 				Expect(storedEvents(ctx)).To(BeEmpty())
-				expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+				clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 			},
 			Entry("--url", "--url", "https://logs.example.com/\xff"),
 			Entry("--author", "--author", "julian\xff"),
@@ -271,7 +272,7 @@ var _ = Describe("event add", func() {
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
 			Expect(storedEvents(ctx)).To(BeEmpty())
-			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+			clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 		})
 
 		Describe("--dry-run", func() {

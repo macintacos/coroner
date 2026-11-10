@@ -18,6 +18,7 @@ import (
 	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/viewer"
@@ -69,7 +70,7 @@ var _ = Describe("timelineLoader", func() {
 	}
 
 	var (
-		seeded    seededHome
+		seeded    clitest.SeededHome
 		seededIDs int
 	)
 
@@ -106,8 +107,8 @@ var _ = Describe("timelineLoader", func() {
 		db = filepath.Join(home, "coroner.db")
 		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 
-		seeded.into(home, func() {
-			writeMigratedDatabase(db)
+		seeded.Into(home, func() {
+			clitest.WriteMigratedDatabase(db)
 			for _, args := range [][]string{
 				{"timeline", "create", "mongo-outage"},
 				{"timeline", "use", "mongo-outage"},

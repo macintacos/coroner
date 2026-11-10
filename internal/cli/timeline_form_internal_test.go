@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/graphics"
@@ -222,7 +223,7 @@ var _ = Describe("timeline forms", func() {
 		}
 
 		BeforeEach(func(ctx SpecContext) {
-			writeMigratedDatabase(db)
+			clitest.WriteMigratedDatabase(db)
 			seed(ctx, db)
 		})
 

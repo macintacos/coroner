@@ -1,4 +1,4 @@
-package cli_test
+package status_test
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 )
 
 var _ = Describe("status", func() {
@@ -37,11 +38,11 @@ var _ = Describe("status", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, harness{
-			home: env["HOME"], db: dbPath, env: env, out: &out, errOut: &errOut,
-			now:   func() time.Time { return time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC) },
-			newID: countedIDs(&ids),
-		}.app(args...))
+		return cli.Run(ctx, clitest.Harness{
+			Home: env["HOME"], DB: dbPath, Env: env, Out: &out, ErrOut: &errOut,
+			Now:   func() time.Time { return time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC) },
+			NewID: clitest.CountedIDs(&ids),
+		}.App(args...))
 	}
 
 	status := func(ctx SpecContext, args ...string) statusJSON {
@@ -143,7 +144,7 @@ var _ = Describe("status", func() {
 		})
 
 		It("exits 5 with kind db_too_new for a database a newer coroner migrated", func(ctx SpecContext) {
-			Expect(bumpSchemaVersion(ctx, dbPath)).To(Succeed())
+			Expect(clitest.BumpSchemaVersion(ctx, dbPath)).To(Succeed())
 
 			Expect(run(ctx, "status", "--json")).To(Equal(5))
 

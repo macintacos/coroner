@@ -29,6 +29,7 @@ import (
 	"pgregory.net/rapid"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
@@ -552,9 +553,9 @@ func (c coroner) run(ctx context.Context, args ...string) (string, error) {
 // exec returns what the command line args wrote to stdout and stderr, and its exit code.
 func (c coroner) exec(ctx context.Context, args ...string) (string, string, int) {
 	var out, errOut bytes.Buffer
-	code := cli.Run(ctx, harness{
-		home: c.home, out: &out, errOut: &errOut, version: c.version, now: func() time.Time { return c.now },
-	}.app(args...))
+	code := cli.Run(ctx, clitest.Harness{
+		Home: c.home, Out: &out, ErrOut: &errOut, Version: c.version, Now: func() time.Time { return c.now },
+	}.App(args...))
 
 	return out.String(), errOut.String(), code
 }
@@ -579,8 +580,8 @@ func exportedJSONL(dir string) (string, error) {
 // dirDiff returns a diff of every file that is in only one of the directories a and b, or differs
 // between them, and "" when they hold the same files.
 func dirDiff(a, b string) (string, error) {
-	filesA, errA := readTree(a)
-	filesB, errB := readTree(b)
+	filesA, errA := clitest.ReadTree(a)
+	filesB, errB := clitest.ReadTree(b)
 	if errA != nil || errB != nil {
 		return "", errors.Join(errA, errB)
 	}
@@ -604,21 +605,6 @@ func dirDiff(a, b string) (string, error) {
 	}
 
 	return out.String(), nil
-}
-
-// readTree returns the content of every file under dir, by its path relative to dir.
-func readTree(dir string) (map[string][]byte, error) {
-	files := map[string][]byte{}
-	fsys := os.DirFS(dir)
-	err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		files[path], err = fs.ReadFile(fsys, path)
-		return err
-	})
-
-	return files, err
 }
 
 // observe records in seen each record type in jsonl, each of its keys as type.key=null or

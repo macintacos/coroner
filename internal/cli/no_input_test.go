@@ -15,6 +15,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 )
 
 // noInputScript is the script that runs each interactive command with no terminal.
@@ -41,7 +42,7 @@ var _ = Describe("interactive commands off a terminal", func() {
 			stdin, typed := io.Pipe()
 			DeferCleanup(typed.Close)
 			var errOut bytes.Buffer
-			app := harness{home: home, db: filepath.Join(home, "coroner.db"), in: stdin, errOut: &errOut, outIsTTY: true}.app(args...)
+			app := clitest.Harness{Home: home, DB: filepath.Join(home, "coroner.db"), In: stdin, ErrOut: &errOut, OutIsTTY: true}.App(args...)
 
 			code := make(chan int, 1)
 			go func() { code <- cli.Run(ctx, app) }()

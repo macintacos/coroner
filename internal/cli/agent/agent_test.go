@@ -1,4 +1,4 @@
-package cli_test
+package agent_test
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 	"github.com/macintacos/coroner/skills"
 )
 
-const skillDir = "../../skills/coroner"
+const skillDir = "../../../skills/coroner"
 
 var _ = Describe("agent skill", func() {
 	It("prints skills/coroner/SKILL.md byte for byte without opening the database", func(ctx SpecContext) {

@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -73,7 +74,7 @@ var _ = Describe("timeline selection", func() {
 	}
 
 	var (
-		seeded    seededHome
+		seeded    clitest.SeededHome
 		seededIDs int
 	)
 
@@ -83,8 +84,8 @@ var _ = Describe("timeline selection", func() {
 		db = filepath.Join(home, "coroner.db")
 		app = scratchApp(home, io.Discard, io.Discard, sequentialIDs(&ids))
 		app.In = strings.NewReader("")
-		seeded.into(home, func() {
-			writeMigratedDatabase(db)
+		seeded.Into(home, func() {
+			clitest.WriteMigratedDatabase(db)
 			for _, args := range [][]string{
 				{"timeline", "create", "alpha"},
 				{"timeline", "create", "beta"},

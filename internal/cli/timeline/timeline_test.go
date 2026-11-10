@@ -1,4 +1,4 @@
-package cli_test
+package timeline_test
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -28,11 +29,11 @@ var _ = Describe("timeline", func() {
 	)
 
 	newApp := func(args ...string) clikit.App {
-		return harness{
-			home: home, db: filepath.Join(home, "coroner.db"), env: env, out: &out, errOut: &errOut,
-			now:   func() time.Time { return now },
-			newID: countedIDs(&ids),
-		}.app(args...)
+		return clitest.Harness{
+			Home: home, DB: filepath.Join(home, "coroner.db"), Env: env, Out: &out, ErrOut: &errOut,
+			Now:   func() time.Time { return now },
+			NewID: clitest.CountedIDs(&ids),
+		}.App(args...)
 	}
 
 	run := func(ctx SpecContext, args ...string) int {
@@ -113,7 +114,7 @@ var _ = Describe("timeline", func() {
 
 	Describe("list", func() {
 		BeforeEach(func(ctx SpecContext) {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "zeta", "--title", "oldest")).To(Equal(0), errOut.String())
 			now = now.Add(time.Minute)
 			Expect(run(ctx, "timeline", "create", "alpha")).To(Equal(0), errOut.String())
@@ -172,7 +173,7 @@ var _ = Describe("timeline", func() {
 		}
 
 		BeforeEach(func(ctx SpecContext) {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage", "--title", "Primary election storm", "--ref", "INC-4821")).
 				To(Equal(0), errOut.String())
 
@@ -370,7 +371,7 @@ var _ = Describe("timeline", func() {
 					Expect(run(ctx, "timeline", "edit", "mongo-outage", "--json", flag, value)).To(Equal(2))
 
 					Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
-					expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+					clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 				},
 				Entry(nil, "--title", "Failover \xff"),
 				Entry(nil, "--add-ref", "INC-4821\xff"),
@@ -402,7 +403,7 @@ var _ = Describe("timeline", func() {
 
 	Describe("use", func() {
 		BeforeEach(func(ctx SpecContext) {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})
 
@@ -434,7 +435,7 @@ var _ = Describe("timeline", func() {
 
 	Describe("selecting the timeline to act on", func() {
 		BeforeEach(func(ctx SpecContext) {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			for _, name := range []string{"a", "b", "c"} {
 				Expect(run(ctx, "timeline", "create", name)).To(Equal(0), errOut.String())
 			}
@@ -508,7 +509,7 @@ var _ = Describe("timeline", func() {
 		}
 
 		BeforeEach(func(ctx SpecContext) {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})
 

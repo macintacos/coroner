@@ -19,6 +19,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 )
@@ -26,7 +27,7 @@ import (
 // logLines returns the diagnostic log at path, one decoded JSON object per line.
 func logLines(path string) []map[string]any {
 	GinkgoHelper()
-	return decodeLines(readFile(path))
+	return decodeLines(clitest.ReadFile(path))
 }
 
 // decodeLines decodes written, one JSON object per line.
@@ -73,7 +74,7 @@ func readIfExists(path string) string {
 
 var _ = Describe("diagnostic log", func() {
 	var (
-		h           harness
+		h           clitest.Harness
 		logPath     string
 		out, errOut bytes.Buffer
 		openedTheDB bool
@@ -84,8 +85,8 @@ var _ = Describe("diagnostic log", func() {
 		errOut.Reset()
 		dir := GinkgoT().TempDir()
 		ids := 0
-		h = harness{home: dir, db: filepath.Join(dir, "coroner.db"), out: &out, errOut: &errOut, newID: countedIDs(&ids)}
-		logPath = config.DiagnosticLogPath(h.db)
+		h = clitest.Harness{Home: dir, DB: filepath.Join(dir, "coroner.db"), Out: &out, ErrOut: &errOut, NewID: clitest.CountedIDs(&ids)}
+		logPath = config.DiagnosticLogPath(h.DB)
 	})
 
 	// run runs args against h, recording whether the command opened the database.
@@ -107,13 +108,13 @@ var _ = Describe("diagnostic log", func() {
 	linesWritten := func(ctx context.Context, want int, args ...string) []map[string]any {
 		GinkgoHelper()
 		before := len(logLines(logPath))
-		Expect(run(ctx, h.app(args...))).To(Equal(want), errOut.String())
+		Expect(run(ctx, h.App(args...))).To(Equal(want), errOut.String())
 		return logLines(logPath)[before:]
 	}
 
 	It("ends every command that opens a database with its finish line, and keeps opted-out commands out", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
-		Expect(run(ctx, h.app("timeline", "use", "t"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "use", "t"))).To(Equal(0))
 
 		optedOut := []string{"coroner version", "coroner agent skill", "coroner completion", "coroner __internal"}
 		isOptedOut := func(path string) bool {
@@ -123,7 +124,7 @@ var _ = Describe("diagnostic log", func() {
 		}
 
 		var leaves []*cobra.Command
-		cli.WalkCommands(cli.NewRoot(ctx, h.app()), func(cmd *cobra.Command) {
+		cli.WalkCommands(cli.NewRoot(ctx, h.App()), func(cmd *cobra.Command) {
 			if cmd.Runnable() && !cmd.HasSubCommands() {
 				leaves = append(leaves, cmd)
 			}
@@ -133,7 +134,7 @@ var _ = Describe("diagnostic log", func() {
 		for _, leaf := range leaves {
 			path := leaf.CommandPath()
 			before := readIfExists(logPath)
-			code := run(ctx, h.app(append(strings.Fields(strings.TrimPrefix(path, "coroner ")), "--no-input")...))
+			code := run(ctx, h.App(append(strings.Fields(strings.TrimPrefix(path, "coroner ")), "--no-input")...))
 
 			if isOptedOut(path) {
 				Expect(readIfExists(logPath)).To(Equal(before), path)
@@ -148,18 +149,18 @@ var _ = Describe("diagnostic log", func() {
 			Expect(last).To(HaveKeyWithValue("exit_code", BeNumerically("==", code)), path)
 		}
 
-		before := readFile(logPath)
+		before := clitest.ReadFile(logPath)
 		completion := h
-		completion.db = ""
-		completion.env = map[string]string{"HOME": h.home, "CORONER_DB": h.db}
-		run(ctx, completion.app("__complete", "timeline", "use", ""))
+		completion.DB = ""
+		completion.Env = map[string]string{"HOME": h.Home, "CORONER_DB": h.DB}
+		run(ctx, completion.App("__complete", "timeline", "use", ""))
 		Expect(openedTheDB).To(BeTrue())
-		Expect(readFile(logPath)).To(Equal(before))
+		Expect(clitest.ReadFile(logPath)).To(Equal(before))
 	})
 
 	It("logs an edit that changed nothing with an empty fields list", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "inc", "--title", "same"))).To(Equal(0))
-		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "same"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "inc", "--title", "same"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "edit", "inc", "--title", "same"))).To(Equal(0))
 
 		var edited map[string]any
 		for _, line := range logLines(logPath) {
@@ -172,7 +173,7 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("hands the store the command's logger and clock", func(ctx SpecContext) {
-		app := h.app("timeline", "create", "u", "--debug")
+		app := h.App("timeline", "create", "u", "--debug")
 		now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
 		app.Now = func() time.Time {
 			now = now.Add(time.Millisecond)
@@ -186,9 +187,9 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("logs a dry run's transaction as rolled back under --debug", func(ctx SpecContext) {
-		Expect(cli.Run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+		Expect(cli.Run(ctx, h.App("timeline", "create", "inc"))).To(Equal(0))
 
-		Expect(cli.Run(ctx, h.app("event", "add", "x", "-t", "inc", "--dry-run", "--debug"))).To(Equal(0))
+		Expect(cli.Run(ctx, h.App("event", "add", "x", "-t", "inc", "--dry-run", "--debug"))).To(Equal(0))
 
 		Expect(logLines(logPath)).To(ContainElement(And(HaveKeyWithValue("msg", "transaction rolled back"),
 			HaveKeyWithValue("command", "coroner event add"), HaveKeyWithValue("dry_run", true))))
@@ -196,9 +197,9 @@ var _ = Describe("diagnostic log", func() {
 
 	DescribeTable("ends the log with the command's finish line",
 		func(ctx SpecContext, wantCode int, wantKind string, args ...string) {
-			Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+			Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
 
-			Expect(run(ctx, h.app(args...))).To(Equal(wantCode))
+			Expect(run(ctx, h.App(args...))).To(Equal(wantCode))
 
 			last := lastLogLine(logPath)
 			Expect(last).To(HaveKeyWithValue("msg", "command finished"))
@@ -212,19 +213,19 @@ var _ = Describe("diagnostic log", func() {
 	)
 
 	It("ends the log with status's finish line", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
 
-		Expect(run(ctx, h.app("status"))).To(Equal(0))
+		Expect(run(ctx, h.App("status"))).To(Equal(0))
 
 		Expect(lastLogLine(logPath)).To(HaveKeyWithValue("command", "coroner status"))
 	})
 
 	DescribeTable("leaves nothing where a database that does not exist would be",
 		func(ctx SpecContext, args func(dir string) []string) {
-			dir := filepath.Join(h.home, "absent")
-			h.db = filepath.Join(dir, "coroner.db")
+			dir := filepath.Join(h.Home, "absent")
+			h.DB = filepath.Join(dir, "coroner.db")
 
-			run(ctx, h.app(args(h.home)...))
+			run(ctx, h.App(args(h.Home)...))
 
 			Expect(dir).NotTo(BeAnExistingFile())
 		},
@@ -238,12 +239,12 @@ var _ = Describe("diagnostic log", func() {
 
 	DescribeTable("keeps no log beside a path that is not a coroner database",
 		func(ctx SpecContext, makeDB func(path string)) {
-			h.db = filepath.Join(h.home, "incidents")
-			makeDB(h.db)
+			h.DB = filepath.Join(h.Home, "incidents")
+			makeDB(h.DB)
 
-			Expect(run(ctx, h.app("timeline", "list"))).To(Equal(5))
+			Expect(run(ctx, h.App("timeline", "list"))).To(Equal(5))
 
-			Expect(config.DiagnosticLogPath(h.db)).NotTo(BeAnExistingFile())
+			Expect(config.DiagnosticLogPath(h.DB)).NotTo(BeAnExistingFile())
 		},
 		Entry("a directory", func(path string) { Expect(os.Mkdir(path, 0o700)).To(Succeed()) }),
 		Entry("a file coroner did not create", func(path string) {
@@ -252,20 +253,20 @@ var _ = Describe("diagnostic log", func() {
 	)
 
 	It("finishes a command that panicked after opening the database as internal", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
-		h.out = panickingWriter{}
+		Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
+		h.Out = panickingWriter{}
 
-		Expect(run(ctx, h.app("timeline", "list"))).To(Equal(1))
+		Expect(run(ctx, h.App("timeline", "list"))).To(Equal(1))
 
 		Expect(lastLogLine(logPath)).To(HaveKeyWithValue("kind", "internal"))
 	})
 
 	DescribeTable("changes nothing about a command when the log cannot be written",
 		func(ctx SpecContext, logSize int64, breakLog func(app *clikit.App)) {
-			Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+			Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
 			out.Reset()
 			errOut.Reset()
-			wantCode := run(ctx, h.app("timeline", "list"))
+			wantCode := run(ctx, h.App("timeline", "list"))
 			wantOut, wantErr := out.String(), errOut.String()
 			Expect(os.Remove(logPath)).To(Succeed())
 			if logSize > 0 {
@@ -276,7 +277,7 @@ var _ = Describe("diagnostic log", func() {
 			out.Reset()
 			errOut.Reset()
 
-			app := h.app("timeline", "list")
+			app := h.App("timeline", "list")
 			breakLog(&app)
 
 			Expect(run(ctx, app)).To(Equal(wantCode))
@@ -307,22 +308,22 @@ var _ = Describe("diagnostic log", func() {
 
 	It("writes byte-identical logs for identical runs", func(ctx SpecContext) {
 		other := h
-		other.home = GinkgoT().TempDir()
-		other.db = filepath.Join(other.home, "coroner.db")
+		other.Home = GinkgoT().TempDir()
+		other.DB = filepath.Join(other.Home, "coroner.db")
 		otherIDs := 0
-		other.newID = countedIDs(&otherIDs)
-		for _, each := range []harness{h, other} {
-			Expect(run(ctx, each.app("timeline", "create", "t"))).To(Equal(0))
-			Expect(run(ctx, each.app("timeline", "list"))).To(Equal(0))
+		other.NewID = clitest.CountedIDs(&otherIDs)
+		for _, each := range []clitest.Harness{h, other} {
+			Expect(run(ctx, each.App("timeline", "create", "t"))).To(Equal(0))
+			Expect(run(ctx, each.App("timeline", "list"))).To(Equal(0))
 		}
 
-		Expect(readFile(logPath)).To(Equal(readFile(config.DiagnosticLogPath(other.db))))
-		Expect(readFile(logPath)).To(ContainSubstring(`"duration":0`))
+		Expect(clitest.ReadFile(logPath)).To(Equal(clitest.ReadFile(config.DiagnosticLogPath(other.DB))))
+		Expect(clitest.ReadFile(logPath)).To(ContainSubstring(`"duration":0`))
 	})
 
 	It("holds only info lines without debug, and prints none on stderr", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
-		Expect(run(ctx, h.app("event", "list", "-t", "missing"))).To(Equal(3))
+		Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
+		Expect(run(ctx, h.App("event", "list", "-t", "missing"))).To(Equal(3))
 
 		for _, line := range logLines(logPath) {
 			Expect(line).To(HaveKeyWithValue("level", "INFO"))
@@ -331,9 +332,9 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("logs where the database path, config file and default time zone came from under --debug", func(ctx SpecContext) {
-		h.config = "default_timezone = \"America/New_York\"\n"
+		h.Config = "default_timezone = \"America/New_York\"\n"
 
-		Expect(run(ctx, h.app("timeline", "create", "u", "--debug"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "u", "--debug"))).To(Equal(0))
 
 		lines := logLines(logPath)
 		finished := slices.IndexFunc(lines, func(line map[string]any) bool { return line["msg"] == "command finished" })
@@ -342,9 +343,9 @@ var _ = Describe("diagnostic log", func() {
 			return slices.DeleteFunc(slices.Clone(lines[:finished]), func(line map[string]any) bool { return line["msg"] != msg })
 		}
 		Expect(linesWith("database path resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
-			HaveKeyWithValue("path", h.db), HaveKeyWithValue("by", "flag"))))
+			HaveKeyWithValue("path", h.DB), HaveKeyWithValue("by", "flag"))))
 		Expect(linesWith("config file resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
-			HaveKeyWithValue("path", filepath.Join(h.home, ".config", "coroner", "config.toml")),
+			HaveKeyWithValue("path", filepath.Join(h.Home, ".config", "coroner", "config.toml")),
 			HaveKeyWithValue("by", "default"))))
 		Expect(linesWith("default time zone resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
 			HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file"))))
@@ -352,7 +353,7 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("logs the zone --tz names under --debug", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "u", "--debug", "--tz", "Asia/Tokyo"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "u", "--debug", "--tz", "Asia/Tokyo"))).To(Equal(0))
 
 		lines := logLines(logPath)
 		finished := slices.IndexFunc(lines, func(line map[string]any) bool { return line["msg"] == "command finished" })
@@ -363,18 +364,18 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("logs how many lines an imported export held and its format versions under --debug", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
-		Expect(run(ctx, h.app("event", "add", "x", "-t", "inc"))).To(Equal(0))
-		path := filepath.Join(h.home, "inc.jsonl")
-		Expect(run(ctx, h.app("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
-		data := readFile(path)
+		Expect(run(ctx, h.App("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.App("event", "add", "x", "-t", "inc"))).To(Equal(0))
+		path := filepath.Join(h.Home, "inc.jsonl")
+		Expect(run(ctx, h.App("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
+		data := clitest.ReadFile(path)
 		first, _, _ := strings.Cut(data, "\n")
 		var header struct {
 			FormatVersion string `json:"format_version"`
 		}
 		Expect(json.Unmarshal([]byte(first), &header)).To(Succeed())
 
-		Expect(run(ctx, h.app("import", path, "--debug"))).To(Equal(0), errOut.String())
+		Expect(run(ctx, h.App("import", path, "--debug"))).To(Equal(0), errOut.String())
 
 		decoded := slices.DeleteFunc(logLines(logPath), func(line map[string]any) bool { return line["msg"] != "export decoded" })
 		Expect(decoded).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("path", path),
@@ -383,9 +384,9 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("counts what an import inserts, skips and replaces at info, and lists each record under --debug", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
-		Expect(run(ctx, h.app("event", "add", "a", "-t", "inc"))).To(Equal(0))
-		Expect(run(ctx, h.app("event", "add", "b", "-t", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.App("event", "add", "a", "-t", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.App("event", "add", "b", "-t", "inc"))).To(Equal(0))
 		type withID struct {
 			ID string `json:"id"`
 		}
@@ -394,14 +395,14 @@ var _ = Describe("diagnostic log", func() {
 			Events    []withID `json:"events"`
 		}
 		out.Reset()
-		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--json"))).To(Equal(0))
+		Expect(run(ctx, h.App("event", "list", "-t", "inc", "--json"))).To(Equal(0))
 		Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed())
 		timelineID, eventA, eventB := listed.Timelines[0].ID, listed.Events[0].ID, listed.Events[1].ID
 
-		path := filepath.Join(h.home, "inc.jsonl")
-		Expect(run(ctx, h.app("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
-		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed"))).To(Equal(0))
-		Expect(run(ctx, h.app("event", "delete", "inc#2"))).To(Equal(0))
+		path := filepath.Join(h.Home, "inc.jsonl")
+		Expect(run(ctx, h.App("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "edit", "inc", "--title", "changed"))).To(Equal(0))
+		Expect(run(ctx, h.App("event", "delete", "inc#2"))).To(Equal(0))
 
 		written := func(want int, args ...string) []map[string]any { return linesWritten(ctx, want, args...) }
 		isPlanLine := func(line map[string]any) bool {
@@ -424,16 +425,16 @@ var _ = Describe("diagnostic log", func() {
 		))
 		Expect(slices.ContainsFunc(lines, func(l map[string]any) bool { _, ok := l["dry_run"]; return isPlanLine(l) && ok })).To(BeFalse())
 
-		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed-again"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "edit", "inc", "--title", "changed-again"))).To(Equal(0))
 		Expect(slices.ContainsFunc(written(4, "import", path, "--debug"), isPlanLine)).To(BeFalse())
 
 		var events strings.Builder
-		for l := range strings.Lines(readFile(path)) {
+		for l := range strings.Lines(clitest.ReadFile(path)) {
 			if strings.Contains(l, `"type":"event"`) {
 				events.WriteString(l)
 			}
 		}
-		eventsPath := filepath.Join(h.home, "events.jsonl")
+		eventsPath := filepath.Join(h.Home, "events.jsonl")
 		Expect(os.WriteFile(eventsPath, []byte(events.String()), 0o600)).To(Succeed())
 		Expect(written(0, "event", "add", "-t", "inc", "--from-file", eventsPath, "--debug")).To(ContainElements(
 			line("INFO", "events skipped", "count", float64(2)),
@@ -443,7 +444,7 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("counts what a delete sweeps along at info, and lists each record under --debug", func(ctx SpecContext) {
-		attachment := filepath.Join(h.home, "notes.txt")
+		attachment := filepath.Join(h.Home, "notes.txt")
 		Expect(os.WriteFile(attachment, []byte("notes"), 0o600)).To(Succeed())
 		type record struct {
 			ID          string `json:"id"`
@@ -454,7 +455,7 @@ var _ = Describe("diagnostic log", func() {
 		// created runs args under --json and returns the record it printed.
 		created := func(args ...string) record {
 			out.Reset()
-			Expect(run(ctx, h.app(append(args, "--json")...))).To(Equal(0), errOut.String())
+			Expect(run(ctx, h.App(append(args, "--json")...))).To(Equal(0), errOut.String())
 			var r record
 			Expect(json.Unmarshal(out.Bytes(), &r)).To(Succeed(), out.String())
 			return r
@@ -514,10 +515,10 @@ var _ = Describe("diagnostic log", func() {
 
 	DescribeTable("logs which setting selected the timelines under --debug",
 		func(ctx SpecContext, wantBy string, wantNames []string, setup func(context.Context), args ...string) {
-			Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+			Expect(run(ctx, h.App("timeline", "create", "inc"))).To(Equal(0))
 			setup(ctx)
 			out.Reset()
-			Expect(run(ctx, h.app("timeline", "list", "--json"))).To(Equal(0))
+			Expect(run(ctx, h.App("timeline", "list", "--json"))).To(Equal(0))
 			var listed struct {
 				Timelines []struct {
 					ID   string `json:"id"`
@@ -534,7 +535,7 @@ var _ = Describe("diagnostic log", func() {
 				want = append(want, idOf[name])
 			}
 
-			Expect(run(ctx, h.app(append(args, "--debug")...))).To(Equal(0), errOut.String())
+			Expect(run(ctx, h.App(append(args, "--debug")...))).To(Equal(0), errOut.String())
 
 			Expect(logLines(logPath)).To(ContainElement(And(
 				HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "timelines selected"),
@@ -543,14 +544,14 @@ var _ = Describe("diagnostic log", func() {
 		},
 		Entry("-t", "flag", []string{"inc"}, func(context.Context) {}, "event", "list", "-t", "inc"),
 		Entry("--overlay", "overlay", []string{"standby", "inc"}, func(ctx context.Context) {
-			Expect(run(ctx, h.app("timeline", "create", "standby"))).To(Equal(0))
-			Expect(run(ctx, h.app("overlay", "create", "pair", "-t", "standby", "-t", "inc"))).To(Equal(0), errOut.String())
+			Expect(run(ctx, h.App("timeline", "create", "standby"))).To(Equal(0))
+			Expect(run(ctx, h.App("overlay", "create", "pair", "-t", "standby", "-t", "inc"))).To(Equal(0), errOut.String())
 		}, "event", "list", "--overlay", "pair"),
 		Entry("CORONER_TIMELINE", "env", []string{"inc"}, func(context.Context) {
-			h.env = map[string]string{"HOME": h.home, "CORONER_TIMELINE": "inc"}
+			h.Env = map[string]string{"HOME": h.Home, "CORONER_TIMELINE": "inc"}
 		}, "event", "list"),
 		Entry("coroner timeline use", "use", []string{"inc"}, func(ctx context.Context) {
-			Expect(run(ctx, h.app("timeline", "use", "inc"))).To(Equal(0))
+			Expect(run(ctx, h.App("timeline", "use", "inc"))).To(Equal(0))
 		}, "event", "list"),
 	)
 
@@ -581,29 +582,29 @@ var _ = Describe("diagnostic log", func() {
 			Expect(ok).To(BeTrue(), line["instant"])
 			Expect(instant(logged).Equal(instant(want))).To(BeTrue(), logged)
 		}
-		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "inc"))).To(Equal(0))
 
-		Expect(run(ctx, h.app("event", "add", "x", "-t", "inc", "--at", "2026-01-02 03:04",
+		Expect(run(ctx, h.App("event", "add", "x", "-t", "inc", "--at", "2026-01-02 03:04",
 			"--ended", "2026-01-02 04:00", "--tz", "America/New_York", "--debug"))).To(Equal(0), errOut.String())
 		lines := resolvedLines()
 		Expect(lines).To(HaveLen(2))
 		expectLine(lines[0], "at", "2026-01-02 03:04", "America/New_York", "2026-01-02T03:04:00-05:00", "minute")
 		expectLine(lines[1], "ended", "2026-01-02 04:00", "America/New_York", "2026-01-02T04:00:00-05:00", "minute")
 
-		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--since", "2026-01-01", "--debug"))).To(Equal(0), errOut.String())
+		Expect(run(ctx, h.App("event", "list", "-t", "inc", "--since", "2026-01-01", "--debug"))).To(Equal(0), errOut.String())
 		lines = resolvedLines()
 		Expect(lines).To(HaveLen(3))
 		expectLine(lines[2], "since", "2026-01-01", "UTC", "2026-01-01T00:00:00Z", "day")
 
-		Expect(run(ctx, h.app("event", "add", "y", "-t", "inc", "--debug"))).To(Equal(0), errOut.String())
+		Expect(run(ctx, h.App("event", "add", "y", "-t", "inc", "--debug"))).To(Equal(0), errOut.String())
 		Expect(resolvedLines()).To(HaveLen(3))
 	})
 
 	It("logs the failure under --debug, and shows every line on stderr once", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
 		errOut.Reset()
 
-		Expect(run(ctx, h.app("event", "list", "-t", "missing", "--debug"))).To(Equal(3))
+		Expect(run(ctx, h.App("event", "list", "-t", "missing", "--debug"))).To(Equal(3))
 
 		Expect(slices.ContainsFunc(logLines(logPath), func(line map[string]any) bool {
 			return line["msg"] == "command failed" && line["level"] == "DEBUG"
@@ -613,18 +614,18 @@ var _ = Describe("diagnostic log", func() {
 	})
 
 	It("keeps the JSON error envelope last on stderr under --json --debug", func(ctx SpecContext) {
-		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+		Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
 		errOut.Reset()
 
-		Expect(run(ctx, h.app("event", "list", "-t", "missing", "--json", "--debug"))).To(Equal(3))
+		Expect(run(ctx, h.App("event", "list", "-t", "missing", "--json", "--debug"))).To(Equal(3))
 
-		envelope, err := lastEnvelope(errOut.String())
+		envelope, err := clitest.LastEnvelope(errOut.String())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(envelope).To(HaveKeyWithValue("kind", "timeline_not_found"))
 	})
 
 	It("prints debug text from a root the deprecation bridge builds", func(ctx SpecContext) {
-		app := h.app("--debug", "--no-such-flag")
+		app := h.App("--debug", "--no-such-flag")
 
 		Expect(func() { cli.RunWithThrowawayDeprecation(ctx, app) }).NotTo(Panic())
 		Expect(errOut.String()).To(ContainSubstring("level=DEBUG"))
@@ -634,12 +635,12 @@ var _ = Describe("diagnostic log", func() {
 		var attachmentID, attachmentSHA256 string
 
 		BeforeEach(func(ctx SpecContext) {
-			file := filepath.Join(h.home, "shot.txt")
+			file := filepath.Join(h.Home, "shot.txt")
 			Expect(os.WriteFile(file, []byte("shot"), 0o600)).To(Succeed())
-			Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
-			Expect(run(ctx, h.app("event", "add", "x", "-t", "t", "--attach", file))).To(Equal(0))
+			Expect(run(ctx, h.App("timeline", "create", "t"))).To(Equal(0))
+			Expect(run(ctx, h.App("event", "add", "x", "-t", "t", "--attach", file))).To(Equal(0))
 			out.Reset()
-			Expect(run(ctx, h.app("attachment", "list", "-t", "t", "--json"))).To(Equal(0))
+			Expect(run(ctx, h.App("attachment", "list", "-t", "t", "--json"))).To(Equal(0))
 			var listed struct {
 				Attachments []struct {
 					ID     string `json:"id"`
@@ -655,9 +656,9 @@ var _ = Describe("diagnostic log", func() {
 		written := func(ctx context.Context, args ...string) []map[string]any {
 			GinkgoHelper()
 			before := len(readIfExists(logPath))
-			Expect(run(ctx, h.app(args...))).To(Equal(0), errOut.String())
+			Expect(run(ctx, h.App(args...))).To(Equal(0), errOut.String())
 			var lines []map[string]any
-			for _, line := range decodeLines(readFile(logPath)[before:]) {
+			for _, line := range decodeLines(clitest.ReadFile(logPath)[before:]) {
 				if line["msg"] == "file written" {
 					lines = append(lines, line)
 				}
@@ -673,7 +674,7 @@ var _ = Describe("diagnostic log", func() {
 		}
 
 		It("logs the export and each attachment it copies into a directory", func(ctx SpecContext) {
-			dir := filepath.Join(h.home, "out")
+			dir := filepath.Join(h.Home, "out")
 
 			lines := written(ctx, "timeline", "export", "-t", "t", "--format", "md", "-o", dir+"/")
 
@@ -701,7 +702,7 @@ var _ = Describe("diagnostic log", func() {
 		})
 
 		It("logs the file attachment export writes", func(ctx SpecContext) {
-			file := filepath.Join(h.home, "exported.txt")
+			file := filepath.Join(h.Home, "exported.txt")
 
 			Expect(written(ctx, "attachment", "export", attachmentID, "-o", file)).To(ConsistOf(SatisfyAll(
 				HaveKeyWithValue("level", "INFO"),

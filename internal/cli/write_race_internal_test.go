@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 )
 
 type ran struct {
@@ -38,7 +39,7 @@ func (r ran) kind() clikit.Kind {
 func realRunner(ctx context.Context) func(args ...string) ran {
 	home := GinkgoT().TempDir()
 	db := filepath.Join(home, "coroner.db")
-	writeMigratedDatabase(db)
+	clitest.WriteMigratedDatabase(db)
 	return func(args ...string) ran {
 		var out, errOut bytes.Buffer
 		app := scratchApp(home, &out, &errOut, uuid.NewV7)

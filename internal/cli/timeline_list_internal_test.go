@@ -12,6 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
@@ -80,7 +81,7 @@ var _ = Describe("timeline list on a terminal", func() {
 		terminal = &unreadable{}
 		app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 		app.In, app.LookupEnv = terminal, envOf(env)
-		writeMigratedDatabase(filepath.Join(home, "coroner.db"))
+		clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 
 		for _, args := range [][]string{
 			{"timeline", "create", "mongo-outage"},

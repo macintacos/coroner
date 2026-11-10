@@ -1,4 +1,4 @@
-package cli_test
+package source_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -22,14 +23,14 @@ var _ = Describe("source list", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, harness{home: home, db: filepath.Join(home, "coroner.db"), out: &out, errOut: &errOut}.app(args...))
+		return cli.Run(ctx, clitest.Harness{Home: home, DB: filepath.Join(home, "coroner.db"), Out: &out, ErrOut: &errOut}.App(args...))
 	}
 
 	// No command yet leaves a source without events, so the store seeds one.
 	BeforeEach(func(ctx SpecContext) {
 		home = GinkgoT().TempDir()
 		created := time.Date(2026, time.September, 11, 3, 0, 0, 0, time.UTC)
-		cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+		clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 		s, err := store.Open(ctx, filepath.Join(home, "coroner.db"))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(s.Close)

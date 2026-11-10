@@ -1,4 +1,4 @@
-package cli_test
+package annotation_test
 
 import (
 	"bytes"
@@ -10,6 +10,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/cli/clitest"
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/store"
@@ -36,16 +38,16 @@ var _ = Describe("annotation", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, harness{
-			home: home, db: filepath.Join(home, "coroner.db"), env: env, in: in, inIsTTY: inIsTTY,
-			out: &out, errOut: &errOut, config: configFile,
-			now:   func() time.Time { return now },
-			newID: countedIDs(&ids),
-		}.app(args...))
+		return cli.Run(ctx, clitest.Harness{
+			Home: home, DB: filepath.Join(home, "coroner.db"), Env: env, In: in, InIsTTY: inIsTTY,
+			Out: &out, ErrOut: &errOut, Config: configFile,
+			Now:   func() time.Time { return now },
+			NewID: clitest.CountedIDs(&ids),
+		}.App(args...))
 	}
 
 	var (
-		seeded    cli.SeededHome
+		seeded    clitest.SeededHome
 		seededIDs int
 	)
 	storedAnnotations := func(ctx SpecContext, timelineID string) []timeline.Annotation {
@@ -68,7 +70,7 @@ var _ = Describe("annotation", func() {
 		configFile = ""
 
 		seeded.Into(home, func() {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0))
 			Expect(run(ctx, "timeline", "use", "mongo-outage")).To(Equal(0))
 			Expect(run(ctx, "event", "add", "Primary stepped down", "--at", "2026-09-11T03:14:07Z")).To(Equal(0))
@@ -152,7 +154,7 @@ var _ = Describe("annotation", func() {
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 				Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
-				expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+				clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 			},
 			Entry(nil, "--url", "https://logs.example.com/\xff"),
 			Entry(nil, "--author", "julian\xff"),
@@ -166,7 +168,7 @@ var _ = Describe("annotation", func() {
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
 			Expect(storedAnnotations(ctx, outageID)).To(BeEmpty())
-			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+			clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 		})
 
 		Describe("its body", func() {
@@ -465,7 +467,7 @@ var _ = Describe("annotation", func() {
 				To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
-			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+			clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 		})
 
 		It("reads --body - from stdin", func(ctx SpecContext) {

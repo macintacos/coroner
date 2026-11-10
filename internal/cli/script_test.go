@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -34,6 +33,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/skills"
@@ -243,18 +243,7 @@ func bumpSchema(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("usage: bumpschema <db>")
 	}
 
-	ts.Check(bumpSchemaVersion(context.Background(), ts.MkAbs(args[0])))
-}
-
-// bumpSchemaVersion records one migration past the highest the database at path applied.
-func bumpSchemaVersion(ctx context.Context, path string) error {
-	db, err := sql.Open("sqlite", path)
-	if err != nil {
-		return err
-	}
-	_, err = db.ExecContext(ctx,
-		"INSERT INTO goose_db_version (version_id, is_applied) SELECT max(version_id) + 1, 1 FROM goose_db_version")
-	return errors.Join(err, db.Close())
+	ts.Check(clitest.BumpSchemaVersion(context.Background(), ts.MkAbs(args[0])))
 }
 
 // runCoroner runs coroner as scripts do, through run (cli.Run or a test variant): processApp
@@ -295,8 +284,8 @@ func processApp() clikit.App {
 		LookupEnv:         os.LookupEnv,
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
-		OpenFile:          openFile,
-		Open:              openRead,
+		OpenFile:          clitest.OpenFile,
+		Open:              clitest.OpenRead,
 		RemoveFile:        os.Remove,
 		ReadDir:           os.ReadDir,
 		Stat:              os.Stat,
@@ -311,7 +300,7 @@ func processApp() clikit.App {
 
 var _ = Describe("processApp", func() {
 	It("sets every seam", func() {
-		Expect(nilSeams(processApp())).To(BeEmpty())
+		Expect(clitest.NilSeams(processApp())).To(BeEmpty())
 	})
 })
 
@@ -381,7 +370,7 @@ func withTestIDs(app clikit.App) (clikit.App, error) {
 		if err != nil {
 			return uuid.Nil, err
 		}
-		return testID(millis, n), nil
+		return clitest.TestID(millis, n), nil
 	}
 	return app, nil
 }

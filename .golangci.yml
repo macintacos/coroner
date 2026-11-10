@@ -219,7 +219,7 @@ linters:
     rules:
       # The process boundary, tests, and `go run` generators. A new path here is a
       # design decision, not a lint fix.
-      - path: ^main\.go$|_test\.go$|^internal/tools/
+      - path: ^main\.go$|_test\.go$|^internal/tools/|^internal/cli/clitest/
         linters:
           - forbidigo
 formatters:

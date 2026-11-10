@@ -1,4 +1,4 @@
-package cli_test
+package event_test
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
@@ -23,11 +24,11 @@ var _ = Describe("event add --from-file", func() {
 		run := func(stdin string, args ...string) int {
 			out.Reset()
 			errOut.Reset()
-			return cli.Run(ctx, harness{
-				home: home, db: filepath.Join(home, "coroner.db"), in: strings.NewReader(stdin), out: &out, errOut: &errOut,
-				now:   func() time.Time { return time.Date(2026, time.September, 11, 4, 0, 0, 0, time.UTC) },
-				newID: uuid.NewV7,
-			}.app(args...))
+			return cli.Run(ctx, clitest.Harness{
+				Home: home, DB: filepath.Join(home, "coroner.db"), In: strings.NewReader(stdin), Out: &out, ErrOut: &errOut,
+				Now:   func() time.Time { return time.Date(2026, time.September, 11, 4, 0, 0, 0, time.UTC) },
+				NewID: uuid.NewV7,
+			}.App(args...))
 		}
 
 		Expect(run("", "timeline", "create", "mongo-failover", "--json")).To(Equal(0), errOut.String())

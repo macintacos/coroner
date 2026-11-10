@@ -1,4 +1,4 @@
-package cli_test
+package event_test
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/macintacos/coroner/internal/cli/clitest"
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/store"
@@ -39,18 +41,18 @@ var _ = Describe("event view, edit and delete", func() {
 	run := func(ctx SpecContext, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, harness{
-			home: home, db: filepath.Join(home, "coroner.db"), env: env, in: in, inIsTTY: inIsTTY,
-			out: &out, errOut: &errOut,
-			now: func() time.Time { return now },
-			newID: func() (uuid.UUID, error) {
+		return cli.Run(ctx, clitest.Harness{
+			Home: home, DB: filepath.Join(home, "coroner.db"), Env: env, In: in, InIsTTY: inIsTTY,
+			Out: &out, ErrOut: &errOut,
+			Now: func() time.Time { return now },
+			NewID: func() (uuid.UUID, error) {
 				ids++
 				return uuid.Parse(fmt.Sprintf("%08x-0000-7000-8000-000000000000", 0x0199a1b2+ids))
 			},
-		}.app(args...))
+		}.App(args...))
 	}
 	var (
-		seeded    cli.SeededHome
+		seeded    clitest.SeededHome
 		seededIDs int
 	)
 	withStore := func(ctx SpecContext) *store.Store {
@@ -70,7 +72,7 @@ var _ = Describe("event view, edit and delete", func() {
 		Expect(err).NotTo(HaveOccurred())
 		now = time.Date(2026, time.September, 12, 21, 30, 0, 0, newYork)
 		seeded.Into(home, func() {
-			cli.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
+			clitest.WriteMigratedDatabase(filepath.Join(home, "coroner.db"))
 			for _, args := range [][]string{
 				{"timeline", "create", "mongo-outage"},
 				{"timeline", "use", "mongo-outage"},
@@ -327,7 +329,7 @@ var _ = Describe("event view, edit and delete", func() {
 
 				Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 				Expect(stored(ctx, steppedDown)).To(Equal(before))
-				expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+				clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 			},
 			Entry(nil, "--url", "https://logs.example.com/\xff"),
 			Entry(nil, "--author", "julian\xff"),
@@ -340,7 +342,7 @@ var _ = Describe("event view, edit and delete", func() {
 				To(Equal(2))
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
-			expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))
+			clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))
 		})
 
 		It("exits 2 with kind usage on a USER author that is not UTF-8, linking nothing", func(ctx SpecContext) {
@@ -350,7 +352,7 @@ var _ = Describe("event view, edit and delete", func() {
 
 			Expect(errOut.String()).To(ContainSubstring(`"kind":"usage"`))
 			Expect(errOut.String()).To(ContainSubstring("the default author, from the config file's author or USER, must be UTF-8"))
-			Expect(expectNothingInvalidStored(ctx, filepath.Join(home, "coroner.db"))).NotTo(ContainSubstring(`"type":"link"`))
+			Expect(clitest.ExpectNothingInvalidStored(ctx, cli.Run, filepath.Join(home, "coroner.db"))).NotTo(ContainSubstring(`"type":"link"`))
 		})
 	})
 

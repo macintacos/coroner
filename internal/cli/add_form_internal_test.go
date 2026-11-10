@@ -27,6 +27,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli/annotation"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/cli/event"
 	timelinecmd "github.com/macintacos/coroner/internal/cli/timeline"
 	"github.com/macintacos/coroner/internal/config"
@@ -229,7 +230,7 @@ var _ = Describe("add forms", func() {
 			db = filepath.Join(home, "coroner.db")
 			app = scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 			app.InIsTTY, app.OutIsTTY = true, true
-			writeMigratedDatabase(db)
+			clitest.WriteMigratedDatabase(db)
 
 			Expect(run(ctx, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 		})
@@ -274,7 +275,7 @@ var _ = Describe("add forms", func() {
 
 				app.Log = nil
 				fresh := filepath.Join(GinkgoT().TempDir(), "coroner.db")
-				writeMigratedDatabase(fresh)
+				clitest.WriteMigratedDatabase(fresh)
 				Expect(runArgs(ctx, "--db", fresh, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
 				Expect(runArgs(ctx, "--db", fresh, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
 				logPath := config.DiagnosticLogPath(fresh)

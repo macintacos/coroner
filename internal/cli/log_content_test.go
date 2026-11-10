@@ -16,6 +16,7 @@ import (
 
 	"github.com/macintacos/coroner/internal/cli"
 	"github.com/macintacos/coroner/internal/cli/clikit"
+	"github.com/macintacos/coroner/internal/cli/clitest"
 	"github.com/macintacos/coroner/internal/config"
 )
 
@@ -31,7 +32,7 @@ const (
 
 var _ = Describe("log content guard", func() {
 	var (
-		h            harness
+		h            clitest.Harness
 		logPath      string
 		out, errOut  bytes.Buffer
 		placeholders *strings.Replacer
@@ -42,7 +43,7 @@ var _ = Describe("log content guard", func() {
 	run := func(ctx context.Context, args ...string) int {
 		out.Reset()
 		errOut.Reset()
-		return cli.Run(ctx, h.app(args...))
+		return cli.Run(ctx, h.App(args...))
 	}
 
 	mustRun := func(ctx context.Context, args ...string) {
@@ -59,8 +60,8 @@ var _ = Describe("log content guard", func() {
 	seed := func(ctx SpecContext) {
 		dir := GinkgoT().TempDir()
 		ids = 0
-		h = harness{home: dir, db: filepath.Join(dir, "coroner.db"), out: &out, errOut: &errOut, newID: countedIDs(&ids)}
-		logPath = config.DiagnosticLogPath(h.db)
+		h = clitest.Harness{Home: dir, DB: filepath.Join(dir, "coroner.db"), Out: &out, ErrOut: &errOut, NewID: clitest.CountedIDs(&ids)}
+		logPath = config.DiagnosticLogPath(h.DB)
 
 		attachmentPath := filepath.Join(dir, sentinelFilename+".txt")
 		Expect(os.WriteFile(attachmentPath, []byte(sentinelContent), 0o600)).To(Succeed())
@@ -101,7 +102,7 @@ var _ = Describe("log content guard", func() {
 		mustRun(ctx, "timeline", "export", "-t", "inc", "--format", "jsonl", "-o", exportPath)
 		mustRun(ctx, "timeline", "edit", "inc", "--title", "renamed "+sentinelTitle)
 		var events strings.Builder
-		for line := range strings.Lines(readFile(exportPath)) {
+		for line := range strings.Lines(clitest.ReadFile(exportPath)) {
 			if strings.Contains(line, `"type":"event"`) {
 				events.WriteString(line)
 			}
@@ -117,7 +118,7 @@ var _ = Describe("log content guard", func() {
 	BeforeEach(func(ctx SpecContext) { seed(ctx) })
 
 	It("keeps record content out of the lines that create and migrate the database", func() {
-		logged := readFile(logPath)
+		logged := clitest.ReadFile(logPath)
 		Expect(logged).To(ContainSubstring(`"msg":"migration applied"`))
 		for _, sentinel := range sentinels {
 			Expect(logged).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
@@ -196,12 +197,12 @@ var _ = Describe("log content guard", func() {
 		if dryRun {
 			args = append(args, "--dry-run")
 		}
-		wantID := placeholders.Replace(strings.ReplaceAll(r.id, "{new}", countedID(ids+1)))
+		wantID := placeholders.Replace(strings.ReplaceAll(r.id, "{new}", clitest.CountedID(ids+1)))
 
 		before := len(readIfExists(logPath))
 		Expect(run(ctx, append(args, "--debug")...)).To(Equal(0), errOut.String())
 
-		written := readFile(logPath)[before:]
+		written := clitest.ReadFile(logPath)[before:]
 		line := SatisfyAll(HaveKeyWithValue("level", r.level), HaveKeyWithValue("msg", r.msg))
 		if r.key != "" {
 			line = SatisfyAll(line, HaveKeyWithValue(r.key, wantID))
@@ -219,12 +220,12 @@ var _ = Describe("log content guard", func() {
 	}, writeEntries)
 
 	DescribeTable("logs what it read, and no record content", func(ctx SpecContext, read readCommand) {
-		cmd, _, err := cli.NewRoot(ctx, h.app()).Find(read.args)
+		cmd, _, err := cli.NewRoot(ctx, h.App()).Find(read.args)
 		Expect(err).NotTo(HaveOccurred())
 		before := len(readIfExists(logPath))
 		Expect(run(ctx, append(resolve(read.args), "--debug")...)).To(Equal(0), errOut.String())
 
-		written := readFile(logPath)[before:]
+		written := clitest.ReadFile(logPath)[before:]
 		Expect(decodeLines(written)).To(ContainElement(SatisfyAll(
 			HaveKeyWithValue("level", "DEBUG"),
 			HaveKeyWithValue("msg", "records read"),
@@ -235,7 +236,7 @@ var _ = Describe("log content guard", func() {
 	}, readCommandEntries())
 
 	It("lists every command that only reads records", func(ctx SpecContext) {
-		root := cli.NewRoot(ctx, h.app())
+		root := cli.NewRoot(ctx, h.App())
 		var leaves []string
 		cli.WalkCommands(root, func(cmd *cobra.Command) {
 			if !cmd.Runnable() || cmd.HasSubCommands() || cmd.Name() == "help" ||
@@ -264,7 +265,7 @@ var _ = Describe("log content guard", func() {
 			before := len(readIfExists(logPath))
 			Expect(run(ctx, append(resolved, "--debug")...)).To(Equal(wantExit), errOut.String())
 
-			written := readFile(logPath)[before:]
+			written := clitest.ReadFile(logPath)[before:]
 			Expect(written).To(
 				ContainSubstring(`"msg":"command finished"`),
 				"no finish line: a command that fails before opening its database writes no log, "+

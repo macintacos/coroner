@@ -1,4 +1,4 @@
-package cli
+package clitest
 
 import (
 	"context"
@@ -33,17 +33,21 @@ var migrated = sync.OnceValues(func() ([]byte, error) { //nolint:gochecknoglobal
 	return os.ReadFile(filepath.Clean(path))
 })
 
-// writeMigratedDatabase writes a database at the latest schema to path, as the first write
+// MigratedDatabase returns the bytes of a database at the latest schema, for a test that
+// cannot call Ginkgo's helpers.
+func MigratedDatabase() ([]byte, error) { return migrated() }
+
+// WriteMigratedDatabase writes a database at the latest schema to path, as the first write
 // command there would, so a spec that is not about creating the database skips migrating it.
-func writeMigratedDatabase(path string) {
+func WriteMigratedDatabase(path string) {
 	GinkgoHelper()
 	data, err := migrated()
 	Expect(errors.Join(err, os.WriteFile(path, data, 0o600))).To(Succeed())
 }
 
-// seededHome is the home directory a container's seed built, kept in memory so each later spec
+// SeededHome is the home directory a container's seed built, kept in memory so each later spec
 // starts from a copy of it instead of running the seed again.
-type seededHome struct {
+type SeededHome struct {
 	taken bool
 	files []seededFile
 }
@@ -54,10 +58,10 @@ type seededFile struct {
 	data []byte
 }
 
-// into runs seed in home the first time and remembers what it left there; every later time it
+// Into runs seed in home the first time and remembers what it left there; every later time it
 // writes that back into home, with the same modes. The seed must leave no state outside home
 // that its caller does not capture itself.
-func (h *seededHome) into(home string, seed func()) {
+func (h *SeededHome) Into(home string, seed func()) {
 	GinkgoHelper()
 	if !h.taken {
 		seed()
