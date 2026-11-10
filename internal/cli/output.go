@@ -105,10 +105,11 @@ func (o output) printID(id string) error {
 }
 
 // writeTo runs write against o when path is -. Otherwise it runs write against o as piped
-// output into a buffer, writes the buffer to path with writeFile, and says so.
-func (o output) writeTo(path string, writeFile func(name string, data []byte, perm fs.FileMode) error, write func(output) error) error {
+// output into a buffer, writes the buffer to path with writeFile, and says so. It returns the
+// size in bytes of the file it wrote, or 0 when path is -.
+func (o output) writeTo(path string, writeFile func(name string, data []byte, perm fs.FileMode) error, write func(output) error) (int, error) {
 	if path == "-" {
-		return write(o)
+		return 0, write(o)
 	}
 
 	var buffer bytes.Buffer
@@ -116,17 +117,17 @@ func (o output) writeTo(path string, writeFile func(name string, data []byte, pe
 	piped.out, piped.outTTY = &buffer, false
 	err := write(piped)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	err = writeFile(path, buffer.Bytes(), 0o644)
 	if err != nil {
-		return &Error{
+		return 0, &Error{
 			Kind: KindUsage, Message: "cannot write " + path, Err: err,
 			Hint: "Pass -o a file in a directory that exists and you can write to, or -o - for stdout.",
 		}
 	}
 
-	return o.notify("Wrote %s", path)
+	return buffer.Len(), o.notify("Wrote %s", path)
 }
 
 func (o output) json(v any) error {

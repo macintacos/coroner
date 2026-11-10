@@ -24,8 +24,14 @@ import (
 // logLines returns the diagnostic log at path, one decoded JSON object per line.
 func logLines(path string) []map[string]any {
 	GinkgoHelper()
+	return readLines(readFile(path))
+}
+
+// readLines decodes written, one JSON object per line.
+func readLines(written string) []map[string]any {
+	GinkgoHelper()
 	var lines []map[string]any
-	for line := range strings.Lines(readFile(path)) {
+	for line := range strings.Lines(written) {
 		var decoded map[string]any
 		Expect(json.Unmarshal([]byte(line), &decoded)).To(Succeed(), line)
 		lines = append(lines, decoded)
@@ -425,5 +431,93 @@ var _ = Describe("diagnostic log", func() {
 
 		Expect(func() { cli.RunWithThrowawayDeprecation(ctx, app) }).NotTo(Panic())
 		Expect(errOut.String()).To(ContainSubstring("level=DEBUG"))
+	})
+
+	Describe("files written", func() {
+		var attachmentID, sha string
+
+		BeforeEach(func(ctx SpecContext) {
+			file := filepath.Join(h.home, "shot.txt")
+			Expect(os.WriteFile(file, []byte("shot"), 0o600)).To(Succeed())
+			Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+			Expect(run(ctx, h.app("event", "add", "x", "-t", "t", "--attach", file))).To(Equal(0))
+			out.Reset()
+			Expect(run(ctx, h.app("attachment", "list", "-t", "t", "--json"))).To(Equal(0))
+			var listed struct {
+				Attachments []struct {
+					ID     string `json:"id"`
+					SHA256 string `json:"sha256"`
+				} `json:"attachments"`
+			}
+			Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed(), out.String())
+			Expect(listed.Attachments).To(HaveLen(1))
+			attachmentID, sha = listed.Attachments[0].ID, listed.Attachments[0].SHA256
+		})
+
+		// written runs args and returns the file written lines it logged.
+		written := func(ctx context.Context, args ...string) []map[string]any {
+			GinkgoHelper()
+			before := len(readIfExists(logPath))
+			Expect(run(ctx, h.app(args...))).To(Equal(0), errOut.String())
+			var lines []map[string]any
+			for _, line := range readLines(readFile(logPath)[before:]) {
+				if line["msg"] == "file written" {
+					lines = append(lines, line)
+				}
+			}
+			return lines
+		}
+
+		sizeOf := func(path string) float64 {
+			GinkgoHelper()
+			info, err := os.Stat(path)
+			Expect(err).NotTo(HaveOccurred())
+			return float64(info.Size())
+		}
+
+		It("logs the export and each attachment it copies into a directory", func(ctx SpecContext) {
+			dir := filepath.Join(h.home, "out")
+
+			lines := written(ctx, "timeline", "export", "-t", "t", "--format", "md", "-o", dir+"/")
+
+			exported := filepath.Join(dir, "t.md")
+			Expect(lines).To(ContainElement(SatisfyAll(
+				HaveKeyWithValue("level", "INFO"),
+				HaveKeyWithValue("path", exported),
+				HaveKeyWithValue("size", sizeOf(exported)),
+				HaveKeyWithValue("format", "md"),
+				HaveKeyWithValue("counts", SatisfyAll(
+					HaveKeyWithValue("events", BeNumerically("==", 1)),
+					HaveKeyWithValue("attachments", BeNumerically("==", 1)),
+				)),
+			)))
+			copied, err := filepath.Glob(filepath.Join(dir, "attachments", "*"))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(copied).To(HaveLen(1))
+			Expect(lines).To(ContainElement(SatisfyAll(
+				HaveKeyWithValue("level", "INFO"),
+				HaveKeyWithValue("path", copied[0]),
+				HaveKeyWithValue("size", sizeOf(copied[0])),
+				HaveKeyWithValue("attachment", attachmentID),
+				HaveKeyWithValue("sha256", sha),
+			)))
+		})
+
+		It("logs the file attachment export writes", func(ctx SpecContext) {
+			file := filepath.Join(h.home, "exported.txt")
+
+			Expect(written(ctx, "attachment", "export", attachmentID, "-o", file)).To(ConsistOf(SatisfyAll(
+				HaveKeyWithValue("level", "INFO"),
+				HaveKeyWithValue("path", file),
+				HaveKeyWithValue("size", sizeOf(file)),
+				HaveKeyWithValue("attachment", attachmentID),
+				HaveKeyWithValue("sha256", sha),
+			)))
+		})
+
+		It("logs no file written for output to stdout", func(ctx SpecContext) {
+			Expect(written(ctx, "timeline", "export", "-t", "t", "--format", "jsonl")).To(BeEmpty())
+			Expect(written(ctx, "attachment", "export", attachmentID, "-o", "-")).To(BeEmpty())
+		})
 	})
 })

@@ -54,6 +54,7 @@ rules say what a line holds; a new or changed line also updates that page.
      given; `contains`, true when `--contains` was given, never its text; `order`, `desc`
      when `--order desc` reversed the events; and `limit`. A read nothing narrowed has no
      `filter`.
+   - `format`: an export's format, such as `jsonl`.
    - `dry_run`: true when `--dry-run` kept the command from changing anything.
    - `path`: the path of a file coroner opens or writes (rule 3).
    - `size`: a file's or blob's size in bytes.

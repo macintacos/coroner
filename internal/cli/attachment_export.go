@@ -72,7 +72,13 @@ func exportAttachment(ctx context.Context, cmd *cobra.Command, app App, ref stri
 		return fmt.Errorf("read the blob of attachment %s: %w", a.ID, err)
 	}
 
-	return writeAttachment(inv.out, path, content, writeFile)
+	err = writeAttachment(inv.out, path, content, writeFile)
+	if err != nil || path == "-" {
+		return err
+	}
+	app.logger().Info("file written", "path", path, "size", len(content), "attachment", a.ID, "sha256", a.SHA256)
+
+	return nil
 }
 
 // newFileWriter returns a function that creates name with open and writes data to it, failing
@@ -99,7 +105,7 @@ func newFileWriter(
 // writeAttachment writes content to path with writeFile, or to o when path is -, reporting a
 // file writeFile refuses to overwrite as file_exists.
 func writeAttachment(o output, path string, content []byte, writeFile func(string, []byte, fs.FileMode) error) error {
-	err := o.writeTo(path, writeFile, func(o output) error {
+	_, err := o.writeTo(path, writeFile, func(o output) error {
 		_, err := o.out.Write(content)
 		return err
 	})

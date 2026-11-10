@@ -65,6 +65,12 @@ After `event delete`, `annotation delete`, `attachment delete` or `timeline dele
 commits, coroner removes the blobs no attachment uses any more, writing `blob deleted` for
 each, with its `sha256` and `size`.
 
+Each file a command writes outside the database adds a `file written` line at info, with
+its `path` and `size` in bytes. `timeline export -o` adds the export's `format` and
+`counts`, how many records of each kind it holds; each attachment file, whether
+`attachment export -o` writes it or an export copies it beside a Markdown or JSONL export,
+adds its `attachment` id and `sha256`. Output to stdout writes no such line.
+
 Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags

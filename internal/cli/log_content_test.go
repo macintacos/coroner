@@ -159,6 +159,7 @@ var _ = Describe("log content guard", func() {
 			}
 			expectNoRecordContent(written)
 		},
+		Entry("timeline export as Markdown into a directory", 0, "timeline", "export", "-t", "inc", "--format", "md", "-o", "{dir}/out/"),
 		Entry("timeline export as HTML to a file", 0, "timeline", "export", "-t", "inc", "--format", "html", "-o", "{dir}/inc.html"),
 		Entry("timeline edit", 0, "timeline", "edit", "inc", "--title", "edited "+sentinelTitle),
 		Entry("timeline delete", 0, "timeline", "delete", "inc", "--yes"),
@@ -202,16 +203,4 @@ func readCommands() [][]string {
 		{"timeline", "export", "-t", "inc", "--format", "jsonl"},
 		{"timeline", "view", "-t", "inc"},
 	}
-}
-
-// readLines decodes written, one JSON object per line.
-func readLines(written string) []map[string]any {
-	GinkgoHelper()
-	var lines []map[string]any
-	for line := range strings.Lines(written) {
-		var decoded map[string]any
-		Expect(json.Unmarshal([]byte(line), &decoded)).To(Succeed(), line)
-		lines = append(lines, decoded)
-	}
-	return lines
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -156,6 +157,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 		if err != nil {
 			return err
 		}
+		logCopies(app.logger(), copies)
 		// ponytail: NAME_MAX caps an overlay's file name at about four long timeline names; hash or truncate when that bites.
 		path = filepath.Join(dir, strings.Join(namesOf(input.timelines), "+")+"."+string(o.format))
 	}
@@ -163,11 +165,14 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	if linksLocal {
 		markdown.AttachmentLink = func(a export.Attachment) string { return blobLink(path, store.BlobPath(cfg.DBPath, a.SHA256)) }
 	}
-	err = o.writeTo(path, app.WriteFile, func(into output) error {
+	size, err := o.writeTo(path, app.WriteFile, func(into output) error {
 		return writeExport(into, env, markdown, zone)
 	})
 	if err != nil {
 		return err
+	}
+	if path != "-" {
+		app.logger().Info("file written", "path", path, "size", size, "format", o.format, "counts", exportCounts(env))
 	}
 	switch {
 	case linksLocal:
@@ -319,6 +324,8 @@ func exportDirectory(path string, chosen format, stat func(string) (fs.FileInfo,
 // fileCopy is one attachment's file in an export directory and the blob its content comes from.
 type fileCopy struct {
 	attachmentID, from, to string
+	sha256                 string
+	size                   int64
 }
 
 // attachmentCopies returns, once per destination file, the blob beside the database at
@@ -330,7 +337,7 @@ func attachmentCopies(dir, dbPath string, attachments []export.Attachment) []fil
 		to := filepath.Join(dir, filepath.FromSlash(export.AttachmentPath(a)))
 		if !planned[to] {
 			planned[to] = true
-			copies = append(copies, fileCopy{attachmentID: a.ID, from: store.BlobPath(dbPath, a.SHA256), to: to})
+			copies = append(copies, fileCopy{attachmentID: a.ID, from: store.BlobPath(dbPath, a.SHA256), to: to, sha256: a.SHA256, size: a.Size})
 		}
 	}
 
@@ -370,6 +377,13 @@ func copyFiles(files fileSystem, dir string, copies []fileCopy) error {
 	}
 
 	return nil
+}
+
+// logCopies logs each attachment file copies wrote.
+func logCopies(logger *slog.Logger, copies []fileCopy) {
+	for _, c := range copies {
+		logger.Info("file written", "path", c.to, "size", c.size, "attachment", c.attachmentID, "sha256", c.sha256)
+	}
 }
 
 // notifyCopied says how many attachment files copies wrote, and where.
