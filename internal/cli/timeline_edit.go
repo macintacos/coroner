@@ -174,6 +174,7 @@ func editTyped(ctx context.Context, s formSession, z zone, oldName string, value
 	if err != nil {
 		return err
 	}
+	edited.logChanges(ctx, s.app.logger())
 	err = edited.render(s.inv.out, z)
 	if err == nil && !edited.dryRun && edited.timeline.Name != oldName {
 		err = s.inv.out.notify("`%s` no longer selects this timeline; commands take `%s`.", oldName, edited.timeline.Name)

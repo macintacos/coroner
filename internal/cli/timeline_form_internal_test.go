@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -21,12 +22,16 @@ var _ = Describe("timeline forms", func() {
 		home, db    string
 		ids         int
 		asked       [][]huh.Field
+		formLog     *diagnosticLog
 	)
 
-	// appOn returns a terminal App on home.
+	// appOn returns a terminal App on home, logging to formLog when a spec sets it.
 	appOn := func() App {
 		app := scratchApp(home, &out, &errOut, sequentialIDs(&ids))
 		app.InIsTTY, app.OutIsTTY = true, true
+		if formLog != nil {
+			app.log = formLog
+		}
 		return app
 	}
 
@@ -82,6 +87,7 @@ var _ = Describe("timeline forms", func() {
 		db = filepath.Join(home, "coroner.db")
 		ids = 0
 		asked = nil
+		formLog = nil
 	})
 
 	Describe("timeline create", func() {
@@ -265,6 +271,28 @@ var _ = Describe("timeline forms", func() {
 			Expect(replay(ctx, func(path string) { seed(ctx, path) }, "--dry-run", "--json")).To(Equal(written))
 			Expect(run(ctx, "status", "--json")).To(Equal(0), errOut.String())
 			Expect(withoutRecordKeys(out.Bytes())).To(HaveKeyWithValue("timeline", HaveKeyWithValue("name", "mongo-failover")))
+		})
+
+		It("log the same change lines as the command they echo", func(ctx SpecContext) {
+			formLog = newDiagnosticLog(appOn())
+			command := edit(ctx, answers(renamed("mongo-failover")))
+
+			Expect(runForm(ctx, command, "timeline", "edit", "mongo-outage", "--interactive")).To(Succeed())
+			submitted := changeShapes(formLog.held)
+			formLog = nil
+
+			var logPath string
+			var before int
+			replay(ctx, func(path string) {
+				seed(ctx, path)
+				logPath = config.DiagnosticLogPath(path)
+				before = fileSize(logPath)
+			}, "--json")
+
+			Expect(submitted).To(Equal(changeShapes(appendedLines(logPath, before))))
+			Expect(submitted).To(ContainElement(SatisfyAll(
+				HaveKeyWithValue("msg", "timeline edited"), HaveKeyWithValue("fields", []any{"name"}),
+			)))
 		})
 
 		It("ask which timeline to edit when none is selected", func(ctx SpecContext) {
