@@ -231,7 +231,9 @@ Rejected synonyms: `show`, `get`, `describe`, and `inspect` (use `view`); `rm` a
 "show a timeline" is `timeline view`.
 
 A command that prints a document built into the binary takes the document's name instead
-of a verb: `help <topic>`, `completion <shell>` and `agent skill`.
+of a verb: `help <topic>`, `completion <shell>` and `agent skill`. A command under the
+hidden `__internal` group, which debugs coroner itself, takes the name of what it reads:
+`__internal log`.
 
 Help text follows
 [gh's command-line syntax](https://github.com/cli/cli/blob/trunk/docs/command-line-syntax.md):

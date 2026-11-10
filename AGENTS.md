@@ -168,11 +168,11 @@ readme!: Load design/README.md
   `diagnosticLogAnnotation` is `off` keeps it and every command under it out of the
   diagnostic log; a spec in
   [`diagnostic_log_internal_test.go`](internal/cli/diagnostic_log_internal_test.go) pins
-  the opted-out set (`agent skill`, `completion`, `version`), and a new opted-out command
-  joins it. `event list` and `timeline export` also take `--overlay`, a saved overlay's
-  name, in place of `-t`, and read their events through `store.EventFilter.TimelineIDs`.
-  `cli.Run` prints every error once, adding the JSON error envelope under
-  `--format json|jsonl`.
+  the opted-out set (`agent skill`, `completion`, `version`, `__internal`), and a new
+  opted-out command joins it. `event list` and `timeline export` also take `--overlay`, a
+  saved overlay's name, in place of `-t`, and read their events through
+  `store.EventFilter.TimelineIDs`. `cli.Run` prints every error once, adding the JSON
+  error envelope under `--format json|jsonl`.
 - Deprecating a command or flag: `deprecateCommand` and `deprecateFlag` in
   [`internal/cli/deprecation.go`](internal/cli/deprecation.go), under the process in
   [`STABILITY.md`](STABILITY.md#deprecation).
@@ -260,6 +260,11 @@ readme!: Load design/README.md
   a reference does. The repository is its own Claude Code plugin marketplace:
   [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) offers `skills/` as
   a plugin holding only this skill.
+- Debugging coroner itself, not an incident: commands live under the hidden `__internal`
+  group ([`internal.go`](internal/cli/internal.go)), which stays out of the diagnostic log
+  and the stability contract. Specs fail when it shows in root help, the `reference`
+  topic, shell completion or the CLI reference. `__internal log`
+  ([`internal_log.go`](internal/cli/internal_log.go)) prints the diagnostic log as text.
 - Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,
   `reference/`, `explanation/` and `contributing/`, with its nav in
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in
