@@ -41,13 +41,13 @@ func newInternalLogCommand(ctx context.Context, app App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			keep, err := readLogFilter(cmd, inv.now(), z)
+			filter, err := readLogFilter(cmd, inv.now(), z)
 			if err != nil {
 				return err
 			}
 
 			path := config.DiagnosticLogPath(inv.cfg.DBPath)
-			p := logPrinter{open: app.Open, out: inv.out.out, keep: keep, loc: z.loc}
+			p := logPrinter{open: app.Open, out: inv.out.out, keep: filter, loc: z.loc}
 			printed, err := p.printFiles(ctx, path+".1", path)
 			if err != nil || printed {
 				return err
@@ -231,13 +231,13 @@ type logPrinter struct {
 	out  io.Writer
 	keep logFilter
 	loc  *time.Location
-	// text is set by printFiles.
-	text slog.Handler
+	// textHandler is set by printFiles.
+	textHandler slog.Handler
 }
 
 // printFiles prints each of names that exists, in order, reporting whether any did.
 func (p logPrinter) printFiles(ctx context.Context, names ...string) (bool, error) {
-	p.text = slog.NewTextHandler(p.out, nil)
+	p.textHandler = slog.NewTextHandler(p.out, nil)
 	printed := false
 	for _, name := range names {
 		found, err := p.printFile(ctx, name)
@@ -260,20 +260,20 @@ func (p logPrinter) printFile(ctx context.Context, name string) (bool, error) {
 		return false, unreadableLog(name, err)
 	}
 
-	return true, errors.Join(p.write(ctx, file, name), file.Close())
+	return true, errors.Join(p.printLines(ctx, file, name), file.Close())
 }
 
 func unreadableLog(name string, err error) *Error {
 	return &Error{Kind: KindUsage, Message: "cannot read " + name, Hint: "Check that the path is a file you can read.", Err: err}
 }
 
-// write reads the file name from r line by line, writing each kept line before reading the next.
-func (p logPrinter) write(ctx context.Context, r io.Reader, name string) error {
+// printLines reads the file name from r line by line, writing each kept line before reading the next.
+func (p logPrinter) printLines(ctx context.Context, r io.Reader, name string) error {
 	reader := bufio.NewReader(r)
 	for {
 		raw, err := reader.ReadBytes('\n')
 		if len(raw) > 0 {
-			writeErr := p.writeLine(ctx, bytes.TrimSuffix(raw, []byte("\n")))
+			writeErr := p.printLine(ctx, bytes.TrimSuffix(raw, []byte("\n")))
 			if writeErr != nil {
 				return writeErr
 			}
@@ -287,7 +287,7 @@ func (p logPrinter) write(ctx context.Context, r io.Reader, name string) error {
 	}
 }
 
-func (p logPrinter) writeLine(ctx context.Context, raw []byte) error {
+func (p logPrinter) printLine(ctx context.Context, raw []byte) error {
 	line, ok := parseLogLine(raw)
 	if !ok {
 		var b strings.Builder
@@ -304,5 +304,5 @@ func (p logPrinter) writeLine(ctx context.Context, raw []byte) error {
 	record.AddAttrs(line.attrs...)
 
 	// Handle, unlike a Logger, never checks the handler's level, so debug lines print.
-	return p.text.Handle(ctx, record)
+	return p.textHandler.Handle(ctx, record)
 }
