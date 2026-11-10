@@ -63,10 +63,11 @@ func pickTimeline(ctx context.Context, app App, inv invocation) error {
 		rows, err = readTimelineRows(ctx, s)
 		return err
 	})
-	switch {
-	case err != nil:
+	if err != nil {
 		return err
-	case len(rows) == 0:
+	}
+	logRead(app.logger(), countOf("timelines", len(rows)))
+	if len(rows) == 0 {
 		return printTimelines(inv.out, nil, "")
 	}
 
@@ -80,6 +81,7 @@ func pickTimeline(ctx context.Context, app App, inv invocation) error {
 		return err
 	}
 
+	app.logger().Debug("timeline picked", "timeline", picked.Name)
 	used, err := useTimeline(ctx, app, inv.cfg, fieldValues{"timeline": {picked.ID}})
 	if err != nil {
 		return err

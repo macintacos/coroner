@@ -2,8 +2,10 @@ package viewer
 
 import (
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -368,12 +370,26 @@ func failure(err error) string {
 func (m Model) load(match Match) (Model, tea.Cmd) {
 	m.pending = match
 	m.seq++
-	load, seq := m.opts.Load, m.seq
+	load, seq, now, log := m.opts.Load, m.seq, m.opts.Now, m.opts.Log
 
 	return m, func() tea.Msg {
+		start := now()
 		snapshot, err := load(match)
-		return loadedMsg{snapshot: snapshot, match: match, err: err, seq: seq}
+		msg := loadedMsg{snapshot: snapshot, match: match, err: err, seq: seq}
+		if log != nil {
+			logLoad(log, msg, now().Sub(start))
+		}
+		return msg
 	}
+}
+
+// logLoad logs at debug how a load went: what it read, or why it failed, and how long it took.
+func logLoad(log *slog.Logger, msg loadedMsg, took time.Duration) {
+	if msg.err != nil {
+		log.Debug("timelines not reloaded", "duration", took, "error", msg.err)
+		return
+	}
+	log.Debug("timelines reloaded", "counts", msg.snapshot.Counts(), "duration", took)
 }
 
 // loaded shows the snapshot msg read, and reads the images it gained on expanded events.

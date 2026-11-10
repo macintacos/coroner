@@ -104,7 +104,10 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   narrowed the events: the `sources` and `tags` given, `contains`, true when `--contains`
   was given (never its text), `order`, `desc` when `--order desc` reversed them, and
   `limit`; and `event` or `attachment`, the id of the record `-e` or the argument named;
-- the viewer's `attachment image not shown`.
+- `timeline picked`, with the `timeline` picked in `timeline list`'s picker;
+- the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
+  new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
+  `error`, when that read fails; and `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds
 its stderr lines until it closes. stdout and the JSON error envelope never change, and the

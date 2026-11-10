@@ -56,12 +56,13 @@ type Options struct {
 	// Image reads an image attachment's content. The viewer calls it in a command, never while
 	// rendering, and shows an attachment it cannot read or decode as its placeholder.
 	Image func(timeline.Attachment) ([]byte, error)
-	// Log takes debug detail on why an image attachment is not shown; nil logs nothing.
+	// Log takes debug detail: each load, with what it read and how long it took, and why an image
+	// attachment is not shown; nil logs nothing.
 	Log *slog.Logger
 	// Location is the zone times show in, and typed times are read in.
 	Location  *time.Location
 	ZoneLabel string // shown verbatim in the header, e.g. "America/New_York" or "local"
-	// Now is the clock relative times typed at @ are read against.
+	// Now is the clock relative times typed at @ are read against, and loads are timed by.
 	Now func() time.Time
 }
 
