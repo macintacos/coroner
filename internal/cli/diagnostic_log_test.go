@@ -457,8 +457,8 @@ var _ = Describe("diagnostic log", func() {
 		created("event", "add", "d", "-t", "other")
 		n1 := created("annotation", "add", "n1", "-t", "inc", "-e", "1", "--kind", "comment", "--attach", attachment)
 		n2 := created("annotation", "add", "n2", "-t", "inc", "-e", "2", "--kind", "comment", "--attach", attachment)
-		ab := created("event", "link", "inc#1", "inc#2", "--kind", "led_to")
-		into := created("event", "link", "other#1", "inc#3", "--kind", "led_to")
+		linkAB := created("event", "link", "inc#1", "inc#2", "--kind", "led_to")
+		linkFromOther := created("event", "link", "other#1", "inc#3", "--kind", "led_to")
 		overlay := created("overlay", "create", "both", "-t", "inc", "-t", "other")
 
 		Expect(written("event", "delete", "inc#1", "--debug")).To(ContainElements(
@@ -469,7 +469,7 @@ var _ = Describe("diagnostic log", func() {
 			line("DEBUG", "annotations deleted", "annotation", n1.ID),
 			line("DEBUG", "attachments deleted", "attachment", a.Attachments[0].ID),
 			line("DEBUG", "attachments deleted", "attachment", n1.Attachments[0].ID),
-			line("DEBUG", "links deleted", "link", ab.ID),
+			line("DEBUG", "links deleted", "link", linkAB.ID),
 		))
 
 		Expect(written("annotation", "delete", n2.ID, "--debug")).To(ContainElements(
@@ -493,7 +493,7 @@ var _ = Describe("diagnostic log", func() {
 			line("INFO", "overlays changed", "count", float64(1)),
 			line("DEBUG", "events deleted", "event", b.ID),
 			line("DEBUG", "events deleted", "event", c.ID),
-			line("DEBUG", "links deleted", "link", into.ID),
+			line("DEBUG", "links deleted", "link", linkFromOther.ID),
 			line("DEBUG", "overlays changed", "overlay_id", overlay.ID),
 		))
 		Expect(lines).NotTo(ContainElement(HaveKeyWithValue("msg", BeElementOf("annotations deleted", "attachments deleted"))))

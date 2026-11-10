@@ -66,20 +66,20 @@ func (d eventsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
 
 // eventsSweep returns what deleting events removes beside them: their annotations; attachments,
 // the events' own then their annotations'; and their links.
-func eventsSweep(ctx context.Context, tx *store.Tx, found foundEvents, attachments []timeline.Attachment) (sweep, error) {
+func eventsSweep(ctx context.Context, tx *store.Tx, found foundEvents, eventAttachments []timeline.Attachment) (sweep, error) {
 	var annotations []timeline.Annotation
 	for _, e := range found.events {
-		on, err := tx.EventAnnotations(ctx, e.ID)
+		eventAnnotations, err := tx.EventAnnotations(ctx, e.ID)
 		if err != nil {
 			return sweep{}, err
 		}
-		annotations = append(annotations, on...)
+		annotations = append(annotations, eventAnnotations...)
 	}
 	owners := make([]timeline.AttachmentOwner, 0, len(annotations))
 	for _, a := range annotations {
 		owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
 	}
-	annotated, err := ownersAttachments(ctx, tx, owners)
+	annotationAttachments, err := ownersAttachments(ctx, tx, owners)
 	if err != nil {
 		return sweep{}, err
 	}
@@ -90,7 +90,7 @@ func eventsSweep(ctx context.Context, tx *store.Tx, found foundEvents, attachmen
 
 	return sweep{
 		annotations: idsOf(annotations, annotationID),
-		attachments: idsOf(slices.Concat(attachments, annotated), attachmentID),
+		attachments: idsOf(slices.Concat(eventAttachments, annotationAttachments), attachmentID),
 		links:       links,
 	}, nil
 }

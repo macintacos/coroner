@@ -262,11 +262,11 @@ type attachResult struct {
 // logAdded logs each attachment added, through the owner's logger, which carries its dry_run.
 func (r attachResult) logAdded(ctx context.Context, logger *slog.Logger) {
 	for _, a := range r.added {
-		var id []any
+		var idArgs []any
 		if a.ID != "" {
-			id = []any{"attachment", a.ID}
+			idArgs = []any{"attachment", a.ID}
 		}
-		logger.InfoContext(ctx, "attachment added", slices.Concat(id, ownerArgs(a.Owner), []any{"size", a.Size, "sha256", a.SHA256})...)
+		logger.InfoContext(ctx, "attachment added", slices.Concat(idArgs, ownerArgs(a.Owner), []any{"size", a.Size, "sha256", a.SHA256})...)
 	}
 }
 
