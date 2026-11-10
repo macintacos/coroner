@@ -18,12 +18,15 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 - `mise run lint` runs the linters without writing, then fails if the CLI reference or the
   export schema is stale. It does not check YAML, TOML, shell, Pkl or Python formatting,
   `go mod tidy` or `sqlc generate`; only `mise run format` and `pre-commit` apply those.
-- `mise run test` runs `go test` through gotestsum, which prints each test as it finishes,
-  and so the Ginkgo suites, the testscript end-to-end scripts and the rapid properties,
-  reusing a package's cached result while its code and the files its tests read are
-  unchanged (`go test -count=1 ./...` reruns everything); a package pattern narrows it,
+- `mise run test` runs the Ginkgo suites with `go tool ginkgo -p`, and with them the
+  testscript end-to-end scripts and the rapid properties; a package pattern narrows it,
   and `--focus <regexp>` narrows Ginkgo specs only, so plain `Test*` functions such as
-  `TestScripts` still run.
+  `TestScripts` still run. The ginkgo CLI caches no results; `go test ./...` runs the same
+  tests and reuses a package's cached result while its code and the files its tests read
+  are unchanged (`go test -count=1 ./...` reruns everything), so the `pre-push` hook and
+  CI run that. Under `-p` ginkgo starts one copy of a test binary per process, and
+  `TestMain` in [`script_test.go`](internal/cli/script_test.go) keeps `internal/cli`'s
+  plain `Test*` functions to the first, since each copy would otherwise run them all.
 - `mise run docs:serve` serves the docs site at `http://localhost:2676` and rebuilds it on
   change. `mise run docs:build` builds it into `site/` with Zensical through `uv`, failing
   on any warning, such as a broken link between pages, copies the export schema in, and
@@ -39,12 +42,12 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 The [`hk.pkl`](hk.pkl) hooks run on their own: `pre-commit` runs every formatter and
 linter and applies fixes, regenerating the CLI reference when a help topic or the Go code
 it documents changes, and the export schema when the export types change; and `pre-push`
-runs `mise run test` when Go files, `go.mod`, `go.sum` or anything under `internal/`,
+runs `go test ./...` when Go files, `go.mod`, `go.sum` or anything under `internal/`,
 `docs/`, `skills/`, `testdata/` or `schema/` change.
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every pull request and
 push to `main`: [`.github/scripts/docs-gate-test`](.github/scripts/docs-gate-test), which
-checks the docs gate's cases, `mise run lint`, `mise run test`, `mise run docs:build`,
+checks the docs gate's cases, `mise run lint`, `go test ./...`, `mise run docs:build`,
 then `mise run format` failing on any diff, so a commit made with `--no-verify` still gets
 a red check. It restores the Go module, build and golangci-lint caches from the newest
 green push to `main`, and only such a push saves them; the build cache holds test results,

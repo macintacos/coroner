@@ -136,7 +136,7 @@ hooks {
 
   ["pre-push"] {
     steps = new Mapping<String, Step> {
-      ["Go(Test)          [[mise run test]]"] = new Step {
+      ["Go(Test)          [[go test ./...]]"] = new Step {
         glob =
           List(
             "**/*.go",
@@ -148,7 +148,7 @@ hooks {
             "testdata/**",
             "schema/**",
           )
-        check = "mise run test"
+        check = "go test ./..."
       }
     }
   }

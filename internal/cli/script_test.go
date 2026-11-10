@@ -44,10 +44,27 @@ const updateFlag = "update"
 func TestMain(m *testing.M) {
 	// Registered here and read back with flag.Lookup: gochecknoglobals rejects a package-level flag var.
 	flag.Bool(updateFlag, false, "rewrite testscript expectations in place")
-	testscript.Main(m, map[string]func(){
+	testscript.Main(oncePerRun{m}, map[string]func(){
 		"coroner":            func() { runCoroner(cli.Run) },
 		"coroner-deprecated": func() { runCoroner(cli.RunWithThrowawayDeprecation) },
 	})
+}
+
+// oncePerRun runs the plain Test functions in one process only. ginkgo -p starts a copy of this
+// binary per process and shards only the specs between them, so each copy would otherwise run every
+// plain Test function in full.
+type oncePerRun struct{ m *testing.M }
+
+func (o oncePerRun) Run() int {
+	flag.Parse()
+	if GinkgoParallelProcess() > 1 {
+		err := flag.Set("test.run", "^TestCli$")
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	return o.m.Run()
 }
 
 func TestScripts(t *testing.T) {

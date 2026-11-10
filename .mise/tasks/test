@@ -5,4 +5,4 @@
 
 set -euo pipefail
 
-gotestsum --format testname -- "${usage_pkg:-./...}" ${usage_focus:+-ginkgo.focus="$usage_focus"}
+go tool ginkgo -p ${usage_focus:+--focus "$usage_focus"} "${usage_pkg:-./...}"
