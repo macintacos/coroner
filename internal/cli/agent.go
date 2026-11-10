@@ -30,7 +30,7 @@ func newAgentSkillCommand(app App) *cobra.Command {
 			"agent reads matches the commands it runs. Its references ship with the skill's directory\n" +
 			"in the repository, not in the binary.",
 		Args:        cobra.NoArgs,
-		Annotations: map[string]string{formatsAnnotation: "text"},
+		Annotations: map[string]string{formatsAnnotation: "text", diagnosticLogAnnotation: "off"},
 		Example: "  $ coroner agent skill\n" +
 			"  $ coroner agent skill | diff - ~/.claude/skills/coroner/SKILL.md",
 		RunE: func(*cobra.Command, []string) error {

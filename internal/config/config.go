@@ -91,6 +91,17 @@ func BlobDir(dbPath string) string {
 	return dbPath + ".blobs"
 }
 
+// LogPath returns the path of the diagnostic log beside the database at dbPath: coroner.log
+// beside a database named coroner.db, as the default is, and <dbPath>.log for any other. No
+// two database paths share one. It reads only the path's spelling.
+func LogPath(dbPath string) string {
+	if filepath.Base(dbPath) == defaultDBName {
+		return filepath.Join(filepath.Dir(dbPath), "coroner.log")
+	}
+
+	return dbPath + ".log"
+}
+
 func rejectEmpty(flags Flags) error {
 	if flags.ConfigPath != nil && *flags.ConfigPath == "" {
 		return errors.New("--config must not be empty")

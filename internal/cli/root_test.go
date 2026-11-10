@@ -5,6 +5,7 @@ import (
 	"context"
 	"maps"
 	"os"
+	"path/filepath"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/export"
 )
 
@@ -358,10 +360,24 @@ var _ = Describe("Run", func() {
 			Expect(errOut.String()).NotTo(ContainSubstring("level="))
 		})
 
-		It("logs the failure's message and the command-line args", func(ctx SpecContext) {
+		It("logs the failure's message and the flag names given, never their values", func(ctx SpecContext) {
 			cli.Run(ctx, newApp("--debug", "--no-such-flag"))
 
-			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*message=.*unknown flag.* args="\[--debug --no-such-flag\]"`))
+			Expect(errOut.String()).To(MatchRegexp(`level=DEBUG .*message=.*unknown flag.* flags=\[debug\]`))
+			Expect(errOut.String()).NotTo(ContainSubstring("args="))
+		})
+
+		It("keeps a positional value out of stderr and the log", func(ctx SpecContext) {
+			dir := GinkgoT().TempDir()
+			db := filepath.Join(dir, "coroner.db")
+			h := harness{home: dir, db: db, errOut: &errOut}
+			Expect(cli.Run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
+
+			Expect(cli.Run(ctx, h.app("event", "add", "-t", "nope", "secret text", "--debug"))).NotTo(Equal(0))
+
+			Expect(errOut.String()).To(ContainSubstring("command failed"))
+			Expect(errOut.String()).NotTo(ContainSubstring("secret"))
+			Expect(readFile(config.LogPath(db))).NotTo(ContainSubstring("secret"))
 		})
 
 		It("logs no error attribute for a failure without a cause", func(ctx SpecContext) {

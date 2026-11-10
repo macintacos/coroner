@@ -134,6 +134,10 @@ func addCompletionCommand(root *cobra.Command, app App) {
 	for _, cmd := range root.Commands() {
 		if cmd.Name() == "completion" {
 			cmd.Example = examples["completion"]
+			if cmd.Annotations == nil {
+				cmd.Annotations = map[string]string{}
+			}
+			cmd.Annotations[diagnosticLogAnnotation] = "off"
 			for _, shell := range cmd.Commands() {
 				shell.Example = examples[shell.Name()]
 			}

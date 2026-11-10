@@ -286,6 +286,7 @@ func processApp() cli.App {
 		NewID:             uuid.NewV7,
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
+		Rename:            os.Rename,
 	}
 }
 

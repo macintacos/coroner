@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/macintacos/coroner/internal/store"
 )
@@ -57,11 +59,23 @@ type App struct {
 	// OpenStoreReadOnly opens the database at path without creating the database, migrating or
 	// writing it, and must report a missing file as fs.ErrNotExist.
 	OpenStoreReadOnly func(ctx context.Context, path string) (*store.Store, error)
+	// Rename renames oldpath to newpath, replacing newpath, as os.Rename does.
+	Rename func(oldpath, newpath string) error
+
+	// log is the command's diagnostic log; only Run sets it.
+	log *diagnosticLog
 }
 
 // Run executes the command line in app.Args and returns the process exit code.
 func Run(ctx context.Context, app App) int {
-	return execute(ctx, app, NewRoot(ctx, app))
+	log := newDiagnosticLog(app)
+	app.log = log
+	app.OpenStore = watching(app.OpenStore, log)
+	app.OpenStoreReadOnly = watching(app.OpenStoreReadOnly, log)
+	root := NewRoot(ctx, app)
+	log.command, log.off = commandOf(root, app.Args)
+
+	return execute(ctx, app, root)
 }
 
 // execute runs root, which NewRoot built from the same ctx and app, and returns the process
@@ -77,15 +91,22 @@ func execute(ctx context.Context, app App, root *cobra.Command) int {
 
 	cmd, err := root.ExecuteContextC(ctx)
 	failure := classify(ctx, cmd, err)
+
+	log := cmp.Or(app.log, newDiagnosticLog(app))
+	logger := log.logger(app.Err)
+	kind, code := Kind("ok"), 0
+	if failure != nil {
+		logFailure(ctx, logger, cmd, failure)
+		kind, code = failure.Kind, failure.Kind.ExitCode()
+	}
+	logger.InfoContext(ctx, "command finished", "kind", kind, "exit_code", code, "duration", log.elapsed())
+	log.close()
+
 	if failure == nil {
 		return 0
 	}
 
-	style, debug := errorStyleFor(app)
-	if debug {
-		logFailure(ctx, app, cmd, failure)
-	}
-
+	style, _ := errorStyleFor(app)
 	// Nowhere is left to report a failed write to Err.
 	_ = writeError(app.Err, failure, style)
 
@@ -111,16 +132,23 @@ func classify(ctx context.Context, cmd *cobra.Command, err error) *Error {
 	return usageError(cmd, err)
 }
 
-// logFailure writes failure as a debug log line on app.Err.
-func logFailure(ctx context.Context, app App, cmd *cobra.Command, failure *Error) {
+// logFailure logs failure as a debug line.
+func logFailure(ctx context.Context, logger *slog.Logger, cmd *cobra.Command, failure *Error) {
 	attrs := []any{
-		"command", cmd.CommandPath(), "kind", failure.Kind, "exit_code", failure.Kind.ExitCode(),
-		"message", failure.Message, "args", app.Args,
+		"kind", failure.Kind, "exit_code", failure.Kind.ExitCode(),
+		"message", failure.Message, "flags", flagsGiven(cmd),
 	}
 	if failure.Err != nil {
 		attrs = append(attrs, "error", failure.Err)
 	}
 
-	logger := slog.New(slog.NewTextHandler(app.Err, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	logger.DebugContext(ctx, "command failed", attrs...)
+}
+
+// flagsGiven returns the names of the flags set on cmd's command line, never their values.
+func flagsGiven(cmd *cobra.Command) []string {
+	var names []string
+	cmd.Flags().Visit(func(flag *pflag.Flag) { names = append(names, flag.Name) })
+
+	return names
 }
