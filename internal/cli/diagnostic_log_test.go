@@ -135,16 +135,16 @@ var _ = Describe("diagnostic log", func() {
 
 	It("hands the store the command's logger", func(ctx SpecContext) {
 		app := h.app("timeline", "create", "u")
-		var loggers []*slog.Logger
 		openStore := app.OpenStore
 		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
-			loggers = append(loggers, logger...)
+			logger[0].InfoContext(ctx, "probe")
 			return openStore(ctx, path, logger...)
 		}
 
 		Expect(cli.Run(ctx, app)).To(Equal(0))
 
-		Expect(loggers).To(HaveExactElements(Not(BeNil())))
+		Expect(logLines(logPath)).To(ContainElement(And(
+			HaveKeyWithValue("msg", "probe"), HaveKeyWithValue("command", "coroner timeline create"))))
 	})
 
 	DescribeTable("ends the log with the command's finish line",
@@ -289,19 +289,20 @@ var _ = Describe("diagnostic log", func() {
 		lines := logLines(logPath)
 		finished := slices.IndexFunc(lines, func(line map[string]any) bool { return line["msg"] == "command finished" })
 		Expect(finished).To(BeNumerically(">=", 0))
-		Expect(lines[:finished]).To(ContainElements(
-			And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "database path resolved"),
-				HaveKeyWithValue("path", h.db), HaveKeyWithValue("by", "flag")),
-			And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "config file resolved"),
-				HaveKeyWithValue("path", filepath.Join(h.home, ".config", "coroner", "config.toml")),
-				HaveKeyWithValue("by", "default")),
-			And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "default time zone resolved"),
-				HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file")),
-		))
+		linesWith := func(msg string) []map[string]any {
+			return slices.DeleteFunc(slices.Clone(lines[:finished]), func(line map[string]any) bool { return line["msg"] != msg })
+		}
+		Expect(linesWith("database path resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("path", h.db), HaveKeyWithValue("by", "flag"))))
+		Expect(linesWith("config file resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("path", filepath.Join(h.home, ".config", "coroner", "config.toml")),
+			HaveKeyWithValue("by", "default"))))
+		Expect(linesWith("default time zone resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file"))))
 	})
 
 	DescribeTable("logs which setting selected the timelines under --debug",
-		func(ctx SpecContext, wantBy string, setup func(context.Context), args ...string) {
+		func(ctx SpecContext, wantBy string, wantNames []string, setup func(context.Context), args ...string) {
 			Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
 			setup(ctx)
 			out.Reset()
@@ -313,29 +314,31 @@ var _ = Describe("diagnostic log", func() {
 				} `json:"timelines"`
 			}
 			Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed(), out.String())
-			var want []any
+			idOf := map[string]any{}
 			for _, t := range listed.Timelines {
-				if t.Name == "inc" || (wantBy == "overlay" && t.Name == "standby") {
-					want = append(want, t.ID)
-				}
+				idOf[t.Name] = t.ID
+			}
+			var want []any
+			for _, name := range wantNames {
+				want = append(want, idOf[name])
 			}
 
 			Expect(run(ctx, h.app(append(args, "--debug")...))).To(Equal(0), errOut.String())
 
 			Expect(logLines(logPath)).To(ContainElement(And(
 				HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "timelines selected"),
-				HaveKeyWithValue("by", wantBy), HaveKeyWithValue("timelines", ConsistOf(want...)),
+				HaveKeyWithValue("by", wantBy), HaveKeyWithValue("timeline_ids", HaveExactElements(want...)),
 			)))
 		},
-		Entry("-t", "flag", func(context.Context) {}, "event", "list", "-t", "inc"),
-		Entry("--overlay", "overlay", func(ctx context.Context) {
+		Entry("-t", "flag", []string{"inc"}, func(context.Context) {}, "event", "list", "-t", "inc"),
+		Entry("--overlay", "overlay", []string{"standby", "inc"}, func(ctx context.Context) {
 			Expect(run(ctx, h.app("timeline", "create", "standby"))).To(Equal(0))
-			Expect(run(ctx, h.app("overlay", "create", "pair", "-t", "inc", "-t", "standby"))).To(Equal(0), errOut.String())
+			Expect(run(ctx, h.app("overlay", "create", "pair", "-t", "standby", "-t", "inc"))).To(Equal(0), errOut.String())
 		}, "event", "list", "--overlay", "pair"),
-		Entry("CORONER_TIMELINE", "env", func(context.Context) {
+		Entry("CORONER_TIMELINE", "env", []string{"inc"}, func(context.Context) {
 			h.env = map[string]string{"HOME": h.home, "CORONER_TIMELINE": "inc"}
 		}, "event", "list"),
-		Entry("coroner timeline use", "use", func(ctx context.Context) {
+		Entry("coroner timeline use", "use", []string{"inc"}, func(ctx context.Context) {
 			Expect(run(ctx, h.app("timeline", "use", "inc"))).To(Equal(0))
 		}, "event", "list"),
 	)
@@ -373,13 +376,13 @@ var _ = Describe("diagnostic log", func() {
 			"--ended", "2026-01-02 04:00", "--tz", "America/New_York", "--debug"))).To(Equal(0), errOut.String())
 		lines := resolvedLines()
 		Expect(lines).To(HaveLen(2))
-		expectLine(lines[0], "--at", "2026-01-02 03:04", "America/New_York", "2026-01-02T03:04:00-05:00", "minute")
-		expectLine(lines[1], "--ended", "2026-01-02 04:00", "America/New_York", "2026-01-02T04:00:00-05:00", "minute")
+		expectLine(lines[0], "at", "2026-01-02 03:04", "America/New_York", "2026-01-02T03:04:00-05:00", "minute")
+		expectLine(lines[1], "ended", "2026-01-02 04:00", "America/New_York", "2026-01-02T04:00:00-05:00", "minute")
 
 		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--since", "2026-01-01", "--debug"))).To(Equal(0), errOut.String())
 		lines = resolvedLines()
 		Expect(lines).To(HaveLen(3))
-		expectLine(lines[2], "--since", "2026-01-01", "UTC", "2026-01-01T00:00:00Z", "day")
+		expectLine(lines[2], "since", "2026-01-01", "UTC", "2026-01-01T00:00:00Z", "day")
 
 		Expect(run(ctx, h.app("event", "add", "y", "-t", "inc", "--debug"))).To(Equal(0), errOut.String())
 		Expect(resolvedLines()).To(HaveLen(3))

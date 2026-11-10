@@ -277,7 +277,7 @@ func readEditTimes(logger *slog.Logger, in fieldValues, env checkEnv) (editTimes
 		if err != nil {
 			return times, err
 		}
-		logTypedTime(logger, typedTime{flag: "--at", input: *raw, zone: env.zone, resolved: at})
+		logTypedTime(logger, typedTime{flag: "at", input: *raw, zone: env.zone, resolved: at})
 		times.at, times.raw = &at, raw
 		echoes = append(echoes, "at "+formatResolved(at, env.zone))
 	}
@@ -289,7 +289,7 @@ func readEditTimes(logger *slog.Logger, in fieldValues, env checkEnv) (editTimes
 		if err != nil {
 			return times, err
 		}
-		logTypedTime(logger, typedTime{flag: "--ended", input: *ended, zone: env.zone, resolved: r})
+		logTypedTime(logger, typedTime{flag: "ended", input: *ended, zone: env.zone, resolved: r})
 		times.ended = &r
 		echoes = append(echoes, "ended "+formatResolved(r, env.zone))
 	}

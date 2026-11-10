@@ -436,7 +436,7 @@ func resolveEventTimes(logger *slog.Logger, in fieldValues, env checkEnv) (event
 		return eventTimes{}, err
 	}
 	if raw != nil {
-		logTypedTime(logger, typedTime{flag: "--at", input: *raw, zone: env.zone, resolved: at})
+		logTypedTime(logger, typedTime{flag: "at", input: *raw, zone: env.zone, resolved: at})
 	}
 	approximate, _ := in.boolean("approximate")
 	at.Approximate = at.Approximate || approximate
@@ -450,7 +450,7 @@ func resolveEventTimes(logger *slog.Logger, in fieldValues, env checkEnv) (event
 	if err != nil {
 		return eventTimes{}, err
 	}
-	logTypedTime(logger, typedTime{flag: "--ended", input: *endedInput, zone: env.zone, resolved: ended})
+	logTypedTime(logger, typedTime{flag: "ended", input: *endedInput, zone: env.zone, resolved: ended})
 	endedWhen := formatResolved(ended, env.zone)
 	err = timeline.ValidateEndedAt(&ended.Instant, at.Instant)
 	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {

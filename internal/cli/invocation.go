@@ -35,7 +35,8 @@ type invocation struct {
 // readInvocation reads cmd's command line, app and the environment once. It opens no store and
 // resolves no zone. A command reads its own flags first, then the invocation, unless a check needs
 // it. Never call it from agent skill, version, shell completion or errorStyleFor, so a malformed
-// config file cannot break them.
+// config file cannot break them. It logs, at debug, where the database path, config file and
+// default time zone came from, so a command calls it once.
 func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	o, err := newOutput(cmd, app)
 	if err != nil {
@@ -69,9 +70,9 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 
 // logConfig logs where the database path, config file and default time zone came from.
 func logConfig(logger *slog.Logger, cfg config.Config) {
-	logger.Debug("database path resolved", "path", cfg.DBPath, "by", cfg.Sources.DBPath)
-	logger.Debug("config file resolved", "path", cfg.ConfigPath, "by", cfg.Sources.ConfigPath)
-	logger.Debug("default time zone resolved", "zone", cfg.DefaultTimezone, "by", cfg.Sources.DefaultTimezone)
+	logger.Debug("database path resolved", "path", cfg.DBPath, "by", cfg.Layers.DBPath)
+	logger.Debug("config file resolved", "path", cfg.ConfigPath, "by", cfg.Layers.ConfigPath)
+	logger.Debug("default time zone resolved", "zone", cfg.DefaultTimezone, "by", cfg.Layers.DefaultTimezone)
 }
 
 // givenStoreArgs returns the --db and --config args flags were given, in that order.

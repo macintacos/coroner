@@ -30,23 +30,24 @@ type Config struct {
 	// DefaultTimezone is the file's default_timezone, unvalidated, or "UTC" when unset.
 	DefaultTimezone string
 	Author          string
-	Sources         Sources
+	Layers          Layers
 }
 
-// Source is where a resolved value came from.
-type Source string
+// Layer is where a resolved value came from.
+type Layer string
 
 // The places a resolved value can come from.
 const (
-	SourceFlag    Source = "flag"
-	SourceEnv     Source = "env"
-	SourceFile    Source = "file"
-	SourceDefault Source = "default"
+	LayerFlag    Layer = "flag"
+	LayerEnv     Layer = "env"
+	LayerFile    Layer = "file"
+	LayerDefault Layer = "default"
 )
 
-// Sources says where each of Config's resolved values came from.
-type Sources struct {
-	DBPath, ConfigPath, DefaultTimezone Source
+// Layers says where DBPath, ConfigPath and DefaultTimezone came from. ConfigPath's is never
+// LayerFile, and DefaultTimezone's is only LayerFile or LayerDefault: --tz never reaches config.
+type Layers struct {
+	DBPath, ConfigPath, DefaultTimezone Layer
 }
 
 type fileConfig struct {
@@ -71,15 +72,15 @@ func Resolve(
 		return value
 	}
 
-	configPath, configSource, file, err := loadConfigFile(flags.ConfigPath, env, readFile)
+	configPath, configLayer, file, err := loadConfigFile(flags.ConfigPath, env, readFile)
 	if err != nil {
 		return Config{}, err
 	}
 
-	dbPath, dbSource := firstSet(
-		sourced{deref(flags.DBPath), SourceFlag},
-		sourced{env("CORONER_DB"), SourceEnv},
-		sourced{file.DB, SourceFile},
+	dbPath, dbLayer := firstSet(
+		layered{deref(flags.DBPath), LayerFlag},
+		layered{env("CORONER_DB"), LayerEnv},
+		layered{file.DB, LayerFile},
 	)
 	if dbPath == "" {
 		dataHome, err := xdgHome(env, "XDG_DATA_HOME", ".local/share")
@@ -90,35 +91,32 @@ func Resolve(
 		dbPath = filepath.Join(dataHome, "coroner", defaultDBName)
 	}
 
-	timezone, timezoneSource := firstSet(sourced{file.DefaultTimezone, SourceFile})
-	if timezone == "" {
-		timezone = "UTC"
-	}
+	timezone, timezoneLayer := firstSet(layered{file.DefaultTimezone, LayerFile}, layered{"UTC", LayerDefault})
 
 	return Config{
 		DBPath:          dbPath,
 		ConfigPath:      configPath,
 		DefaultTimezone: timezone,
 		Author:          file.Author,
-		Sources:         Sources{DBPath: dbSource, ConfigPath: configSource, DefaultTimezone: timezoneSource},
+		Layers:          Layers{DBPath: dbLayer, ConfigPath: configLayer, DefaultTimezone: timezoneLayer},
 	}, nil
 }
 
-// sourced is a candidate value and where it came from.
-type sourced struct {
-	value  string
-	source Source
+// layered is a candidate value and where it came from.
+type layered struct {
+	value string
+	layer Layer
 }
 
-// firstSet returns the first candidate whose value is not empty, or "" and SourceDefault.
-func firstSet(candidates ...sourced) (string, Source) {
+// firstSet returns the first candidate whose value is not empty, or "" and LayerDefault.
+func firstSet(candidates ...layered) (string, Layer) {
 	for _, c := range candidates {
 		if c.value != "" {
-			return c.value, c.source
+			return c.value, c.layer
 		}
 	}
 
-	return "", SourceDefault
+	return "", LayerDefault
 }
 
 // BlobDir returns the directory the database at dbPath keeps attachment blobs in: blobs
@@ -170,9 +168,9 @@ func deref(s *string) string {
 // decoded contents. A missing file is an error only when --config or CORONER_CONFIG named it.
 func loadConfigFile(
 	configFlag *string, env func(string) string, readFile func(string) ([]byte, error),
-) (string, Source, fileConfig, error) {
-	path, source := firstSet(sourced{deref(configFlag), SourceFlag}, sourced{env("CORONER_CONFIG"), SourceEnv})
-	if source == SourceDefault {
+) (string, Layer, fileConfig, error) {
+	path, layer := firstSet(layered{deref(configFlag), LayerFlag}, layered{env("CORONER_CONFIG"), LayerEnv})
+	if layer == LayerDefault {
 		configHome, err := xdgHome(env, "XDG_CONFIG_HOME", ".config")
 		if err != nil {
 			return "", "", fileConfig{}, err
@@ -183,9 +181,9 @@ func loadConfigFile(
 
 	data, err := readFile(path)
 	switch {
-	case errors.Is(err, fs.ErrNotExist) && source == SourceDefault:
-		return path, source, fileConfig{}, nil
-	case errors.Is(err, fs.ErrNotExist) && source == SourceEnv:
+	case errors.Is(err, fs.ErrNotExist) && layer == LayerDefault:
+		return path, layer, fileConfig{}, nil
+	case errors.Is(err, fs.ErrNotExist) && layer == LayerEnv:
 		return "", "", fileConfig{}, fmt.Errorf("config file %s does not exist (set by CORONER_CONFIG)", path)
 	case errors.Is(err, fs.ErrNotExist):
 		return "", "", fileConfig{}, fmt.Errorf("config file %s does not exist", path)
@@ -198,7 +196,7 @@ func loadConfigFile(
 		return "", "", fileConfig{}, err
 	}
 
-	return path, source, file, nil
+	return path, layer, file, nil
 }
 
 // xdgHome returns the XDG base directory named by xdgKey, or HOME's homeSubdir when that

@@ -234,7 +234,7 @@ func selectTimelines(
 		return selection{}, err
 	}
 	if sel.by != "" {
-		logger.DebugContext(ctx, "timelines selected", "by", sel.by, "timelines", timelineIDs(sel.timelines))
+		logger.DebugContext(ctx, "timelines selected", "by", sel.by, "timeline_ids", timelineIDs(sel.timelines))
 	}
 
 	return sel, nil

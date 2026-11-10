@@ -141,8 +141,8 @@ var _ = Describe("Resolve", func() {
 				DBPath:          defaultData,
 				ConfigPath:      userConfig,
 				DefaultTimezone: "UTC",
-				Sources: config.Sources{
-					DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault,
+				Layers: config.Layers{
+					DBPath: config.LayerDefault, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerDefault,
 				},
 			}),
 		Entry("the file sets default_timezone and author",
@@ -157,55 +157,55 @@ var _ = Describe("Resolve", func() {
 				ConfigPath:      userConfig,
 				DefaultTimezone: "America/New_York",
 				Author:          "ada",
-				Sources: config.Sources{
-					DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceFile,
+				Layers: config.Layers{
+					DBPath: config.LayerDefault, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerFile,
 				},
 			}),
 	)
 
-	DescribeTable("Sources",
-		func(in input, want config.Sources) {
+	DescribeTable("Layers",
+		func(in input, want config.Layers) {
 			cfg, err := resolve(in)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(cfg.Sources).To(Equal(want))
+			Expect(cfg.Layers).To(Equal(want))
 		},
 		Entry("--db",
 			input{flags: config.Flags{DBPath: new("flag.db")}, env: map[string]string{"HOME": home}},
-			config.Sources{DBPath: config.SourceFlag, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerFlag, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerDefault}),
 		Entry("CORONER_DB",
 			input{env: map[string]string{"HOME": home, "CORONER_DB": "/env.db"}},
-			config.Sources{DBPath: config.SourceEnv, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerEnv, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerDefault}),
 		Entry("the file's db",
 			input{env: map[string]string{"HOME": home}, files: map[string]string{userConfig: `db = "/file.db"`}},
-			config.Sources{DBPath: config.SourceFile, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerFile, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerDefault}),
 		Entry("an empty CORONER_DB counts as unset",
 			input{
 				env:   map[string]string{"HOME": home, "CORONER_DB": ""},
 				files: map[string]string{userConfig: `db = "/file.db"`},
 			},
-			config.Sources{DBPath: config.SourceFile, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerFile, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerDefault}),
 		Entry("--config",
 			input{
 				flags: config.Flags{ConfigPath: new("/flag.toml")},
 				env:   map[string]string{"HOME": home},
 				files: map[string]string{"/flag.toml": ""},
 			},
-			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceFlag, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerDefault, ConfigPath: config.LayerFlag, DefaultTimezone: config.LayerDefault}),
 		Entry("CORONER_CONFIG",
 			input{
 				env:   map[string]string{"HOME": home, "CORONER_CONFIG": "/env.toml"},
 				files: map[string]string{"/env.toml": ""},
 			},
-			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceEnv, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerDefault, ConfigPath: config.LayerEnv, DefaultTimezone: config.LayerDefault}),
 		Entry("the file's default_timezone",
 			input{
 				env:   map[string]string{"HOME": home},
 				files: map[string]string{userConfig: `default_timezone = "America/New_York"`},
 			},
-			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceFile}),
+			config.Layers{DBPath: config.LayerDefault, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerFile}),
 		Entry("nothing set",
 			input{env: map[string]string{"HOME": home}},
-			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+			config.Layers{DBPath: config.LayerDefault, ConfigPath: config.LayerDefault, DefaultTimezone: config.LayerDefault}),
 	)
 
 	DescribeTable("errors",
@@ -265,8 +265,8 @@ var _ = Describe("Resolve", func() {
 			DBPath:          "/flag.db",
 			ConfigPath:      "/flag.toml",
 			DefaultTimezone: "UTC",
-			Sources: config.Sources{
-				DBPath: config.SourceFlag, ConfigPath: config.SourceFlag, DefaultTimezone: config.SourceDefault,
+			Layers: config.Layers{
+				DBPath: config.LayerFlag, ConfigPath: config.LayerFlag, DefaultTimezone: config.LayerDefault,
 			},
 		}))
 	})

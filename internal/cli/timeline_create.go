@@ -43,7 +43,7 @@ func timelineCreateForm(ctx context.Context, app App) formCommand {
 	return formCommand{
 		def:       create.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(create.def, in) },
-		flagsOnly: withOneArg(writeRunE(ctx, app, create.def, create.run)),
+		flagsOnly: withOneArg(writeRun(ctx, app, create.def, create.run)),
 		session: func(s formSession, in fieldValues) error {
 			_, _, err := askTimelineCreate(ctx, s, create, in)
 			return err

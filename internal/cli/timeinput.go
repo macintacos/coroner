@@ -29,7 +29,8 @@ type typedTime struct {
 	resolved    timeparse.Resolved
 }
 
-// logTypedTime logs t at debug.
+// logTypedTime logs t at debug. Call it only where a time flag is parsed for the last time, never
+// from resolveTime, which every form keystroke and a flags-only add's check also run.
 func logTypedTime(logger *slog.Logger, t typedTime) {
 	logger.Debug("time input resolved", "flag", t.flag, "input", t.input, "zone", t.zone.label,
 		"instant", t.resolved.Instant, "precision", t.resolved.Precision)

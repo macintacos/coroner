@@ -267,7 +267,7 @@ type formCommand struct {
 	// ready reports whether the command line's values run without a form.
 	ready func(in fieldValues) bool
 	// flagsOnly runs the command line without a form.
-	flagsOnly func(*cobra.Command, []string) error
+	flagsOnly invokedRunE
 	// session runs the form, prefilled from the command line's values.
 	session func(s formSession, in fieldValues) error
 }
@@ -286,8 +286,7 @@ func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool, 
 		}
 		in := c.def.read(cmd.Flags(), args)
 		if !formMode(formGate{interactive: interactive, ready: c.ready(in), machine: inv.out.format.machine(), terminal: inv.terminal}) {
-			// ponytail: flagsOnly reads the invocation again; pass inv to flagsOnly if that read grows costly.
-			return c.flagsOnly(cmd, args)
+			return c.flagsOnly(cmd, inv, args)
 		}
 
 		return c.session(newFormSession(app, inv, forms), in)
@@ -307,7 +306,7 @@ func (f addForm[R]) attach(
 	return formCommand{
 		def:       f.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(f.def, in) },
-		flagsOnly: writeRunE(ctx, app, f.def, f.run),
+		flagsOnly: writeRun(ctx, app, f.def, f.run),
 		session: func(s formSession, in fieldValues) error {
 			return f.session(ctx, s, in)
 		},

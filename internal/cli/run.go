@@ -57,11 +57,12 @@ type App struct {
 	// NewID returns the ID for a new record, a UUIDv7 in main.go.
 	NewID func() (uuid.UUID, error)
 	// OpenStore creates the database at path, so only commands that use it may call it, and
-	// never from PersistentPreRunE. newRun passes it the command's logger.
+	// never from PersistentPreRunE. Under Run, the command's logger is passed in place of any the
+	// caller gives.
 	OpenStore func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error)
 	// OpenStoreReadOnly opens the database at path without creating the database, migrating or
-	// writing it, and must report a missing file as fs.ErrNotExist. newRun passes it the
-	// command's logger.
+	// writing it, and must report a missing file as fs.ErrNotExist. Under Run, the
+	// command's logger is passed in place of any the caller gives.
 	OpenStoreReadOnly func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error)
 
 	// log is the command's diagnostic log, set by newRun.

@@ -45,7 +45,7 @@ func timelineEditForm(ctx context.Context, app App) formCommand {
 	return formCommand{
 		def:       def,
 		ready:     def.changed,
-		flagsOnly: withOneArg(writeRunEInZone(ctx, app, def, editTimeline)),
+		flagsOnly: withOneArg(writeRunInZone(ctx, app, def, editTimeline)),
 		session: func(s formSession, in fieldValues) error {
 			z, err := s.inv.zone()
 			if err != nil {

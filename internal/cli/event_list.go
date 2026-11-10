@@ -231,7 +231,7 @@ func readBound(logger *slog.Logger, flags *pflag.FlagSet, name string, now time.
 	if err != nil {
 		return nil, "", err
 	}
-	logTypedTime(logger, typedTime{flag: "--" + name, input: *input, zone: z, resolved: r})
+	logTypedTime(logger, typedTime{flag: name, input: *input, zone: z, resolved: r})
 
 	return &r.Instant, name + " " + formatResolved(r, z), nil
 }
