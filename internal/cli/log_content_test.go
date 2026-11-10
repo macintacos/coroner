@@ -15,8 +15,8 @@ import (
 	"github.com/macintacos/coroner/internal/config"
 )
 
-// The record content the diagnostic log must never carry, one sentinel per kind. Each is plain
-// ASCII, so JSON escaping cannot hide it.
+// The record content the diagnostic log must never carry, one sentinel per kind of content.
+// Each is plain ASCII, so JSON escaping cannot hide it.
 const (
 	sentinelTitle    = "SENTINEL-TITLE-q7v2"
 	sentinelText     = "SENTINEL-TEXT-q7v2"
@@ -82,7 +82,11 @@ var _ = Describe("log content guard", func() {
 			Expect(run(ctx, append(resolved, "--debug")...)).To(Equal(wantExit), errOut.String())
 
 			written := readFile(logPath)[before:]
-			Expect(written).To(ContainSubstring(`"msg":"command finished"`))
+			Expect(written).To(
+				ContainSubstring(`"msg":"command finished"`),
+				"no finish line: a command that fails before opening its database writes no log, "+
+					"so drop its row rather than loosen this",
+			)
 			if wantExit != 0 {
 				Expect(written).To(ContainSubstring(`"msg":"command failed"`))
 			}
