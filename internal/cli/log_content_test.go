@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -33,6 +35,7 @@ var _ = Describe("log content guard", func() {
 		logPath      string
 		out, errOut  bytes.Buffer
 		placeholders *strings.Replacer
+		ids          int
 	)
 	sentinels := []string{sentinelTitle, sentinelText, sentinelBody, sentinelContent, sentinelFilename}
 
@@ -47,9 +50,15 @@ var _ = Describe("log content guard", func() {
 		Expect(run(ctx, args...)).To(Equal(0), errOut.String())
 	}
 
-	BeforeEach(func(ctx SpecContext) {
+	capture := func(ctx context.Context, args ...string) string {
+		GinkgoHelper()
+		mustRun(ctx, args...)
+		return strings.TrimSpace(out.String())
+	}
+
+	seed := func(ctx SpecContext) {
 		dir := GinkgoT().TempDir()
-		ids := 0
+		ids = 0
 		h = harness{home: dir, db: filepath.Join(dir, "coroner.db"), out: &out, errOut: &errOut, newID: countedIDs(&ids)}
 		logPath = config.DiagnosticLogPath(h.db)
 
@@ -59,10 +68,26 @@ var _ = Describe("log content guard", func() {
 		newAttachmentPath := filepath.Join(dir, sentinelFilename+"-new.txt")
 		Expect(os.WriteFile(newAttachmentPath, []byte("new "+sentinelContent), 0o600)).To(Succeed())
 
-		mustRun(ctx, "timeline", "create", "inc", "--title", sentinelTitle)
-		mustRun(ctx, "event", "add", sentinelText, "-t", "inc", "--attach", attachmentPath)
-		mustRun(ctx, "annotation", "add", sentinelBody, "-t", "inc", "-e", "1", "--kind", "comment", "-q")
-		annotationID := strings.TrimSpace(out.String())
+		timelineID := capture(ctx, "timeline", "create", "inc", "--title", sentinelTitle, "-q")
+		eventID := capture(ctx, "event", "add", sentinelText, "-t", "inc", "--attach", attachmentPath, "--source", "pagerduty", "-q")
+		mustRun(ctx, "event", "add", "second "+sentinelText, "-t", "inc")
+		linkID := capture(ctx, "event", "link", "inc#1", "inc#2", "--kind", "led_to", "-q")
+		annotationID := capture(ctx, "annotation", "add", sentinelBody, "-t", "inc", "-e", "1", "--kind", "comment", "-q")
+		mustRun(ctx, "source", "list", "--json")
+		var sources struct {
+			Sources []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"sources"`
+		}
+		Expect(json.Unmarshal(out.Bytes(), &sources)).To(Succeed(), out.String())
+		var sourceID string
+		for _, s := range sources.Sources {
+			if s.Name == "pagerduty" {
+				sourceID = s.ID
+			}
+		}
+		Expect(sourceID).NotTo(BeEmpty())
 		mustRun(ctx, "attachment", "list", "-t", "inc", "--json")
 		var listed struct {
 			Attachments []struct {
@@ -84,7 +109,90 @@ var _ = Describe("log content guard", func() {
 
 		placeholders = strings.NewReplacer(
 			"{dir}", dir, "{attach}", attachmentPath, "{attach2}", newAttachmentPath, "{annotation}", annotationID, "{attachment}", listed.Attachments[0].ID,
+			"{timeline}", timelineID, "{event}", eventID, "{link}", linkID, "{source}", sourceID,
 		)
+	}
+
+	BeforeEach(func(ctx SpecContext) { seed(ctx) })
+
+	It("logs the record each write command changes, and keeps its content out", func(ctx SpecContext) {
+		type row struct {
+			args            []string
+			level, msg, key string
+			id              string
+		}
+		rows := map[string]row{
+			"coroner timeline create":   {[]string{"timeline", "create", "other"}, "INFO", "timeline created", "timeline_id", "{new}"},
+			"coroner timeline edit":     {[]string{"timeline", "edit", "inc", "--title", "edited " + sentinelTitle}, "INFO", "timeline edited", "timeline_id", "{timeline}"},
+			"coroner timeline delete":   {[]string{"timeline", "delete", "inc", "--yes"}, "INFO", "timeline deleted", "timeline_id", "{timeline}"},
+			"coroner timeline use":      {[]string{"timeline", "use", "inc"}, "INFO", "current timeline set", "timeline_id", "{timeline}"},
+			"coroner event add":         {[]string{"event", "add", "another " + sentinelText, "-t", "inc"}, "INFO", "event added", "event", "{new}"},
+			"coroner event edit":        {[]string{"event", "edit", "inc#1", "--text", "edited " + sentinelText}, "INFO", "event edited", "event", "{event}"},
+			"coroner event delete":      {[]string{"event", "delete", "inc#1"}, "INFO", "event deleted", "event", "{event}"},
+			"coroner event link":        {[]string{"event", "link", "inc#1", "inc#2", "--kind", "same_as"}, "INFO", "link added", "link", "{new}"},
+			"coroner event unlink":      {[]string{"event", "unlink", "inc#1", "inc#2", "--kind", "led_to"}, "INFO", "link deleted", "link", "{link}"},
+			"coroner annotation add":    {[]string{"annotation", "add", "another " + sentinelBody, "-t", "inc", "-e", "1", "--kind", "evidence"}, "INFO", "annotation added", "annotation", "{new}"},
+			"coroner annotation edit":   {[]string{"annotation", "edit", "{annotation}", "--body", "edited " + sentinelBody}, "INFO", "annotation edited", "annotation", "{annotation}"},
+			"coroner annotation delete": {[]string{"annotation", "delete", "{annotation}"}, "INFO", "annotation deleted", "annotation", "{annotation}"},
+			"coroner attachment delete": {[]string{"attachment", "delete", "{attachment}"}, "INFO", "attachment deleted", "attachment", "{attachment}"},
+			"coroner overlay create":    {[]string{"overlay", "create", "both", "-t", "inc"}, "INFO", "overlay created", "overlay_id", "{new}"},
+			"coroner source edit":       {[]string{"source", "edit", "pagerduty", "--name", "paging"}, "INFO", "source edited", "source_id", "{source}"},
+			"coroner import":            {[]string{"import", "{dir}/inc.jsonl", "--on-conflict", "replace"}, "DEBUG", "timelines replaced", "timeline_id", "{timeline}"},
+		}
+
+		var walked []string
+		cli.WalkCommands(cli.NewRoot(ctx, cli.App{}), func(cmd *cobra.Command) {
+			if cmd.Runnable() && slices.Contains(cli.WriteVerbs(), cmd.Name()) {
+				walked = append(walked, cmd.CommandPath())
+			}
+		})
+		slices.Sort(walked)
+		Expect(walked).To(Equal(slices.Sorted(maps.Keys(rows))))
+
+		for _, path := range walked {
+			r := rows[path]
+			for _, dryRun := range []bool{true, false} {
+				seed(ctx)
+				resolver := strings.NewReplacer("{new}", fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", ids+1))
+				args := make([]string, 0, len(r.args)+2)
+				for _, arg := range r.args {
+					args = append(args, placeholders.Replace(arg))
+				}
+				if dryRun {
+					args = append(args, "--dry-run")
+				}
+				wantID := placeholders.Replace(resolver.Replace(r.id))
+
+				before := len(readIfExists(logPath))
+				beforeLines := len(logLines(logPath))
+				Expect(run(ctx, append(args, "--debug")...)).To(Equal(0), path+": "+errOut.String())
+
+				var found map[string]any
+				for _, line := range logLines(logPath)[beforeLines:] {
+					if line["level"] == r.level && line["msg"] == r.msg && line[r.key] == wantID {
+						found = line
+					}
+				}
+				Expect(found).NotTo(BeNil(), "%s (dry run %t): no %s line %q with %s=%s", path, dryRun, r.level, r.msg, r.key, wantID)
+				if dryRun {
+					Expect(found).To(HaveKeyWithValue("dry_run", true), path)
+				} else {
+					Expect(found).NotTo(HaveKey("dry_run"), path)
+					switch path {
+					case "coroner timeline edit":
+						Expect(found).To(HaveKeyWithValue("fields", []any{"title"}), path)
+					case "coroner event edit":
+						Expect(found).To(HaveKeyWithValue("fields", []any{"text"}), path)
+					case "coroner source edit":
+						Expect(found).To(HaveKeyWithValue("fields", []any{"name"}), path)
+					}
+				}
+				written := readFile(logPath)[before:]
+				for _, sentinel := range []string{sentinelTitle, sentinelText, sentinelBody, sentinelContent, sentinelFilename} {
+					Expect(written).NotTo(ContainSubstring(sentinel), path+": record content reached the diagnostic log")
+				}
+			}
+		}
 	})
 
 	It("keeps record content out of the lines that create and migrate the database", func() {

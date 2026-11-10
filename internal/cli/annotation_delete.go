@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -50,6 +51,13 @@ type annotationsDeleted struct {
 	attached      map[string][]attachmentJSON
 	dryRun        bool
 	blobsErr      error
+}
+
+func (d annotationsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, d.dryRun)
+	for _, a := range d.annotations {
+		logger.InfoContext(ctx, "annotation deleted", annotationArgs(a)...)
+	}
 }
 
 func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationsDeleted, error) {

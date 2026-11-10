@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -256,6 +257,14 @@ type attachResult struct {
 	// objects are every attachment the owner has afterwards, then those a dry run describes.
 	objects []attachmentJSON
 	dryRun  bool
+}
+
+// logChanges logs each attachment added, through the owner's logger, which carries its dry_run.
+func (r attachResult) logChanges(ctx context.Context, logger *slog.Logger) {
+	for _, a := range r.added {
+		logger.InfoContext(ctx, "attachment added",
+			append(append([]any{"attachment", a.ID}, ownerArgs(a.Owner)...), "size", a.Size, "sha256", a.SHA256)...)
+	}
 }
 
 // notify says on stderr what each added attachment is: attached, with the id to delete or export

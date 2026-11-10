@@ -45,6 +45,7 @@ type addForm[R addResult] struct {
 // in the summary that ends the session when the add stored a record.
 type addResult interface {
 	renderer
+	changeLogger
 	// summary returns how the session's summary lists the record, and whether the add stored it.
 	summary() (summaryLine, bool)
 }

@@ -3,6 +3,10 @@ package cli
 import (
 	"context"
 	"log/slog"
+	"slices"
+
+	"github.com/macintacos/coroner/internal/export"
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 // withDryRun returns logger, adding dry_run to every line when --dry-run rolled the change back.
@@ -33,4 +37,28 @@ func idKey(typ string) string {
 		return typ + "_id"
 	}
 	return typ
+}
+
+// changedFields returns the export keys whose values differ between before and after, without
+// updated_at, which every edit moves. It is never nil, so an edit that changed nothing logs [].
+func changedFields[T export.Record](before, after T) []string {
+	keys := slices.DeleteFunc(export.DifferingKeys(before, after), func(key string) bool { return key == "updated_at" })
+	return append([]string{}, keys...)
+}
+
+// annotationArgs returns the keys naming an annotation, its timeline and, when on one, its event.
+func annotationArgs(a timeline.Annotation) []any {
+	args := []any{"annotation", a.ID, "timeline_id", a.TimelineID}
+	if a.EventID != nil {
+		args = append(args, "event", *a.EventID)
+	}
+	return args
+}
+
+// ownerArgs returns the key and id of the event or annotation an attachment belongs to.
+func ownerArgs(owner timeline.AttachmentOwner) []any {
+	if owner.EventID != nil {
+		return []any{"event", *owner.EventID}
+	}
+	return []any{"annotation", *owner.AnnotationID}
 }

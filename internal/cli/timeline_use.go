@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -47,6 +48,15 @@ type timelineUsed struct {
 	dryRun   bool
 	// warning names the CORONER_TIMELINE that still selects another timeline, or is empty.
 	warning string
+}
+
+func (u timelineUsed) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, u.dryRun)
+	if u.timeline == nil {
+		logger.InfoContext(ctx, "current timeline cleared")
+		return
+	}
+	logger.InfoContext(ctx, "current timeline set", "timeline_id", u.timeline.ID)
 }
 
 func useTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineUsed, error) {

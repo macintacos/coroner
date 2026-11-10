@@ -5,7 +5,9 @@ exists $WORK/.local/share/coroner/coroner.log
 grep '"msg":"command finished","command":"coroner timeline list","kind":"ok","exit_code":0,"duration":0' $WORK/.local/share/coroner/coroner.log
 ! exists $WORK/.local/share/coroner/coroner.log.1
 
-# Another database name gets <db>.log, and the same commands write byte-identical lines.
+# Another database name gets <db>.log, and the same commands, drawing the same ids, write
+# byte-identical lines.
+rm $WORK/.coroner-test-ids
 exec coroner --db $WORK/b/other.db timeline create checkout --title Checkout
 exec coroner --db $WORK/b/other.db timeline list
 cmp $WORK/b/other.db.log $WORK/.local/share/coroner/coroner.log

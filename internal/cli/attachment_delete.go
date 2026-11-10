@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -49,6 +50,13 @@ type attachmentsDeleted struct {
 	timelineNames map[string]string
 	dryRun        bool
 	blobsErr      error
+}
+
+func (d attachmentsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, d.dryRun)
+	for _, a := range d.attachments {
+		logger.InfoContext(ctx, "attachment deleted", append([]any{"attachment", a.ID}, ownerArgs(a.Owner)...)...)
+	}
 }
 
 func deleteAttachments(ctx context.Context, app App, cfg config.Config, in fieldValues) (attachmentsDeleted, error) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 
 	"charm.land/huh/v2"
@@ -169,6 +170,13 @@ func timelineCreateDefinition() definition {
 type timelineCreated struct {
 	timeline        timeline.Timeline
 	existed, dryRun bool
+}
+
+func (c timelineCreated) logChanges(ctx context.Context, logger *slog.Logger) {
+	if c.existed {
+		return
+	}
+	withDryRun(logger, c.dryRun).InfoContext(ctx, "timeline created", "timeline_id", c.timeline.ID)
 }
 
 func createTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineCreated, error) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"cmp"
 	"context"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -196,16 +197,27 @@ func withoutEnv(check func(string) error) func(string, checkEnv) error {
 
 type renderer interface{ render(o output) error }
 
+// changeLogger is a write command's result, which logs what the command changed.
+type changeLogger interface {
+	logChanges(ctx context.Context, logger *slog.Logger)
+}
+
 // writeRunE returns the RunE of a write command that prints only what run returns: it reads
-// def's fields from the command line, runs run against them and renders the result.
-func writeRunE[R renderer](
+// def's fields from the command line, runs run against them, logs and renders the result.
+func writeRunE[R interface {
+	renderer
+	changeLogger
+}](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) func(*cobra.Command, []string) error {
 	return withInvocation(app, writeRun(ctx, app, def, run))
 }
 
 // writeRun is writeRunE for a caller that has already read the invocation.
-func writeRun[R renderer](
+func writeRun[R interface {
+	renderer
+	changeLogger
+}](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) invokedRunE {
 	return func(cmd *cobra.Command, inv invocation, args []string) error {
@@ -213,6 +225,7 @@ func writeRun[R renderer](
 		if err != nil {
 			return err
 		}
+		result.logChanges(ctx, app.logger())
 
 		return result.render(inv.out)
 	}
@@ -236,14 +249,20 @@ func withInvocation(app App, run invokedRunE) func(*cobra.Command, []string) err
 type zonedRenderer interface{ render(o output, z zone) error }
 
 // writeRunEInZone is writeRunE for a result printed in the zone, resolved before run writes anything.
-func writeRunEInZone[R zonedRenderer](
+func writeRunEInZone[R interface {
+	zonedRenderer
+	changeLogger
+}](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) func(*cobra.Command, []string) error {
 	return withInvocation(app, writeRunInZone(ctx, app, def, run))
 }
 
 // writeRunInZone is writeRunEInZone for a caller that has already read the invocation.
-func writeRunInZone[R zonedRenderer](
+func writeRunInZone[R interface {
+	zonedRenderer
+	changeLogger
+}](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) invokedRunE {
 	return func(cmd *cobra.Command, inv invocation, args []string) error {
@@ -255,6 +274,7 @@ func writeRunInZone[R zonedRenderer](
 		if err != nil {
 			return err
 		}
+		result.logChanges(ctx, app.logger())
 
 		return result.render(inv.out, z)
 	}

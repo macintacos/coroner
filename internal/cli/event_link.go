@@ -108,6 +108,15 @@ type linkChange struct {
 	verb, done, preposition string
 }
 
+func (c linkChange) logChanges(ctx context.Context, logger *slog.Logger) {
+	msg := "link deleted"
+	if c.verb == "link" {
+		msg = "link added"
+	}
+	withDryRun(logger, c.dryRun).InfoContext(ctx, msg,
+		"link", c.link.ID, "kind", c.link.Kind, "from_event", c.link.FromEventID, "to_event", c.link.ToEventID)
+}
+
 // linkEnds are the two events a link joins, from then to, with their timelines.
 type linkEnds struct {
 	events    [2]timeline.Event

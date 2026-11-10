@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/spf13/cobra"
@@ -46,6 +47,14 @@ type sourceEdited struct {
 	source  store.SourceUsage
 	oldName string
 	dryRun  bool
+}
+
+func (e sourceEdited) logChanges(ctx context.Context, logger *slog.Logger) {
+	fields := []string{}
+	if e.oldName != e.source.Name {
+		fields = []string{"name"}
+	}
+	withDryRun(logger, e.dryRun).InfoContext(ctx, "source edited", "source_id", e.source.ID, "fields", fields)
 }
 
 func editSource(ctx context.Context, app App, cfg config.Config, in fieldValues) (sourceEdited, error) {

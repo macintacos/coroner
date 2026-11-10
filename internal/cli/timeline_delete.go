@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -51,6 +52,10 @@ type timelineDeleted struct {
 	dryRun              bool
 	events, annotations int
 	blobsErr            error
+}
+
+func (d timelineDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	withDryRun(logger, d.dryRun).InfoContext(ctx, "timeline deleted", "timeline_id", d.timeline.ID)
 }
 
 func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineDeleted, error) {

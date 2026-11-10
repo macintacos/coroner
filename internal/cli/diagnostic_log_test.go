@@ -139,6 +139,20 @@ var _ = Describe("diagnostic log", func() {
 		Expect(readFile(logPath)).To(Equal(before))
 	})
 
+	It("logs an edit that changed nothing with an empty fields list", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "inc", "--title", "same"))).To(Equal(0))
+		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "same"))).To(Equal(0))
+
+		var edited map[string]any
+		for _, line := range logLines(logPath) {
+			if line["msg"] == "timeline edited" && line["level"] == "INFO" {
+				edited = line
+			}
+		}
+		Expect(edited).To(HaveKeyWithValue("fields", BeEmpty()))
+		Expect(edited).To(HaveKeyWithValue("fields", Not(BeNil())))
+	})
+
 	It("hands the store the command's logger and clock", func(ctx SpecContext) {
 		app := h.app("timeline", "create", "u", "--debug")
 		now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
@@ -277,6 +291,8 @@ var _ = Describe("diagnostic log", func() {
 		other := h
 		other.home = GinkgoT().TempDir()
 		other.db = filepath.Join(other.home, "coroner.db")
+		otherIDs := 0
+		other.newID = countedIDs(&otherIDs)
 		for _, each := range []harness{h, other} {
 			Expect(run(ctx, each.app("timeline", "create", "t"))).To(Equal(0))
 			Expect(run(ctx, each.app("timeline", "list"))).To(Equal(0))

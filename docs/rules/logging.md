@@ -48,6 +48,11 @@ rules say what a line holds; a new or changed line also updates that page.
    - `timeline_id`: a timeline's id; `timeline` is its name.
    - `source_id`: a source's id.
    - `link`: a link's id.
+   - `overlay_id`: an overlay's id.
+   - `from_event`: the id of the event a link leaves.
+   - `to_event`: the id of the event a link reaches.
+   - `fields`: the names of the fields an edit changed, as the export format spells them,
+     such as `title`; never their values.
    - `count`: how many records a step changed or read, or how many blobs garbage
      collection deleted.
    - `counts`: how many records of each kind a read returned or an export holds, as a

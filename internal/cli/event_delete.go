@@ -54,6 +54,13 @@ type eventsDeleted struct {
 	blobsErr error
 }
 
+func (d eventsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, d.dryRun)
+	for _, e := range d.found.events {
+		logger.InfoContext(ctx, "event deleted", "event", e.ID, "timeline_id", e.TimelineID)
+	}
+}
+
 func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventsDeleted, error) {
 	err := eventDeleteDefinition().check(in, checkEnv{})
 	if err != nil {

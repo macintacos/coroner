@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -52,6 +54,13 @@ type annotationEdited struct {
 	timeline   timeline.Timeline
 	attach     attachResult
 	dryRun     bool
+	fields     []string
+}
+
+func (e annotationEdited) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, e.dryRun)
+	logger.InfoContext(ctx, "annotation edited", append(annotationArgs(e.annotation), "fields", e.fields)...)
+	e.attach.logChanges(ctx, logger)
 }
 
 func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationEdited, error) {
@@ -94,11 +103,13 @@ func editAnnotation(ctx context.Context, app App, cfg config.Config, in fieldVal
 			if err != nil {
 				return b, err
 			}
+			before := a
 			a, err = edit.apply(a, now)
 			if err != nil {
 				return b, err
 			}
 			b.result.annotation, b.result.timeline = a, t
+			b.result.fields = changedFields(export.NewAnnotation(before), export.NewAnnotation(a))
 			// UpdateAnnotation resolves a.Source by name even when --source did not change it, so
 			// it always needs a fallback id.
 			sourceID, err := newSourceID(a.Source, ids.newID)
