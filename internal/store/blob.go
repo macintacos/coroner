@@ -165,8 +165,8 @@ func syncDir(dir string, sync func(*os.File) error) error {
 	return errors.Join(sync(d), d.Close())
 }
 
-// deleteUnreferenced deletes every blob in blobDir whose hash is not in referenced and
-// returns their hashes in name order. It leaves anything that is not a blob, such as a
+// deleteUnreferenced deletes every blob in dir whose hash is not in referenced, logging
+// each one, and returns their hashes in name order. It leaves anything that is not a blob, such as a
 // staged file.
 // ponytail: staged .tmp-* files a crash left are never collected; sweep by age with an
 // injected clock if they accumulate.
@@ -191,23 +191,34 @@ func deleteUnreferenced(dir blobDir, referenced []string) ([]string, error) {
 			continue
 		}
 
-		info, err := entry.Info()
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
+		removed, err := removeBlob(dir, entry)
 		if err != nil {
-			return nil, fmt.Errorf("delete blob %s: %w", name, err)
+			return nil, err
 		}
-
-		err = os.Remove(filepath.Join(dir.path, name))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("delete blob %s: %w", name, err)
+		if removed {
+			deleted = append(deleted, name)
 		}
-		dir.logger.Info("blob deleted", "sha256", name, "size", info.Size())
-		deleted = append(deleted, name)
 	}
 
 	return deleted, nil
+}
+
+// removeBlob deletes entry's blob from dir and logs it. It reports false when the blob was
+// already gone.
+func removeBlob(dir blobDir, entry fs.DirEntry) (bool, error) {
+	info, err := entry.Info()
+	if err == nil {
+		err = os.Remove(filepath.Join(dir.path, entry.Name()))
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("delete blob %s: %w", entry.Name(), err)
+	}
+	dir.logger.Info("blob deleted", "sha256", entry.Name(), "size", info.Size())
+
+	return true, nil
 }
 
 // BlobPath returns the path of the blob whose SHA-256 is hash, in the blob directory of the

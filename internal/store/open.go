@@ -88,15 +88,17 @@ type openOptions struct {
 	now         func() time.Time
 }
 
-// Option changes how Open, OpenWithoutBlobSync or OpenReadOnly opens a database.
+// Option configures the Store that Open, OpenWithoutBlobSync or OpenReadOnly returns.
 type Option func(*openOptions)
 
-// WithLogger sends the store's diagnostic lines to logger. Without it they are discarded.
+// WithLogger sends the store's diagnostic lines to logger, which must not be nil. Without
+// it they are discarded.
 func WithLogger(logger *slog.Logger) Option {
 	return func(o *openOptions) { o.logger = logger }
 }
 
-// WithClock times the store's steps by now. Without it every duration logs as zero.
+// WithClock times the store's transactions with now, which must not be nil and must be
+// safe for concurrent use, as the Store is. Without it every duration logs as zero.
 func WithClock(now func() time.Time) Option {
 	return func(o *openOptions) { o.now = now }
 }
@@ -108,8 +110,11 @@ func defaultOpenOptions(options ...Option) (openOptions, error) {
 	}
 
 	opts := openOptions{
-		migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync, logger: slog.New(slog.DiscardHandler),
-		now: func() time.Time { return time.Time{} },
+		migrations:  fsys,
+		busyTimeout: busyTimeout,
+		syncBlob:    (*os.File).Sync,
+		logger:      slog.New(slog.DiscardHandler),
+		now:         func() time.Time { return time.Time{} },
 	}
 	for _, option := range options {
 		option(&opts)

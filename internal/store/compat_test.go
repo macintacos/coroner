@@ -48,16 +48,12 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 			Expect(fixture.Fill(ctx, s)).To(Succeed())
 			Expect(s.Close()).To(Succeed())
 
-			logs := expectCompatFixture(ctx, path)
+			expectCompatFixture(ctx, path)
 
 			backups, err := filepath.Glob(path + ".pre-v*.bak")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(backups).To(HaveLen(1))
 			backup := backups[0]
-			info, err := os.Stat(backup)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(logged(logs, "database backed up")).To(HaveExactElements(SatisfyAll(
-				HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("path", backup), HaveKeyWithValue("size", BeNumerically("==", info.Size())))))
 			Expect(querySQLite(ctx, backup, "SELECT max(version_id) FROM goose_db_version")).To(Equal(schema))
 			Expect(querySQLite(ctx, backup, "SELECT count(*) FROM event")).To(Equal(int64(len(fixture.Events()))))
 		})
@@ -67,8 +63,8 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 // expectCompatFixture opens the compatfixture database at path, reads back every record
 // fixture writes, adds an event to check that the timeline's seq counter survived, and saves
 // an overlay and a link across the fixture's timelines. It also checks the migration lines
-// Open logged, and returns what the store logged.
-func expectCompatFixture(ctx context.Context, path string) *bytes.Buffer {
+// and backup lines Open logged.
+func expectCompatFixture(ctx context.Context, path string) {
 	GinkgoHelper()
 	from := querySQLite(ctx, path, "SELECT coalesce(max(version_id), 0) FROM goose_db_version")
 	var logs bytes.Buffer
@@ -110,5 +106,14 @@ func expectCompatFixture(ctx context.Context, path string) *bytes.Buffer {
 		applied = append(applied, SatisfyAll(HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("schema_version", BeNumerically("==", version))))
 	}
 	Expect(logged(&logs, "migration applied")).To(HaveExactElements(applied...))
-	return &logs
+
+	var backedUp []any
+	if 0 < from && from < schema.Latest {
+		backup := fmt.Sprintf("%s.pre-v%d.bak", path, schema.Latest)
+		info, err := os.Stat(backup)
+		Expect(err).NotTo(HaveOccurred())
+		backedUp = append(backedUp, SatisfyAll(HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("path", backup),
+			HaveKeyWithValue("size", BeNumerically("==", info.Size()))))
+	}
+	Expect(logged(&logs, "database backed up")).To(HaveExactElements(backedUp...))
 }

@@ -46,7 +46,7 @@ var _ = Describe("timelineLoader", func() {
 	// open returns the viewer on the fixture timeline, reading through timelineLoader.
 	open := func(ctx SpecContext) tea.Model {
 		GinkgoHelper()
-		load := timelineLoader(ctx, app, db, []string{timelineID})
+		load := timelineLoader(ctx, app.OpenStoreReadOnly, db, []string{timelineID})
 		snapshot, err := load(viewer.Match{})
 		Expect(err).NotTo(HaveOccurred())
 		return viewer.New(viewer.Options{Snapshot: snapshot, Load: load, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now})
@@ -154,7 +154,7 @@ var _ = Describe("timelineLoader", func() {
 		} {
 			Expect(run(ctx, args...)).To(Equal(0), errOut.String())
 		}
-		load := timelineLoader(ctx, app, db, []string{timelineID, created.ID})
+		load := timelineLoader(ctx, app.OpenStoreReadOnly, db, []string{timelineID, created.ID})
 		snapshot, err := load(viewer.Match{})
 		Expect(err).NotTo(HaveOccurred())
 		m := tea.Model(viewer.New(viewer.Options{Snapshot: snapshot, Load: load, Location: time.UTC, ZoneLabel: "UTC", Now: app.Now}))
@@ -191,14 +191,14 @@ var _ = Describe("timelineLoader", func() {
 		})
 
 		It("reads every attachment on the timeline into what the viewer shows", func(ctx SpecContext) {
-			snapshot, err := timelineLoader(ctx, app, db, []string{timelineID})(viewer.Match{})
+			snapshot, err := timelineLoader(ctx, app.OpenStoreReadOnly, db, []string{timelineID})(viewer.Match{})
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(snapshot.Attachments).To(HaveExactElements(HaveField("Filename", "p99.png")))
 		})
 
 		It("reads an attachment's image from its blob", func(ctx SpecContext) {
-			snapshot, err := timelineLoader(ctx, app, db, []string{timelineID})(viewer.Match{})
+			snapshot, err := timelineLoader(ctx, app.OpenStoreReadOnly, db, []string{timelineID})(viewer.Match{})
 			Expect(err).NotTo(HaveOccurred())
 
 			content, err := blobReader(app.ReadFile, db)(snapshot.Attachments[0])
@@ -207,9 +207,24 @@ var _ = Describe("timelineLoader", func() {
 			Expect(content).To(Equal(picture))
 		})
 
+		It("holds the store's debug text off stderr until the viewer has closed, under --debug", func(ctx SpecContext) {
+			errOut.Reset()
+			log := &diagnosticLog{debug: true, now: testNow, stat: func(string) (fs.FileInfo, error) { return nil, fs.ErrNotExist }}
+			logger, flush := viewerDiagnostics(log, &errOut)
+			open := openLoggingTo(watching(app.OpenStoreReadOnly, log, &errOut), logger)
+
+			_, err := timelineLoader(ctx, open, db, []string{timelineID})(viewer.Match{})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(errOut.String()).To(BeEmpty(), "nothing reaches stderr while the viewer holds the screen")
+			Expect(flush()).To(Succeed())
+			Expect(errOut.String()).To(ContainSubstring("database opened"))
+			Expect(log.held).To(ContainElement(ContainSubstring(`"msg":"database opened"`)), "the diagnostic log takes the line as JSON")
+		})
+
 		DescribeTable("an image it cannot show",
 			func(ctx SpecContext, readFile func(string) ([]byte, error), debug bool, logged func(hash string) types.GomegaMatcher) {
-				snapshot, err := timelineLoader(ctx, app, db, []string{timelineID})(viewer.Match{})
+				snapshot, err := timelineLoader(ctx, app.OpenStoreReadOnly, db, []string{timelineID})(viewer.Match{})
 				Expect(err).NotTo(HaveOccurred())
 				a := snapshot.Attachments[0]
 				errOut.Reset()
@@ -269,7 +284,7 @@ var _ = Describe("timelineLoader", func() {
 	})
 
 	It("never creates the database when it is gone before a refresh", func(ctx SpecContext) {
-		load := timelineLoader(ctx, app, db, []string{timelineID})
+		load := timelineLoader(ctx, app.OpenStoreReadOnly, db, []string{timelineID})
 		Expect(os.Remove(db)).To(Succeed())
 
 		_, err := load(viewer.Match{})

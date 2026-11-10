@@ -55,29 +55,20 @@ Info lines are always written. The `command finished` line is info, with `comman
 (an exit kind from [Exit codes](cli/coroner_help_exit-codes.md), or `ok`), `exit_code` and
 `duration` in nanoseconds.
 
-Opening a database older than the build also writes info lines: `database backed up`, with
-the backup's `path` and `size`, when the database already has a schema; then
-`migration applied`, once per migration, with the `schema_version` it brings the database
-to. A new database applies every migration, so its first command logs one
+A command that migrates a database older than the build also writes info lines:
+`database backed up`, with the backup's `path` and `size`, when the database already has a
+schema; then `migration applied`, once per migration, with the `schema_version` it brings
+the database to. A new database applies every migration, so its first command logs one
 `migration applied` per migration.
 
-A delete then removes the blobs no attachment uses any more, writing `blob deleted` for
+After `event delete`, `annotation delete`, `attachment delete` or `timeline delete`
+commits, coroner removes the blobs no attachment uses any more, writing `blob deleted` for
 each, with its `sha256` and `size`.
 
 Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags
   given, never their values) and, when the failure has a cause, `error`;
-- `database opened`, each time a command opens a database, with its `path`, `created`
-  (true when the command created it), and its `schema_version` after any migration;
-- `transaction committed` or `transaction rolled back`, once per database transaction,
-  reads included, with `read_only` and its `duration`; a rolled-back one also has
-  `dry_run`, true when `--dry-run` undid it. These lines tell whether a write committed,
-  not what it changed;
-- `blob stored`, the first time an attachment's content is stored, with its `sha256` and
-  `size`;
-- `blobs collected`, once a delete has removed the blobs no attachment uses, with their
-  `count`;
 - `database path resolved`, with the `path` and `by`: `flag`, `env`, `file` (the config
   file's `db`) or `default`; `config file resolved`, with the `path` coroner reads the
   config file from, whether or not a file is there, and `by`: `flag`, `env` or `default`;
@@ -90,6 +81,16 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 - `time input resolved`, once for each time typed into `--at`, `--ended`, `--since` or
   `--until`, with the `flag`, the `input` as typed, the `zone` it was read in, and the
   `instant` and `precision` it resolved to;
+- `database opened`, each time a command opens a database, with its `path`, `created`
+  (true when the command created it), and its `schema_version` after any migration;
+- `transaction committed` or `transaction rolled back`, once per database transaction,
+  reads included, with `read_only` and its `duration`; a rolled-back one also has
+  `dry_run`, true when `--dry-run` undid it. These lines tell whether a write committed,
+  not what it changed;
+- `blob stored`, the first time an attachment's content is stored, with its `sha256` and
+  `size`;
+- `blobs collected`, once garbage collection after a delete finishes, with the `count` of
+  blobs it removed, which may be 0;
 - the viewer's `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds

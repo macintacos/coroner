@@ -103,7 +103,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 	err = viewer.Run(ctx, term, viewer.Options{
 		Snapshot: snapshot,
 		Match:    viewer.Match{Sources: filter.Sources, Tags: filter.Tags, Contains: filter.Contains},
-		Load:     timelineLoader(ctx, app, cfg.DBPath, timelineIDs(snapshot.Timelines)),
+		Load:     timelineLoader(ctx, openLoggingTo(app.OpenStoreReadOnly, logger), cfg.DBPath, timelineIDs(snapshot.Timelines)),
 		Image:    blobReader(app.ReadFile, cfg.DBPath),
 		Log:      logger,
 		Location: z.loc, ZoneLabel: z.label, Now: app.Now,
@@ -118,8 +118,9 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 
 // timelineLoader returns the viewer's Load for the timelines with timelineIDs in the database at
 // path. Each call checks the match as event list's flags are checked, then opens the database
-// read-only, reads and closes it again; its errors carry their hints in their text.
-func timelineLoader(ctx context.Context, app App, path string, timelineIDs []string) func(viewer.Match) (viewer.Snapshot, error) {
+// with open, which must not create it, reads and closes it again; its errors carry their hints in
+// their text.
+func timelineLoader(ctx context.Context, open storeOpener, path string, timelineIDs []string) func(viewer.Match) (viewer.Snapshot, error) {
 	return func(match viewer.Match) (viewer.Snapshot, error) {
 		filter := store.EventFilter{
 			Sources: appendUnique(nil, match.Sources...), Tags: appendUnique(nil, match.Tags...), Contains: match.Contains,
@@ -130,7 +131,7 @@ func timelineLoader(ctx context.Context, app App, path string, timelineIDs []str
 		}
 
 		var snapshot viewer.Snapshot
-		err = withStoreOpenedBy(ctx, app.OpenStoreReadOnly, path, func(s *store.Store) error {
+		err = withStoreOpenedBy(ctx, open, path, func(s *store.Store) error {
 			timelines, err := timelinesByID(ctx, s, timelineIDs)
 			if err != nil {
 				return err
@@ -141,6 +142,17 @@ func timelineLoader(ctx context.Context, app App, path string, timelineIDs []str
 		})
 
 		return snapshot, hinted(err)
+	}
+}
+
+// storeOpener opens the database at path, as App.OpenStoreReadOnly does.
+type storeOpener = func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error)
+
+// openLoggingTo returns open, handing the store logger after any options its caller gives, so
+// logger wins.
+func openLoggingTo(open storeOpener, logger *slog.Logger) storeOpener {
+	return func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error) {
+		return open(ctx, path, append(slices.Clone(opts), store.WithLogger(logger))...)
 	}
 }
 

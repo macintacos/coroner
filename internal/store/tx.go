@@ -261,18 +261,24 @@ func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.D
 		return err
 	}
 
-	err = fn(tx)
-	if err != nil {
-		err = errors.Join(err, tx.Rollback())
-	} else {
-		err = tx.Commit()
-	}
+	err = endTx(tx, fn(tx))
 	s.logTx(ctx, opts != nil && opts.ReadOnly, s.now().Sub(start), err)
 
 	return err
 }
 
+// endTx commits tx when err is nil, and otherwise rolls it back, returning err joined with
+// the rollback's.
+func endTx(tx *sql.Tx, err error) error {
+	if err != nil {
+		return errors.Join(err, tx.Rollback())
+	}
+
+	return tx.Commit()
+}
+
 // logTx logs how a transaction ended after duration: it committed when err is nil.
+// dry_run is true only when a Rollback change's fn succeeded; one whose fn failed logs false.
 func (s *Store) logTx(ctx context.Context, readOnly bool, duration time.Duration, err error) {
 	if err == nil {
 		s.logger.DebugContext(ctx, "transaction committed", "read_only", readOnly, "duration", duration)
