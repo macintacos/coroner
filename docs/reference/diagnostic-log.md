@@ -105,6 +105,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   was given (never its text), `order`, `desc` when `--order desc` reversed them, and
   `limit`; and `event` or `attachment`, the id of the record `-e` or the argument named;
 - `timeline picked`, with the `timeline` picked in `timeline list`'s picker;
+- `export decoded`, when `import` or `event add --from-file` reads an export, with its
+  `path` (`-` for stdin), how many `lines` it held and the `format_versions` of its
+  headers, in order;
 - the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
   new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
   `error`, when that read fails; and `attachment image not shown`.

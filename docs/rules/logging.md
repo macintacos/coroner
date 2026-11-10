@@ -75,6 +75,9 @@ rules say what a line holds; a new or changed line also updates that page.
    - `input`: the text typed into a time flag.
    - `instant`: the instant typed time input resolved to.
    - `precision`: the precision typed time input resolved to, such as `minute`.
+   - `lines`: how many lines a file coroner read held.
+   - `format_versions`: the `format_version` of each header in an export coroner read, in
+     order.
 6. **A command logs the records it names, and counts the ones it sweeps:** it logs one
    info line per record it names, under that record's key from rule 5, so a line about an
    annotation carries both its `annotation` and its `event`. Records it changes as a side

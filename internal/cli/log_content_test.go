@@ -71,6 +71,16 @@ var _ = Describe("log content guard", func() {
 		}
 		Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed(), out.String())
 		Expect(listed.Attachments).To(HaveLen(1))
+		exportPath := filepath.Join(dir, "inc.jsonl")
+		mustRun(ctx, "timeline", "export", "-t", "inc", "--format", "jsonl", "-o", exportPath)
+		mustRun(ctx, "timeline", "edit", "inc", "--title", "renamed "+sentinelTitle)
+		var events strings.Builder
+		for line := range strings.Lines(readFile(exportPath)) {
+			if strings.Contains(line, `"type":"event"`) {
+				events.WriteString(line)
+			}
+		}
+		Expect(os.WriteFile(filepath.Join(dir, "events.jsonl"), []byte(events.String()), 0o600)).To(Succeed())
 
 		placeholders = strings.NewReplacer(
 			"{dir}", dir, "{attach}", attachmentPath, "{attach2}", newAttachmentPath, "{annotation}", annotationID, "{attachment}", listed.Attachments[0].ID,
@@ -182,6 +192,9 @@ var _ = Describe("log content guard", func() {
 		Entry("event edit on a missing event", 3, "event", "edit", "inc#9", "--text", sentinelText),
 		Entry("annotation edit on a missing annotation", 3, "annotation", "edit", "0199ffff", "--body", sentinelBody),
 		Entry("attachment export over an existing file", 4, "attachment", "export", "{attachment}", "-o", "{dir}/existing.bin"),
+		Entry("import replacing a changed timeline", 0, "import", "{dir}/inc.jsonl", "--on-conflict", "replace"),
+		Entry("event add from a file", 0, "event", "add", "-t", "inc", "--from-file", "{dir}/events.jsonl"),
+		Entry("import of a conflicting export", 4, "import", "{dir}/inc.jsonl"),
 	)
 })
 

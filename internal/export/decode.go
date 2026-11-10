@@ -67,8 +67,9 @@ func (e *DecodeError) Error() string {
 // name or tag; or when it is a header with an unsupported format or format_version. Keys and
 // record types Decode does not know are ignored. The records after an unsupported header are
 // skipped until the next header; records before any header are read as this version. A
-// failure to read r is returned as it is.
-func Decode(r io.Reader) ([]Record, error) {
+// failure to read r is returned as it is. The DecodeStats say how many lines it read and
+// which format versions their headers carried, whether or not it fails.
+func Decode(r io.Reader) ([]Record, DecodeStats, error) {
 	reader := bufio.NewReader(r)
 	var d decoder
 	for lineNum := 1; ; lineNum++ {
@@ -80,26 +81,39 @@ func Decode(r io.Reader) ([]Record, error) {
 			break
 		}
 		if err != nil {
-			return d.records, err
+			return d.records, d.stats, err
 		}
 	}
 
 	if len(d.invalid) > 0 {
-		return d.records, &DecodeError{Lines: d.invalid}
+		return d.records, d.stats, &DecodeError{Lines: d.invalid}
 	}
 
-	return d.records, nil
+	return d.records, d.stats, nil
+}
+
+// DecodeStats is what Decode read besides its records.
+type DecodeStats struct {
+	// Lines counts every line read, blank and invalid ones included.
+	Lines int
+	// FormatVersions are the format_version of each supported header, in input order.
+	FormatVersions []string
 }
 
 type decoder struct {
 	records []Record
+	stats   DecodeStats
 	invalid []LineError
 	// skipping is set by an unsupported header and cleared by the next supported one.
 	skipping bool
 }
 
 func (d *decoder) add(lineNum int, line []byte) {
+	d.stats.Lines++
 	typ, record, err := decodeLine(line)
+	if header, ok := record.(Header); ok && err == nil {
+		d.stats.FormatVersions = append(d.stats.FormatVersions, header.FormatVersion)
+	}
 	if typ == "header" {
 		d.skipping = errors.Is(err, errUnsupported)
 	} else if d.skipping {

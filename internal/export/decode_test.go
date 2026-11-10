@@ -115,14 +115,14 @@ func encodeRecords(records []export.Record) string {
 
 var _ = Describe("Decode", func() {
 	It("reads an export back into records that encode to the same bytes", func() {
-		records, err := export.Decode(strings.NewReader(sampleExport()))
+		records, _, err := export.Decode(strings.NewReader(sampleExport()))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(encodeRecords(records)).To(Equal(sampleExport()))
 	})
 
 	It("reads two concatenated exports, each with its header", func() {
-		records, err := export.Decode(strings.NewReader(sampleExport() + sampleExport()))
+		records, _, err := export.Decode(strings.NewReader(sampleExport() + sampleExport()))
 
 		Expect(err).NotTo(HaveOccurred())
 		one := []string{
@@ -132,10 +132,24 @@ var _ = Describe("Decode", func() {
 		Expect(labels(records)).To(Equal(append(one, one...)))
 	})
 
+	It("reports how many lines it read and each header's format_version", func() {
+		_, stats, err := export.Decode(strings.NewReader(sampleExport() + sampleExport()))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stats.Lines).To(Equal(2 * strings.Count(sampleExport(), "\n")))
+		Expect(stats.FormatVersions).To(Equal([]string{export.FormatVersion, export.FormatVersion}))
+
+		_, stats, err = export.Decode(strings.NewReader(eventLine(func(map[string]any) {})))
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(stats.Lines).To(Equal(1))
+		Expect(stats.FormatVersions).To(BeEmpty())
+	})
+
 	It("reads events with no header", func() {
 		keep := func(map[string]any) {}
 
-		records, err := export.Decode(strings.NewReader(eventLine(keep) + eventLine(keep)))
+		records, _, err := export.Decode(strings.NewReader(eventLine(keep) + eventLine(keep)))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(labels(records)).To(Equal([]string{"event " + eventID, "event " + eventID}))
@@ -144,7 +158,7 @@ var _ = Describe("Decode", func() {
 	It("ignores a key and a record type it does not know", func() {
 		withColour := eventLine(func(m map[string]any) { m["colour"] = "red" })
 
-		records, err := export.Decode(strings.NewReader(withColour + `{"type":"reaction","id":"x"}` + "\n"))
+		records, _, err := export.Decode(strings.NewReader(withColour + `{"type":"reaction","id":"x"}` + "\n"))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(records).To(Equal([]export.Record{sampleEvent(eventID, 1)}))
@@ -161,7 +175,7 @@ var _ = Describe("Decode", func() {
 			keep := func(map[string]any) {}
 			v1, _, _ := strings.Cut(sampleExport(), "\n")
 
-			records, err := export.Decode(strings.NewReader(unsupported + eventLine(keep) + v1 + "\n" + eventLine(keep)))
+			records, _, err := export.Decode(strings.NewReader(unsupported + eventLine(keep) + v1 + "\n" + eventLine(keep)))
 
 			Expect(labels(records)).To(Equal([]string{"header", "event " + eventID}))
 			decodeErr, ok := errors.AsType[*export.DecodeError](err)
@@ -178,7 +192,7 @@ var _ = Describe("Decode", func() {
 	It("rejects a header whose query lacks a key", func() {
 		partial := headerLine(func(_, q map[string]any) { delete(q, "order") })
 
-		_, err := export.Decode(strings.NewReader(partial))
+		_, _, err := export.Decode(strings.NewReader(partial))
 
 		Expect(err).To(MatchError(And(ContainSubstring("line 1"), ContainSubstring(`"order"`))))
 	})
@@ -187,7 +201,7 @@ var _ = Describe("Decode", func() {
 		badTag := headerLine(func(_, q map[string]any) { q["tags"] = []string{"Bad"} })
 		badID := eventLine(func(m map[string]any) { m["id"] = "e1" })
 
-		records, err := export.Decode(strings.NewReader(badTag + eventLine(func(map[string]any) {}) + badID))
+		records, _, err := export.Decode(strings.NewReader(badTag + eventLine(func(map[string]any) {}) + badID))
 
 		Expect(labels(records)).To(Equal([]string{"event " + eventID}))
 		decodeErr, ok := errors.AsType[*export.DecodeError](err)
@@ -198,7 +212,7 @@ var _ = Describe("Decode", func() {
 	It("rejects a header whose format is not coroner.export, and skips its records", func() {
 		other := headerLine(func(h, _ map[string]any) { h["format"] = "grafana.annotations" })
 
-		records, err := export.Decode(strings.NewReader(other + eventLine(func(map[string]any) {})))
+		records, _, err := export.Decode(strings.NewReader(other + eventLine(func(map[string]any) {})))
 
 		Expect(records).To(BeEmpty())
 		Expect(err).To(MatchError(ContainSubstring("grafana.annotations")))
@@ -207,7 +221,7 @@ var _ = Describe("Decode", func() {
 	It("reads a single line of more than a mebibyte", func() {
 		long := strings.Repeat("a", 1<<20)
 
-		records, err := export.Decode(strings.NewReader(eventLine(func(m map[string]any) { m["text"] = long })))
+		records, _, err := export.Decode(strings.NewReader(eventLine(func(m map[string]any) { m["text"] = long })))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(records).To(ConsistOf(HaveField("Text", long)))
@@ -216,7 +230,7 @@ var _ = Describe("Decode", func() {
 	It("reads a last line that has no newline", func() {
 		line := eventLine(func(map[string]any) {})
 
-		records, err := export.Decode(strings.NewReader(strings.TrimSuffix(line, "\n")))
+		records, _, err := export.Decode(strings.NewReader(strings.TrimSuffix(line, "\n")))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(records).To(HaveLen(1))
@@ -226,7 +240,7 @@ var _ = Describe("Decode", func() {
 		func(bad func() string, reason string) {
 			good := eventLine(func(map[string]any) {})
 
-			records, err := export.Decode(strings.NewReader(good + bad() + good))
+			records, _, err := export.Decode(strings.NewReader(good + bad() + good))
 
 			Expect(records).To(HaveLen(2))
 			decodeErr, ok := errors.AsType[*export.DecodeError](err)
@@ -288,7 +302,7 @@ var _ = Describe("Decode", func() {
 			m["source"] = "DB 2"
 		})
 
-		_, err := export.Decode(strings.NewReader(bad))
+		_, _, err := export.Decode(strings.NewReader(bad))
 
 		Expect(err).To(HaveOccurred())
 		Expect(strings.Split(err.Error(), "\n")).To(HaveExactElements(
@@ -297,7 +311,7 @@ var _ = Describe("Decode", func() {
 	})
 
 	It("groups many invalid lines under one count, listing the first five", func() {
-		records, err := export.Decode(strings.NewReader(strings.Repeat("{}\n", 7)))
+		records, _, err := export.Decode(strings.NewReader(strings.Repeat("{}\n", 7)))
 
 		Expect(records).To(BeEmpty())
 		message := err.Error()
@@ -309,7 +323,7 @@ var _ = Describe("Decode", func() {
 	It("returns the error of a reader that fails", func() {
 		gone := errors.New("disk gone")
 
-		_, err := export.Decode(iotest.ErrReader(gone))
+		_, _, err := export.Decode(iotest.ErrReader(gone))
 
 		Expect(err).To(MatchError(gone))
 	})

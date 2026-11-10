@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -28,7 +29,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 		return err
 	}
 	path, _ := cmd.Flags().GetString("from-file")
-	events, err := readEventRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY})
+	events, err := readEventRecords(app.logger(), jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY})
 	if err != nil {
 		return err
 	}
@@ -101,11 +102,11 @@ func checkFromFileAlone(in fieldValues, interactive bool) error {
 
 // readEventRecords returns the event records src names, rejecting any other record type and a
 // file with none.
-func readEventRecords(src jsonlSource) ([]export.Event, error) {
+func readEventRecords(logger *slog.Logger, src jsonlSource) ([]export.Event, error) {
 	if src.path == "" {
 		return nil, &Error{Kind: KindUsage, Message: "--from-file needs a file", Hint: "Pass a JSONL file of event records, or - to read them from stdin."}
 	}
-	records, err := readImportRecords(src, fromFileInvalidHint)
+	records, err := readImportRecords(logger, src, fromFileInvalidHint)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -66,7 +67,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	records, err := readImportRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
+	records, err := readImportRecords(app.logger(), jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
 	if err != nil {
 		return err
 	}
@@ -230,7 +231,7 @@ type jsonlSource struct {
 
 // readImportRecords reads and decodes the export src names, putting hint on a decode error. It
 // never reads a terminal stdin.
-func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
+func readImportRecords(logger *slog.Logger, src jsonlSource, hint string) ([]export.Record, error) {
 	path, stdin := src.path, src.stdin
 	switch {
 	case path == "-" && src.stdinIsTTY:
@@ -249,13 +250,14 @@ func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
 		stdin = bytes.NewReader(data)
 	}
 
-	records, err := export.Decode(stdin)
+	records, stats, err := export.Decode(stdin)
 	if invalid, ok := errors.AsType[*export.DecodeError](err); ok {
 		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: hint, Err: err}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read the export: %w", err)
 	}
+	logger.Debug("export decoded", "path", src.path, "lines", stats.Lines, "format_versions", stats.FormatVersions)
 
 	return records, nil
 }

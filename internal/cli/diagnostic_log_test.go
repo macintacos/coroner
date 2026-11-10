@@ -315,6 +315,26 @@ var _ = Describe("diagnostic log", func() {
 			HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file"))))
 	})
 
+	It("logs how many lines an imported export held and its format versions under --debug", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "add", "x", "-t", "inc"))).To(Equal(0))
+		path := filepath.Join(h.home, "inc.jsonl")
+		Expect(run(ctx, h.app("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
+		data := readFile(path)
+		first, _, _ := strings.Cut(data, "\n")
+		var header struct {
+			FormatVersion string `json:"format_version"`
+		}
+		Expect(json.Unmarshal([]byte(first), &header)).To(Succeed())
+
+		Expect(run(ctx, h.app("import", path, "--debug"))).To(Equal(0), errOut.String())
+
+		decoded := slices.DeleteFunc(logLines(logPath), func(line map[string]any) bool { return line["msg"] != "export decoded" })
+		Expect(decoded).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("path", path),
+			HaveKeyWithValue("lines", float64(strings.Count(data, "\n"))),
+			HaveKeyWithValue("format_versions", HaveExactElements(header.FormatVersion)))))
+	})
+
 	DescribeTable("logs which setting selected the timelines under --debug",
 		func(ctx SpecContext, wantBy string, wantNames []string, setup func(context.Context), args ...string) {
 			Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))

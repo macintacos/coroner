@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +52,7 @@ var _ = Describe("readImportRecords", func() {
 		const line = `{"type":"event"}`
 		stdin := strings.NewReader(line)
 
-		_, err := readImportRecords(jsonlSource{path: "-", stdin: stdin, stdinIsTTY: true}, invalidImportHint)
+		_, err := readImportRecords(slog.New(slog.DiscardHandler), jsonlSource{path: "-", stdin: stdin, stdinIsTTY: true}, invalidImportHint)
 
 		Expect(err).To(HaveField("Kind", KindUsage))
 		Expect(KindUsage.ExitCode()).To(Equal(2))
@@ -119,7 +120,7 @@ var _ = Describe("mergeImport", func() {
 		file, err := os.Open(filepath.Join("..", "..", "testdata", "export", "v1.2", "links.jsonl"))
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(file.Close)
-		records, err := export.Decode(file)
+		records, _, err := export.Decode(file)
 		Expect(err).NotTo(HaveOccurred())
 		in := mergeInput{records: records, timelines: timelineInput{rule: timelineRule{guard: true}}}
 
