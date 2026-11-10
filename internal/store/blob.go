@@ -166,8 +166,8 @@ func syncDir(dir string, sync func(*os.File) error) error {
 }
 
 // deleteUnreferenced deletes every blob in dir whose hash is not in referenced, logging
-// each one, and returns their hashes in name order. It leaves anything that is not a blob, such as a
-// staged file.
+// each one, and returns their hashes in name order. It leaves anything that is not a blob,
+// such as a staged file.
 // ponytail: staged .tmp-* files a crash left are never collected; sweep by age with an
 // injected clock if they accumulate.
 func deleteUnreferenced(dir blobDir, referenced []string) ([]string, error) {
