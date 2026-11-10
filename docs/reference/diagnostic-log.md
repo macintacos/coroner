@@ -147,6 +147,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 - `export decoded`, when `import` or `event add --from-file` reads an export, with its
   `path` (`-` for stdin), how many `lines` it held and the `format_versions` of its
   headers, in order;
+- `inline images decided`, when a form or the viewer opens on a terminal, with `protocol`,
+  how it shows images: `kitty`, or `none` without color, in a multiplexer, or on a
+  terminal that cannot;
 - the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
   new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
   `error`, when that read fails; and `attachment image not shown`.

@@ -1096,6 +1096,27 @@ var _ = Describe("add forms", func() {
 	)
 })
 
+var _ = Describe("inlineImages", func() {
+	DescribeTable("decides how a form or the viewer shows images, and logs it under --debug",
+		func(outColor bool, env map[string]string, want graphics.Protocol, logged string) {
+			log := &diagnosticLog{debug: true, now: testNow}
+			app := App{log: log, Err: &bytes.Buffer{}, LookupEnv: func(key string) (string, bool) {
+				value, ok := env[key]
+				return value, ok
+			}}
+
+			Expect(inlineImages(app, invocation{outColor: outColor})).To(Equal(want))
+			Expect(log.held).To(ContainElement(And(
+				ContainSubstring(`"msg":"inline images decided"`),
+				ContainSubstring(`"protocol":"`+logged+`"`),
+			)))
+		},
+		Entry("color on a kitty terminal", true, map[string]string{"KITTY_WINDOW_ID": "1"}, graphics.Kitty, "kitty"),
+		Entry("no color on a kitty terminal", false, map[string]string{"KITTY_WINDOW_ID": "1"}, graphics.None, "none"),
+		Entry("color inside tmux", true, map[string]string{"TMUX": "/tmp/tmux-501/default,1,0", "KITTY_WINDOW_ID": "1"}, graphics.None, "none"),
+	)
+})
+
 // scratchApp returns an App on home, with no config file, the fixed clock and a real store.
 func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, error)) App {
 	return App{

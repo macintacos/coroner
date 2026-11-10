@@ -54,3 +54,11 @@ var _ = DescribeTable("Detect",
 	Entry("another program over ssh from iTerm2", map[string]string{"TERM_PROGRAM": "vscode", "LC_TERMINAL": "iTerm2", "LC_TERMINAL_VERSION": "3.7.1"}, graphics.None),
 	Entry("Ghostty with a KITTY_WINDOW_ID left over", map[string]string{"TERM_PROGRAM": "ghostty", "KITTY_WINDOW_ID": "1"}, graphics.Kitty),
 )
+
+var _ = DescribeTable("Protocol's name",
+	func(p graphics.Protocol, want string) {
+		Expect(p.String()).To(Equal(want))
+	},
+	Entry("none", graphics.None, "none"),
+	Entry("kitty", graphics.Kitty, "kitty"),
+)

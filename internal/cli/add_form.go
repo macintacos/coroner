@@ -336,12 +336,22 @@ func interactiveRefusal(cmd *cobra.Command, inputOff bool) error {
 	}
 }
 
-// newFormSession returns the session a form runs in under inv, asking through forms.
-func newFormSession(app App, inv invocation, forms func(color bool, images graphics.Protocol) askFunc) formSession {
+// inlineImages is how a form or the viewer shows images on app's terminal under inv, logged at
+// debug: none without color, since Kitty graphics name an image by the color of the cells it
+// shows through.
+func inlineImages(app App, inv invocation) graphics.Protocol {
 	images := graphics.None
 	if inv.outColor {
 		images = graphics.Detect(app.LookupEnv)
 	}
+	app.logger().Debug("inline images decided", "protocol", images.String())
+
+	return images
+}
+
+// newFormSession returns the session a form runs in under inv, asking through forms.
+func newFormSession(app App, inv invocation, forms func(color bool, images graphics.Protocol) askFunc) formSession {
+	images := inlineImages(app, inv)
 
 	placeholders := map[string]string{}
 	// An invalid default author has no placeholder; submitting without an author reports it.
