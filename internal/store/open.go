@@ -408,12 +408,12 @@ func migrate(ctx context.Context, db *sql.DB, path string, opts openOptions) err
 		opts.logger.InfoContext(ctx, "database backed up", "path", backup, "size", size)
 	}
 
-	results, err := provider.Up(ctx)
+	applied, err := provider.Up(ctx)
 	if err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
-	for _, r := range results {
-		opts.logger.InfoContext(ctx, "migration applied", "schema_version", r.Source.Version)
+	for _, migration := range applied {
+		opts.logger.InfoContext(ctx, "migration applied", "schema_version", migration.Source.Version)
 	}
 
 	return nil

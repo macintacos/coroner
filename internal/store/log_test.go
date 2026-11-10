@@ -30,8 +30,8 @@ var _ = Describe("Diagnostic lines", func() {
 			HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("path", path), HaveKeyWithValue("created", true),
 			HaveKeyWithValue("schema_version", BeNumerically("==", latest)))))
 		var applied []any
-		for v := int64(1); v <= latest; v++ {
-			applied = append(applied, SatisfyAll(HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("schema_version", BeNumerically("==", v))))
+		for version := int64(1); version <= latest; version++ {
+			applied = append(applied, SatisfyAll(HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("schema_version", BeNumerically("==", version))))
 		}
 		Expect(logged(&logs, "migration applied")).To(HaveExactElements(applied...))
 		Expect(logged(&logs, "database backed up")).To(BeEmpty())
