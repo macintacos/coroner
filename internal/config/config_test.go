@@ -141,6 +141,9 @@ var _ = Describe("Resolve", func() {
 				DBPath:          defaultData,
 				ConfigPath:      userConfig,
 				DefaultTimezone: "UTC",
+				Sources: config.Sources{
+					DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault,
+				},
 			}),
 		Entry("the file sets default_timezone and author",
 			input{
@@ -154,7 +157,55 @@ var _ = Describe("Resolve", func() {
 				ConfigPath:      userConfig,
 				DefaultTimezone: "America/New_York",
 				Author:          "ada",
+				Sources: config.Sources{
+					DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceFile,
+				},
 			}),
+	)
+
+	DescribeTable("Sources",
+		func(in input, want config.Sources) {
+			cfg, err := resolve(in)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Sources).To(Equal(want))
+		},
+		Entry("--db",
+			input{flags: config.Flags{DBPath: new("flag.db")}, env: map[string]string{"HOME": home}},
+			config.Sources{DBPath: config.SourceFlag, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+		Entry("CORONER_DB",
+			input{env: map[string]string{"HOME": home, "CORONER_DB": "/env.db"}},
+			config.Sources{DBPath: config.SourceEnv, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+		Entry("the file's db",
+			input{env: map[string]string{"HOME": home}, files: map[string]string{userConfig: `db = "/file.db"`}},
+			config.Sources{DBPath: config.SourceFile, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+		Entry("an empty CORONER_DB counts as unset",
+			input{
+				env:   map[string]string{"HOME": home, "CORONER_DB": ""},
+				files: map[string]string{userConfig: `db = "/file.db"`},
+			},
+			config.Sources{DBPath: config.SourceFile, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
+		Entry("--config",
+			input{
+				flags: config.Flags{ConfigPath: new("/flag.toml")},
+				env:   map[string]string{"HOME": home},
+				files: map[string]string{"/flag.toml": ""},
+			},
+			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceFlag, DefaultTimezone: config.SourceDefault}),
+		Entry("CORONER_CONFIG",
+			input{
+				env:   map[string]string{"HOME": home, "CORONER_CONFIG": "/env.toml"},
+				files: map[string]string{"/env.toml": ""},
+			},
+			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceEnv, DefaultTimezone: config.SourceDefault}),
+		Entry("the file's default_timezone",
+			input{
+				env:   map[string]string{"HOME": home},
+				files: map[string]string{userConfig: `default_timezone = "America/New_York"`},
+			},
+			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceFile}),
+		Entry("nothing set",
+			input{env: map[string]string{"HOME": home}},
+			config.Sources{DBPath: config.SourceDefault, ConfigPath: config.SourceDefault, DefaultTimezone: config.SourceDefault}),
 	)
 
 	DescribeTable("errors",
@@ -214,6 +265,9 @@ var _ = Describe("Resolve", func() {
 			DBPath:          "/flag.db",
 			ConfigPath:      "/flag.toml",
 			DefaultTimezone: "UTC",
+			Sources: config.Sources{
+				DBPath: config.SourceFlag, ConfigPath: config.SourceFlag, DefaultTimezone: config.SourceDefault,
+			},
 		}))
 	})
 

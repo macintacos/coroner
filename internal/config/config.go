@@ -5,7 +5,6 @@
 package config
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -31,6 +30,23 @@ type Config struct {
 	// DefaultTimezone is the file's default_timezone, unvalidated, or "UTC" when unset.
 	DefaultTimezone string
 	Author          string
+	Sources         Sources
+}
+
+// Source is where a resolved value came from.
+type Source string
+
+// The places a resolved value can come from.
+const (
+	SourceFlag    Source = "flag"
+	SourceEnv     Source = "env"
+	SourceFile    Source = "file"
+	SourceDefault Source = "default"
+)
+
+// Sources says where each of Config's resolved values came from.
+type Sources struct {
+	DBPath, ConfigPath, DefaultTimezone Source
 }
 
 type fileConfig struct {
@@ -55,12 +71,16 @@ func Resolve(
 		return value
 	}
 
-	configPath, file, err := loadConfigFile(flags.ConfigPath, env, readFile)
+	configPath, configSource, file, err := loadConfigFile(flags.ConfigPath, env, readFile)
 	if err != nil {
 		return Config{}, err
 	}
 
-	dbPath := cmp.Or(deref(flags.DBPath), env("CORONER_DB"), file.DB)
+	dbPath, dbSource := firstSet(
+		sourced{deref(flags.DBPath), SourceFlag},
+		sourced{env("CORONER_DB"), SourceEnv},
+		sourced{file.DB, SourceFile},
+	)
 	if dbPath == "" {
 		dataHome, err := xdgHome(env, "XDG_DATA_HOME", ".local/share")
 		if err != nil {
@@ -70,12 +90,35 @@ func Resolve(
 		dbPath = filepath.Join(dataHome, "coroner", defaultDBName)
 	}
 
+	timezone, timezoneSource := firstSet(sourced{file.DefaultTimezone, SourceFile})
+	if timezone == "" {
+		timezone = "UTC"
+	}
+
 	return Config{
 		DBPath:          dbPath,
 		ConfigPath:      configPath,
-		DefaultTimezone: cmp.Or(file.DefaultTimezone, "UTC"),
+		DefaultTimezone: timezone,
 		Author:          file.Author,
+		Sources:         Sources{DBPath: dbSource, ConfigPath: configSource, DefaultTimezone: timezoneSource},
 	}, nil
+}
+
+// sourced is a candidate value and where it came from.
+type sourced struct {
+	value  string
+	source Source
+}
+
+// firstSet returns the first candidate whose value is not empty, or "" and SourceDefault.
+func firstSet(candidates ...sourced) (string, Source) {
+	for _, c := range candidates {
+		if c.value != "" {
+			return c.value, c.source
+		}
+	}
+
+	return "", SourceDefault
 }
 
 // BlobDir returns the directory the database at dbPath keeps attachment blobs in: blobs
@@ -123,17 +166,16 @@ func deref(s *string) string {
 	return *s
 }
 
-// loadConfigFile returns the config file's path and decoded contents. A missing file is an
-// error only when --config or CORONER_CONFIG named it.
+// loadConfigFile returns the config file's path, where that path came from, and the file's
+// decoded contents. A missing file is an error only when --config or CORONER_CONFIG named it.
 func loadConfigFile(
 	configFlag *string, env func(string) string, readFile func(string) ([]byte, error),
-) (string, fileConfig, error) {
-	path := cmp.Or(deref(configFlag), env("CORONER_CONFIG"))
-	named := path != ""
-	if !named {
+) (string, Source, fileConfig, error) {
+	path, source := firstSet(sourced{deref(configFlag), SourceFlag}, sourced{env("CORONER_CONFIG"), SourceEnv})
+	if source == SourceDefault {
 		configHome, err := xdgHome(env, "XDG_CONFIG_HOME", ".config")
 		if err != nil {
-			return "", fileConfig{}, err
+			return "", "", fileConfig{}, err
 		}
 
 		path = filepath.Join(configHome, "coroner", "config.toml")
@@ -141,22 +183,22 @@ func loadConfigFile(
 
 	data, err := readFile(path)
 	switch {
-	case errors.Is(err, fs.ErrNotExist) && !named:
-		return path, fileConfig{}, nil
-	case errors.Is(err, fs.ErrNotExist) && configFlag == nil:
-		return "", fileConfig{}, fmt.Errorf("config file %s does not exist (set by CORONER_CONFIG)", path)
+	case errors.Is(err, fs.ErrNotExist) && source == SourceDefault:
+		return path, source, fileConfig{}, nil
+	case errors.Is(err, fs.ErrNotExist) && source == SourceEnv:
+		return "", "", fileConfig{}, fmt.Errorf("config file %s does not exist (set by CORONER_CONFIG)", path)
 	case errors.Is(err, fs.ErrNotExist):
-		return "", fileConfig{}, fmt.Errorf("config file %s does not exist", path)
+		return "", "", fileConfig{}, fmt.Errorf("config file %s does not exist", path)
 	case err != nil:
-		return "", fileConfig{}, fmt.Errorf("read config file %s: %w", path, err)
+		return "", "", fileConfig{}, fmt.Errorf("read config file %s: %w", path, err)
 	}
 
 	file, err := decode(path, data)
 	if err != nil {
-		return "", fileConfig{}, err
+		return "", "", fileConfig{}, err
 	}
 
-	return path, file, nil
+	return path, source, file, nil
 }
 
 // xdgHome returns the XDG base directory named by xdgKey, or HOME's homeSubdir when that
