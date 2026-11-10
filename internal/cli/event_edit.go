@@ -282,16 +282,16 @@ func readEditTimes(logger *slog.Logger, in fieldValues, env checkEnv) (editTimes
 		echoes = append(echoes, "at "+formatResolved(at, env.zone))
 	}
 
-	ended := in.value("ended")
-	times.clearEnded = ended != nil && *ended == clearKeyword
-	if ended != nil && !times.clearEnded {
-		r, err := resolveEnded(*ended, env, editedEndedHint)
+	endedInput := in.value("ended")
+	times.clearEnded = endedInput != nil && *endedInput == clearKeyword
+	if endedInput != nil && !times.clearEnded {
+		ended, err := resolveEnded(*endedInput, env, editedEndedHint)
 		if err != nil {
 			return times, err
 		}
-		logTypedTime(logger, typedTime{flag: "ended", input: *ended, zone: env.zone, resolved: r})
-		times.ended = &r
-		echoes = append(echoes, "ended "+formatResolved(r, env.zone))
+		logTypedTime(logger, typedTime{flag: "ended", input: *endedInput, zone: env.zone, resolved: ended})
+		times.ended = &ended
+		echoes = append(echoes, "ended "+formatResolved(ended, env.zone))
 	}
 
 	if len(echoes) > 0 {
