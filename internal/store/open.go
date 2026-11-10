@@ -55,11 +55,9 @@ type Schema struct {
 // migrations are pending it holds a flock on <path>.lock, which stays beside the database
 // once created. It returns ErrForeignDatabase for a directory or a SQLite file coroner did
 // not create, ErrDatabaseTooNew for a database a newer coroner migrated, even while Open
-// waited on the lock, and ErrBackupExists when that backup is already there. A logger given
-// receives the store's diagnostic lines; with none, or nil, they are discarded. Only the
-// first counts.
-func Open(ctx context.Context, path string, logger ...*slog.Logger) (*Store, error) {
-	opts, err := defaultOpenOptions(logger...)
+// waited on the lock, and ErrBackupExists when that backup is already there.
+func Open(ctx context.Context, path string, options ...Option) (*Store, error) {
+	opts, err := defaultOpenOptions(options...)
 	if err != nil {
 		return nil, err
 	}
@@ -69,10 +67,9 @@ func Open(ctx context.Context, path string, logger ...*slog.Logger) (*Store, err
 
 // OpenWithoutBlobSync is Open without syncing a stored blob or the blob directory, which on
 // macOS takes milliseconds each. A power loss can then lose a committed attachment's blob, so
-// only tests, which never crash the machine, may call it. A logger given receives the
-// store's diagnostic lines; with none, or nil, they are discarded. Only the first counts.
-func OpenWithoutBlobSync(ctx context.Context, path string, logger ...*slog.Logger) (*Store, error) {
-	opts, err := defaultOpenOptions(logger...)
+// only tests, which never crash the machine, may call it.
+func OpenWithoutBlobSync(ctx context.Context, path string, options ...Option) (*Store, error) {
+	opts, err := defaultOpenOptions(options...)
 	if err != nil {
 		return nil, err
 	}
@@ -89,16 +86,23 @@ type openOptions struct {
 	logger      *slog.Logger
 }
 
-func defaultOpenOptions(logger ...*slog.Logger) (openOptions, error) {
+// Option changes how Open, OpenWithoutBlobSync or OpenReadOnly opens a database.
+type Option func(*openOptions)
+
+// WithLogger sends the store's diagnostic lines to logger. Without it they are discarded.
+func WithLogger(logger *slog.Logger) Option {
+	return func(o *openOptions) { o.logger = logger }
+}
+
+func defaultOpenOptions(options ...Option) (openOptions, error) {
 	fsys, err := embeddedMigrations()
 	if err != nil {
 		return openOptions{}, err
 	}
 
-	opts := openOptions{migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync}
-	opts.logger = slog.New(slog.DiscardHandler)
-	if len(logger) > 0 && logger[0] != nil {
-		opts.logger = logger[0]
+	opts := openOptions{migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync, logger: slog.New(slog.DiscardHandler)}
+	for _, option := range options {
+		option(&opts)
 	}
 
 	return opts, nil
@@ -136,10 +140,9 @@ func tooNew(current int64) error {
 // writing to it. SQLite may leave -shm and -wal files beside a WAL database; the database
 // file itself is untouched. It returns an error wrapping fs.ErrNotExist when nothing is at
 // path, and ErrForeignDatabase or ErrDatabaseTooNew as Open does. Below the latest schema,
-// only Schema may be called. A logger given receives the store's diagnostic lines; with
-// none, or nil, they are discarded. Only the first counts.
-func OpenReadOnly(ctx context.Context, path string, logger ...*slog.Logger) (*Store, error) {
-	opts, err := defaultOpenOptions(logger...)
+// only Schema may be called.
+func OpenReadOnly(ctx context.Context, path string, options ...Option) (*Store, error) {
+	opts, err := defaultOpenOptions(options...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +162,10 @@ func OpenReadOnly(ctx context.Context, path string, logger ...*slog.Logger) (*St
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	_, err = inspect(ctx, db, opts.migrations)
+	schema, err := inspect(ctx, db, opts.migrations)
+	if err == nil {
+		opts.logger.DebugContext(ctx, "database opened", "path", path, "created", false, "schema_version", schema.Version)
+	}
 	return storeAfter(path, db, opts, err)
 }
 
@@ -194,13 +200,18 @@ func open(ctx context.Context, path string, opts openOptions) (*Store, error) {
 	if err == nil && info.IsDir() {
 		return nil, directoryError(path)
 	}
+	created := errors.Is(err, fs.ErrNotExist)
 
 	db, err := sql.Open("sqlite", dsn(path, opts.busyTimeout))
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
 
-	return storeAfter(path, db, opts, prepare(ctx, db, path, opts.migrations))
+	version, err := prepare(ctx, db, path, opts)
+	if err == nil {
+		opts.logger.DebugContext(ctx, "database opened", "path", path, "created", created, "schema_version", version)
+	}
+	return storeAfter(path, db, opts, err)
 }
 
 // directoryError is the error for a directory at the database path, which SQLite reports only
@@ -217,18 +228,19 @@ func dsn(path string, busy time.Duration) string {
 		url.PathEscape(path), busy.Milliseconds())
 }
 
-func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
-	pending, err := inspect(ctx, db, fsys)
+// prepare readies the database for Open and returns the schema version it is then at.
+func prepare(ctx context.Context, db *sql.DB, path string, opts openOptions) (int64, error) {
+	schema, err := inspect(ctx, db, opts.migrations)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// goose has no SQLite locker. Waiting on the lock can outlast another coroner's migration,
 	// so migrate checks the version again once it is held.
-	if pending {
+	if schema.Version < schema.Latest {
 		unlock, err := lockFile(path + ".lock")
 		if err != nil {
-			return err
+			return 0, err
 		}
 		defer unlock()
 	}
@@ -237,10 +249,15 @@ func prepare(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 	// before refuseForeign could refuse it. WAL mode persists in the file, so once is enough.
 	_, err = db.ExecContext(ctx, "PRAGMA journal_mode = WAL")
 	if err != nil {
-		return fmt.Errorf("enable WAL: %w", err)
+		return 0, fmt.Errorf("enable WAL: %w", err)
 	}
 
-	return migrate(ctx, db, path, fsys)
+	err = migrate(ctx, db, path, opts)
+	if err != nil {
+		return 0, err
+	}
+
+	return schema.Latest, nil
 }
 
 // refuseForeign returns ErrForeignDatabase for a database coroner did not create.
@@ -267,35 +284,35 @@ func refuseForeign(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// inspect refuses a database Open must not touch, and reports whether migrations in fsys are
-// pending.
-func inspect(ctx context.Context, db *sql.DB, fsys fs.FS) (bool, error) {
+// inspect refuses a database Open must not touch, and returns its schema against the
+// migrations in fsys.
+func inspect(ctx context.Context, db *sql.DB, fsys fs.FS) (Schema, error) {
 	err := refuseForeign(ctx, db)
 	if err != nil {
-		return false, err
+		return Schema{}, err
 	}
 
 	return refuseTooNew(ctx, db, fsys)
 }
 
 // refuseTooNew returns ErrDatabaseTooNew for a database migrated past the migrations in fsys,
-// and otherwise whether any of them are pending.
-func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) (bool, error) {
+// and otherwise its schema against them.
+func refuseTooNew(ctx context.Context, db *sql.DB, fsys fs.FS) (Schema, error) {
 	latest, err := latestVersion(db, fsys)
 	if err != nil {
-		return false, err
+		return Schema{}, err
 	}
 
 	current, err := schemaVersion(ctx, db)
 	if err != nil {
-		return false, err
+		return Schema{}, err
 	}
 
 	if current > latest {
-		return false, tooNew(current)
+		return Schema{}, tooNew(current)
 	}
 
-	return current < latest, nil
+	return Schema{Version: current, Latest: latest}, nil
 }
 
 // lockFile blocks until it holds an exclusive flock on path, creating the file when missing,
@@ -351,8 +368,8 @@ func schemaVersion(ctx context.Context, db sqlcgen.DBTX) (int64, error) {
 	return version, nil
 }
 
-func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, fsys)
+func migrate(ctx context.Context, db *sql.DB, path string, opts openOptions) error {
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, opts.migrations)
 	if err != nil {
 		return fmt.Errorf("create migration provider: %w", err)
 	}
@@ -367,34 +384,45 @@ func migrate(ctx context.Context, db *sql.DB, path string, fsys fs.FS) error {
 	}
 
 	if current > 0 && current < target {
-		err = backUp(ctx, db, fmt.Sprintf("%s.pre-v%d.bak", path, target))
+		backup := fmt.Sprintf("%s.pre-v%d.bak", path, target)
+		size, err := backUp(ctx, db, backup)
 		if err != nil {
 			return err
 		}
+		opts.logger.InfoContext(ctx, "database backed up", "path", backup, "size", size)
 	}
 
-	_, err = provider.Up(ctx)
+	results, err := provider.Up(ctx)
 	if err != nil {
 		return fmt.Errorf("apply migrations: %w", err)
+	}
+	for _, r := range results {
+		opts.logger.InfoContext(ctx, "migration applied", "schema_version", r.Source.Version)
 	}
 
 	return nil
 }
 
-// backUp copies the database to a new file at backup and never overwrites one.
-func backUp(ctx context.Context, db *sql.DB, backup string) error {
+// backUp copies the database to a new file at backup, never overwriting one, and returns
+// the copy's size.
+func backUp(ctx context.Context, db *sql.DB, backup string) (int64, error) {
 	_, err := os.Lstat(backup)
 	if err == nil {
-		return fmt.Errorf("back up before migrating: %w: %s; move it aside and retry", ErrBackupExists, backup)
+		return 0, fmt.Errorf("back up before migrating: %w: %s; move it aside and retry", ErrBackupExists, backup)
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("back up before migrating: %w", err)
+		return 0, fmt.Errorf("back up before migrating: %w", err)
 	}
 
 	_, err = db.ExecContext(ctx, "VACUUM INTO ?", backup)
 	if err != nil {
-		return fmt.Errorf("back up before migrating to %s: %w", backup, err)
+		return 0, fmt.Errorf("back up before migrating to %s: %w", backup, err)
 	}
 
-	return nil
+	info, err := os.Stat(backup)
+	if err != nil {
+		return 0, fmt.Errorf("back up before migrating: %w", err)
+	}
+
+	return info.Size(), nil
 }

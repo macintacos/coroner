@@ -32,6 +32,7 @@ var _ = Describe("log content guard", func() {
 		out, errOut  bytes.Buffer
 		placeholders *strings.Replacer
 	)
+	sentinels := []string{sentinelTitle, sentinelText, sentinelBody, sentinelContent, sentinelFilename}
 
 	run := func(ctx context.Context, args ...string) int {
 		out.Reset()
@@ -72,6 +73,14 @@ var _ = Describe("log content guard", func() {
 		)
 	})
 
+	It("keeps record content out of the lines that create and migrate the database", func() {
+		logged := readFile(logPath)
+		Expect(logged).To(ContainSubstring(`"msg":"migration applied"`))
+		for _, sentinel := range sentinels {
+			Expect(logged).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
+		}
+	})
+
 	DescribeTable("keeps record content out of the diagnostic log",
 		func(ctx SpecContext, wantExit int, args ...string) {
 			resolved := make([]string, 0, len(args)+1)
@@ -90,7 +99,7 @@ var _ = Describe("log content guard", func() {
 			if wantExit != 0 {
 				Expect(written).To(ContainSubstring(`"msg":"command failed"`))
 			}
-			for _, sentinel := range []string{sentinelTitle, sentinelText, sentinelBody, sentinelContent, sentinelFilename} {
+			for _, sentinel := range sentinels {
 				Expect(written).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
 			}
 		},

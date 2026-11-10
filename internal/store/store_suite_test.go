@@ -1,10 +1,14 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -38,6 +42,25 @@ func newDatabase() string {
 	path := filepath.Join(GinkgoT().TempDir(), "coroner.db")
 	Expect(os.WriteFile(path, migrated, 0o600)).To(Succeed())
 	return path
+}
+
+// capture is the option that sends the store's lines, debug and up, to buf as JSON.
+func capture(buf *bytes.Buffer) store.Option {
+	return store.WithLogger(slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+}
+
+// logged returns the JSON lines in buf whose msg is msg, decoded.
+func logged(buf *bytes.Buffer, msg string) []map[string]any {
+	GinkgoHelper()
+	var lines []map[string]any
+	for line := range strings.Lines(buf.String()) {
+		var decoded map[string]any
+		Expect(json.Unmarshal([]byte(line), &decoded)).To(Succeed(), line)
+		if decoded["msg"] == msg {
+			lines = append(lines, decoded)
+		}
+	}
+	return lines
 }
 
 // openStore opens a new store in the spec's temp directory, closed when the spec ends.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -33,12 +32,6 @@ var _ = Describe("Open", func() {
 			Expect(s.DB().QueryRowContext(ctx, "PRAGMA application_id").Scan(&applicationID)).To(Succeed())
 			Expect(applicationID).To(Equal(int64(1668248174)))
 		})
-
-	It("opens with a logger", func(ctx SpecContext) {
-		s, err := store.Open(ctx, filepath.Join(GinkgoT().TempDir(), "coroner.db"), slog.New(slog.DiscardHandler))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(s.Close()).To(Succeed())
-	})
 
 	It("puts the database in WAL mode, so a reader never waits for a writer", func(ctx SpecContext) {
 		db, err := sql.Open("sqlite", migratedDatabase(ctx))

@@ -55,10 +55,18 @@ Info lines are always written. The `command finished` line is info, with `comman
 (an exit kind from [Exit codes](cli/coroner_help_exit-codes.md), or `ok`), `exit_code` and
 `duration` in nanoseconds.
 
+Opening a database older than the build also writes info lines: `database backed up`, with
+the backup's `path` and `size`, when the database already has a schema; then
+`migration applied`, once per migration, with the `schema_version` it brings the database
+to. A new database applies every migration, so its first command logs one
+`migration applied` per migration.
+
 Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags
   given, never their values) and, when the failure has a cause, `error`;
+- `database opened`, each time a command opens a database, with its `path`, `created`
+  (true when the command created it), and its `schema_version` after any migration;
 - `database path resolved`, with the `path` and `by`: `flag`, `env`, `file` (the config
   file's `db`) or `default`; `config file resolved`, with the `path` coroner reads the
   config file from, whether or not a file is there, and `by`: `flag`, `env` or `default`;
