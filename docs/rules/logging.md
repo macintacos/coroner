@@ -45,6 +45,9 @@ rules say what a line holds; a new or changed line also updates that page.
    - `event`: an event's id.
    - `annotation`: an annotation's id.
    - `timeline`: the name of the timeline the line is about.
+   - `timeline_id`: a timeline's id; `timeline` is its name.
+   - `source_id`: a source's id.
+   - `link`: a link's id.
    - `count`: how many records a step changed or read, or how many blobs garbage
      collection deleted.
    - `counts`: how many records of each kind a read returned or an export holds, as a

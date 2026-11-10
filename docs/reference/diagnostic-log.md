@@ -71,6 +71,15 @@ its `path` and `size` in bytes. `timeline export -o` adds the export's `format` 
 `attachment export -o` writes it or an export copies it beside a Markdown or JSONL export,
 adds its `attachment` id and `sha256`. Output to stdout writes no such line.
 
+`import` and `event add --from-file` log, for each record type, how many records they
+insert, skip and replace, such as `timelines replaced`, `events inserted` and
+`attachments skipped`, each with its `count`, and only when there are some. A record
+already stored unchanged, a conflict `--on-conflict skip` keeps, and an attachment whose
+content is missing count as skipped. An import a conflict blocks writes nothing and logs
+none of these. Under `--debug` the same message is logged once per record, with its id
+under `timeline_id`, `source_id`, `event`, `annotation`, `attachment` or `link`. Under
+`--dry-run` every such line carries `dry_run`.
+
 Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags

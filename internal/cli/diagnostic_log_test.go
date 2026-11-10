@@ -14,6 +14,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
@@ -333,6 +334,77 @@ var _ = Describe("diagnostic log", func() {
 		Expect(decoded).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("path", path),
 			HaveKeyWithValue("lines", float64(strings.Count(data, "\n"))),
 			HaveKeyWithValue("format_versions", HaveExactElements(header.FormatVersion)))))
+	})
+
+	It("counts what an import inserts, skips and replaces at info, and lists each record under --debug", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "add", "a", "-t", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "add", "b", "-t", "inc"))).To(Equal(0))
+		type withID struct {
+			ID string `json:"id"`
+		}
+		var listed struct {
+			Timelines []withID `json:"timelines"`
+			Events    []withID `json:"events"`
+		}
+		out.Reset()
+		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--json"))).To(Equal(0))
+		Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed())
+		timelineID, eventA, eventB := listed.Timelines[0].ID, listed.Events[0].ID, listed.Events[1].ID
+
+		path := filepath.Join(h.home, "inc.jsonl")
+		Expect(run(ctx, h.app("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
+		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "delete", "inc#2"))).To(Equal(0))
+
+		// written runs args and returns the log lines it wrote.
+		written := func(want int, args ...string) []map[string]any {
+			before := len(logLines(logPath))
+			Expect(run(ctx, h.app(args...))).To(Equal(want), errOut.String())
+			return logLines(logPath)[before:]
+		}
+		isPlanLine := func(line map[string]any) bool {
+			msg, _ := line["msg"].(string)
+			return strings.HasSuffix(msg, " inserted") || strings.HasSuffix(msg, " skipped") || strings.HasSuffix(msg, " replaced")
+		}
+		line := func(level, msg string, keys ...any) types.GomegaMatcher {
+			matchers := []types.GomegaMatcher{HaveKeyWithValue("level", level), HaveKeyWithValue("msg", msg)}
+			for i := 0; i < len(keys); i += 2 {
+				matchers = append(matchers, HaveKeyWithValue(keys[i], keys[i+1]))
+			}
+			return And(matchers...)
+		}
+
+		Expect(written(0, "import", path, "--on-conflict", "replace", "--dry-run", "--debug")).To(ContainElement(
+			line("INFO", "events inserted", "count", float64(1), "dry_run", true)))
+
+		lines := written(0, "import", path, "--on-conflict", "replace", "--debug")
+		Expect(lines).To(ContainElements(
+			line("INFO", "timelines replaced", "count", float64(1)),
+			line("INFO", "events skipped", "count", float64(1)),
+			line("INFO", "events inserted", "count", float64(1)),
+			line("DEBUG", "timelines replaced", "timeline_id", timelineID),
+			line("DEBUG", "events skipped", "event", eventA),
+			line("DEBUG", "events inserted", "event", eventB),
+		))
+		Expect(slices.ContainsFunc(lines, func(l map[string]any) bool { _, ok := l["dry_run"]; return isPlanLine(l) && ok })).To(BeFalse())
+
+		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed-again"))).To(Equal(0))
+		Expect(slices.ContainsFunc(written(4, "import", path, "--debug"), isPlanLine)).To(BeFalse())
+
+		var events strings.Builder
+		for l := range strings.Lines(readFile(path)) {
+			if strings.Contains(l, `"type":"event"`) {
+				events.WriteString(l)
+			}
+		}
+		eventsPath := filepath.Join(h.home, "events.jsonl")
+		Expect(os.WriteFile(eventsPath, []byte(events.String()), 0o600)).To(Succeed())
+		Expect(written(0, "event", "add", "-t", "inc", "--from-file", eventsPath, "--debug")).To(ContainElements(
+			line("INFO", "events skipped", "count", float64(2)),
+			line("DEBUG", "events skipped", "event", eventA),
+			line("DEBUG", "events skipped", "event", eventB),
+		))
 	})
 
 	DescribeTable("logs which setting selected the timelines under --debug",

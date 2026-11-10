@@ -48,6 +48,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 		timelines: timelineInputOf(in), lookupEnv: app.LookupEnv, logger: app.logger(),
 	}
 	var added eventsAdded
+	var decisions []importDecision
 	err = withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		out, err := merge(ctx, s, input, mode)
 		switch {
@@ -59,6 +60,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 			return conflictingEventsError(out.plan.result.Conflicts)
 		}
 
+		decisions = out.plan.decisions
 		added = newEventsAdded(events, out.plan.identical, out.inserted)
 		added.timeline, added.dryRun, added.dbPath = *out.guard, dryRun, inv.cfg.DBPath
 		return s.Read(ctx, func(tx *store.Tx) error {
@@ -70,6 +72,7 @@ func addEventsFromFile(ctx context.Context, cmd *cobra.Command, app App, args []
 		return err
 	}
 
+	logImportPlan(ctx, withDryRun(app.logger(), dryRun), decisions)
 	return added.render(inv.out)
 }
 

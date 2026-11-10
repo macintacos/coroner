@@ -92,6 +92,9 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return timelineNameTakenError(plan.takenName)
 	}
 
+	if plan.canWrite() {
+		logImportPlan(ctx, withDryRun(app.logger(), dryRun), plan.decisions)
+	}
 	plan.result.DryRun = dryRun
 	err = renderImport(inv.out, plan, dryRun || !plan.canWrite())
 	if err != nil {
@@ -161,6 +164,27 @@ func conflictCount(n int) string {
 	}
 
 	return fmt.Sprintf("%d records conflict", n)
+}
+
+// logImportPlan logs, by record type and then action, how many records the plan decided it
+// for at info, and each record at debug.
+func logImportPlan(ctx context.Context, logger *slog.Logger, decisions []importDecision) {
+	for _, typ := range []string{"timeline", "source", "event", "annotation", "attachment", "link"} {
+		for _, action := range []importAction{importInserted, importSkipped, importReplaced} {
+			logCounted(ctx, logger, typ+"s "+string(action), idKey(typ), decidedIDs(decisions, typ, action))
+		}
+	}
+}
+
+// decidedIDs returns the ids of the records of type typ the plan decided action for.
+func decidedIDs(decisions []importDecision, typ string, action importAction) []string {
+	var ids []string
+	for _, d := range decisions {
+		if d.typ == typ && d.action == action {
+			ids = append(ids, d.id)
+		}
+	}
+	return ids
 }
 
 // mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens

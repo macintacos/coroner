@@ -133,6 +133,23 @@ type importPlan struct {
 	identical []timeline.Event
 	// timelineNames are the sorted names of the timelines the import writes to, or would.
 	timelineNames []string
+	// decisions are what the plan does with each incoming record, in the order planned.
+	decisions []importDecision
+}
+
+// importAction is what a plan does with one incoming record.
+type importAction string
+
+const (
+	importInserted importAction = "inserted"
+	importSkipped  importAction = "skipped"
+	importReplaced importAction = "replaced"
+)
+
+// importDecision is what a plan does with one incoming record, named by its export type and id.
+type importDecision struct {
+	typ, id string
+	action  importAction
 }
 
 // blockReason is why a plan whose input is valid writes nothing.
@@ -248,7 +265,7 @@ func planImport(ctx context.Context, in importInput, stored storedLookup) (impor
 
 	return importPlan{
 		write: p.write, result: p.result, blocked: p.blocked(), unreplaceable: p.unreplaceable,
-		identical: p.identical, timelineNames: p.timelineNames(),
+		identical: p.identical, timelineNames: p.timelineNames(), decisions: p.decisions,
 	}, nil
 }
 
@@ -596,6 +613,11 @@ type planner struct {
 	sources   sourceIndex
 	// timelineIDs are the timelines the import writes to.
 	timelineIDs map[string]bool
+	decisions   []importDecision
+}
+
+func (p *planner) decide(typ, id string, action importAction) {
+	p.decisions = append(p.decisions, importDecision{typ: typ, id: id, action: action})
 }
 
 // sourceUse is a source name a new or replaced event or annotation names, with when that record
@@ -610,19 +632,23 @@ type sourceUse struct {
 func (p *planner) resolve(counts *importCounts, c importConflict, replaceable bool) bool {
 	if len(c.Fields) == 0 {
 		counts.Identical++
+		p.decide(c.Type, c.ID, importSkipped)
 		return false
 	}
 
 	counts.Conflicting++
 	p.result.Conflicts = append(p.result.Conflicts, c)
 	if p.in.onConflict != onConflictReplace {
+		p.decide(c.Type, c.ID, importSkipped)
 		return false
 	}
 	if !replaceable {
 		p.unreplaceable = append(p.unreplaceable, c)
+		p.decide(c.Type, c.ID, importSkipped)
 		return false
 	}
 
+	p.decide(c.Type, c.ID, importReplaced)
 	return true
 }
 
@@ -633,6 +659,7 @@ func (p *planner) planTimelines(timelines []export.Timeline) {
 		case !ok:
 			p.timelineIDs[t.ID] = true
 			p.result.Timelines.Inserted++
+			p.decide("timeline", t.ID, importInserted)
 			p.write.Timelines = append(p.write.Timelines, t.Domain())
 		case p.resolve(&p.result.Timelines, importConflict{Type: "timeline", ID: t.ID, Fields: export.DifferingKeys(export.NewTimeline(stored), t)}, true):
 			p.timelineIDs[t.ID] = true
@@ -647,6 +674,7 @@ func (p *planner) planSources(sources []export.Source) {
 	for _, s := range sources {
 		if p.sources.has(s.Name) {
 			p.result.Sources.Identical++
+			p.decide("source", s.ID, importSkipped)
 			continue
 		}
 		source := s.Domain()
@@ -673,6 +701,7 @@ func (p *planner) planEvents(events []export.Event) []sourceUse {
 			p.write.EventReplacements = append(p.write.EventReplacements, e.Domain())
 		} else {
 			p.result.Events.Inserted++
+			p.decide("event", e.ID, importInserted)
 			p.write.Events = append(p.write.Events, e.Domain())
 		}
 		p.timelineIDs[e.TimelineID] = true
@@ -695,6 +724,7 @@ func (p *planner) planAnnotations(annotations []export.Annotation) []sourceUse {
 			p.write.AnnotationReplacements = append(p.write.AnnotationReplacements, a.Domain())
 		} else {
 			p.result.Annotations.Inserted++
+			p.decide("annotation", a.ID, importInserted)
 			p.write.Annotations = append(p.write.Annotations, a.Domain())
 		}
 		p.timelineIDs[a.TimelineID] = true
@@ -721,9 +751,11 @@ func (p *planner) planAttachments(ctx context.Context, attachments []export.Atta
 		_, hasSidecar := p.in.sidecars[a.SHA256]
 		if !hasSidecar && !p.in.localBlobs[a.SHA256] {
 			p.result.MissingAttachments = append(p.result.MissingAttachments, missingAttachment{ID: a.ID, SHA256: a.SHA256})
+			p.decide("attachment", a.ID, importSkipped)
 			continue
 		}
 		p.result.Attachments.Inserted++
+		p.decide("attachment", a.ID, importInserted)
 		p.write.Attachments = append(p.write.Attachments, a.Domain())
 		// checkRecords has already rejected an attachment whose owner is unknown.
 		ownerTimeline, _ := p.refs.ownerTimeline(a)
@@ -752,6 +784,7 @@ func (p *planner) planLinks(ctx context.Context, links []export.Link) error {
 		}
 
 		p.result.Links.Inserted++
+		p.decide("link", l.ID, importInserted)
 		p.write.Links = append(p.write.Links, l.Domain())
 		// checkRecords has already rejected a link whose event is unknown.
 		p.timelineIDs[p.refs.events[l.FromEventID]] = true
@@ -782,6 +815,9 @@ func (p *planner) assignSourceIDs() error {
 			return err
 		}
 		p.write.Sources[i].ID = id.String()
+	}
+	for _, s := range p.write.Sources {
+		p.decide("source", s.ID, importInserted)
 	}
 
 	return nil
