@@ -59,6 +59,10 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags
   given, never their values) and, when the failure has a cause, `error`;
+- `database path resolved` and `config file resolved`, with the `path` and `by`, the
+  setting that supplied it: `flag`, `env`, `file` (the config file's `db`) or `default`;
+  and `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`)
+  or `default`;
 - the viewer's `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds

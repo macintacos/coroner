@@ -280,6 +280,25 @@ var _ = Describe("diagnostic log", func() {
 		Expect(errOut.String()).NotTo(ContainSubstring("level="))
 	})
 
+	It("logs where the database path, config file and default time zone came from under --debug", func(ctx SpecContext) {
+		h.config = "default_timezone = \"America/New_York\"\n"
+
+		Expect(run(ctx, h.app("timeline", "create", "u", "--debug"))).To(Equal(0))
+
+		lines := logLines(logPath)
+		finished := slices.IndexFunc(lines, func(line map[string]any) bool { return line["msg"] == "command finished" })
+		Expect(finished).To(BeNumerically(">=", 0))
+		Expect(lines[:finished]).To(ContainElements(
+			And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "database path resolved"),
+				HaveKeyWithValue("path", h.db), HaveKeyWithValue("by", "flag")),
+			And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "config file resolved"),
+				HaveKeyWithValue("path", filepath.Join(h.home, ".config", "coroner", "config.toml")),
+				HaveKeyWithValue("by", "default")),
+			And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "default time zone resolved"),
+				HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file")),
+		))
+	})
+
 	It("logs the failure under --debug, and shows every line on stderr once", func(ctx SpecContext) {
 		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
 		errOut.Reset()

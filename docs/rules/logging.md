@@ -12,18 +12,20 @@ rules say what a line holds; a new or changed line also updates that page.
    already sees on stderr is not an error line: `command finished` records its kind at
    info, and `command failed` its detail at debug.
 2. **A line carries only these:** ids, kinds, counts, sizes, durations, flag names, typed
-   time input, timeline, tag and source names, and the paths of files coroner opens.
-   Everything else stays out, including titles, event text, annotation bodies, attachment
-   content and filenames, and error text that quotes any of these. Name a record by its
-   id, or by its name when it has one. Overlay names and an event's `<timeline>#<seq>`
-   ref, such as `inc#3`, are allowed too.
+   time input, timeline, tag and source names, time zone names, the setting that supplied
+   a value or selected the timelines, and the paths of files coroner opens. Everything
+   else stays out, including titles, event text, annotation bodies, attachment content and
+   filenames, and error text that quotes any of these. Name a record by its id, or by its
+   name when it has one. Overlay names and an event's `<timeline>#<seq>` ref, such as
+   `inc#3`, are allowed too.
 3. **A path is logged only when coroner opens it and it holds no record content:** the
-   database, the config file, the diagnostic log, the blob directory, and a file the user
-   named with `-o` or as an `import` file are logged in full. A stored attachment's
-   filename is record content, so neither it, a path coroner builds from it, nor the
-   `--attach` path whose base name it is, is logged; name the attachment by its
-   `attachment` id, with its `size` and `sha256`. Only the error for an `--attach` file
-   coroner cannot read quotes that path, since nothing was stored.
+   database, the config file (the path coroner reads it from, or looks at when no file is
+   there), the diagnostic log, the blob directory, and a file the user named with `-o` or
+   as an `import` file are logged in full. A stored attachment's filename is record
+   content, so neither it, a path coroner builds from it, nor the `--attach` path whose
+   base name it is, is logged; name the attachment by its `attachment` id, with its `size`
+   and `sha256`. Only the error for an `--attach` file coroner cannot read quotes that
+   path, since nothing was stored.
 4. **Error text never quotes record content:** `message` and `error` carry an error's text
    as it is, so a `*cli.Error`'s message, and any error it wraps, names a record by its
    id, name or `<timeline>#<seq>` ref, never by its title, text, body or filename.
@@ -47,6 +49,10 @@ rules say what a line holds; a new or changed line also updates that page.
    - `size`: a file's or blob's size in bytes.
    - `attachment`: an attachment's id.
    - `sha256`: an attachment's SHA-256.
+   - `by`: which setting supplied a value: `flag`, `env`, `file` (the config file) or
+     `default`.
+   - `zone`: a time zone's name: `local`, `UTC` or an IANA name such as
+     `America/New_York`.
 6. **A command logs the records it names, and counts the ones it sweeps:** it logs one
    info line per record it names, under that record's key from rule 5, so a line about an
    annotation carries both its `annotation` and its `event`. Records it changes as a side

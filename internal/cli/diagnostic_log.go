@@ -135,6 +135,15 @@ func (d *diagnosticLog) finish(ctx context.Context, stderr io.Writer, cmd *cobra
 	d.close()
 }
 
+// logger returns the command's diagnostic logger, or one that discards every line for an App
+// newRun did not build.
+func (app App) logger() *slog.Logger {
+	if app.log == nil {
+		return slog.New(slog.DiscardHandler)
+	}
+	return app.log.logger(app.Err)
+}
+
 // logger returns a logger whose JSON lines go to d and, under debug, whose text lines go to
 // stderr as they are logged. Every line carries the command.
 func (d *diagnosticLog) logger(stderr io.Writer) *slog.Logger {

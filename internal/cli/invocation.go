@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,6 +45,7 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	if err != nil {
 		return invocation{}, err
 	}
+	logConfig(app.logger(), cfg)
 
 	flags := cmd.Flags()
 	inputOff := flagOrEnv(flags, "no-input", envTrue(app.LookupEnv, "CORONER_NO_INPUT"))
@@ -63,6 +65,13 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 		echoArgs:    givenStoreArgs(flags),
 		timelines:   timelines,
 	}, nil
+}
+
+// logConfig logs where the database path, config file and default time zone came from.
+func logConfig(logger *slog.Logger, cfg config.Config) {
+	logger.Debug("database path resolved", "path", cfg.DBPath, "by", cfg.Sources.DBPath)
+	logger.Debug("config file resolved", "path", cfg.ConfigPath, "by", cfg.Sources.ConfigPath)
+	logger.Debug("default time zone resolved", "zone", cfg.DefaultTimezone, "by", cfg.Sources.DefaultTimezone)
 }
 
 // givenStoreArgs returns the --db and --config args flags were given, in that order.
