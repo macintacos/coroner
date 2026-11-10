@@ -51,6 +51,7 @@ type eventsDeleted struct {
 	found    foundEvents
 	attached map[string][]attachmentJSON
 	dryRun   bool
+	swept    sweep
 	blobsErr error
 }
 
@@ -59,6 +60,54 @@ func (d eventsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
 	for _, e := range d.found.events {
 		logger.InfoContext(ctx, "event deleted", "event", e.ID, "timeline_id", e.TimelineID)
 	}
+	d.swept.log(ctx, logger)
+}
+
+// eventsSweep returns what deleting events removes beside them: their annotations, those
+// annotations' attachments after attachments, the events' own, and their links.
+func eventsSweep(ctx context.Context, tx *store.Tx, events []timeline.Event, attachments []timeline.Attachment) (sweep, error) {
+	var annotations []timeline.Annotation
+	for _, e := range events {
+		on, err := tx.EventAnnotations(ctx, e.ID)
+		if err != nil {
+			return sweep{}, err
+		}
+		annotations = append(annotations, on...)
+	}
+	owners := make([]timeline.AttachmentOwner, 0, len(annotations))
+	for _, a := range annotations {
+		owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
+	}
+	annotated, err := ownersAttachments(ctx, tx, owners)
+	if err != nil {
+		return sweep{}, err
+	}
+	links, err := eventLinkIDs(ctx, tx, idsOf(events, func(e timeline.Event) string { return e.ID }))
+
+	return sweep{
+		annotations: idsOf(annotations, func(a timeline.Annotation) string { return a.ID }),
+		attachments: idsOf(slices.Concat(attachments, annotated), attachmentID),
+		links:       links,
+	}, err
+}
+
+// eventLinkIDs returns the ids of the links from or to any of eventIDs, each once, in the order
+// first read. Unlike tx.TimelineLinks, it finds a link into the events' timeline from another.
+func eventLinkIDs(ctx context.Context, tx *store.Tx, eventIDs []string) ([]string, error) {
+	var ids []string
+	for _, id := range eventIDs {
+		links, err := tx.EventLinks(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range links {
+			if !slices.Contains(ids, l.ID) {
+				ids = append(ids, l.ID)
+			}
+		}
+	}
+
+	return ids, nil
 }
 
 func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventsDeleted, error) {
@@ -89,6 +138,10 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 			deleted.found = found
 			attachments, err := ownersAttachments(ctx, tx, found.owners())
 			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.swept, err = eventsSweep(ctx, tx, found.events, attachments)
 			if err != nil {
 				return deleted, err
 			}

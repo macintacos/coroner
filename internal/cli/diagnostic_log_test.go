@@ -423,6 +423,86 @@ var _ = Describe("diagnostic log", func() {
 		))
 	})
 
+	It("counts what a delete sweeps along at info, and lists each record under --debug", func(ctx SpecContext) {
+		attachment := filepath.Join(h.home, "notes.txt")
+		Expect(os.WriteFile(attachment, []byte("notes"), 0o600)).To(Succeed())
+		type record struct {
+			ID          string `json:"id"`
+			Attachments []struct {
+				ID string `json:"id"`
+			} `json:"attachments"`
+		}
+		// created runs args under --json and returns the record it printed.
+		created := func(args ...string) record {
+			out.Reset()
+			Expect(run(ctx, h.app(append(args, "--json")...))).To(Equal(0), errOut.String())
+			var r record
+			Expect(json.Unmarshal(out.Bytes(), &r)).To(Succeed(), out.String())
+			return r
+		}
+		written := func(args ...string) []map[string]any {
+			before := len(logLines(logPath))
+			Expect(run(ctx, h.app(args...))).To(Equal(0), errOut.String())
+			return logLines(logPath)[before:]
+		}
+		line := func(level, msg string, keys ...any) types.GomegaMatcher {
+			matchers := []types.GomegaMatcher{HaveKeyWithValue("level", level), HaveKeyWithValue("msg", msg)}
+			for i := 0; i < len(keys); i += 2 {
+				matchers = append(matchers, HaveKeyWithValue(keys[i], keys[i+1]))
+			}
+			return And(matchers...)
+		}
+
+		created("timeline", "create", "inc")
+		created("timeline", "create", "other")
+		a := created("event", "add", "a", "-t", "inc", "--attach", attachment)
+		b := created("event", "add", "b", "-t", "inc")
+		c := created("event", "add", "c", "-t", "inc")
+		created("event", "add", "d", "-t", "other")
+		n1 := created("annotation", "add", "n1", "-t", "inc", "-e", "1", "--kind", "comment", "--attach", attachment)
+		n2 := created("annotation", "add", "n2", "-t", "inc", "-e", "2", "--kind", "comment", "--attach", attachment)
+		ab := created("event", "link", "inc#1", "inc#2", "--kind", "led_to")
+		into := created("event", "link", "other#1", "inc#3", "--kind", "led_to")
+		overlay := created("overlay", "create", "both", "-t", "inc", "-t", "other")
+
+		Expect(written("event", "delete", "inc#1", "--debug")).To(ContainElements(
+			line("INFO", "event deleted", "event", a.ID),
+			line("INFO", "annotations deleted", "count", float64(1)),
+			line("INFO", "attachments deleted", "count", float64(2)),
+			line("INFO", "links deleted", "count", float64(1)),
+			line("DEBUG", "annotations deleted", "annotation", n1.ID),
+			line("DEBUG", "attachments deleted", "attachment", a.Attachments[0].ID),
+			line("DEBUG", "attachments deleted", "attachment", n1.Attachments[0].ID),
+			line("DEBUG", "links deleted", "link", ab.ID),
+		))
+
+		Expect(written("annotation", "delete", n2.ID, "--debug")).To(ContainElements(
+			line("INFO", "attachments deleted", "count", float64(1)),
+			line("DEBUG", "attachments deleted", "attachment", n2.Attachments[0].ID),
+		))
+
+		out.Reset()
+		Expect(written("timeline", "delete", "inc", "--yes", "--dry-run", "--debug")).To(ContainElements(
+			line("INFO", "events deleted", "count", float64(2), "dry_run", true),
+			line("INFO", "links deleted", "count", float64(1), "dry_run", true),
+			line("INFO", "overlays changed", "count", float64(1), "dry_run", true),
+		))
+		Expect(out.String()).To(ContainSubstring("events: 2, annotations: 0"))
+
+		lines := written("timeline", "delete", "inc", "--yes", "--debug")
+		Expect(lines).To(ContainElements(
+			line("INFO", "timeline deleted"),
+			line("INFO", "events deleted", "count", float64(2)),
+			line("INFO", "links deleted", "count", float64(1)),
+			line("INFO", "overlays changed", "count", float64(1)),
+			line("DEBUG", "events deleted", "event", b.ID),
+			line("DEBUG", "events deleted", "event", c.ID),
+			line("DEBUG", "links deleted", "link", into.ID),
+			line("DEBUG", "overlays changed", "overlay_id", overlay.ID),
+		))
+		Expect(lines).NotTo(ContainElement(HaveKeyWithValue("msg", BeElementOf("annotations deleted", "attachments deleted"))))
+	})
+
 	DescribeTable("logs which setting selected the timelines under --debug",
 		func(ctx SpecContext, wantBy string, wantNames []string, setup func(context.Context), args ...string) {
 			Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))

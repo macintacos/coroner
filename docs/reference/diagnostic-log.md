@@ -85,6 +85,12 @@ changed, as the export format spells them, never their values. Under `--dry-run`
 carries `dry_run`. A command that finds its record already there, as `--if-not-exists` and
 `event add --id` can, logs no line for it.
 
+A delete also counts what it removes with the records it names: `events deleted`,
+`annotations deleted`, `attachments deleted` and `links deleted`, and `overlays changed`
+for the overlays a deleted timeline leaves. Each comes with its `count`, and only when
+there are some. Under `--debug` the same message is logged once per record, with its id.
+The stored files a delete leaves unused are not counted.
+
 `import` and `event add --from-file` log, for each record type, how many records they
 insert, skip and replace, such as `timelines replaced`, `events inserted` and
 `attachments skipped`, each with its `count`, and only when there are some. A record

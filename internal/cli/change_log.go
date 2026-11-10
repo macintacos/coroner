@@ -29,6 +29,31 @@ func logCounted(ctx context.Context, logger *slog.Logger, msg, key string, ids [
 	}
 }
 
+// sweep is the records a delete removes, or changes, beside the records it names, by id.
+type sweep struct {
+	events, annotations, attachments, links, overlays []string
+}
+
+// log logs each kind's count at info and its ids at debug.
+func (s sweep) log(ctx context.Context, logger *slog.Logger) {
+	logCounted(ctx, logger, "events deleted", "event", s.events)
+	logCounted(ctx, logger, "annotations deleted", "annotation", s.annotations)
+	logCounted(ctx, logger, "attachments deleted", "attachment", s.attachments)
+	logCounted(ctx, logger, "links deleted", "link", s.links)
+	logCounted(ctx, logger, "overlays changed", "overlay_id", s.overlays)
+}
+
+// idsOf returns the id of each of records, in order.
+func idsOf[T any](records []T, id func(T) string) []string {
+	ids := make([]string, 0, len(records))
+	for _, r := range records {
+		ids = append(ids, id(r))
+	}
+	return ids
+}
+
+func attachmentID(a timeline.Attachment) string { return a.ID }
+
 // idKey returns rule 5's name for the id of an export record type: timeline_id and
 // source_id for the named ones, the type itself for the rest.
 func idKey(typ string) string {

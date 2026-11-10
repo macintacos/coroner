@@ -50,6 +50,7 @@ type annotationsDeleted struct {
 	timelineNames map[string]string
 	attached      map[string][]attachmentJSON
 	dryRun        bool
+	swept         sweep
 	blobsErr      error
 }
 
@@ -58,6 +59,7 @@ func (d annotationsDeleted) logChanges(ctx context.Context, logger *slog.Logger)
 	for _, a := range d.annotations {
 		logger.InfoContext(ctx, "annotation deleted", annotationArgs(a)...)
 	}
+	d.swept.log(ctx, logger)
 }
 
 func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationsDeleted, error) {
@@ -98,6 +100,7 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 			}
 			attachments, err := ownersAttachments(ctx, tx, owners)
 			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			deleted.swept = sweep{attachments: idsOf(attachments, attachmentID)}
 			if err != nil {
 				return deleted, err
 			}
