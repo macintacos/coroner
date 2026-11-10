@@ -46,6 +46,7 @@ func main() {
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
 		OpenFile:          openFile,
+		Open:              openRead,
 		RemoveFile:        os.Remove,
 		ReadDir:           os.ReadDir,
 		Stat:              os.Stat,
@@ -61,4 +62,8 @@ func main() {
 
 func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
 	return os.OpenFile(filepath.Clean(name), flag, perm)
+}
+
+func openRead(name string) (io.ReadCloser, error) {
+	return os.Open(filepath.Clean(name))
 }

@@ -76,6 +76,7 @@ func (h harness) app(args ...string) cli.App {
 		ReadFile:          h.readFile,
 		WriteFile:         os.WriteFile,
 		OpenFile:          openFile,
+		Open:              openRead,
 		RemoveFile:        os.Remove,
 		ReadDir:           os.ReadDir,
 		Stat:              os.Stat,
@@ -166,6 +167,10 @@ func testID(millis int64, n uint64) uuid.UUID {
 
 func openFile(name string, flag int, perm os.FileMode) (io.WriteCloser, error) {
 	return os.OpenFile(filepath.Clean(name), flag, perm)
+}
+
+func openRead(name string) (io.ReadCloser, error) {
+	return os.Open(filepath.Clean(name))
 }
 
 func readFile(path string) string {

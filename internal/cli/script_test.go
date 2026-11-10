@@ -278,6 +278,7 @@ func processApp() cli.App {
 		ReadFile:          os.ReadFile,
 		WriteFile:         os.WriteFile,
 		OpenFile:          openFile,
+		Open:              openRead,
 		RemoveFile:        os.Remove,
 		ReadDir:           os.ReadDir,
 		Stat:              os.Stat,

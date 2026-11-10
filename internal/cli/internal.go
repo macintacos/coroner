@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newInternalCommand(_ context.Context, _ App) *cobra.Command {
-	return &cobra.Command{
+func newInternalCommand(ctx context.Context, app App) *cobra.Command {
+	cmd := &cobra.Command{
 		Use:   "__internal",
 		Short: "Debug coroner itself",
 		Long: "Commands that debug coroner itself, not an incident. Help and completion leave them out,\n" +
@@ -16,4 +16,7 @@ func newInternalCommand(_ context.Context, _ App) *cobra.Command {
 		Annotations: map[string]string{diagnosticLogAnnotation: "off"},
 		RunE:        runNoun,
 	}
+	cmd.AddCommand(newInternalLogCommand(ctx, app))
+
+	return cmd
 }
