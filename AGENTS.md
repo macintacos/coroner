@@ -264,7 +264,9 @@ readme!: Load design/README.md
   group ([`internal.go`](internal/cli/internal.go)), which stays out of the diagnostic log
   and the stability contract. Specs fail when it shows in root help, the `reference`
   topic, shell completion or the CLI reference. `__internal log`
-  ([`internal_log.go`](internal/cli/internal_log.go)) prints the diagnostic log as text.
+  ([`internal_log.go`](internal/cli/internal_log.go)) prints the diagnostic log as text. A
+  hidden command gets no CLI reference page, so its flags are documented on the reference
+  page of what it reads, as `__internal log`'s are in `docs/reference/diagnostic-log.md`.
 - Docs site: `docs/` is the site's source, laid out as `tutorial/`, `how-to/`,
   `reference/`, `explanation/` and `contributing/`, with its nav in
   [`zensical.toml`](zensical.toml). Zensical is a Python dependency in

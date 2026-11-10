@@ -46,7 +46,14 @@ func newInternalLogCommand(ctx context.Context, app App) *cobra.Command {
 				return err
 			}
 
-			return printLog(ctx, app, inv.out, config.DiagnosticLogPath(inv.cfg.DBPath), newLogPrinter(app.Out, keep, z.loc))
+			path := config.DiagnosticLogPath(inv.cfg.DBPath)
+			p := logPrinter{open: app.Open, out: inv.out.out, keep: keep, loc: z.loc}
+			printed, err := p.printFiles(ctx, path+".1", path)
+			if err != nil || printed {
+				return err
+			}
+
+			return inv.out.notify("No diagnostic log at %s yet; coroner writes it once a command opens that database.", path)
 		},
 	}
 
@@ -57,41 +64,6 @@ func newInternalLogCommand(ctx context.Context, app App) *cobra.Command {
 	flags.String("until", "", "Keep lines before this `time`")
 
 	return cmd
-}
-
-// printLog prints the log at path, its rotated <path>.1 first, or says on o's stderr that
-// neither exists.
-func printLog(ctx context.Context, app App, o output, path string, p logPrinter) error {
-	printed := false
-	for _, name := range []string{path + ".1", path} {
-		found, err := printLogFile(ctx, app, name, p)
-		if err != nil {
-			return err
-		}
-		printed = printed || found
-	}
-	if printed {
-		return nil
-	}
-
-	return o.notify("No diagnostic log at %s yet; coroner writes it once a command opens that database.", path)
-}
-
-// printLogFile prints the file at name, reporting false when it does not exist.
-func printLogFile(ctx context.Context, app App, name string, p logPrinter) (bool, error) {
-	file, err := app.Open(name)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("opening %s: %w", name, err)
-	}
-	err = errors.Join(p.write(ctx, file), file.Close())
-	if err != nil {
-		return true, fmt.Errorf("reading %s: %w", name, err)
-	}
-
-	return true, nil
 }
 
 // logFilter keeps the log lines its set fields allow.
@@ -108,7 +80,7 @@ func (f *logFilter) keeps(line logLine) bool {
 		(f.until == nil || line.time.Before(*f.until))
 }
 
-// readLogFilter returns the filter the flags ask for, rejecting it before any file opens.
+// readLogFilter returns the filter cmd's flags ask for.
 func readLogFilter(cmd *cobra.Command, now time.Time, z zone) (logFilter, error) {
 	flags := cmd.Flags()
 	var f logFilter
@@ -175,71 +147,128 @@ type logLine struct {
 // parseLogLine reads raw as a JSON log line, reporting false when it is not one.
 func parseLogLine(raw []byte) (logLine, bool) {
 	var line logLine
-	if !json.Valid(raw) {
-		return line, false
-	}
-
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
-	start, _ := decoder.Token()
-	if start != json.Delim('{') {
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
 		return line, false
 	}
 
-	seen := map[string]bool{}
+	var has struct{ time, level, msg bool }
 	for decoder.More() {
-		key, _ := decoder.Token()
+		key, err := decoder.Token()
+		if err != nil {
+			return line, false
+		}
 		var value any
-		_ = decoder.Decode(&value)
-		name, _ := key.(string)
-		seen[name] = line.add(name, value)
+		err = decoder.Decode(&value)
+		if err != nil {
+			return line, false
+		}
+		name, ok := key.(string)
+		if !ok {
+			return line, false
+		}
+		switch name {
+		case "time":
+			line.time, has.time = parseLogTime(value)
+		case "level":
+			line.level, has.level = parseLogLevel(value)
+		case "msg":
+			line.msg, has.msg = value.(string)
+		default:
+			line.addAttr(name, value)
+		}
 	}
 
-	return line, seen["time"] && seen["level"] && seen["msg"]
+	return line, has.time && has.level && has.msg && endsAfterObject(decoder)
 }
 
-// add sets the field or attribute key names, reporting whether a time, level or msg parsed.
-func (l *logLine) add(key string, value any) bool {
-	text, isText := value.(string)
-	switch key {
-	case "time":
-		t, err := time.Parse(time.RFC3339Nano, text)
-		l.time = t
-		return isText && err == nil
-	case "level":
-		return isText && l.level.UnmarshalText([]byte(text)) == nil
-	case "msg":
-		l.msg = text
-		return isText
-	case "command":
-		l.command = text
-	case "duration":
-		n, isNumber := value.(json.Number)
+// endsAfterObject reports whether decoder holds nothing past the object's closing brace.
+func endsAfterObject(decoder *json.Decoder) bool {
+	_, err := decoder.Token()
+	if err != nil {
+		return false
+	}
+	_, err = decoder.Token()
+
+	return errors.Is(err, io.EOF)
+}
+
+func parseLogTime(value any) (time.Time, bool) {
+	text, ok := value.(string)
+	t, err := time.Parse(time.RFC3339Nano, text)
+
+	return t, ok && err == nil
+}
+
+func parseLogLevel(value any) (slog.Level, bool) {
+	var level slog.Level
+	text, ok := value.(string)
+
+	return level, ok && level.UnmarshalText([]byte(text)) == nil
+}
+
+// addAttr appends the attribute key names, noting the command for the filter.
+func (l *logLine) addAttr(key string, value any) {
+	if key == "command" {
+		l.command, _ = value.(string)
+	}
+	// slog's JSON handler writes a time.Duration as integer nanoseconds.
+	if n, ok := value.(json.Number); ok && key == "duration" {
 		nanos, err := n.Int64()
-		if isNumber && err == nil {
+		if err == nil {
 			l.attrs = append(l.attrs, slog.Duration(key, time.Duration(nanos)))
-			return false
+			return
 		}
 	}
 	l.attrs = append(l.attrs, slog.Any(key, value))
-
-	return false
 }
 
-// logPrinter prints the diagnostic log lines keep keeps to out as text, times in loc.
+// logPrinter prints diagnostic log files as text: the lines keep keeps, times in loc.
 type logPrinter struct {
+	open func(name string) (io.ReadCloser, error)
 	out  io.Writer
-	text slog.Handler
 	keep logFilter
 	loc  *time.Location
+	// text is set by printFiles.
+	text slog.Handler
 }
 
-func newLogPrinter(out io.Writer, keep logFilter, loc *time.Location) logPrinter {
-	return logPrinter{out: out, text: slog.NewTextHandler(out, nil), keep: keep, loc: loc}
+// printFiles prints each of names that exists, in order, reporting whether any did.
+func (p logPrinter) printFiles(ctx context.Context, names ...string) (bool, error) {
+	p.text = slog.NewTextHandler(p.out, nil)
+	printed := false
+	for _, name := range names {
+		found, err := p.printFile(ctx, name)
+		if err != nil {
+			return printed, err
+		}
+		printed = printed || found
+	}
+
+	return printed, nil
 }
 
-// write reads r line by line, writing each kept line before reading the next.
-func (p logPrinter) write(ctx context.Context, r io.Reader) error {
+// printFile prints the file at name, reporting false when it does not exist.
+func (p logPrinter) printFile(ctx context.Context, name string) (bool, error) {
+	file, err := p.open(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, unreadableLog(name, err)
+	}
+
+	return true, errors.Join(p.write(ctx, file, name), file.Close())
+}
+
+func unreadableLog(name string, err error) *Error {
+	return &Error{Kind: KindUsage, Message: "cannot read " + name, Hint: "Check that the path is a file you can read.", Err: err}
+}
+
+// write reads the file name from r line by line, writing each kept line before reading the next.
+func (p logPrinter) write(ctx context.Context, r io.Reader, name string) error {
 	reader := bufio.NewReader(r)
 	for {
 		raw, err := reader.ReadBytes('\n')
@@ -253,7 +282,7 @@ func (p logPrinter) write(ctx context.Context, r io.Reader) error {
 			return nil
 		}
 		if err != nil {
-			return err
+			return unreadableLog(name, err)
 		}
 	}
 }
@@ -274,5 +303,6 @@ func (p logPrinter) writeLine(ctx context.Context, raw []byte) error {
 	record := slog.NewRecord(line.time.In(p.loc), line.level, line.msg, 0)
 	record.AddAttrs(line.attrs...)
 
+	// Handle, unlike a Logger, never checks the handler's level, so debug lines print.
 	return p.text.Handle(ctx, record)
 }

@@ -10,7 +10,7 @@ cp coroner.log.1 $WORK/.local/share/coroner/coroner.log.1
 exec coroner __internal log
 cmp stdout rotated.txt
 
-# It prints coroner.log.1 first, then coroner.log, oldest line first, one line per line.
+# It prints coroner.log.1 first, then coroner.log, oldest line first, each on its own line.
 cp coroner.log $WORK/.local/share/coroner/coroner.log
 exec coroner __internal log
 cmp stdout all.txt
@@ -37,6 +37,11 @@ cp coroner.log $WORK/b/other.db.log
 exec coroner --db $WORK/b/other.db __internal log --level error
 stdout 'level=ERROR'
 ! exists $WORK/b/other.db
+
+# A log it cannot read exits 2.
+mkdir $WORK/b/x.db.log
+exits 2 coroner --db $WORK/b/x.db __internal log
+stderr 'cannot read .*x\.db\.log'
 
 # A bad filter value, --json or another --format exits 2.
 exits 2 coroner __internal log --level loud

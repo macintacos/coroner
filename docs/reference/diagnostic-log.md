@@ -81,7 +81,7 @@ The line shape is not a contract: it may change in any release
 
 `coroner __internal log` prints the log as text, oldest line first: `<log>.1`, then
 `<log>`. Each line prints as `--debug` prints it on stderr, as `key=value` pairs, with its
-time in `--tz`. Four flags filter it:
+time in the zone `--tz` selects, as `event list` prints times. Four flags filter it:
 
 - `--level` keeps lines at that level and above;
 - `--command` keeps lines from that command path and the commands under it, such as

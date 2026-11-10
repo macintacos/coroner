@@ -3,6 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io"
+	"io/fs"
 	"log/slog"
 	"strings"
 	"time"
@@ -14,10 +17,39 @@ import (
 var _ = Describe("internal log", func() {
 	write := func(keep logFilter, loc *time.Location, input string) string {
 		var out bytes.Buffer
-		Expect(newLogPrinter(&out, keep, loc).write(context.Background(), strings.NewReader(input))).To(Succeed())
+		p := logPrinter{
+			open: func(string) (io.ReadCloser, error) { return io.NopCloser(strings.NewReader(input)), nil },
+			out:  &out, keep: keep, loc: loc,
+		}
+		printed, err := p.printFiles(context.Background(), "coroner.log")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(printed).To(BeTrue())
 		return out.String()
 	}
 	writeUTC := func(keep logFilter, input string) string { return write(keep, time.UTC, input) }
+
+	It("reports a log it cannot open as a usage error naming the file once", func() {
+		p := logPrinter{
+			open: func(name string) (io.ReadCloser, error) {
+				return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+			},
+			out: io.Discard, loc: time.UTC,
+		}
+		_, err := p.printFiles(context.Background(), "/logs/coroner.log")
+		var cliErr *Error
+		Expect(errors.As(err, &cliErr)).To(BeTrue())
+		Expect(cliErr.Kind).To(Equal(KindUsage))
+		Expect(strings.Count(cliErr.Error(), "/logs/coroner.log")).To(Equal(1))
+	})
+
+	It("prints a line of two objects, or an object followed by more text, as it is", func() {
+		for _, line := range []string{
+			`{"time":"2026-09-11T03:16:00Z","level":"INFO","msg":"m"}{"a":1}`,
+			`{"time":"2026-09-11T03:16:00Z","level":"INFO","msg":"m"} junk`,
+		} {
+			Expect(writeUTC(logFilter{}, line+"\n")).To(Equal(line + "\n"))
+		}
+	})
 
 	It("renders a log line as key=value text in the line's key order", func() {
 		Expect(writeUTC(logFilter{}, `{"time":"2026-09-11T03:16:00Z","level":"INFO","msg":"command finished","command":"coroner event add","kind":"ok","exit_code":0,"duration":1200000}`+"\n")).To(Equal(
