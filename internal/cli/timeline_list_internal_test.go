@@ -142,6 +142,14 @@ var _ = Describe("timeline list on a terminal", func() {
 		))
 	})
 
+	It("logs the timeline picked as the current timeline set, as timeline use does", func(ctx SpecContext) {
+		Expect(pick(ctx, "j\r")).To(Equal(0), errOut.String())
+
+		logged, err := os.ReadFile(config.DiagnosticLogPath(env["CORONER_DB"]))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(logged)).To(MatchRegexp(`"msg":"current timeline set","command":"coroner timeline list","timeline_id":"[^"]+"`))
+	})
+
 	It("changes nothing when q leaves", func(ctx SpecContext) {
 		Expect(pick(ctx, "jq")).To(Equal(0), errOut.String())
 		Expect(current(ctx)).To(Equal("mongo-outage"))

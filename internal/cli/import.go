@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -66,7 +67,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	if err != nil {
 		return err
 	}
-	records, err := readImportRecords(jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
+	records, err := readImportRecords(app.logger(), jsonlSource{path: path, readFile: app.ReadFile, stdin: app.In, stdinIsTTY: app.InIsTTY}, invalidImportHint)
 	if err != nil {
 		return err
 	}
@@ -91,6 +92,9 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 		return timelineNameTakenError(plan.takenName)
 	}
 
+	if plan.canWrite() {
+		logImportPlan(ctx, withDryRun(app.logger(), dryRun), plan.decisions)
+	}
 	plan.result.DryRun = dryRun
 	err = renderImport(inv.out, plan, dryRun || !plan.canWrite())
 	if err != nil {
@@ -162,6 +166,27 @@ func conflictCount(n int) string {
 	return fmt.Sprintf("%d records conflict", n)
 }
 
+// logImportPlan logs, for each record type and action, the count at info and each record's id
+// at debug.
+func logImportPlan(ctx context.Context, logger *slog.Logger, decisions []importDecision) {
+	for _, typ := range []string{"timeline", "source", "event", "annotation", "attachment", "link"} {
+		for _, action := range []importAction{importInserted, importSkipped, importReplaced} {
+			logCounted(ctx, logger, typ+"s "+string(action), idKey(typ), decidedIDs(decisions, typ, action))
+		}
+	}
+}
+
+// decidedIDs returns the ids of the records of type typ the plan decided action for.
+func decidedIDs(decisions []importDecision, typ string, action importAction) []string {
+	var ids []string
+	for _, d := range decisions {
+		if d.typ == typ && d.action == action {
+			ids = append(ids, d.id)
+		}
+	}
+	return ids
+}
+
 // mergeImport merges in into the database at dbPath, or plans it only under dryRun, which opens
 // the database read-only, migrating it first only when it is below the latest schema, and
 // plans against an empty one when it does not exist yet.
@@ -230,7 +255,7 @@ type jsonlSource struct {
 
 // readImportRecords reads and decodes the export src names, putting hint on a decode error. It
 // never reads a terminal stdin.
-func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
+func readImportRecords(logger *slog.Logger, src jsonlSource, hint string) ([]export.Record, error) {
 	path, stdin := src.path, src.stdin
 	switch {
 	case path == "-" && src.stdinIsTTY:
@@ -249,13 +274,14 @@ func readImportRecords(src jsonlSource, hint string) ([]export.Record, error) {
 		stdin = bytes.NewReader(data)
 	}
 
-	records, err := export.Decode(stdin)
+	records, stats, err := export.Decode(stdin)
 	if invalid, ok := errors.AsType[*export.DecodeError](err); ok {
 		return nil, &Error{Kind: KindInvalidInput, Message: invalid.Error(), Hint: hint, Err: err}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read the export: %w", err)
 	}
+	logger.Debug("export decoded", "path", src.path, "lines", stats.Lines, "format_versions", stats.FormatVersions)
 
 	return records, nil
 }

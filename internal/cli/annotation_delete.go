@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -42,14 +43,23 @@ func annotationDeleteDefinition() definition {
 }
 
 // annotationsDeleted are the annotations delete removed or, with --dry-run, would remove, with
-// their timelines' names by timeline id, their attachments' objects by annotation id, and why
-// the blobs they left unused were not deleted.
+// their timelines' names by timeline id, their attachments' objects by annotation id, what they
+// sweep along, and why the blobs they left unused were not deleted.
 type annotationsDeleted struct {
 	annotations   []timeline.Annotation
 	timelineNames map[string]string
 	attached      map[string][]attachmentJSON
 	dryRun        bool
+	swept         sweep
 	blobsErr      error
+}
+
+func (d annotationsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, d.dryRun)
+	for _, a := range d.annotations {
+		logger.InfoContext(ctx, "annotation deleted", annotationArgs(a)...)
+	}
+	d.swept.log(ctx, logger)
 }
 
 func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationsDeleted, error) {
@@ -90,6 +100,7 @@ func deleteAnnotations(ctx context.Context, app App, cfg config.Config, in field
 			}
 			attachments, err := ownersAttachments(ctx, tx, owners)
 			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			deleted.swept = sweep{attachments: idsOf(attachments, attachmentID)}
 			if err != nil {
 				return deleted, err
 			}

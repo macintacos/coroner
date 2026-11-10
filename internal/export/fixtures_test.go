@@ -88,7 +88,7 @@ var _ = Describe("Frozen export fixtures", func() {
 				return
 			}
 
-			records, err := export.Decode(bytes.NewReader(data))
+			records, _, err := export.Decode(bytes.NewReader(data))
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(records).To(HaveLen(bytes.Count(data, []byte("\n"))))
@@ -108,7 +108,7 @@ var _ = Describe("Frozen export fixtures", func() {
 
 var _ = Describe("Compatibility fixtures", func() {
 	It("decodes a later minor version, ignoring the keys, record types and enum values it adds", func() {
-		records, err := export.Decode(bytes.NewReader(readFixture("compat/v1.3-unknown-keys-and-types.jsonl")))
+		records, _, err := export.Decode(bytes.NewReader(readFixture("compat/v1.3-unknown-keys-and-types.jsonl")))
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(labels(records)).To(Equal([]string{
@@ -117,7 +117,7 @@ var _ = Describe("Compatibility fixtures", func() {
 	})
 
 	It("rejects major version 2, naming the major it reads, and skips its records", func() {
-		records, err := export.Decode(bytes.NewReader(readFixture("compat/v2.0.jsonl")))
+		records, _, err := export.Decode(bytes.NewReader(readFixture("compat/v2.0.jsonl")))
 
 		Expect(err).To(MatchError(And(ContainSubstring(`"2.0"`), ContainSubstring("1.x"))))
 		Expect(records).To(BeEmpty())
@@ -199,7 +199,7 @@ func reencode(name string, data []byte) []byte {
 		return out.Bytes()
 	}
 
-	records, err := export.Decode(bytes.NewReader(data))
+	records, _, err := export.Decode(bytes.NewReader(data))
 	Expect(err).NotTo(HaveOccurred())
 	for _, env := range envelopes(records) {
 		ordered, err := export.Records(env)

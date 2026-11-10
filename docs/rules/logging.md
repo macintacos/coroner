@@ -45,6 +45,14 @@ rules say what a line holds; a new or changed line also updates that page.
    - `event`: an event's id.
    - `annotation`: an annotation's id.
    - `timeline`: the name of the timeline the line is about.
+   - `timeline_id`: a timeline's id.
+   - `source_id`: a source's id.
+   - `link`: a link's id.
+   - `overlay_id`: an overlay's id.
+   - `from_event`: the id of the event a link leaves.
+   - `to_event`: the id of the event a link reaches.
+   - `fields`: the names of the fields an edit changed, as the export format spells them,
+     such as `title`; never their values.
    - `count`: how many records a step changed or read, or how many blobs garbage
      collection deleted.
    - `counts`: how many records of each kind a read returned or an export holds, as a
@@ -75,6 +83,9 @@ rules say what a line holds; a new or changed line also updates that page.
    - `input`: the text typed into a time flag.
    - `instant`: the instant typed time input resolved to.
    - `precision`: the precision typed time input resolved to, such as `minute`.
+   - `lines`: how many lines a file coroner read held.
+   - `format_versions`: the `format_version` of each header in an export coroner read, in
+     order.
 6. **A command logs the records it names, and counts the ones it sweeps:** it logs one
    info line per record it names, under that record's key from rule 5, so a line about an
    annotation carries both its `annotation` and its `event`. Records it changes as a side

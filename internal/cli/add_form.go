@@ -27,7 +27,7 @@ import (
 )
 
 // formWrite is a write command a form submits to: its path below coroner, definition and run function.
-type formWrite[R renderer] struct {
+type formWrite[R writeResult] struct {
 	// path is the command below coroner, as in "event add".
 	path string
 	def  definition
@@ -45,6 +45,7 @@ type addForm[R addResult] struct {
 // in the summary that ends the session when the add stored a record.
 type addResult interface {
 	renderer
+	changeLogger
 	// summary returns how the session's summary lists the record, and whether the add stored it.
 	summary() (summaryLine, bool)
 }
@@ -770,6 +771,7 @@ func (w formWrite[R]) submit(ctx context.Context, s formSession, values fieldVal
 	if err != nil {
 		return result, err
 	}
+	result.logChanges(ctx, s.app.logger())
 	err = result.render(s.inv.out)
 	if err != nil {
 		return result, err

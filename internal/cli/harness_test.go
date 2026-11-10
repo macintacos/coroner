@@ -115,8 +115,13 @@ func (h harness) readFile(name string) ([]byte, error) {
 func countedIDs(n *int) func() (uuid.UUID, error) {
 	return func() (uuid.UUID, error) {
 		*n++
-		return uuid.Parse(fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", *n))
+		return uuid.Parse(countedID(*n))
 	}
+}
+
+// countedID is the nth ID countedIDs returns.
+func countedID(n int) string {
+	return fmt.Sprintf("0199a1b2-0000-7000-8000-%012d", n)
 }
 
 // nilSeams returns the name of each func field of app that is nil, which a command would panic

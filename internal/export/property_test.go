@@ -29,7 +29,7 @@ var _ = Describe("Decode, on any input", func() {
 			)
 			lines := append([]string{header}, rapid.SliceOf(line).Draw(t, "lines")...)
 
-			records, err := export.Decode(strings.NewReader(strings.Join(lines, "\n") + "\n"))
+			records, _, err := export.Decode(strings.NewReader(strings.Join(lines, "\n") + "\n"))
 
 			var named []int
 			if decodeErr, ok := errors.AsType[*export.DecodeError](err); ok {

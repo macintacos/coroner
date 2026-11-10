@@ -14,6 +14,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/cli"
@@ -45,6 +46,15 @@ func lastLogLine(path string) map[string]any {
 	lines := logLines(path)
 	Expect(lines).NotTo(BeEmpty())
 	return lines[len(lines)-1]
+}
+
+// logLine matches a decoded log line at level with msg and each of keys' key-value pairs.
+func logLine(level, msg string, keys ...any) types.GomegaMatcher {
+	matchers := []types.GomegaMatcher{HaveKeyWithValue("level", level), HaveKeyWithValue("msg", msg)}
+	for pair := range slices.Chunk(keys, 2) {
+		matchers = append(matchers, HaveKeyWithValue(pair[0], pair[1]))
+	}
+	return And(matchers...)
 }
 
 type panickingWriter struct{}
@@ -92,6 +102,14 @@ var _ = Describe("diagnostic log", func() {
 		return cli.Run(ctx, app)
 	}
 
+	// linesWritten runs args, expecting exit code want, and returns the log lines it wrote.
+	linesWritten := func(ctx context.Context, want int, args ...string) []map[string]any {
+		GinkgoHelper()
+		before := len(logLines(logPath))
+		Expect(run(ctx, h.app(args...))).To(Equal(want), errOut.String())
+		return logLines(logPath)[before:]
+	}
+
 	It("ends every command that opens a database with its finish line, and keeps opted-out commands out", func(ctx SpecContext) {
 		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
 		Expect(run(ctx, h.app("timeline", "use", "t"))).To(Equal(0))
@@ -136,6 +154,20 @@ var _ = Describe("diagnostic log", func() {
 		run(ctx, completion.app("__complete", "timeline", "use", ""))
 		Expect(openedTheDB).To(BeTrue())
 		Expect(readFile(logPath)).To(Equal(before))
+	})
+
+	It("logs an edit that changed nothing with an empty fields list", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "inc", "--title", "same"))).To(Equal(0))
+		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "same"))).To(Equal(0))
+
+		var edited map[string]any
+		for _, line := range logLines(logPath) {
+			if line["msg"] == "timeline edited" && line["level"] == "INFO" {
+				edited = line
+			}
+		}
+		Expect(edited).To(HaveKeyWithValue("fields", BeEmpty()))
+		Expect(edited).To(HaveKeyWithValue("fields", Not(BeNil())))
 	})
 
 	It("hands the store the command's logger and clock", func(ctx SpecContext) {
@@ -276,6 +308,8 @@ var _ = Describe("diagnostic log", func() {
 		other := h
 		other.home = GinkgoT().TempDir()
 		other.db = filepath.Join(other.home, "coroner.db")
+		otherIDs := 0
+		other.newID = countedIDs(&otherIDs)
 		for _, each := range []harness{h, other} {
 			Expect(run(ctx, each.app("timeline", "create", "t"))).To(Equal(0))
 			Expect(run(ctx, each.app("timeline", "list"))).To(Equal(0))
@@ -313,6 +347,156 @@ var _ = Describe("diagnostic log", func() {
 			HaveKeyWithValue("by", "default"))))
 		Expect(linesWith("default time zone resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
 			HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file"))))
+	})
+
+	It("logs how many lines an imported export held and its format versions under --debug", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "add", "x", "-t", "inc"))).To(Equal(0))
+		path := filepath.Join(h.home, "inc.jsonl")
+		Expect(run(ctx, h.app("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
+		data := readFile(path)
+		first, _, _ := strings.Cut(data, "\n")
+		var header struct {
+			FormatVersion string `json:"format_version"`
+		}
+		Expect(json.Unmarshal([]byte(first), &header)).To(Succeed())
+
+		Expect(run(ctx, h.app("import", path, "--debug"))).To(Equal(0), errOut.String())
+
+		decoded := slices.DeleteFunc(logLines(logPath), func(line map[string]any) bool { return line["msg"] != "export decoded" })
+		Expect(decoded).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("path", path),
+			HaveKeyWithValue("lines", float64(strings.Count(data, "\n"))),
+			HaveKeyWithValue("format_versions", HaveExactElements(header.FormatVersion)))))
+	})
+
+	It("counts what an import inserts, skips and replaces at info, and lists each record under --debug", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "add", "a", "-t", "inc"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "add", "b", "-t", "inc"))).To(Equal(0))
+		type withID struct {
+			ID string `json:"id"`
+		}
+		var listed struct {
+			Timelines []withID `json:"timelines"`
+			Events    []withID `json:"events"`
+		}
+		out.Reset()
+		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--json"))).To(Equal(0))
+		Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed())
+		timelineID, eventA, eventB := listed.Timelines[0].ID, listed.Events[0].ID, listed.Events[1].ID
+
+		path := filepath.Join(h.home, "inc.jsonl")
+		Expect(run(ctx, h.app("timeline", "export", "-t", "inc", "--format", "jsonl", "-o", path))).To(Equal(0))
+		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed"))).To(Equal(0))
+		Expect(run(ctx, h.app("event", "delete", "inc#2"))).To(Equal(0))
+
+		written := func(want int, args ...string) []map[string]any { return linesWritten(ctx, want, args...) }
+		isPlanLine := func(line map[string]any) bool {
+			msg, _ := line["msg"].(string)
+			return strings.HasSuffix(msg, " inserted") || strings.HasSuffix(msg, " skipped") || strings.HasSuffix(msg, " replaced")
+		}
+		line := logLine
+
+		Expect(written(0, "import", path, "--on-conflict", "replace", "--dry-run", "--debug")).To(ContainElement(
+			line("INFO", "events inserted", "count", float64(1), "dry_run", true)))
+
+		lines := written(0, "import", path, "--on-conflict", "replace", "--debug")
+		Expect(lines).To(ContainElements(
+			line("INFO", "timelines replaced", "count", float64(1)),
+			line("INFO", "events skipped", "count", float64(1)),
+			line("INFO", "events inserted", "count", float64(1)),
+			line("DEBUG", "timelines replaced", "timeline_id", timelineID),
+			line("DEBUG", "events skipped", "event", eventA),
+			line("DEBUG", "events inserted", "event", eventB),
+		))
+		Expect(slices.ContainsFunc(lines, func(l map[string]any) bool { _, ok := l["dry_run"]; return isPlanLine(l) && ok })).To(BeFalse())
+
+		Expect(run(ctx, h.app("timeline", "edit", "inc", "--title", "changed-again"))).To(Equal(0))
+		Expect(slices.ContainsFunc(written(4, "import", path, "--debug"), isPlanLine)).To(BeFalse())
+
+		var events strings.Builder
+		for l := range strings.Lines(readFile(path)) {
+			if strings.Contains(l, `"type":"event"`) {
+				events.WriteString(l)
+			}
+		}
+		eventsPath := filepath.Join(h.home, "events.jsonl")
+		Expect(os.WriteFile(eventsPath, []byte(events.String()), 0o600)).To(Succeed())
+		Expect(written(0, "event", "add", "-t", "inc", "--from-file", eventsPath, "--debug")).To(ContainElements(
+			line("INFO", "events skipped", "count", float64(2)),
+			line("DEBUG", "events skipped", "event", eventA),
+			line("DEBUG", "events skipped", "event", eventB),
+		))
+	})
+
+	It("counts what a delete sweeps along at info, and lists each record under --debug", func(ctx SpecContext) {
+		attachment := filepath.Join(h.home, "notes.txt")
+		Expect(os.WriteFile(attachment, []byte("notes"), 0o600)).To(Succeed())
+		type record struct {
+			ID          string `json:"id"`
+			Attachments []struct {
+				ID string `json:"id"`
+			} `json:"attachments"`
+		}
+		// created runs args under --json and returns the record it printed.
+		created := func(args ...string) record {
+			out.Reset()
+			Expect(run(ctx, h.app(append(args, "--json")...))).To(Equal(0), errOut.String())
+			var r record
+			Expect(json.Unmarshal(out.Bytes(), &r)).To(Succeed(), out.String())
+			return r
+		}
+		written := func(args ...string) []map[string]any { return linesWritten(ctx, 0, args...) }
+		line := logLine
+
+		created("timeline", "create", "inc")
+		created("timeline", "create", "other")
+		a := created("event", "add", "a", "-t", "inc", "--attach", attachment)
+		b := created("event", "add", "b", "-t", "inc")
+		c := created("event", "add", "c", "-t", "inc")
+		created("event", "add", "d", "-t", "other")
+		n1 := created("annotation", "add", "n1", "-t", "inc", "-e", "1", "--kind", "comment", "--attach", attachment)
+		n2 := created("annotation", "add", "n2", "-t", "inc", "-e", "2", "--kind", "comment", "--attach", attachment)
+		linkAB := created("event", "link", "inc#1", "inc#2", "--kind", "led_to")
+		linkFromOther := created("event", "link", "other#1", "inc#3", "--kind", "led_to")
+		overlay := created("overlay", "create", "both", "-t", "inc", "-t", "other")
+
+		Expect(written("event", "delete", "inc#1", "--debug")).To(ContainElements(
+			line("INFO", "event deleted", "event", a.ID),
+			line("INFO", "annotations deleted", "count", float64(1)),
+			line("INFO", "attachments deleted", "count", float64(2)),
+			line("INFO", "links deleted", "count", float64(1)),
+			line("DEBUG", "annotations deleted", "annotation", n1.ID),
+			line("DEBUG", "attachments deleted", "attachment", a.Attachments[0].ID),
+			line("DEBUG", "attachments deleted", "attachment", n1.Attachments[0].ID),
+			line("DEBUG", "links deleted", "link", linkAB.ID),
+		))
+
+		Expect(written("annotation", "delete", n2.ID, "--debug")).To(ContainElements(
+			line("INFO", "attachments deleted", "count", float64(1)),
+			line("DEBUG", "attachments deleted", "attachment", n2.Attachments[0].ID),
+		))
+
+		out.Reset()
+		Expect(written("timeline", "delete", "inc", "--yes", "--dry-run", "--debug")).To(ContainElements(
+			line("INFO", "events deleted", "count", float64(2), "dry_run", true),
+			line("INFO", "links deleted", "count", float64(1), "dry_run", true),
+			line("INFO", "overlays changed", "count", float64(1), "dry_run", true),
+		))
+		Expect(out.String()).To(ContainSubstring("events: 2, annotations: 0"))
+
+		lines := written("timeline", "delete", "inc", "--yes", "--debug")
+		Expect(lines).To(ContainElements(
+			line("INFO", "timeline deleted"),
+			line("INFO", "events deleted", "count", float64(2)),
+			line("INFO", "links deleted", "count", float64(1)),
+			line("INFO", "overlays changed", "count", float64(1)),
+			line("DEBUG", "events deleted", "event", b.ID),
+			line("DEBUG", "events deleted", "event", c.ID),
+			line("DEBUG", "links deleted", "link", linkFromOther.ID),
+			line("DEBUG", "overlays changed", "overlay_id", overlay.ID),
+		))
+		Expect(lines).NotTo(ContainElement(HaveKeyWithValue("msg", BeElementOf("annotations deleted", "attachments deleted"))))
 	})
 
 	DescribeTable("logs which setting selected the timelines under --debug",

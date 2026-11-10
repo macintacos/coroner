@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -68,6 +69,12 @@ type annotationAdded struct {
 	event      *timeline.Event
 	attach     attachResult
 	dryRun     bool
+}
+
+func (a annotationAdded) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, a.dryRun)
+	logger.InfoContext(ctx, "annotation added", annotationArgs(a.annotation)...)
+	a.attach.logAdded(ctx, logger)
 }
 
 func addAnnotation(ctx context.Context, app App, cfg config.Config, in fieldValues) (annotationAdded, error) {

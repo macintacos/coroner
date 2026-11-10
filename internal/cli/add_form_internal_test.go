@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -254,6 +255,30 @@ var _ = Describe("add forms", func() {
 				Expect(runArgs(ctx, append(echoedArgs(ctx, errOut.String())[1:], "--dry-run", "--json")...)).To(Equal(0), errOut.String())
 				Expect(withoutRecordKeys(out.Bytes())).To(Equal(written))
 				Expect(written).To(HaveKeyWithValue("text", "Primary stepped down"))
+			})
+
+			It("log the same change lines as the command they echo", func(ctx SpecContext) {
+				app.log = newDiagnosticLog(app)
+				command := eventAdd(ctx, answers(submit(map[string]string{
+					"text": "Primary stepped down", "at": "2026-09-11T03:14:07Z", "source": "mongod", "tag": "election\nphase:detect",
+				}), confirm(false)))
+
+				Expect(runForm(ctx, command, "event", "add", "--interactive")).To(Succeed())
+				submitted := changeShapes(app.log.held)
+				echoed := echoedArgs(ctx, errOut.String())[1:]
+				Expect(echoed[:2]).To(Equal([]string{"--db", db}))
+
+				app.log = nil
+				fresh := filepath.Join(GinkgoT().TempDir(), "coroner.db")
+				writeMigratedDatabase(fresh)
+				Expect(runArgs(ctx, "--db", fresh, "timeline", "create", "mongo-outage")).To(Equal(0), errOut.String())
+				Expect(runArgs(ctx, "--db", fresh, "timeline", "use", "mongo-outage")).To(Equal(0), errOut.String())
+				logPath := config.DiagnosticLogPath(fresh)
+				before := fileSize(logPath)
+				Expect(runArgs(ctx, append([]string{"--db", fresh}, echoed[2:]...)...)).To(Equal(0), errOut.String())
+
+				Expect(submitted).To(Equal(changeShapes(appendedLines(logPath, before))))
+				Expect(submitted).To(ContainElement(HaveKeyWithValue("msg", "event added")))
 			})
 
 			It("store the time typed in the zone typed under More options", func(ctx SpecContext) {
@@ -1086,6 +1111,50 @@ func scratchApp(home string, out, errOut io.Writer, newID func() (uuid.UUID, err
 		OpenStore:         store.Open,
 		OpenStoreReadOnly: store.OpenReadOnly,
 	}
+}
+
+// changeShape is a change line without what differs between two databases: its level, message,
+// keys and fields.
+func changeShape(line map[string]any) map[string]any {
+	return map[string]any{
+		"level": line["level"], "msg": line["msg"], "keys": slices.Sorted(maps.Keys(line)), "fields": line["fields"],
+	}
+}
+
+// changeShapes returns the shape of each JSON line in lines but command finished.
+func changeShapes(lines [][]byte) []map[string]any {
+	GinkgoHelper()
+	var shapes []map[string]any
+	for _, raw := range lines {
+		if len(raw) == 0 {
+			continue
+		}
+		var line map[string]any
+		Expect(json.Unmarshal(raw, &line)).To(Succeed())
+		if line["msg"] != "command finished" {
+			shapes = append(shapes, changeShape(line))
+		}
+	}
+
+	return shapes
+}
+
+// appendedLines returns the lines of the file at path past its first skip bytes.
+func appendedLines(path string, skip int) [][]byte {
+	GinkgoHelper()
+	data, err := os.ReadFile(filepath.Clean(path))
+	Expect(err).NotTo(HaveOccurred())
+
+	return bytes.Split(bytes.TrimSpace(data[skip:]), []byte("\n"))
+}
+
+// fileSize returns the size of the file at path, or 0 when there is none.
+func fileSize(path string) int {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return int(info.Size())
 }
 
 // storelessApp returns an App that runs args, with no config file, and fails the spec when it

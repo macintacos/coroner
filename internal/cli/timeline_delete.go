@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -43,14 +44,50 @@ func timelineDeleteDefinition() definition {
 }
 
 // timelineDeleted is the timeline delete removed or, with --dry-run, would remove, with the
-// overlays that lose it and its counts of events and annotations, which only --dry-run prints.
-// Only a delete reports why the blobs it left unused were not deleted.
+// overlays that lose it and what it sweeps along, whose counts of events and annotations only
+// --dry-run prints. Only a delete reports why the blobs it left unused were not deleted.
 type timelineDeleted struct {
-	timeline            timeline.Timeline
-	overlays            []timeline.Overlay
-	dryRun              bool
-	events, annotations int
-	blobsErr            error
+	timeline timeline.Timeline
+	overlays []timeline.Overlay
+	dryRun   bool
+	swept    sweep
+	blobsErr error
+}
+
+func (d timelineDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, d.dryRun)
+	logger.InfoContext(ctx, "timeline deleted", "timeline_id", d.timeline.ID)
+	d.swept.log(ctx, logger)
+}
+
+// timelineSweep returns what deleting the timeline with id timelineID removes beside it, with
+// overlays, the overlays it leaves.
+func timelineSweep(ctx context.Context, tx *store.Tx, timelineID string, overlays []timeline.Overlay) (sweep, error) {
+	events, err := tx.Events(ctx, timelineID)
+	if err != nil {
+		return sweep{}, err
+	}
+	annotations, err := tx.Annotations(ctx, timelineID)
+	if err != nil {
+		return sweep{}, err
+	}
+	attachments, err := tx.TimelineAttachments(ctx, timelineID)
+	if err != nil {
+		return sweep{}, err
+	}
+	eventIDs := idsOf(events, eventID)
+	links, err := eventLinkIDs(ctx, tx, eventIDs)
+	if err != nil {
+		return sweep{}, err
+	}
+
+	return sweep{
+		events:      eventIDs,
+		annotations: idsOf(annotations, annotationID),
+		attachments: idsOf(attachments, attachmentID),
+		links:       links,
+		overlays:    idsOf(overlays, overlayID),
+	}, nil
 }
 
 func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineDeleted, error) {
@@ -84,11 +121,9 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 			if err != nil {
 				return deleted, err
 			}
-			if dryRun {
-				deleted.events, deleted.annotations, err = timelineContents(ctx, tx, t.ID)
-				if err != nil {
-					return deleted, err
-				}
+			deleted.swept, err = timelineSweep(ctx, tx, t.ID, deleted.overlays)
+			if err != nil {
+				return deleted, err
 			}
 
 			return deleted, tx.DeleteTimeline(ctx, t.ID)
@@ -101,20 +136,6 @@ func deleteTimeline(ctx context.Context, app App, cfg config.Config, in fieldVal
 	}
 
 	return deleted, nil
-}
-
-// timelineContents returns how many events and annotations are in the timeline with id timelineID.
-func timelineContents(ctx context.Context, tx *store.Tx, timelineID string) (int, int, error) {
-	page, err := tx.ListEvents(ctx, store.EventFilter{TimelineIDs: []string{timelineID}, Limit: 1})
-	if err != nil {
-		return 0, 0, err
-	}
-	stored, err := tx.Annotations(ctx, timelineID)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return page.Total, len(stored), nil
 }
 
 func (d timelineDeleted) render(o output) error {
@@ -133,7 +154,7 @@ func (d timelineDeleted) render(o output) error {
 		return notifyBlobsErr(o, d.blobsErr)
 	}
 
-	summary := fmt.Sprintf("Would delete timeline `%s`: events: %d, annotations: %d", d.timeline.Name, d.events, d.annotations)
+	summary := fmt.Sprintf("Would delete timeline `%s`: events: %d, annotations: %d", d.timeline.Name, len(d.swept.events), len(d.swept.annotations))
 	if o.format == formatJSON {
 		err = o.notify("%s", summary)
 	} else {

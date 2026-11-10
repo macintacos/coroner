@@ -142,6 +142,15 @@ type eventAdded struct {
 	dryRun, existed bool
 }
 
+func (a eventAdded) logChanges(ctx context.Context, logger *slog.Logger) {
+	if a.existed {
+		return
+	}
+	logger = withDryRun(logger, a.dryRun)
+	logger.InfoContext(ctx, "event added", "event", a.event.ID, "timeline_id", a.timeline.ID)
+	a.attach.logAdded(ctx, logger)
+}
+
 func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventAdded, error) {
 	now := app.Now()
 	z, err := timeZone(in.value("tz"), cfg.DefaultTimezone, now.Location())

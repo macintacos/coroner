@@ -71,6 +71,44 @@ its `path` and `size` in bytes. `timeline export -o` adds the export's `format` 
 `attachment export -o` writes it or an export copies it beside a Markdown or JSONL export,
 adds its `attachment` id and `sha256`. Output to stdout writes no such line.
 
+A write command also logs, at info, a line for each record it creates, edits or deletes,
+naming it by id:
+
+- `timeline created`, `timeline edited`, `timeline deleted`: `timeline_id`;
+- `current timeline set`: `timeline_id`, from `timeline use` or `timeline list`'s picker;
+  `current timeline cleared` carries no key;
+- `event added`, `event edited`, `event deleted`: `event`, `timeline_id`;
+- `annotation added`, `annotation edited`, `annotation deleted`: `annotation`,
+  `timeline_id`, and `event` when it is on one;
+- `attachment added`: `attachment`, its `event` or `annotation`, `size`, `sha256`; under
+  `--dry-run` nothing is stored, so it carries no `attachment`;
+- `attachment deleted`: `attachment`, its `event` or `annotation`;
+- `link added`, `link deleted`: `link`, `kind`, `from_event`, `to_event`;
+- `overlay created`: `overlay_id`;
+- `source edited`: `source_id`.
+
+An edit's line adds `fields`: the names of the fields it changed, as the export format
+spells them, never their values, and `[]` when nothing changed. Under `--dry-run` each
+line carries `dry_run`. A command that finds its record already there, as
+`--if-not-exists` and `event add --id` can, logs no line for it.
+
+A delete also counts what it removes with the records it names: `events deleted`,
+`annotations deleted`, `attachments deleted` and `links deleted`, and `overlays changed`
+for the overlays a deleted timeline leaves. Each comes with its `count`, and only when
+there are some. Under `--debug` the same message is logged once per record, with its id
+under `event`, `annotation`, `attachment`, `link` or `overlay_id`. The stored files a
+delete leaves unused are not counted. A delete's `blob deleted` lines come before the
+lines naming the records it deleted.
+
+`import` and `event add --from-file` log, for each record type, how many records they
+insert, skip and replace, such as `timelines replaced`, `events inserted` and
+`attachments skipped`, each with its `count`, and only when there are some. A record
+already stored unchanged, a conflict `--on-conflict skip` keeps, and an attachment whose
+content is missing count as skipped. An import a conflict blocks writes nothing and logs
+none of these. Under `--debug` the same message is logged once per record, with its id
+under `timeline_id`, `source_id`, `event`, `annotation`, `attachment` or `link`. Under
+`--dry-run` every such line carries `dry_run`.
+
 Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags
@@ -105,6 +143,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   was given (never its text), `order`, `desc` when `--order desc` reversed them, and
   `limit`; and `event` or `attachment`, the id of the record `-e` or the argument named;
 - `timeline picked`, with the `timeline` picked in `timeline list`'s picker;
+- `export decoded`, when `import` or `event add --from-file` reads an export, with its
+  `path` (`-` for stdin), how many `lines` it held and the `format_versions` of its
+  headers, in order;
 - the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
   new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
   `error`, when that read fails; and `attachment image not shown`.

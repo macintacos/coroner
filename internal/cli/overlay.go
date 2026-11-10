@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 
@@ -85,6 +86,13 @@ type overlayCreated struct {
 	timelines []timeline.Timeline
 	existed   bool
 	dryRun    bool
+}
+
+func (c overlayCreated) logChanges(ctx context.Context, logger *slog.Logger) {
+	if c.existed {
+		return
+	}
+	withDryRun(logger, c.dryRun).InfoContext(ctx, "overlay created", "overlay_id", c.overlay.ID)
 }
 
 func createOverlay(ctx context.Context, app App, cfg config.Config, in fieldValues) (overlayCreated, error) {

@@ -94,7 +94,7 @@ var _ = Describe("timeline export", func() {
 	It("writes JSONL that decodes and re-encodes to the same bytes", func(ctx SpecContext) {
 		jsonl := exportAs(ctx, "jsonl")
 
-		records, err := export.Decode(strings.NewReader(jsonl))
+		records, _, err := export.Decode(strings.NewReader(jsonl))
 		Expect(err).NotTo(HaveOccurred())
 		var b bytes.Buffer
 		Expect(export.WriteRecords(&b, records)).To(Succeed())
@@ -404,7 +404,7 @@ var _ = Describe("timeline export", func() {
 
 			Expect(run(ctx, "timeline", "export", "--format", "jsonl", "-o", dir+"/")).To(Equal(0), errOut.String())
 
-			records, err := export.Decode(strings.NewReader(readFile(filepath.Join(dir, "mongo-outage.jsonl"))))
+			records, _, err := export.Decode(strings.NewReader(readFile(filepath.Join(dir, "mongo-outage.jsonl"))))
 			Expect(err).NotTo(HaveOccurred())
 			var contents []string
 			for _, record := range records {

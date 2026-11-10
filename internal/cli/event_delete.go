@@ -46,12 +46,74 @@ func eventDeleteDefinition() definition {
 }
 
 // eventsDeleted are the events delete removed or, with --dry-run, would remove, with their
-// attachments' objects keyed by event id, and why the blobs they left unused were not deleted.
+// attachments' objects keyed by event id, what they sweep along, and why the blobs they left
+// unused were not deleted.
 type eventsDeleted struct {
 	found    foundEvents
 	attached map[string][]attachmentJSON
 	dryRun   bool
+	swept    sweep
 	blobsErr error
+}
+
+func (d eventsDeleted) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, d.dryRun)
+	for _, e := range d.found.events {
+		logger.InfoContext(ctx, "event deleted", "event", e.ID, "timeline_id", e.TimelineID)
+	}
+	d.swept.log(ctx, logger)
+}
+
+// eventsSweep returns what deleting events removes beside them: their annotations; attachments,
+// the events' own then their annotations'; and their links.
+func eventsSweep(ctx context.Context, tx *store.Tx, found foundEvents, eventAttachments []timeline.Attachment) (sweep, error) {
+	var annotations []timeline.Annotation
+	for _, e := range found.events {
+		eventAnnotations, err := tx.EventAnnotations(ctx, e.ID)
+		if err != nil {
+			return sweep{}, err
+		}
+		annotations = append(annotations, eventAnnotations...)
+	}
+	owners := make([]timeline.AttachmentOwner, 0, len(annotations))
+	for _, a := range annotations {
+		owners = append(owners, timeline.AttachmentOwner{AnnotationID: &a.ID})
+	}
+	annotationAttachments, err := ownersAttachments(ctx, tx, owners)
+	if err != nil {
+		return sweep{}, err
+	}
+	links, err := eventLinkIDs(ctx, tx, found.ids())
+	if err != nil {
+		return sweep{}, err
+	}
+
+	return sweep{
+		annotations: idsOf(annotations, annotationID),
+		attachments: idsOf(slices.Concat(eventAttachments, annotationAttachments), attachmentID),
+		links:       links,
+	}, nil
+}
+
+// eventLinkIDs returns the ids of the links from or to any of eventIDs, each once, in the order
+// first read. Unlike tx.TimelineLinks, it finds a link into the events' timeline from another.
+func eventLinkIDs(ctx context.Context, tx *store.Tx, eventIDs []string) ([]string, error) {
+	var ids []string
+	seen := map[string]bool{}
+	for _, id := range eventIDs {
+		links, err := tx.EventLinks(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range links {
+			if !seen[l.ID] {
+				seen[l.ID] = true
+				ids = append(ids, l.ID)
+			}
+		}
+	}
+
+	return ids, nil
 }
 
 func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventsDeleted, error) {
@@ -82,6 +144,10 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 			deleted.found = found
 			attachments, err := ownersAttachments(ctx, tx, found.owners())
 			deleted.attached = attachmentsByOwner(attachments, cfg.DBPath)
+			if err != nil {
+				return deleted, err
+			}
+			deleted.swept, err = eventsSweep(ctx, tx, found, attachments)
 			if err != nil {
 				return deleted, err
 			}

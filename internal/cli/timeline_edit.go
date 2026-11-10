@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 )
@@ -172,6 +174,7 @@ func editTyped(ctx context.Context, s formSession, z zone, oldName string, value
 	if err != nil {
 		return err
 	}
+	edited.logChanges(ctx, s.app.logger())
 	err = edited.render(s.inv.out, z)
 	if err == nil && !edited.dryRun && edited.timeline.Name != oldName {
 		err = s.inv.out.notify("`%s` no longer selects this timeline; commands take `%s`.", oldName, edited.timeline.Name)
@@ -198,6 +201,11 @@ func timelineEditDefinition() definition {
 type timelineEdited struct {
 	timeline timeline.Timeline
 	dryRun   bool
+	fields   []string
+}
+
+func (e timelineEdited) logChanges(ctx context.Context, logger *slog.Logger) {
+	withDryRun(logger, e.dryRun).InfoContext(ctx, "timeline edited", "timeline_id", e.timeline.ID, "fields", e.fields)
 }
 
 func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValues) (timelineEdited, error) {
@@ -222,12 +230,15 @@ func editTimeline(ctx context.Context, app App, cfg config.Config, in fieldValue
 			if err != nil {
 				return timelineEdited{}, err
 			}
+			before := t
 			t = edit.apply(t, now)
 			err = checkTimeline(t)
 			if err != nil {
 				return timelineEdited{}, err
 			}
-			edited := timelineEdited{timeline: t, dryRun: dryRun}
+			edited := timelineEdited{
+				timeline: t, dryRun: dryRun, fields: changedFields(export.NewTimeline(before), export.NewTimeline(t)),
+			}
 
 			err = tx.UpdateTimeline(ctx, t)
 			if errors.Is(err, store.ErrConflict) {

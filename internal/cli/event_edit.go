@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/timeparse"
@@ -85,6 +86,13 @@ type eventEdited struct {
 	when   string
 	attach attachResult
 	dryRun bool
+	fields []string
+}
+
+func (e eventEdited) logChanges(ctx context.Context, logger *slog.Logger) {
+	logger = withDryRun(logger, e.dryRun)
+	logger.InfoContext(ctx, "event edited", "event", e.event.ID, "timeline_id", e.timeline.ID, "fields", e.fields)
+	e.attach.logAdded(ctx, logger)
 }
 
 func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (eventEdited, error) {
@@ -126,11 +134,13 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 			if err != nil {
 				return b, err
 			}
+			before := e
 			e, err = edit.apply(e, z)
 			if err != nil {
 				return b, err
 			}
 			b.result.event, b.result.timeline = e, t
+			b.result.fields = changedFields(export.NewEvent(before), export.NewEvent(e))
 			err = b.attachIn(ctx, tx, timeline.AttachmentOwner{EventID: &e.ID})
 			if err != nil {
 				return b, err

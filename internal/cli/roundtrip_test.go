@@ -220,7 +220,7 @@ func checkReplace(t *rapid.T, dir string, names []string) error {
 	if err != nil {
 		return err
 	}
-	got, err := export.Decode(bytes.NewReader(cData))
+	got, _, err := export.Decode(bytes.NewReader(cData))
 	if err != nil {
 		return err
 	}
@@ -241,7 +241,8 @@ func decodeFile(path string) ([]export.Record, error) {
 		return nil, err
 	}
 
-	return export.Decode(bytes.NewReader(data))
+	records, _, err := export.Decode(bytes.NewReader(data))
+	return records, err
 }
 
 func withoutHeaders(records []export.Record) []export.Record {
@@ -331,7 +332,7 @@ func importableFixture(dir, name string) fixture {
 		return f
 	}
 
-	f.records, err = export.Decode(bytes.NewReader(data))
+	f.records, _, err = export.Decode(bytes.NewReader(data))
 	Expect(err).NotTo(HaveOccurred())
 	src, err := os.Open(path)
 	Expect(err).NotTo(HaveOccurred())

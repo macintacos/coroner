@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/spf13/cobra"
 
 	"github.com/macintacos/coroner/internal/config"
+	"github.com/macintacos/coroner/internal/export"
 	"github.com/macintacos/coroner/internal/store"
 )
 
@@ -46,6 +48,11 @@ type sourceEdited struct {
 	source  store.SourceUsage
 	oldName string
 	dryRun  bool
+	fields  []string
+}
+
+func (e sourceEdited) logChanges(ctx context.Context, logger *slog.Logger) {
+	withDryRun(logger, e.dryRun).InfoContext(ctx, "source edited", "source_id", e.source.ID, "fields", e.fields)
 }
 
 func editSource(ctx context.Context, app App, cfg config.Config, in fieldValues) (sourceEdited, error) {
@@ -78,6 +85,7 @@ func editSource(ctx context.Context, app App, cfg config.Config, in fieldValues)
 			}
 			edited := sourceEdited{source: source, oldName: *oldName, dryRun: dryRun}
 			edited.source.Name = newName
+			edited.fields = changedFields(export.NewSource(source.Source), export.NewSource(edited.source.Source))
 
 			err = tx.RenameSource(ctx, source.ID, newName)
 			if errors.Is(err, store.ErrConflict) {
