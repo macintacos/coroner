@@ -222,6 +222,19 @@ var _ = Describe("the viewer's attachments", func() {
 		Expect(logged.String()).To(SatisfyAll(ContainSubstring("attachment image not shown"), ContainSubstring(pngSHA)))
 	})
 
+	DescribeTable("logs how it shows images on a terminal",
+		func(term viewer.Terminal, want string) {
+			var logged bytes.Buffer
+			opts := optionsFor(withAttachments(), b)
+			opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			viewer.OnTerminal(term, viewer.New(opts))
+
+			Expect(logged.String()).To(SatisfyAll(ContainSubstring(`msg="inline images decided"`), ContainSubstring("protocol="+want)))
+		},
+		Entry("with Kitty graphics", viewer.Terminal{Graphics: graphics.Kitty}, "kitty"),
+		Entry("with Kitty graphics but no color", viewer.Terminal{Graphics: graphics.Kitty, NoColor: true}, "none"),
+	)
+
 	It("logs each load, with what it read and how long it took", func() {
 		var logged bytes.Buffer
 		opts := optionsFor(withAttachments(), b)
@@ -238,6 +251,23 @@ var _ = Describe("the viewer's attachments", func() {
 			ContainSubstring(`msg="timelines reloaded"`),
 			ContainSubstring(fmt.Sprintf("counts.events=%d", len(withAttachments().Events))),
 			ContainSubstring("duration=1s"),
+			Not(ContainSubstring("filter")),
+		))
+	})
+
+	It("logs what narrowed a load, never the text it matched", func() {
+		var logged bytes.Buffer
+		opts := optionsFor(withAttachments(), b)
+		opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		opts.Match = viewer.Match{Sources: []string{"pagerduty"}, Tags: []string{"db"}, Contains: "needle-q7v2"}
+		m, cmd := press(answered(viewer.New(opts)), "r")
+		drainMsgs(m, cmd)
+
+		Expect(logged.String()).To(SatisfyAll(
+			ContainSubstring("filter.sources=[pagerduty]"),
+			ContainSubstring("filter.tags=[db]"),
+			ContainSubstring("filter.contains=true"),
+			Not(ContainSubstring("needle-q7v2")),
 		))
 	})
 
@@ -246,13 +276,16 @@ var _ = Describe("the viewer's attachments", func() {
 		opts := optionsFor(withAttachments(), b)
 		opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		opts.Load = (&loader{err: errors.New("database is locked")}).load
+		opts.Match = viewer.Match{Sources: []string{"pagerduty"}, Tags: []string{"db"}, Contains: "needle-q7v2"}
 		m, cmd := press(answered(viewer.New(opts)), "r")
 		drainMsgs(m, cmd)
 
 		Expect(logged.String()).To(SatisfyAll(
 			ContainSubstring(`msg="timelines not reloaded"`),
+			ContainSubstring("filter.contains=true"),
 			ContainSubstring("duration="),
 			ContainSubstring("error="),
+			Not(ContainSubstring("needle-q7v2")),
 		))
 	})
 

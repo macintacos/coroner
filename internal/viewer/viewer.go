@@ -45,6 +45,23 @@ type Match struct {
 	Contains      string
 }
 
+// LogValue is what narrowed a load, as the diagnostic log's filter: the sources and tags matched,
+// and contains, true when text was matched, never the text.
+func (m Match) LogValue() slog.Value {
+	var attrs []slog.Attr
+	if len(m.Sources) > 0 {
+		attrs = append(attrs, slog.Any("sources", m.Sources))
+	}
+	if len(m.Tags) > 0 {
+		attrs = append(attrs, slog.Any("tags", m.Tags))
+	}
+	if m.Contains != "" {
+		attrs = append(attrs, slog.Bool("contains", true))
+	}
+
+	return slog.GroupValue(attrs...)
+}
+
 // Options is what the viewer shows and how it reads the timeline again.
 type Options struct {
 	Snapshot Snapshot
@@ -100,6 +117,9 @@ func (t Terminal) images() graphics.Protocol {
 // onTerminal is m showing images the way term can.
 func onTerminal(term Terminal, m Model) Model {
 	m.images.protocol = term.images()
+	if m.opts.Log != nil {
+		m.opts.Log.Debug("inline images decided", "protocol", m.images.protocol.String())
+	}
 	return m
 }
 

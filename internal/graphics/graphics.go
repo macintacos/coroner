@@ -19,6 +19,15 @@ const (
 	Kitty
 )
 
+// String is p's name: none or kitty.
+func (p Protocol) String() string {
+	if p == Kitty {
+		return "kitty"
+	}
+
+	return "none"
+}
+
 // Detect returns the protocol the terminal lookupEnv describes can show images through, from
 // environment hints alone. A multiplexer shows none, since it swallows graphics escapes unless
 // configured to pass them through. So does any TERM_PROGRAM other than Ghostty or iTerm2, since a

@@ -33,7 +33,8 @@ rules say what a line holds; a new or changed line also updates that page.
    id, name or `<timeline>#<seq>` ref, never by its title, text, body or filename.
 5. **Attributes use the shared names:** a line uses the name below for what it carries,
    never a synonym. A change that adds an attribute name adds it to this list in the same
-   change.
+   change. sloglint's `key-naming-case: snake` in [`.golangci.yml`](../../.golangci.yml)
+   fails a name that is not snake_case.
    - `command`: the command path, such as `coroner event add`; every line carries it.
    - `kind`: an exit kind, or `ok`, on `command finished` and `command failed`; elsewhere
      the kind of the record the line names, such as an annotation's or a link's.
@@ -86,6 +87,8 @@ rules say what a line holds; a new or changed line also updates that page.
    - `lines`: how many lines a file coroner read held.
    - `format_versions`: the `format_version` of each header in an export coroner read, in
      order.
+   - `protocol`: how a form or the viewer shows images on the terminal: `kitty`, or `none`
+     without color, in a multiplexer, or on a terminal that cannot.
 6. **A command logs the records it names, and counts the ones it sweeps:** it logs one
    info line per record it names, under that record's key from rule 5, so a line about an
    annotation carries both its `annotation` and its `event`. Records it changes as a side
@@ -101,7 +104,9 @@ rules say what a line holds; a new or changed line also updates that page.
 8. **The pure packages never log:** `internal/timeline`, `internal/timeparse`,
    `internal/timetext` and `internal/graphics` import no logger. Their callers log the
    inputs they pass and the results they get back. A pure function returns a decision as
-   data, such as which rule matched, only when a caller logs it.
+   data, such as which rule matched, only when a caller logs it. The `pure-no-log`
+   depguard rule in [`.golangci.yml`](../../.golangci.yml) fails any of them that imports
+   `log` or `log/slog`.
 9. **`internal/store` takes a logger; `internal/config` returns data:** one store call
    does I/O its caller cannot see, such as migrating, backing up and committing, so
    `store.Open`, `store.OpenReadOnly` and `store.OpenWithoutBlobSync` take a
@@ -112,13 +117,36 @@ rules say what a line holds; a new or changed line also updates that page.
    caller passes and decides little beyond which path and which source won, so it returns
    those decisions in its result and `internal/cli` logs them. Code that logs takes its
    `*slog.Logger` as a parameter, or, in `internal/store`, from the `Store` it was opened
-   with; never `slog.Default()` or the package-level `slog` functions.
+   with; never `slog.Default()` or the package-level `slog` functions. sloglint's
+   `no-global: all` fails a package-level `slog` function, such as `slog.Info`, and
+   forbidigo fails `slog.Default` and `slog.SetDefault`.
 10. **The content guard enforces rule 2:**
     [`log_content_test.go`](../../internal/cli/log_content_test.go) runs a table of
     commands under `--debug`, failing ones included, against records whose titles, event
     text, annotation bodies, attachment content and filenames hold sentinel strings, and
-    fails when a sentinel reaches the log. A change that adds a log line adds a row whose
-    run reaches that line, and a failing row when the line is reached by a command that
-    fails after it opens the database. A command that only reads joins `readCommands`
-    instead; a spec walks the command tree and fails when one is missing, and another runs
-    each under `--debug` against the sentinels.
+    fails when a sentinel reaches the log. A change that adds a log line adds a row naming
+    the message its run reaches, and a failing row when the line is reached by a command
+    that fails after it opens the database. A line only a form, the viewer or the picker
+    reaches, which the table cannot drive, is pinned instead by a spec of the code that
+    writes it, which finds the line and, when the line can carry anything a record holds,
+    finds none of it. A command that only reads joins `readCommands` instead; a spec walks
+    the command tree and fails when one is missing, and another runs each under `--debug`
+    against the sentinels.
+
+## Which packages log
+
+Every package under `internal/` except `internal/tools/`, what it logs, and why a package
+that logs nothing does not. A new package adds its row.
+
+| Package | Logs | Why |
+| --- | --- | --- |
+| `internal/cli` | Every command's `command finished`, and `command failed` when it fails; where its database path, config file and time zones came from; the timelines it selected and each time typed; what it read, changed and imported; each file it wrote; and how a form shows images | It knows the command: it builds the logger from the diagnostic log and hands it to the store and the viewer |
+| `internal/config` | Nothing | Rule 9: it reads through the functions its caller passes and returns which path and setting won (`Config.Layers`), which `internal/cli` logs |
+| `internal/export` | Nothing | Its encoders and renderers return bytes and `Decode` returns `DecodeStats`; `internal/cli` logs what they return and the files it writes |
+| `internal/graphics` | Nothing | Rule 8: pure; `Detect` returns a `Protocol`, which `internal/cli` logs for a form and `internal/viewer` for itself |
+| `internal/store` | Each database open, backup and migration; each transaction's outcome and duration; blobs stored and deleted, and each garbage collection | Rule 9: it does I/O its caller cannot see, with the logger and clock `store.WithLogger` and `store.WithClock` give it; staging a blob and retrying a busy write are not logged |
+| `internal/store/sqlcgen` | Nothing | Generated by `sqlc generate`; `internal/store` logs around its queries |
+| `internal/timeline` | Nothing | Rule 8: pure domain types and validation; callers log ids and outcomes |
+| `internal/timeparse` | Nothing | Rule 8: pure; `internal/cli` logs each typed time and what it resolved to |
+| `internal/timetext` | Nothing | Rule 8: pure formatting of times for people |
+| `internal/viewer` | How it shows images; each reload, with what narrowed it, what it read and how long it took; and an image attachment it cannot show | It takes its logger as `Options.Log`, which `internal/cli` builds; the picker logs nothing, and its caller logs the timeline picked |

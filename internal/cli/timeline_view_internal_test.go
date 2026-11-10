@@ -17,6 +17,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 
+	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/viewer"
 )
 
@@ -306,3 +307,13 @@ var _ = Describe("timelineLoader", func() {
 		Expect(m.View().Content).To(ContainSubstring("Replica lag alarm"))
 	})
 })
+
+var _ = DescribeTable("the viewer's match logs under the filter keys event list logs",
+	func(f store.EventFilter) {
+		m := viewer.Match{Sources: f.Sources, Tags: f.Tags, Contains: f.Contains}
+		Expect(m.LogValue().Group()).To(Equal(filterValue(f).Group()))
+	},
+	Entry("nothing narrowed", store.EventFilter{}),
+	Entry("text only", store.EventFilter{Contains: "x"}),
+	Entry("sources, tags and text", store.EventFilter{Sources: []string{"pagerduty"}, Tags: []string{"db"}, Contains: "x"}),
+)

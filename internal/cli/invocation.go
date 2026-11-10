@@ -36,7 +36,7 @@ type invocation struct {
 // resolves no zone. A command reads its own flags first, then the invocation, unless a check needs
 // it. Never call it from agent skill, version, shell completion or errorStyleFor, so a malformed
 // config file cannot break them. It logs, at debug, where the database path, config file and
-// default time zone came from, so a command calls it once.
+// default time zone came from, and the zone --tz names, so a command calls it once.
 func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	o, err := newOutput(cmd, app)
 	if err != nil {
@@ -46,9 +46,10 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	if err != nil {
 		return invocation{}, err
 	}
-	logConfig(app.logger(), cfg)
-
 	flags := cmd.Flags()
+	tz := changedString(flags, "tz")
+	logConfig(app.logger(), cfg, tz)
+
 	inputOff := flagOrEnv(flags, "no-input", envTrue(app.LookupEnv, "CORONER_NO_INPUT"))
 	noColor, _ := readSwitches(flags, app.LookupEnv)
 	timelines, err := readTimelineInput(flags, flags.Args(), ruleOf(cmd))
@@ -57,7 +58,7 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	}
 
 	return invocation{
-		out: o, cfg: cfg, tz: changedString(flags, "tz"), now: app.Now,
+		out: o, cfg: cfg, tz: tz, now: app.Now,
 		outColor:    colorEnabled(app.OutIsTTY, noColor, app.LookupEnv),
 		errColor:    colorEnabled(app.ErrIsTTY, noColor, app.LookupEnv),
 		inputOff:    inputOff,
@@ -68,11 +69,15 @@ func readInvocation(cmd *cobra.Command, app App) (invocation, error) {
 	}, nil
 }
 
-// logConfig logs where the database path, config file and default time zone came from.
-func logConfig(logger *slog.Logger, cfg config.Config) {
+// logConfig logs where the database path, config file and default time zone came from, and the
+// zone --tz names when tz, the flag's value, is not nil.
+func logConfig(logger *slog.Logger, cfg config.Config, tz *string) {
 	logger.Debug("database path resolved", "path", cfg.DBPath, "by", cfg.Layers.DBPath)
 	logger.Debug("config file resolved", "path", cfg.ConfigPath, "by", cfg.Layers.ConfigPath)
 	logger.Debug("default time zone resolved", "zone", cfg.DefaultTimezone, "by", cfg.Layers.DefaultTimezone)
+	if tz != nil {
+		logger.Debug("time zone resolved", "zone", *tz, "by", "flag")
+	}
 }
 
 // givenStoreArgs returns the --db and --config args flags were given, in that order.

@@ -100,6 +100,16 @@ linters:
           deny:
             - pkg: os
               desc: take I/O as parameters
+        pure-no-log:
+          files:
+            - "${base-path}/internal/timeline/**"
+            - "${base-path}/internal/timeparse/**"
+            - "${base-path}/internal/timetext/**"
+            - "${base-path}/internal/graphics/**"
+            - "!$test"
+          deny:
+            - pkg: log
+              desc: pure packages never log; their callers log what they return
         export-contract:
           files:
             - "${base-path}/internal/export/**"
@@ -138,6 +148,8 @@ linters:
           msg: only main.go talks to the process
         - pattern: ^time\.(Now|Since|Until)$
           msg: inject a clock (func() time.Time)
+        - pattern: ^slog\.(Default|SetDefault)$
+          msg: take the *slog.Logger as a parameter
         - pattern: ^store\.OpenWithoutBlobSync$
           msg: a power loss can lose its blobs; only tests may skip the sync
     nolintlint:
@@ -151,6 +163,9 @@ linters:
             - allowed-packages:
                 - github.com/onsi/ginkgo/v2
                 - github.com/onsi/gomega
+    sloglint:
+      no-global: all
+      key-naming-case: snake
     staticcheck:
       dot-import-whitelist:
         - github.com/onsi/ginkgo/v2

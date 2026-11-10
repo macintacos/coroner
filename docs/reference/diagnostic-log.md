@@ -116,8 +116,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 - `database path resolved`, with the `path` and `by`: `flag`, `env`, `file` (the config
   file's `db`) or `default`; `config file resolved`, with the `path` coroner reads the
   config file from, whether or not a file is there, and `by`: `flag`, `env` or `default`;
-  and `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`)
-  or `default`;
+  `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`) or
+  `default`; and, when `--tz` is given, `time zone resolved`, with the `zone` it names and
+  `by` `flag`;
 - `timelines selected`, each time a command selects them, with `by`, the setting that
   selected them: `flag` for `-t`, `overlay` for `--overlay`, `name` for a timeline
   argument, `env` for `CORONER_TIMELINE` or `use` for `coroner timeline use`, and
@@ -146,9 +147,13 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 - `export decoded`, when `import` or `event add --from-file` reads an export, with its
   `path` (`-` for stdin), how many `lines` it held and the `format_versions` of its
   headers, in order;
+- `inline images decided`, when a form or the viewer opens on a terminal, with `protocol`,
+  how it shows images: `kitty`, or `none` without color, in a multiplexer, or on a
+  terminal that cannot;
 - the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
-  new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
-  `error`, when that read fails; and `attachment image not shown`.
+  new filter, with `filter`, what narrowed them (as `records read` gives it, without
+  `order` and `limit`), `counts` and `duration`; `timelines not reloaded`, with `filter`,
+  `duration` and `error`, when that read fails; and `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds
 its stderr lines until it closes. stdout and the JSON error envelope never change, and the
