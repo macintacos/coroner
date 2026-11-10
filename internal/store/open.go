@@ -137,7 +137,7 @@ func storeAfter(path string, db *sql.DB, opts openOptions, checkErr error) (*Sto
 	return &Store{
 		db:         db,
 		migrations: opts.migrations,
-		blobDir:    blobDir{path: config.BlobDir(path), sync: opts.syncBlob},
+		blobDir:    blobDir{path: config.BlobDir(path), sync: opts.syncBlob, logger: opts.logger},
 		logger:     opts.logger,
 		now:        opts.now,
 	}, nil

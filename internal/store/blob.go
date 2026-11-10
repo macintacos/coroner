@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,10 +18,12 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// blobDir is the blob directory, and how a blob or the directory is made durable.
+// blobDir is the blob directory, how a blob or the directory is made durable, and where its
+// file I/O is logged.
 type blobDir struct {
-	path string
-	sync func(*os.File) error
+	path   string
+	sync   func(*os.File) error
+	logger *slog.Logger
 }
 
 // sniffLen is how many leading bytes http.DetectContentType considers.
@@ -142,7 +145,12 @@ func commitBlob(blobDir blobDir, staged stagedBlob) error {
 		if err != nil {
 			return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 		}
-		return syncDir(blobDir.path, blobDir.sync)
+		err = syncDir(blobDir.path, blobDir.sync)
+		if err != nil {
+			return err
+		}
+		blobDir.logger.Debug("blob stored", "sha256", staged.sha256, "size", staged.size)
+		return nil
 	default:
 		return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 	}
@@ -162,8 +170,8 @@ func syncDir(dir string, sync func(*os.File) error) error {
 // staged file.
 // ponytail: staged .tmp-* files a crash left are never collected; sweep by age with an
 // injected clock if they accumulate.
-func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
-	entries, err := os.ReadDir(blobDir)
+func deleteUnreferenced(dir blobDir, referenced []string) ([]string, error) {
+	entries, err := os.ReadDir(dir.path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return []string{}, nil
 	}
@@ -183,10 +191,19 @@ func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
 			continue
 		}
 
-		err := os.Remove(filepath.Join(blobDir, name))
+		info, err := entry.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("delete blob %s: %w", name, err)
+		}
+
+		err = os.Remove(filepath.Join(dir.path, name))
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("delete blob %s: %w", name, err)
 		}
+		dir.logger.Info("blob deleted", "sha256", name, "size", info.Size())
 		deleted = append(deleted, name)
 	}
 

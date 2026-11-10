@@ -12,6 +12,7 @@ import (
 	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/store"
+	"github.com/macintacos/coroner/internal/timeline"
 )
 
 var _ = Describe("Diagnostic lines", func() {
@@ -63,6 +64,35 @@ var _ = Describe("Diagnostic lines", func() {
 		Expect(logged(&logs, "database opened")).To(HaveExactElements(SatisfyAll(
 			HaveKeyWithValue("created", false), HaveKeyWithValue("schema_version", BeNumerically("==", 1)))))
 		Expect(logged(&logs, "migration applied")).To(BeEmpty())
+	})
+
+	It("logs a blob the first time it is stored, and each blob garbage collection deletes", func(ctx SpecContext) {
+		var logs bytes.Buffer
+		s, err := store.Open(ctx, newDatabase(), capture(&logs))
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(s.Close)
+		Expect(s.CreateTimeline(ctx, changeIncident())).To(Succeed())
+		event := changeEvent(2)
+		Expect(s.AddEvent(ctx, event, uuid(9))).Error().NotTo(HaveOccurred())
+
+		content := []byte("election timeout after 10000ms")
+		owner := timeline.AttachmentOwner{EventID: new(event.ID)}
+		first, err := attach(ctx, s, timeline.Attachment{ID: uuid(10), Owner: owner, Filename: "mongod.log"}, bytes.NewReader(content))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = attach(ctx, s, timeline.Attachment{ID: uuid(11), Owner: owner, Filename: "mongod.log"}, bytes.NewReader(content))
+		Expect(err).NotTo(HaveOccurred())
+		sha := first.SHA256
+
+		blob := SatisfyAll(HaveKeyWithValue("sha256", sha), HaveKeyWithValue("size", BeNumerically("==", len(content))))
+		Expect(logged(&logs, "blob stored")).To(HaveExactElements(SatisfyAll(HaveKeyWithValue("level", "DEBUG"), blob)))
+
+		Expect(s.DeleteAttachments(ctx, uuid(10), uuid(11))).To(Succeed())
+		Expect(s.GarbageCollectBlobs(ctx)).To(Equal([]string{sha}))
+
+		Expect(logged(&logs, "blob deleted")).To(HaveExactElements(SatisfyAll(HaveKeyWithValue("level", "INFO"), blob)))
+		Expect(logged(&logs, "blobs collected")).To(HaveExactElements(SatisfyAll(
+			HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("count", BeNumerically("==", 1)))))
+		Expect(logs.String()).NotTo(ContainSubstring("mongod.log"))
 	})
 
 	failed := errors.New("fn failed")

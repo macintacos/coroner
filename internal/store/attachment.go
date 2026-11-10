@@ -132,12 +132,13 @@ func (s *Store) GarbageCollectBlobs(ctx context.Context) ([]string, error) {
 			return err
 		}
 
-		deleted, err = deleteUnreferenced(s.blobDir.path, referenced)
+		deleted, err = deleteUnreferenced(s.blobDir, referenced)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
+	s.logger.DebugContext(ctx, "blobs collected", "count", len(deleted))
 
 	return deleted, nil
 }

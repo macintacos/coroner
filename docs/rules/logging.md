@@ -43,13 +43,14 @@ rules say what a line holds; a new or changed line also updates that page.
    - `event`: an event's id.
    - `annotation`: an annotation's id.
    - `timeline`: the name of the timeline the line is about.
-   - `count`: how many records a step changed or read.
+   - `count`: how many records a step changed or read, or how many blobs garbage
+     collection deleted.
    - `dry_run`: true when `--dry-run` kept the command from changing anything.
    - `path`: the path of a file coroner opens or writes (rule 3).
    - `size`: a file's or blob's size in bytes.
    - `attachment`: an attachment's id.
    - `read_only`: true for a database transaction that only reads.
-   - `sha256`: an attachment's SHA-256.
+   - `sha256`: an attachment's or a blob's SHA-256.
    - `by`: which setting supplied a value or selected the timelines: `flag`, `env`, `file`
      (the config file), `default`, `use` (`coroner timeline use`), `name` (a timeline
      argument) or `overlay`.
@@ -71,7 +72,8 @@ rules say what a line holds; a new or changed line also updates that page.
    with their `count`, and their ids at debug.
 7. **A file written outside the database is logged at info:** an export, an exported
    attachment, the backup made before migrating, or any other file a command writes, with
-   its `path` and `size`.
+   its `path` and `size`. A blob is not logged as a file: the store logs one it stores at
+   debug and one it deletes at info, by `sha256` and `size`.
 8. **The pure packages never log:** `internal/timeline`, `internal/timeparse`,
    `internal/timetext` and `internal/graphics` import no logger. Their callers log the
    inputs they pass and the results they get back. A pure function returns a decision as
