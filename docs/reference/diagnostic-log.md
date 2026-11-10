@@ -116,8 +116,9 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 - `database path resolved`, with the `path` and `by`: `flag`, `env`, `file` (the config
   file's `db`) or `default`; `config file resolved`, with the `path` coroner reads the
   config file from, whether or not a file is there, and `by`: `flag`, `env` or `default`;
-  and `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`)
-  or `default`;
+  `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`) or
+  `default`; and, when `--tz` is given, `time zone resolved`, with the `zone` it names and
+  `by` `flag`;
 - `timelines selected`, each time a command selects them, with `by`, the setting that
   selected them: `flag` for `-t`, `overlay` for `--overlay`, `name` for a timeline
   argument, `env` for `CORONER_TIMELINE` or `use` for `coroner timeline use`, and

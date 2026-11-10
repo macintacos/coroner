@@ -282,6 +282,7 @@ var _ = Describe("log content guard", func() {
 		Entry("event list filtered by source, tag and text", 0, "records read", "event", "list", "-t", "inc", "--source", "pagerduty", "--tag", "db", "--contains", sentinelText),
 		Entry("timeline view filtered by text", 0, "records read", "timeline", "view", "-t", "inc", "--contains", sentinelText),
 		Entry("timeline export filtered by text", 0, "records read", "timeline", "export", "-t", "inc", "--format", "jsonl", "--contains", sentinelText),
+		Entry("event list in the zone --tz names", 0, "time zone resolved", "event", "list", "-t", "inc", "--tz", "America/New_York"),
 		Entry("event list between typed times", 0, "time input resolved", "event", "list", "-t", "inc", "--since", "2020-01-01", "--until", "now"),
 		Entry("event add with an attachment", 0, "attachment added", "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach}"),
 		Entry("event add with new attachment content", 0, "blob stored", "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach2}"),

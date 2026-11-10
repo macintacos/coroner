@@ -347,6 +347,18 @@ var _ = Describe("diagnostic log", func() {
 			HaveKeyWithValue("by", "default"))))
 		Expect(linesWith("default time zone resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
 			HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file"))))
+		Expect(linesWith("time zone resolved")).To(BeEmpty())
+	})
+
+	It("logs the zone --tz names under --debug", func(ctx SpecContext) {
+		Expect(run(ctx, h.app("timeline", "create", "u", "--debug", "--tz", "Asia/Tokyo"))).To(Equal(0))
+
+		lines := logLines(logPath)
+		finished := slices.IndexFunc(lines, func(line map[string]any) bool { return line["msg"] == "command finished" })
+		Expect(finished).To(BeNumerically(">=", 0))
+		resolved := slices.DeleteFunc(slices.Clone(lines[:finished]), func(line map[string]any) bool { return line["msg"] != "time zone resolved" })
+		Expect(resolved).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("zone", "Asia/Tokyo"), HaveKeyWithValue("by", "flag"))))
 	})
 
 	It("logs how many lines an imported export held and its format versions under --debug", func(ctx SpecContext) {
