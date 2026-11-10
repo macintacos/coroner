@@ -49,7 +49,7 @@ func listAnnotations(ctx context.Context, cmd *cobra.Command, app App) error {
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
 		return s.Read(ctx, func(tx *store.Tx) error {
-			t, err := selectOne(ctx, tx, inv.timelines, app.LookupEnv)
+			t, err := selectOne(ctx, app.logger(), tx, inv.timelines, app.LookupEnv)
 			if err != nil {
 				return err
 			}

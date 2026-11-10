@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -74,13 +76,13 @@ var _ = Describe("diagnostic log", func() {
 	run := func(ctx context.Context, app cli.App) int {
 		openedTheDB = false
 		openStore, openReadOnly := app.OpenStore, app.OpenStoreReadOnly
-		app.OpenStore = func(ctx context.Context, path string) (*store.Store, error) {
+		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
 			openedTheDB = true
-			return openStore(ctx, path)
+			return openStore(ctx, path, logger...)
 		}
-		app.OpenStoreReadOnly = func(ctx context.Context, path string) (*store.Store, error) {
+		app.OpenStoreReadOnly = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
 			openedTheDB = true
-			return openReadOnly(ctx, path)
+			return openReadOnly(ctx, path, logger...)
 		}
 		return cli.Run(ctx, app)
 	}
@@ -129,6 +131,20 @@ var _ = Describe("diagnostic log", func() {
 		run(ctx, completion.app("__complete", "timeline", "use", ""))
 		Expect(openedTheDB).To(BeTrue())
 		Expect(readFile(logPath)).To(Equal(before))
+	})
+
+	It("hands the store the command's logger", func(ctx SpecContext) {
+		app := h.app("timeline", "create", "u")
+		openStore := app.OpenStore
+		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
+			logger[0].InfoContext(ctx, "probe")
+			return openStore(ctx, path, logger...)
+		}
+
+		Expect(cli.Run(ctx, app)).To(Equal(0))
+
+		Expect(logLines(logPath)).To(ContainElement(And(
+			HaveKeyWithValue("msg", "probe"), HaveKeyWithValue("command", "coroner timeline create"))))
 	})
 
 	DescribeTable("ends the log with the command's finish line",
@@ -263,6 +279,113 @@ var _ = Describe("diagnostic log", func() {
 			Expect(line).To(HaveKeyWithValue("level", "INFO"))
 		}
 		Expect(errOut.String()).NotTo(ContainSubstring("level="))
+	})
+
+	It("logs where the database path, config file and default time zone came from under --debug", func(ctx SpecContext) {
+		h.config = "default_timezone = \"America/New_York\"\n"
+
+		Expect(run(ctx, h.app("timeline", "create", "u", "--debug"))).To(Equal(0))
+
+		lines := logLines(logPath)
+		finished := slices.IndexFunc(lines, func(line map[string]any) bool { return line["msg"] == "command finished" })
+		Expect(finished).To(BeNumerically(">=", 0))
+		linesWith := func(msg string) []map[string]any {
+			return slices.DeleteFunc(slices.Clone(lines[:finished]), func(line map[string]any) bool { return line["msg"] != msg })
+		}
+		Expect(linesWith("database path resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("path", h.db), HaveKeyWithValue("by", "flag"))))
+		Expect(linesWith("config file resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("path", filepath.Join(h.home, ".config", "coroner", "config.toml")),
+			HaveKeyWithValue("by", "default"))))
+		Expect(linesWith("default time zone resolved")).To(HaveExactElements(And(HaveKeyWithValue("level", "DEBUG"),
+			HaveKeyWithValue("zone", "America/New_York"), HaveKeyWithValue("by", "file"))))
+	})
+
+	DescribeTable("logs which setting selected the timelines under --debug",
+		func(ctx SpecContext, wantBy string, wantNames []string, setup func(context.Context), args ...string) {
+			Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+			setup(ctx)
+			out.Reset()
+			Expect(run(ctx, h.app("timeline", "list", "--json"))).To(Equal(0))
+			var listed struct {
+				Timelines []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"timelines"`
+			}
+			Expect(json.Unmarshal(out.Bytes(), &listed)).To(Succeed(), out.String())
+			idOf := map[string]any{}
+			for _, t := range listed.Timelines {
+				idOf[t.Name] = t.ID
+			}
+			var want []any
+			for _, name := range wantNames {
+				want = append(want, idOf[name])
+			}
+
+			Expect(run(ctx, h.app(append(args, "--debug")...))).To(Equal(0), errOut.String())
+
+			Expect(logLines(logPath)).To(ContainElement(And(
+				HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("msg", "timelines selected"),
+				HaveKeyWithValue("by", wantBy), HaveKeyWithValue("timeline_ids", HaveExactElements(want...)),
+			)))
+		},
+		Entry("-t", "flag", []string{"inc"}, func(context.Context) {}, "event", "list", "-t", "inc"),
+		Entry("--overlay", "overlay", []string{"standby", "inc"}, func(ctx context.Context) {
+			Expect(run(ctx, h.app("timeline", "create", "standby"))).To(Equal(0))
+			Expect(run(ctx, h.app("overlay", "create", "pair", "-t", "standby", "-t", "inc"))).To(Equal(0), errOut.String())
+		}, "event", "list", "--overlay", "pair"),
+		Entry("CORONER_TIMELINE", "env", []string{"inc"}, func(context.Context) {
+			h.env = map[string]string{"HOME": h.home, "CORONER_TIMELINE": "inc"}
+		}, "event", "list"),
+		Entry("coroner timeline use", "use", []string{"inc"}, func(ctx context.Context) {
+			Expect(run(ctx, h.app("timeline", "use", "inc"))).To(Equal(0))
+		}, "event", "list"),
+	)
+
+	It("logs each typed time under --debug", func(ctx SpecContext) {
+		resolvedLines := func() []map[string]any {
+			var found []map[string]any
+			for _, line := range logLines(logPath) {
+				if line["msg"] == "time input resolved" {
+					Expect(line).To(HaveKeyWithValue("level", "DEBUG"))
+					found = append(found, line)
+				}
+			}
+			return found
+		}
+		instant := func(value string) time.Time {
+			GinkgoHelper()
+			t, err := time.Parse(time.RFC3339Nano, value)
+			Expect(err).NotTo(HaveOccurred())
+			return t
+		}
+		expectLine := func(line map[string]any, flag, input, zone, want, precision string) {
+			GinkgoHelper()
+			Expect(line).To(HaveKeyWithValue("flag", flag))
+			Expect(line).To(HaveKeyWithValue("input", input))
+			Expect(line).To(HaveKeyWithValue("zone", zone))
+			Expect(line).To(HaveKeyWithValue("precision", precision))
+			logged, ok := line["instant"].(string)
+			Expect(ok).To(BeTrue(), line["instant"])
+			Expect(instant(logged).Equal(instant(want))).To(BeTrue(), logged)
+		}
+		Expect(run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+
+		Expect(run(ctx, h.app("event", "add", "x", "-t", "inc", "--at", "2026-01-02 03:04",
+			"--ended", "2026-01-02 04:00", "--tz", "America/New_York", "--debug"))).To(Equal(0), errOut.String())
+		lines := resolvedLines()
+		Expect(lines).To(HaveLen(2))
+		expectLine(lines[0], "at", "2026-01-02 03:04", "America/New_York", "2026-01-02T03:04:00-05:00", "minute")
+		expectLine(lines[1], "ended", "2026-01-02 04:00", "America/New_York", "2026-01-02T04:00:00-05:00", "minute")
+
+		Expect(run(ctx, h.app("event", "list", "-t", "inc", "--since", "2026-01-01", "--debug"))).To(Equal(0), errOut.String())
+		lines = resolvedLines()
+		Expect(lines).To(HaveLen(3))
+		expectLine(lines[2], "since", "2026-01-01", "UTC", "2026-01-01T00:00:00Z", "day")
+
+		Expect(run(ctx, h.app("event", "add", "y", "-t", "inc", "--debug"))).To(Equal(0), errOut.String())
+		Expect(resolvedLines()).To(HaveLen(3))
 	})
 
 	It("logs the failure under --debug, and shows every line on stderr once", func(ctx SpecContext) {

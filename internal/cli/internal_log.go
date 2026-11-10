@@ -41,7 +41,7 @@ func newInternalLogCommand(ctx context.Context, app App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			filter, err := readLogFilter(cmd, inv.now(), z)
+			filter, err := readLogFilter(app.logger(), cmd, inv.now(), z)
 			if err != nil {
 				return err
 			}
@@ -81,7 +81,7 @@ func (f *logFilter) keeps(line logLine) bool {
 }
 
 // readLogFilter returns the filter cmd's flags ask for.
-func readLogFilter(cmd *cobra.Command, now time.Time, z zone) (logFilter, error) {
+func readLogFilter(logger *slog.Logger, cmd *cobra.Command, now time.Time, z zone) (logFilter, error) {
 	flags := cmd.Flags()
 	var f logFilter
 	err := f.readLevel(changedString(flags, "level"))
@@ -92,11 +92,11 @@ func readLogFilter(cmd *cobra.Command, now time.Time, z zone) (logFilter, error)
 	if err != nil {
 		return f, err
 	}
-	f.since, _, err = readBound(flags, "since", now, z)
+	f.since, _, err = readBound(logger, flags, "since", now, z)
 	if err != nil {
 		return f, err
 	}
-	f.until, _, err = readBound(flags, "until", now, z)
+	f.until, _, err = readBound(logger, flags, "until", now, z)
 
 	return f, err
 }

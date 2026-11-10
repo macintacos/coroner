@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -74,7 +75,7 @@ func deleteEvents(ctx context.Context, app App, cfg config.Config, in fieldValue
 	deleted, _, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(dryRun)},
 		func(tx *store.Tx) (eventsDeleted, error) {
 			deleted := eventsDeleted{dryRun: dryRun}
-			found, err := findEvents(ctx, tx, refs, timelineInputOf(in), app.LookupEnv)
+			found, err := findEvents(ctx, app.logger(), tx, refs, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return deleted, err
 			}
@@ -123,11 +124,11 @@ type foundEvents struct {
 
 // findEvents finds the event each of refs names, failing on the first that finds none.
 func findEvents(
-	ctx context.Context, s records, refs []eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
+	ctx context.Context, logger *slog.Logger, s records, refs []eventRef, timelines timelineInput, lookupEnv func(string) (string, bool),
 ) (foundEvents, error) {
 	found := foundEvents{timelines: map[string]timeline.Timeline{}}
 	for _, ref := range refs {
-		e, t, err := findEvent(ctx, s, ref, timelines, lookupEnv)
+		e, t, err := findEvent(ctx, logger, s, ref, timelines, lookupEnv)
 		if err != nil {
 			return found, err
 		}

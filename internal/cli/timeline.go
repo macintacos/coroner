@@ -144,14 +144,14 @@ func suggestName(name string) string {
 
 // withOneArg returns run behind cobra.ExactArgs(1), failing as Run reports cobra's own rejection,
 // for a command whose form opens without its argument.
-func withOneArg(run func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
+func withOneArg(run invokedRunE) invokedRunE {
+	return func(cmd *cobra.Command, inv invocation, args []string) error {
 		err := cobra.ExactArgs(1)(cmd, args)
 		if err != nil {
 			return argsError(cmd, err)
 		}
 
-		return run(cmd, args)
+		return run(cmd, inv, args)
 	}
 }
 

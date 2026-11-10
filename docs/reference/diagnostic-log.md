@@ -59,6 +59,18 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags
   given, never their values) and, when the failure has a cause, `error`;
+- `database path resolved`, with the `path` and `by`: `flag`, `env`, `file` (the config
+  file's `db`) or `default`; `config file resolved`, with the `path` coroner reads the
+  config file from, whether or not a file is there, and `by`: `flag`, `env` or `default`;
+  and `default time zone resolved`, with the `zone` and `by`, `file` (`default_timezone`)
+  or `default`;
+- `timelines selected`, each time a command selects them, with `by`, the setting that
+  selected them: `flag` for `-t`, `overlay` for `--overlay`, `name` for a timeline
+  argument, `env` for `CORONER_TIMELINE` or `use` for `coroner timeline use`, and
+  `timeline_ids`, their ids;
+- `time input resolved`, once for each time typed into `--at`, `--ended`, `--since` or
+  `--until`, with the `flag`, the `input` as typed, the `zone` it was read in, and the
+  `instant` and `precision` it resolved to;
 - the viewer's `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds

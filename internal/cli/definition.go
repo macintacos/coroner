@@ -201,11 +201,14 @@ type renderer interface{ render(o output) error }
 func writeRunE[R renderer](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		inv, err := readInvocation(cmd, app)
-		if err != nil {
-			return err
-		}
+	return withInvocation(app, writeRun(ctx, app, def, run))
+}
+
+// writeRun is writeRunE for a caller that has already read the invocation.
+func writeRun[R renderer](
+	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
+) invokedRunE {
+	return func(cmd *cobra.Command, inv invocation, args []string) error {
 		result, err := run(ctx, app, inv.cfg, def.read(cmd.Flags(), args))
 		if err != nil {
 			return err
@@ -215,17 +218,35 @@ func writeRunE[R renderer](
 	}
 }
 
+// invokedRunE is a RunE handed the invocation its caller read.
+type invokedRunE func(cmd *cobra.Command, inv invocation, args []string) error
+
+// withInvocation returns a RunE that reads the invocation once and hands it to run.
+func withInvocation(app App, run invokedRunE) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		inv, err := readInvocation(cmd, app)
+		if err != nil {
+			return err
+		}
+
+		return run(cmd, inv, args)
+	}
+}
+
 type zonedRenderer interface{ render(o output, z zone) error }
 
 // writeRunEInZone is writeRunE for a result printed in the zone, resolved before run writes anything.
 func writeRunEInZone[R zonedRenderer](
 	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
 ) func(*cobra.Command, []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		inv, err := readInvocation(cmd, app)
-		if err != nil {
-			return err
-		}
+	return withInvocation(app, writeRunInZone(ctx, app, def, run))
+}
+
+// writeRunInZone is writeRunEInZone for a caller that has already read the invocation.
+func writeRunInZone[R zonedRenderer](
+	ctx context.Context, app App, def definition, run func(context.Context, App, config.Config, fieldValues) (R, error),
+) invokedRunE {
+	return func(cmd *cobra.Command, inv invocation, args []string) error {
 		z, err := inv.zone()
 		if err != nil {
 			return err

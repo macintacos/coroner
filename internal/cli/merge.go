@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 
 	"github.com/macintacos/coroner/internal/store"
@@ -22,6 +23,7 @@ type mergeInput struct {
 	importInput
 	timelines timelineInput
 	lookupEnv func(string) (string, bool)
+	logger    *slog.Logger
 }
 
 // mergeOutcome is what merging records did, or would do.
@@ -43,7 +45,7 @@ func merge(ctx context.Context, s *store.Store, in mergeInput, mode mergeMode) (
 		ids.rewind()
 		out = mergeOutcome{}
 		var err error
-		out.guard, err = mergeGuard(ctx, tx, in.timelines, in.lookupEnv)
+		out.guard, err = mergeGuard(ctx, in.logger, tx, in.timelines, in.lookupEnv)
 		if err != nil {
 			return err
 		}
@@ -85,15 +87,17 @@ func merge(ctx context.Context, s *store.Store, in mergeInput, mode mergeMode) (
 
 // mergeGuard returns the timeline in selects for every record to belong to: under the guard
 // rule only the one -t names, or nil when it names none, and otherwise the one selectOne picks.
-func mergeGuard(ctx context.Context, s records, in timelineInput, lookupEnv func(string) (string, bool)) (*timeline.Timeline, error) {
+func mergeGuard(
+	ctx context.Context, logger *slog.Logger, s records, in timelineInput, lookupEnv func(string) (string, bool),
+) (*timeline.Timeline, error) {
 	if in.rule.guard {
-		sel, err := selectTimelines(ctx, s, in, lookupEnv)
+		sel, err := selectTimelines(ctx, logger, s, in, lookupEnv)
 		if err != nil || len(sel.timelines) == 0 {
 			return nil, err
 		}
 		return &sel.timelines[0], nil
 	}
-	t, err := selectOne(ctx, s, in, lookupEnv)
+	t, err := selectOne(ctx, logger, s, in, lookupEnv)
 	if err != nil {
 		return nil, err
 	}

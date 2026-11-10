@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -74,13 +75,13 @@ func listEvents(ctx context.Context, cmd *cobra.Command, app App) error {
 	if err != nil {
 		return err
 	}
-	filter, bounds, err := readEventFilter(cmd.Flags(), app.Now(), z)
+	filter, bounds, err := readEventFilter(app.logger(), cmd.Flags(), app.Now(), z)
 	if err != nil {
 		return err
 	}
 
 	return withStorePath(ctx, app, inv.cfg.DBPath, func(s *store.Store) error {
-		sel, err := selectTimelines(ctx, s, inv.timelines, app.LookupEnv)
+		sel, err := selectTimelines(ctx, app.logger(), s, inv.timelines, app.LookupEnv)
 		if err != nil {
 			return err
 		}
@@ -126,7 +127,7 @@ func noEventsMessage(f store.EventFilter) string {
 // readEventFilter returns the filter the flags ask for, and the times --since and --until
 // resolved to as the command echoes them, or "" when neither was given. It rejects a filter
 // before the store opens.
-func readEventFilter(flags *pflag.FlagSet, now time.Time, z zone) (store.EventFilter, string, error) {
+func readEventFilter(logger *slog.Logger, flags *pflag.FlagSet, now time.Time, z zone) (store.EventFilter, string, error) {
 	f, err := readEventMatch(flags)
 	if err != nil {
 		return f, "", err
@@ -141,11 +142,11 @@ func readEventFilter(flags *pflag.FlagSet, now time.Time, z zone) (store.EventFi
 	}
 
 	var since, until string
-	f.Since, since, err = readBound(flags, "since", now, z)
+	f.Since, since, err = readBound(logger, flags, "since", now, z)
 	if err != nil {
 		return f, "", err
 	}
-	f.Until, until, err = readBound(flags, "until", now, z)
+	f.Until, until, err = readBound(logger, flags, "until", now, z)
 
 	return f, strings.TrimSpace(since + " " + until), err
 }
@@ -220,7 +221,7 @@ func readLimit(flags *pflag.FlagSet) (int, error) {
 
 // readBound resolves the time flag name gives, and how the command echoes it; the time is
 // nil and the echo "" when the flag was not given.
-func readBound(flags *pflag.FlagSet, name string, now time.Time, z zone) (*time.Time, string, error) {
+func readBound(logger *slog.Logger, flags *pflag.FlagSet, name string, now time.Time, z zone) (*time.Time, string, error) {
 	input := changedString(flags, name)
 	if input == nil {
 		return nil, "", nil
@@ -230,6 +231,7 @@ func readBound(flags *pflag.FlagSet, name string, now time.Time, z zone) (*time.
 	if err != nil {
 		return nil, "", err
 	}
+	logTypedTime(logger, typedTime{flag: name, input: *input, zone: z, resolved: r})
 
 	return &r.Instant, name + " " + formatResolved(r, z), nil
 }

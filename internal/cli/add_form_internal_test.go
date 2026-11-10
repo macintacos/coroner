@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1097,7 +1098,7 @@ func storelessApp(args []string) App {
 		ReadFile:  func(string) ([]byte, error) { return nil, fs.ErrNotExist },
 		Now:       testNow,
 		NewID:     func() (uuid.UUID, error) { return uuid.UUID{}, nil },
-		OpenStore: func(context.Context, string) (*store.Store, error) {
+		OpenStore: func(context.Context, string, ...*slog.Logger) (*store.Store, error) {
 			Fail(strings.TrimSpace("coroner "+strings.Join(args, " ")) + " opened the store before rejecting its input")
 			return nil, errors.New("unreachable")
 		},

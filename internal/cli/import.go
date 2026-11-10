@@ -78,7 +78,7 @@ func importExport(ctx context.Context, cmd *cobra.Command, app App, path string)
 	in := mergeInput{
 		records: records, sidecars: sidecars, localBlobs: localBlobs(inv.cfg.DBPath, records, app.Stat),
 		onConflict: policy, newID: app.NewID, now: app.Now(),
-		timelines: inv.timelines, lookupEnv: app.LookupEnv,
+		timelines: inv.timelines, lookupEnv: app.LookupEnv, logger: app.logger(),
 	}
 	plan, err := mergeImport(ctx, app, inv.cfg.DBPath, in, dryRun)
 	if err != nil {

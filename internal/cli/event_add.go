@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -171,7 +172,7 @@ func addEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) (
 			b := attached[eventAdded]{
 				result: eventAdded{event: draft.event, when: draft.when, dryRun: req.dryRun}, owner: owner,
 			}
-			t, err := selectOne(ctx, tx, timelineInputOf(in), app.LookupEnv)
+			t, err := selectOne(ctx, app.logger(), tx, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return b, err
 			}
@@ -338,7 +339,7 @@ func draftEvent(in fieldValues, app App, cfg config.Config, env checkEnv) (event
 	if err != nil {
 		return eventDraft{}, err
 	}
-	times, err := resolveEventTimes(in, env)
+	times, err := resolveEventTimes(app.logger(), in, env)
 	if err != nil {
 		return eventDraft{}, err
 	}
@@ -428,11 +429,14 @@ type eventTimes struct {
 
 // resolveEventTimes resolves --at (marked approximate by --approximate) and --ended as of env,
 // rejecting an --ended that is approximate.
-func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
+func resolveEventTimes(logger *slog.Logger, in fieldValues, env checkEnv) (eventTimes, error) {
 	raw := in.value("at")
 	at, err := resolveAt(raw, env.now, env.zone.loc)
 	if err != nil {
 		return eventTimes{}, err
+	}
+	if raw != nil {
+		logTypedTime(logger, typedTime{flag: "at", input: *raw, zone: env.zone, resolved: at})
 	}
 	approximate, _ := in.boolean("approximate")
 	at.Approximate = at.Approximate || approximate
@@ -446,6 +450,7 @@ func resolveEventTimes(in fieldValues, env checkEnv) (eventTimes, error) {
 	if err != nil {
 		return eventTimes{}, err
 	}
+	logTypedTime(logger, typedTime{flag: "ended", input: *endedInput, zone: env.zone, resolved: ended})
 	endedWhen := formatResolved(ended, env.zone)
 	err = timeline.ValidateEndedAt(&ended.Instant, at.Instant)
 	if p, ok := firstProblem(err); ok && p.Rule == timeline.RuleEndedBeforeOccurred {

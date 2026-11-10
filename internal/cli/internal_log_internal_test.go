@@ -131,7 +131,7 @@ var _ = Describe("internal log", func() {
 			cmd := newInternalLogCommand(context.Background(), App{})
 			NewRoot(context.Background(), App{}).AddCommand(cmd)
 			Expect(cmd.ParseFlags(args)).To(Succeed())
-			_, err := readLogFilter(cmd, time.Now(), zone{loc: time.UTC})
+			_, err := readLogFilter(slog.New(slog.DiscardHandler), cmd, time.Now(), zone{loc: time.UTC})
 			return err
 		}
 

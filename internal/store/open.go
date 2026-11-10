@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -40,6 +41,7 @@ type Store struct {
 	db         *sql.DB
 	migrations fs.FS
 	blobDir    blobDir
+	logger     *slog.Logger
 }
 
 // Schema is a database's schema version, and the latest one this build embeds.
@@ -53,9 +55,11 @@ type Schema struct {
 // migrations are pending it holds a flock on <path>.lock, which stays beside the database
 // once created. It returns ErrForeignDatabase for a directory or a SQLite file coroner did
 // not create, ErrDatabaseTooNew for a database a newer coroner migrated, even while Open
-// waited on the lock, and ErrBackupExists when that backup is already there.
-func Open(ctx context.Context, path string) (*Store, error) {
-	opts, err := defaultOpenOptions()
+// waited on the lock, and ErrBackupExists when that backup is already there. A logger given
+// receives the store's diagnostic lines; with none, or nil, they are discarded. Only the
+// first counts.
+func Open(ctx context.Context, path string, logger ...*slog.Logger) (*Store, error) {
+	opts, err := defaultOpenOptions(logger...)
 	if err != nil {
 		return nil, err
 	}
@@ -65,9 +69,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 // OpenWithoutBlobSync is Open without syncing a stored blob or the blob directory, which on
 // macOS takes milliseconds each. A power loss can then lose a committed attachment's blob, so
-// only tests, which never crash the machine, may call it.
-func OpenWithoutBlobSync(ctx context.Context, path string) (*Store, error) {
-	opts, err := defaultOpenOptions()
+// only tests, which never crash the machine, may call it. A logger given receives the
+// store's diagnostic lines; with none, or nil, they are discarded. Only the first counts.
+func OpenWithoutBlobSync(ctx context.Context, path string, logger ...*slog.Logger) (*Store, error) {
+	opts, err := defaultOpenOptions(logger...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,15 +86,22 @@ type openOptions struct {
 	migrations  fs.FS
 	busyTimeout time.Duration
 	syncBlob    func(*os.File) error
+	logger      *slog.Logger
 }
 
-func defaultOpenOptions() (openOptions, error) {
+func defaultOpenOptions(logger ...*slog.Logger) (openOptions, error) {
 	fsys, err := embeddedMigrations()
 	if err != nil {
 		return openOptions{}, err
 	}
 
-	return openOptions{migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync}, nil
+	opts := openOptions{migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync}
+	opts.logger = slog.New(slog.DiscardHandler)
+	if len(logger) > 0 && logger[0] != nil {
+		opts.logger = logger[0]
+	}
+
+	return opts, nil
 }
 
 func embeddedMigrations() (fs.FS, error) {
@@ -112,6 +124,7 @@ func storeAfter(path string, db *sql.DB, opts openOptions, checkErr error) (*Sto
 		db:         db,
 		migrations: opts.migrations,
 		blobDir:    blobDir{path: config.BlobDir(path), sync: opts.syncBlob},
+		logger:     opts.logger,
 	}, nil
 }
 
@@ -123,9 +136,10 @@ func tooNew(current int64) error {
 // writing to it. SQLite may leave -shm and -wal files beside a WAL database; the database
 // file itself is untouched. It returns an error wrapping fs.ErrNotExist when nothing is at
 // path, and ErrForeignDatabase or ErrDatabaseTooNew as Open does. Below the latest schema,
-// only Schema may be called.
-func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
-	opts, err := defaultOpenOptions()
+// only Schema may be called. A logger given receives the store's diagnostic lines; with
+// none, or nil, they are discarded. Only the first counts.
+func OpenReadOnly(ctx context.Context, path string, logger ...*slog.Logger) (*Store, error) {
+	opts, err := defaultOpenOptions(logger...)
 	if err != nil {
 		return nil, err
 	}

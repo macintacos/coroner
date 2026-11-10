@@ -57,11 +57,13 @@ type App struct {
 	// NewID returns the ID for a new record, a UUIDv7 in main.go.
 	NewID func() (uuid.UUID, error)
 	// OpenStore creates the database at path, so only commands that use it may call it, and
-	// never from PersistentPreRunE.
-	OpenStore func(ctx context.Context, path string) (*store.Store, error)
+	// never from PersistentPreRunE. Under Run, the command's logger is passed in place of any the
+	// caller gives.
+	OpenStore func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error)
 	// OpenStoreReadOnly opens the database at path without creating the database, migrating or
-	// writing it, and must report a missing file as fs.ErrNotExist.
-	OpenStoreReadOnly func(ctx context.Context, path string) (*store.Store, error)
+	// writing it, and must report a missing file as fs.ErrNotExist. Under Run, the
+	// command's logger is passed in place of any the caller gives.
+	OpenStoreReadOnly func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error)
 
 	// log is the command's diagnostic log, set by newRun.
 	log *diagnosticLog
@@ -80,8 +82,8 @@ func Run(ctx context.Context, app App) int {
 func newRun(ctx context.Context, app App) (App, *cobra.Command) {
 	log := newDiagnosticLog(app)
 	app.log = log
-	app.OpenStore = watching(app.OpenStore, log)
-	app.OpenStoreReadOnly = watching(app.OpenStoreReadOnly, log)
+	app.OpenStore = watching(app.OpenStore, log, app.Err)
+	app.OpenStoreReadOnly = watching(app.OpenStoreReadOnly, log, app.Err)
 	root := NewRoot(ctx, app)
 	var off bool
 	log.commandPath, off = commandOf(root, app.Args)

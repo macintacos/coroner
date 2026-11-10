@@ -111,7 +111,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	}
 	o, cfg := inv.out, inv.cfg
 	now := app.Now()
-	filter, bounds, err := readEventFilter(cmd.Flags(), now, z)
+	filter, bounds, err := readEventFilter(app.logger(), cmd.Flags(), now, z)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func exportTimeline(ctx context.Context, cmd *cobra.Command, app App) error {
 	var input exportInput
 	var page store.EventPage
 	err = withStorePath(ctx, app, cfg.DBPath, func(s *store.Store) error {
-		timelines, err := selectAll(ctx, s, inv.timelines, app.LookupEnv, o.format)
+		timelines, err := selectAll(ctx, app.logger(), s, inv.timelines, app.LookupEnv, o.format)
 		if err != nil {
 			return err
 		}

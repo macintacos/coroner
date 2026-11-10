@@ -267,7 +267,7 @@ type formCommand struct {
 	// ready reports whether the command line's values run without a form.
 	ready func(in fieldValues) bool
 	// flagsOnly runs the command line without a form.
-	flagsOnly func(*cobra.Command, []string) error
+	flagsOnly invokedRunE
 	// session runs the form, prefilled from the command line's values.
 	session func(s formSession, in fieldValues) error
 }
@@ -286,8 +286,7 @@ func (c formCommand) attach(cmd *cobra.Command, app App, forms func(color bool, 
 		}
 		in := c.def.read(cmd.Flags(), args)
 		if !formMode(formGate{interactive: interactive, ready: c.ready(in), machine: inv.out.format.machine(), terminal: inv.terminal}) {
-			// ponytail: flagsOnly reads the invocation again; pass inv to flagsOnly if that read grows costly.
-			return c.flagsOnly(cmd, args)
+			return c.flagsOnly(cmd, inv, args)
 		}
 
 		return c.session(newFormSession(app, inv, forms), in)
@@ -307,7 +306,7 @@ func (f addForm[R]) attach(
 	return formCommand{
 		def:       f.def,
 		ready:     func(in fieldValues) bool { return requiredGiven(f.def, in) },
-		flagsOnly: writeRunE(ctx, app, f.def, f.run),
+		flagsOnly: writeRun(ctx, app, f.def, f.run),
 		session: func(s formSession, in fieldValues) error {
 			return f.session(ctx, s, in)
 		},
@@ -530,7 +529,7 @@ func newNoteStyles(color bool) noteStyles {
 func chooseTimeline(ctx context.Context, s formSession, picker timelinePicker, in fieldValues) (fieldValues, bool, error) {
 	var by selectedBy
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		sel, err := selectTimelines(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		sel, err := selectTimelines(ctx, s.app.logger(), st, timelineInputOf(in), s.app.LookupEnv)
 		if err != nil || sel.by != "" {
 			by = sel.by
 			return err
@@ -647,7 +646,7 @@ func selectedTimeline(ctx context.Context, s formSession, in fieldValues) (timel
 	var t timeline.Timeline
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
 		var err error
-		t, err = selectOne(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		t, err = selectOne(ctx, s.app.logger(), st, timelineInputOf(in), s.app.LookupEnv)
 		return err
 	})
 
@@ -745,7 +744,7 @@ func (s formSession) askUntil(
 func (f addForm[R]) entryChoices(ctx context.Context, s formSession, in fieldValues, z zone) (formChoices, error) {
 	var choices formChoices
 	err := withStorePath(ctx, s.app, s.inv.cfg.DBPath, func(st *store.Store) error {
-		t, err := selectOne(ctx, st, timelineInputOf(in), s.app.LookupEnv)
+		t, err := selectOne(ctx, s.app.logger(), st, timelineInputOf(in), s.app.LookupEnv)
 		if err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -121,7 +122,7 @@ func editEvent(ctx context.Context, app App, cfg config.Config, in fieldValues) 
 	built, inserted, err := withChange(ctx, app, cfg.DBPath, store.ChangeOptions{Mode: modeFor(req.dryRun), Attach: req.toAdd},
 		func(tx *store.Tx) (attached[eventEdited], error) {
 			b := attached[eventEdited]{result: eventEdited{zone: z, when: edit.when, dryRun: req.dryRun}}
-			e, t, err := findEvent(ctx, tx, ref, timelineInputOf(in), app.LookupEnv)
+			e, t, err := findEvent(ctx, app.logger(), tx, ref, timelineInputOf(in), app.LookupEnv)
 			if err != nil {
 				return b, err
 			}
@@ -221,7 +222,7 @@ func readEventEdit(in fieldValues, app App, env checkEnv) (eventEdit, error) {
 	}
 
 	edit := eventEdit{now: env.now, editFields: readEditFields(in)}
-	edit.editTimes, err = readEditTimes(in, env)
+	edit.editTimes, err = readEditTimes(app.logger(), in, env)
 	if err != nil {
 		return edit, err
 	}
@@ -268,7 +269,7 @@ func readFieldEdit(in fieldValues, name string) fieldEdit {
 }
 
 // readEditTimes resolves --at and --ended as of env, rejecting an approximate --ended.
-func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
+func readEditTimes(logger *slog.Logger, in fieldValues, env checkEnv) (editTimes, error) {
 	var times editTimes
 	var echoes []string
 	if raw := in.value("at"); raw != nil {
@@ -276,19 +277,21 @@ func readEditTimes(in fieldValues, env checkEnv) (editTimes, error) {
 		if err != nil {
 			return times, err
 		}
+		logTypedTime(logger, typedTime{flag: "at", input: *raw, zone: env.zone, resolved: at})
 		times.at, times.raw = &at, raw
 		echoes = append(echoes, "at "+formatResolved(at, env.zone))
 	}
 
-	ended := in.value("ended")
-	times.clearEnded = ended != nil && *ended == clearKeyword
-	if ended != nil && !times.clearEnded {
-		r, err := resolveEnded(*ended, env, editedEndedHint)
+	endedInput := in.value("ended")
+	times.clearEnded = endedInput != nil && *endedInput == clearKeyword
+	if endedInput != nil && !times.clearEnded {
+		ended, err := resolveEnded(*endedInput, env, editedEndedHint)
 		if err != nil {
 			return times, err
 		}
-		times.ended = &r
-		echoes = append(echoes, "ended "+formatResolved(r, env.zone))
+		logTypedTime(logger, typedTime{flag: "ended", input: *endedInput, zone: env.zone, resolved: ended})
+		times.ended = &ended
+		echoes = append(echoes, "ended "+formatResolved(ended, env.zone))
 	}
 
 	if len(echoes) > 0 {
