@@ -60,12 +60,13 @@ rules say what a line holds; a new or changed line also updates that page.
    data, such as which rule matched, only when a caller logs it.
 9. **`internal/store` takes a logger; `internal/config` returns data:** one store call
    does many I/O steps its caller cannot see, such as migrating, staging blobs and waiting
-   on a busy database, so the store is handed a `*slog.Logger` (not in the repo yet:
-   EXC-2306) and logs those steps itself. `internal/config` does its I/O through the
-   functions its caller passes and decides little beyond which path and which source won,
-   so it returns those decisions in its result and `internal/cli` logs them. Code that
-   logs takes its `*slog.Logger` as a parameter, never `slog.Default()` or the
-   package-level `slog` functions.
+   on a busy database, so `store.Open`, `store.OpenReadOnly` and
+   `store.OpenWithoutBlobSync` take an optional `*slog.Logger`, which `internal/cli` hands
+   them from the command, and the store logs those steps itself (not in the repo yet:
+   EXC-2306). `internal/config` does its I/O through the functions its caller passes and
+   decides little beyond which path and which source won, so it returns those decisions in
+   its result and `internal/cli` logs them. Code that logs takes its `*slog.Logger` as a
+   parameter, never `slog.Default()` or the package-level `slog` functions.
 10. **The content guard enforces rule 2:**
     [`log_content_test.go`](../../internal/cli/log_content_test.go) runs a table of
     commands under `--debug`, failing ones included, against records whose titles, event

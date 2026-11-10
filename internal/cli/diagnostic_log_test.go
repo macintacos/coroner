@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -74,13 +75,13 @@ var _ = Describe("diagnostic log", func() {
 	run := func(ctx context.Context, app cli.App) int {
 		openedTheDB = false
 		openStore, openReadOnly := app.OpenStore, app.OpenStoreReadOnly
-		app.OpenStore = func(ctx context.Context, path string) (*store.Store, error) {
+		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
 			openedTheDB = true
-			return openStore(ctx, path)
+			return openStore(ctx, path, logger...)
 		}
-		app.OpenStoreReadOnly = func(ctx context.Context, path string) (*store.Store, error) {
+		app.OpenStoreReadOnly = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
 			openedTheDB = true
-			return openReadOnly(ctx, path)
+			return openReadOnly(ctx, path, logger...)
 		}
 		return cli.Run(ctx, app)
 	}
@@ -129,6 +130,20 @@ var _ = Describe("diagnostic log", func() {
 		run(ctx, completion.app("__complete", "timeline", "use", ""))
 		Expect(openedTheDB).To(BeTrue())
 		Expect(readFile(logPath)).To(Equal(before))
+	})
+
+	It("hands the store the command's logger", func(ctx SpecContext) {
+		app := h.app("timeline", "create", "u")
+		var loggers []*slog.Logger
+		openStore := app.OpenStore
+		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
+			loggers = append(loggers, logger...)
+			return openStore(ctx, path, logger...)
+		}
+
+		Expect(cli.Run(ctx, app)).To(Equal(0))
+
+		Expect(loggers).To(HaveExactElements(Not(BeNil())))
 	})
 
 	DescribeTable("ends the log with the command's finish line",

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io/fs"
+	"log/slog"
 	"maps"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -27,11 +28,11 @@ var _ = Describe("invocation", func() {
 				return []byte(configFile), nil
 			},
 			Now: testNow,
-			OpenStore: func(context.Context, string) (*store.Store, error) {
+			OpenStore: func(context.Context, string, ...*slog.Logger) (*store.Store, error) {
 				Fail("readInvocation opened the store")
 				return nil, nil
 			},
-			OpenStoreReadOnly: func(context.Context, string) (*store.Store, error) {
+			OpenStoreReadOnly: func(context.Context, string, ...*slog.Logger) (*store.Store, error) {
 				Fail("readInvocation opened the store")
 				return nil, nil
 			},

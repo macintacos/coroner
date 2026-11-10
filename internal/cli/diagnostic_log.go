@@ -157,12 +157,15 @@ func (d *diagnosticLog) logger(stderr io.Writer) *slog.Logger {
 	return slog.New(slog.NewMultiHandler(handlers...)).With("command", d.commandPath)
 }
 
-// watching returns open, telling log the path of each database it tries to open.
+// watching returns open, telling log the path of each database it tries to open. It hands
+// open the command's logger, built at open time so it carries the command path, in place of
+// any logger its caller passes.
 func watching(
-	open func(ctx context.Context, path string) (*store.Store, error), log *diagnosticLog,
-) func(ctx context.Context, path string) (*store.Store, error) {
-	return func(ctx context.Context, path string) (*store.Store, error) {
-		s, err := open(ctx, path)
+	open func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error),
+	log *diagnosticLog, stderr io.Writer,
+) func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
+	return func(ctx context.Context, path string, _ ...*slog.Logger) (*store.Store, error) {
+		s, err := open(ctx, path, log.logger(stderr))
 		log.opened(path, err)
 		return s, err
 	}

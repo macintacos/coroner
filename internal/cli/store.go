@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -75,7 +76,8 @@ func modeFor(dryRun bool) store.Mode {
 // withStoreOpenedBy opens the database at path with open, runs fn against it and closes it.
 // Errors from opening the store pass through storeError, and fn's through callbackError.
 func withStoreOpenedBy(
-	ctx context.Context, open func(context.Context, string) (*store.Store, error), path string, fn func(*store.Store) error,
+	ctx context.Context, open func(context.Context, string, ...*slog.Logger) (*store.Store, error), path string,
+	fn func(*store.Store) error,
 ) error {
 	s, err := open(ctx, path)
 	if err != nil {
