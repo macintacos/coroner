@@ -65,6 +65,12 @@ After `event delete`, `annotation delete`, `attachment delete` or `timeline dele
 commits, coroner removes the blobs no attachment uses any more, writing `blob deleted` for
 each, with its `sha256` and `size`.
 
+Each file a command writes outside the database adds a `file written` line at info, with
+its `path` and `size` in bytes. `timeline export -o` adds the export's `format` and
+`counts`, how many records of each kind it holds; each attachment file, whether
+`attachment export -o` writes it or an export copies it beside a Markdown or JSONL export,
+adds its `attachment` id and `sha256`. Output to stdout writes no such line.
+
 Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
 
 - `command failed`, with `kind`, `exit_code`, `message`, `flags` (the names of the flags
@@ -91,7 +97,17 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   `size`;
 - `blobs collected`, once garbage collection after a delete finishes, with the `count` of
   blobs it removed, which may be 0;
-- the viewer's `attachment image not shown`.
+- `records read`, once per run of a command that only reads (`annotation list`,
+  `attachment list`, `attachment export`, `event list`, `event view`, `source list`,
+  `status`, `tag list`, `timeline list`, `timeline export` and `timeline view`), with
+  `counts`, how many records of each kind it read, such as `{"events":12}`; `filter`, what
+  narrowed the events: the `sources` and `tags` given, `contains`, true when `--contains`
+  was given (never its text), `order`, `desc` when `--order desc` reversed them, and
+  `limit`; and `event` or `attachment`, the id of the record `-e` or the argument named;
+- `timeline picked`, with the `timeline` picked in `timeline list`'s picker;
+- the viewer's `timelines reloaded`, each time it reads its timelines again, on `r` or a
+  new filter, with `counts` and `duration`; `timelines not reloaded`, with `duration` and
+  `error`, when that read fails; and `attachment image not shown`.
 
 Under debug, every line also prints on stderr as text as it is logged; the viewer holds
 its stderr lines until it closes. stdout and the JSON error envelope never change, and the
@@ -105,6 +121,9 @@ line's own keys:
 ```json
 {"time":"2026-11-09T19:35:41.934803-05:00","level":"INFO","msg":"command finished","command":"coroner timeline create","kind":"ok","exit_code":0,"duration":8667667}
 ```
+
+A group, such as `counts`, is a nested object; on stderr its keys print dotted, such as
+`counts.events=12`.
 
 The line shape is not a contract: it may change in any release
 ([STABILITY.md](https://github.com/macintacos/coroner/blob/main/STABILITY.md)).

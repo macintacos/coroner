@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"io/fs"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -41,5 +43,27 @@ var _ = Describe("newExport", func() {
 		})
 
 		Expect(env.Links).To(Equal([]export.Link{{ID: "l-both", FromEventID: "e1", ToEventID: "e2", Kind: timeline.LinkLedTo, CreatedAt: export.Instant(at)}}))
+	})
+})
+
+var _ = Describe("copyFiles", func() {
+	It("returns the copies it wrote, sized by their bytes, when a later copy fails", func() {
+		failed := errors.New("no space left on device")
+		files := fileSystem{
+			readFile: func(name string) ([]byte, error) { return []byte(name), nil },
+			writeFile: func(name string, _ []byte, _ fs.FileMode) error {
+				if name == "out/b" {
+					return failed
+				}
+				return nil
+			},
+			mkdirAll: func(string, fs.FileMode) error { return nil },
+		}
+		copies := []fileCopy{{attachmentID: "a1", from: "blob-one", to: "out/a"}, {attachmentID: "a2", from: "blob-2", to: "out/b"}}
+
+		written, err := copyFiles(files, "out", copies)
+
+		Expect(err).To(MatchError(failed))
+		Expect(written).To(Equal([]fileCopy{{attachmentID: "a1", from: "blob-one", to: "out/a", size: len("blob-one")}}))
 	})
 })

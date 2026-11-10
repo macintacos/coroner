@@ -63,7 +63,15 @@ func showStatus(ctx context.Context, cmd *cobra.Command, app App) error {
 	err = withStoreOpenedBy(ctx, app.OpenStoreReadOnly, inv.cfg.DBPath, func(s *store.Store) error {
 		var err error
 		report, err = readStatus(ctx, app.logger(), s, inv.timelines, app.LookupEnv)
-		return err
+		if err != nil {
+			return err
+		}
+		timelinesRead := 0
+		if report.Timeline != nil {
+			timelinesRead = 1
+		}
+		logRead(app.logger(), countOf("timelines", timelinesRead))
+		return nil
 	})
 	switch {
 	case errors.Is(err, fs.ErrNotExist):

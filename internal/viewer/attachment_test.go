@@ -222,6 +222,40 @@ var _ = Describe("the viewer's attachments", func() {
 		Expect(logged.String()).To(SatisfyAll(ContainSubstring("attachment image not shown"), ContainSubstring(pngSHA)))
 	})
 
+	It("logs each load, with what it read and how long it took", func() {
+		var logged bytes.Buffer
+		opts := optionsFor(withAttachments(), b)
+		opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		clock := utc(12, 21, 30, 0)
+		opts.Now = func() time.Time {
+			clock = clock.Add(time.Second)
+			return clock
+		}
+		m, cmd := press(answered(viewer.New(opts)), "r")
+		drainMsgs(m, cmd)
+
+		Expect(logged.String()).To(SatisfyAll(
+			ContainSubstring(`msg="timelines reloaded"`),
+			ContainSubstring(fmt.Sprintf("counts.events=%d", len(withAttachments().Events))),
+			ContainSubstring("duration=1s"),
+		))
+	})
+
+	It("logs a load that fails", func() {
+		var logged bytes.Buffer
+		opts := optionsFor(withAttachments(), b)
+		opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		opts.Load = (&loader{err: errors.New("database is locked")}).load
+		m, cmd := press(answered(viewer.New(opts)), "r")
+		drainMsgs(m, cmd)
+
+		Expect(logged.String()).To(SatisfyAll(
+			ContainSubstring(`msg="timelines not reloaded"`),
+			ContainSubstring("duration="),
+			ContainSubstring("error="),
+		))
+	})
+
 	It("reads the images an expanded event gains when the timeline is read again", func() {
 		logOnly := withAttachments()
 		logOnly.Attachments = logOnly.Attachments[1:2]

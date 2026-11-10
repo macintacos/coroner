@@ -31,6 +31,14 @@ type Snapshot struct {
 	Attachments []timeline.Attachment
 }
 
+// Counts is the log group of how many records of each kind s holds.
+func (s Snapshot) Counts() slog.Value {
+	return slog.GroupValue(
+		slog.Int("timelines", len(s.Timelines)), slog.Int("events", len(s.Events)),
+		slog.Int("annotations", len(s.Annotations)), slog.Int("attachments", len(s.Attachments)),
+	)
+}
+
 // Match picks events by source (any of), tag (all of) and text, as event list's flags do.
 type Match struct {
 	Sources, Tags []string
@@ -48,12 +56,13 @@ type Options struct {
 	// Image reads an image attachment's content. The viewer calls it in a command, never while
 	// rendering, and shows an attachment it cannot read or decode as its placeholder.
 	Image func(timeline.Attachment) ([]byte, error)
-	// Log takes debug detail on why an image attachment is not shown; nil logs nothing.
+	// Log takes debug detail: each load, with what it read and how long it took, and why an image
+	// attachment is not shown; nil logs nothing.
 	Log *slog.Logger
 	// Location is the zone times show in, and typed times are read in.
 	Location  *time.Location
 	ZoneLabel string // shown verbatim in the header, e.g. "America/New_York" or "local"
-	// Now is the clock relative times typed at @ are read against.
+	// Now is the clock relative times typed at @ are read against, and loads are timed by.
 	Now func() time.Time
 }
 

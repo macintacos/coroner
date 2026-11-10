@@ -35,6 +35,7 @@ func newTagListCommand(ctx context.Context, app App) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				logRead(app.logger(), countOf("tags", len(usages)))
 
 				return printTags(inv.out, z, usages)
 			})

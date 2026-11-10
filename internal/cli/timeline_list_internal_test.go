@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/macintacos/coroner/internal/config"
 	"github.com/macintacos/coroner/internal/store"
 )
 
@@ -124,6 +126,20 @@ var _ = Describe("timeline list on a terminal", func() {
 		Expect(run(ctx, a, "timeline", "list")).To(Equal(0), errOut.String())
 		Expect(<-renamed).To(Equal(0), renameErr.String())
 		Expect(current(ctx)).To(Equal("db-2-disk-full-renamed"))
+	})
+
+	It("logs the timelines it read and the one picked under --debug", func(ctx SpecContext) {
+		Expect(run(ctx, app, "timeline", "edit", "db-2-disk-full", "--title", "PICKED-TITLE-q7v2")).To(Equal(0), errOut.String())
+
+		Expect(pick(ctx, "j\r", "--debug")).To(Equal(0), errOut.String())
+
+		logged, err := os.ReadFile(config.DiagnosticLogPath(env["CORONER_DB"]))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(logged)).To(SatisfyAll(
+			ContainSubstring(`"msg":"records read"`),
+			ContainSubstring(`"msg":"timeline picked","command":"coroner timeline list","timeline":"db-2-disk-full"`),
+			Not(ContainSubstring("PICKED-TITLE-q7v2")),
+		))
 	})
 
 	It("changes nothing when q leaves", func(ctx SpecContext) {

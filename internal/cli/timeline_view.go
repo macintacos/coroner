@@ -83,11 +83,16 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 		case err != nil:
 			return err
 		case o.format == formatJSON:
+			logRead(app.logger(), countOf("timelines", 1))
 			return o.json(newTimelineJSON(timelines[0]))
 		}
 
 		snapshot, err = readSnapshot(ctx, s, timelines, filter)
-		return err
+		if err != nil {
+			return err
+		}
+		logRead(app.logger(), snapshot.Counts(), slog.Any("filter", filterValue(filter)))
+		return nil
 	})
 	switch {
 	case err != nil || o.format == formatJSON:

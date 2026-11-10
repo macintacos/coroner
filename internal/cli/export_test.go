@@ -19,6 +19,10 @@ func CheckCommandLine(cmd *cobra.Command, args []string) error { return checkCom
 
 func WalkCommands(cmd *cobra.Command, visit func(*cobra.Command)) { walkCommands(cmd, visit) }
 
+func WriteVerbs() []string { return writeVerbs() }
+
+func CommandOf(root *cobra.Command, args []string) (string, bool) { return commandOf(root, args) }
+
 const LogRotateSize = logRotateSize
 
 // RunWithThrowawayDeprecation is Run with one more global flag, --throwaway, deprecated in

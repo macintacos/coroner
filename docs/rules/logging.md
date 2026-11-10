@@ -11,13 +11,15 @@ rules say what a line holds; a new or changed line also updates that page.
    from and carried on past; error is what needs someone's attention. A failure the user
    already sees on stderr is not an error line: `command finished` records its kind at
    info, and `command failed` its detail at debug.
-2. **A line carries only these:** ids, kinds, counts, sizes, durations, flag names, typed
-   time input, the instant and precision typed time input resolves to, timeline, tag and
-   source names, time zone names, the setting that supplied a value or selected the
-   timelines, and the paths of files coroner opens. Everything else stays out, including
-   titles, event text, annotation bodies, attachment content and filenames, and error text
-   that quotes any of these. Name a record by its id, or by its name when it has one.
-   Overlay names and an event's `<timeline>#<seq>` ref, such as `inc#3`, are allowed too.
+2. **A line carries only these:** ids, kinds, counts, sizes, durations, flag names, the
+   value of a flag that takes one of a fixed set of choices or a number, such as
+   `--format`, `--order` and `--limit`, typed time input, the instant and precision typed
+   time input resolves to, timeline, tag and source names, time zone names, the setting
+   that supplied a value or selected the timelines, and the paths of files coroner opens.
+   Everything else stays out, including titles, event text, annotation bodies, attachment
+   content and filenames, and error text that quotes any of these. Name a record by its
+   id, or by its name when it has one. Overlay names and an event's `<timeline>#<seq>`
+   ref, such as `inc#3`, are allowed too.
 3. **A path is logged only when coroner opens it and it holds no record content:** the
    database, the backup `Open` makes before migrating, the config file (the path coroner
    reads it from, or looks at when no file is there), the diagnostic log, the blob
@@ -45,6 +47,14 @@ rules say what a line holds; a new or changed line also updates that page.
    - `timeline`: the name of the timeline the line is about.
    - `count`: how many records a step changed or read, or how many blobs garbage
      collection deleted.
+   - `counts`: how many records of each kind a read returned or an export holds, as a
+     group keyed by kind: `timelines`, `events`, `annotations`, `attachments`, `links`,
+     `sources` or `tags`.
+   - `filter`: what narrowed a read of events, as a group: `sources` and `tags`, the names
+     given; `contains`, true when `--contains` was given, never its text; `order`, `desc`
+     when `--order desc` reversed the events; and `limit`. A read nothing narrowed has no
+     `filter`.
+   - `format`: an export's format, such as `jsonl`.
    - `dry_run`: true when `--dry-run` kept the command from changing anything.
    - `path`: the path of a file coroner opens or writes (rule 3).
    - `size`: a file's or blob's size in bytes.
@@ -69,7 +79,8 @@ rules say what a line holds; a new or changed line also updates that page.
    info line per record it names, under that record's key from rule 5, so a line about an
    annotation carries both its `annotation` and its `event`. Records it changes as a side
    effect, such as an import's records or a deleted timeline's events, get one info line
-   with their `count`, and their ids at debug.
+   with their `count`, and their ids at debug. A command that only reads names its records
+   at debug instead, in its `records read` line, which `logRead` writes.
 7. **A file written outside the database is logged at info:** an export, an exported
    attachment, the backup made before migrating, or any other file a command writes, with
    its `path` and `size`. A blob is not logged as a file: the store logs one it stores at
@@ -97,4 +108,6 @@ rules say what a line holds; a new or changed line also updates that page.
     text, annotation bodies, attachment content and filenames hold sentinel strings, and
     fails when a sentinel reaches the log. A change that adds a log line adds a row whose
     run reaches that line, and a failing row when the line is reached by a command that
-    fails after it opens the database.
+    fails after it opens the database. A command that only reads joins `readCommands`
+    instead; a spec walks the command tree and fails when one is missing, and another runs
+    each under `--debug` against the sentinels.
