@@ -167,13 +167,13 @@ func (d *diagnosticLog) logger(stderr io.Writer) *slog.Logger {
 }
 
 // watching returns open, telling log the path of each database it tries to open. It hands
-// open the command's logger, built at open time so it carries the command path.
+// open the command's logger, built at open time so it carries the command path, and clock.
 func watching(
 	open func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error),
 	log *diagnosticLog, stderr io.Writer,
 ) func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error) {
 	return func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error) {
-		s, err := open(ctx, path, append(opts, store.WithLogger(log.logger(stderr)))...)
+		s, err := open(ctx, path, append(opts, store.WithLogger(log.logger(stderr)), store.WithClock(log.now))...)
 		log.opened(path, err)
 		return s, err
 	}

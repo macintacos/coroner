@@ -67,6 +67,10 @@ Under `--debug` or `CORONER_DEBUG`, debug lines are written too, such as:
   given, never their values) and, when the failure has a cause, `error`;
 - `database opened`, each time a command opens a database, with its `path`, `created`
   (true when the command created it), and its `schema_version` after any migration;
+- `transaction committed` or `transaction rolled back`, once per database transaction,
+  reads included, with `read_only` and its `duration`; a rolled-back one also has
+  `dry_run`, true when `--dry-run` undid it. These lines tell whether a write committed,
+  not what it changed;
 - `database path resolved`, with the `path` and `by`: `flag`, `env`, `file` (the config
   file's `db`) or `default`; `config file resolved`, with the `path` coroner reads the
   config file from, whether or not a file is there, and `by`: `flag`, `env` or `default`;

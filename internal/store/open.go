@@ -42,6 +42,7 @@ type Store struct {
 	migrations fs.FS
 	blobDir    blobDir
 	logger     *slog.Logger
+	now        func() time.Time
 }
 
 // Schema is a database's schema version, and the latest one this build embeds.
@@ -84,6 +85,7 @@ type openOptions struct {
 	busyTimeout time.Duration
 	syncBlob    func(*os.File) error
 	logger      *slog.Logger
+	now         func() time.Time
 }
 
 // Option changes how Open, OpenWithoutBlobSync or OpenReadOnly opens a database.
@@ -94,13 +96,21 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(o *openOptions) { o.logger = logger }
 }
 
+// WithClock times the store's steps by now. Without it every duration logs as zero.
+func WithClock(now func() time.Time) Option {
+	return func(o *openOptions) { o.now = now }
+}
+
 func defaultOpenOptions(options ...Option) (openOptions, error) {
 	fsys, err := embeddedMigrations()
 	if err != nil {
 		return openOptions{}, err
 	}
 
-	opts := openOptions{migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync, logger: slog.New(slog.DiscardHandler)}
+	opts := openOptions{
+		migrations: fsys, busyTimeout: busyTimeout, syncBlob: (*os.File).Sync, logger: slog.New(slog.DiscardHandler),
+		now: func() time.Time { return time.Time{} },
+	}
 	for _, option := range options {
 		option(&opts)
 	}
@@ -129,6 +139,7 @@ func storeAfter(path string, db *sql.DB, opts openOptions, checkErr error) (*Sto
 		migrations: opts.migrations,
 		blobDir:    blobDir{path: config.BlobDir(path), sync: opts.syncBlob},
 		logger:     opts.logger,
+		now:        opts.now,
 	}, nil
 }
 

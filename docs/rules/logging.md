@@ -48,6 +48,7 @@ rules say what a line holds; a new or changed line also updates that page.
    - `path`: the path of a file coroner opens or writes (rule 3).
    - `size`: a file's or blob's size in bytes.
    - `attachment`: an attachment's id.
+   - `read_only`: true for a database transaction that only reads.
    - `sha256`: an attachment's SHA-256.
    - `by`: which setting supplied a value or selected the timelines: `flag`, `env`, `file`
      (the config file), `default`, `use` (`coroner timeline use`), `name` (a timeline
@@ -78,12 +79,13 @@ rules say what a line holds; a new or changed line also updates that page.
 9. **`internal/store` takes a logger; `internal/config` returns data:** one store call
    does many I/O steps its caller cannot see, such as migrating, staging blobs and waiting
    on a busy database, so `store.Open`, `store.OpenReadOnly` and
-   `store.OpenWithoutBlobSync` take a `store.WithLogger` option, which `internal/cli`
-   hands them from the command, and the store logs those steps itself. `internal/config`
-   does its I/O through the functions its caller passes and decides little beyond which
-   path and which source won, so it returns those decisions in its result and
-   `internal/cli` logs them. Code that logs takes its `*slog.Logger` as a parameter, never
-   `slog.Default()` or the package-level `slog` functions.
+   `store.OpenWithoutBlobSync` take a `store.WithLogger` option, and a `store.WithClock`
+   option that times the store's steps, which `internal/cli` hands them from the command,
+   and the store logs those steps itself. `internal/config` does its I/O through the
+   functions its caller passes and decides little beyond which path and which source won,
+   so it returns those decisions in its result and `internal/cli` logs them. Code that
+   logs takes its `*slog.Logger` as a parameter, never `slog.Default()` or the
+   package-level `slog` functions.
 10. **The content guard enforces rule 2:**
     [`log_content_test.go`](../../internal/cli/log_content_test.go) runs a table of
     commands under `--debug`, failing ones included, against records whose titles, event

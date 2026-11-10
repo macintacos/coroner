@@ -255,6 +255,7 @@ func (s *Store) change(ctx context.Context, mode Mode, fn func(*Tx) error) error
 }
 
 func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.DBTX) error) error {
+	start := s.now()
 	tx, err := s.db.BeginTx(ctx, opts)
 	if err != nil {
 		return err
@@ -262,10 +263,23 @@ func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.D
 
 	err = fn(tx)
 	if err != nil {
-		return errors.Join(err, tx.Rollback())
+		err = errors.Join(err, tx.Rollback())
+	} else {
+		err = tx.Commit()
 	}
+	s.logTx(ctx, opts != nil && opts.ReadOnly, s.now().Sub(start), err)
 
-	return tx.Commit()
+	return err
+}
+
+// logTx logs how a transaction ended after duration: it committed when err is nil.
+func (s *Store) logTx(ctx context.Context, readOnly bool, duration time.Duration, err error) {
+	if err == nil {
+		s.logger.DebugContext(ctx, "transaction committed", "read_only", readOnly, "duration", duration)
+		return
+	}
+	s.logger.DebugContext(ctx, "transaction rolled back",
+		"read_only", readOnly, "dry_run", errors.Is(err, errRollback), "duration", duration)
 }
 
 // retryBusy calls fn up to attempts times while it fails with SQLITE_BUSY, waiting a

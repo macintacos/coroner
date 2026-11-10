@@ -2,10 +2,14 @@ package store_test
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"path/filepath"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	"github.com/macintacos/coroner/internal/store"
 )
@@ -60,4 +64,44 @@ var _ = Describe("Diagnostic lines", func() {
 			HaveKeyWithValue("created", false), HaveKeyWithValue("schema_version", BeNumerically("==", 1)))))
 		Expect(logged(&logs, "migration applied")).To(BeEmpty())
 	})
+
+	failed := errors.New("fn failed")
+
+	DescribeTable("logs how each transaction ended and how long it took",
+		func(ctx SpecContext, run func(context.Context, *store.Store) error, wantErr error, msg string, keys types.GomegaMatcher) {
+			var logs bytes.Buffer
+			s, err := store.Open(ctx, newDatabase(), capture(&logs), ticking())
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(s.Close)
+
+			Expect(errors.Is(run(ctx, s), wantErr)).To(BeTrue())
+
+			Expect(logged(&logs, msg)).To(HaveExactElements(SatisfyAll(
+				HaveKeyWithValue("level", "DEBUG"), HaveKeyWithValue("duration", BeNumerically("==", 1_000_000)), keys)))
+		},
+		Entry("a change that commits", func(ctx context.Context, s *store.Store) error {
+			_, err := s.Change(ctx, store.ChangeOptions{}, func(*store.Tx) error { return nil })
+			return err
+		}, nil, "transaction committed", SatisfyAll(HaveKeyWithValue("read_only", false), Not(HaveKey("dry_run")))),
+		Entry("a change whose function fails", func(ctx context.Context, s *store.Store) error {
+			_, err := s.Change(ctx, store.ChangeOptions{}, func(*store.Tx) error { return failed })
+			return err
+		}, failed, "transaction rolled back", SatisfyAll(HaveKeyWithValue("read_only", false), HaveKeyWithValue("dry_run", false))),
+		Entry("a dry run", func(ctx context.Context, s *store.Store) error {
+			_, err := s.Change(ctx, store.ChangeOptions{Mode: store.Rollback}, func(*store.Tx) error { return nil })
+			return err
+		}, nil, "transaction rolled back", SatisfyAll(HaveKeyWithValue("read_only", false), HaveKeyWithValue("dry_run", true))),
+		Entry("a read", func(ctx context.Context, s *store.Store) error {
+			return s.Read(ctx, func(*store.Tx) error { return nil })
+		}, nil, "transaction committed", SatisfyAll(HaveKeyWithValue("read_only", true), Not(HaveKey("dry_run")))),
+	)
 })
+
+// ticking is a clock that advances a millisecond each time it is read.
+func ticking() store.Option {
+	now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	return store.WithClock(func() time.Time {
+		now = now.Add(time.Millisecond)
+		return now
+	})
+}
