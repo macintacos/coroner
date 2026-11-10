@@ -77,6 +77,7 @@ what-does: What does the change touch?
   any change: the repository rules always apply > agents
   a command, flag, output or error message (Rule 1) > command-checklist
   Go code: function shape and layering are lint rules > load-golangci
+  Go code: what to log, at which level, under which names, and what never to log > logging
   naming something in code, flags, JSON or docs > context
   JSON output, exports or another contract (Rule 3) > stability
   a command, flag, JSON key, exit code or experimental surface the agent skill or its references name (Rule 5) > skill
@@ -93,6 +94,7 @@ what-does: What does the change touch?
 agents!: Load AGENTS.md § Rules
 command-checklist!: Load docs/contributing/command-checklist.md
 load-golangci!: Load .golangci.yml
+logging!: Load docs/rules/logging.md
 context!: Load CONTEXT.md
 stability!: Load STABILITY.md
 skill!: Load skills/coroner/SKILL.md
