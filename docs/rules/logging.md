@@ -19,13 +19,13 @@ rules say what a line holds; a new or changed line also updates that page.
    that quotes any of these. Name a record by its id, or by its name when it has one.
    Overlay names and an event's `<timeline>#<seq>` ref, such as `inc#3`, are allowed too.
 3. **A path is logged only when coroner opens it and it holds no record content:** the
-   database, the config file (the path coroner reads it from, or looks at when no file is
-   there), the diagnostic log, the blob directory, and a file the user named with `-o` or
-   as an `import` file are logged in full. A stored attachment's filename is record
-   content, so neither it, a path coroner builds from it, nor the `--attach` path whose
-   base name it is, is logged; name the attachment by its `attachment` id, with its `size`
-   and `sha256`. Only the error for an `--attach` file coroner cannot read quotes that
-   path, since nothing was stored.
+   database, the backup `Open` makes before migrating, the config file (the path coroner
+   reads it from, or looks at when no file is there), the diagnostic log, the blob
+   directory, and a file the user named with `-o` or as an `import` file are logged in
+   full. A stored attachment's filename is record content, so neither it, a path coroner
+   builds from it, nor the `--attach` path whose base name it is, is logged; name the
+   attachment by its `attachment` id, with its `size` and `sha256`. Only the error for an
+   `--attach` file coroner cannot read quotes that path, since nothing was stored.
 4. **Error text never quotes record content:** `message` and `error` carry an error's text
    as it is, so a `*cli.Error`'s message, and any error it wraps, names a record by its
    id, name or `<timeline>#<seq>` ref, never by its title, text, body or filename.
@@ -43,12 +43,16 @@ rules say what a line holds; a new or changed line also updates that page.
    - `event`: an event's id.
    - `annotation`: an annotation's id.
    - `timeline`: the name of the timeline the line is about.
-   - `count`: how many records a step changed or read.
+   - `count`: how many records a step changed or read, or how many blobs garbage
+     collection deleted.
    - `dry_run`: true when `--dry-run` kept the command from changing anything.
    - `path`: the path of a file coroner opens or writes (rule 3).
    - `size`: a file's or blob's size in bytes.
+   - `created`: true when opening created the database file.
+   - `schema_version`: a database's schema version, or the one a migration brings it to.
+   - `read_only`: true for a database transaction that only reads.
    - `attachment`: an attachment's id.
-   - `sha256`: an attachment's SHA-256.
+   - `sha256`: an attachment's or a blob's SHA-256.
    - `by`: which setting supplied a value or selected the timelines: `flag`, `env`, `file`
      (the config file), `default`, `use` (`coroner timeline use`), `name` (a timeline
      argument) or `overlay`.
@@ -67,20 +71,26 @@ rules say what a line holds; a new or changed line also updates that page.
    effect, such as an import's records or a deleted timeline's events, get one info line
    with their `count`, and their ids at debug.
 7. **A file written outside the database is logged at info:** an export, an exported
-   attachment, or any other file a command writes, with its `path` and `size`.
+   attachment, the backup made before migrating, or any other file a command writes, with
+   its `path` and `size`. A blob is not logged as a file: the store logs one it stores at
+   debug and one it deletes at info, by `sha256` and `size`. A blob is not a record, so
+   rule 6 does not count it: deleting one removes content for good, which is what a
+   command did, while storing one is a step of adding its attachment.
 8. **The pure packages never log:** `internal/timeline`, `internal/timeparse`,
    `internal/timetext` and `internal/graphics` import no logger. Their callers log the
    inputs they pass and the results they get back. A pure function returns a decision as
    data, such as which rule matched, only when a caller logs it.
 9. **`internal/store` takes a logger; `internal/config` returns data:** one store call
-   does many I/O steps its caller cannot see, such as migrating, staging blobs and waiting
-   on a busy database, so `store.Open`, `store.OpenReadOnly` and
-   `store.OpenWithoutBlobSync` take an optional `*slog.Logger`, which `internal/cli` hands
-   them from the command, and the store logs those steps itself (not in the repo yet:
-   EXC-2306). `internal/config` does its I/O through the functions its caller passes and
-   decides little beyond which path and which source won, so it returns those decisions in
-   its result and `internal/cli` logs them. Code that logs takes its `*slog.Logger` as a
-   parameter, never `slog.Default()` or the package-level `slog` functions.
+   does I/O its caller cannot see, such as migrating, backing up and committing, so
+   `store.Open`, `store.OpenReadOnly` and `store.OpenWithoutBlobSync` take a
+   `store.WithLogger` and a `store.WithClock` option, which `internal/cli` builds from the
+   command's logger and clock. The store keeps both on the `Store` it returns, logs those
+   steps itself, and times its transactions with the clock. It does not log staging a blob
+   or retrying a busy write. `internal/config` does its I/O through the functions its
+   caller passes and decides little beyond which path and which source won, so it returns
+   those decisions in its result and `internal/cli` logs them. Code that logs takes its
+   `*slog.Logger` as a parameter, or, in `internal/store`, from the `Store` it was opened
+   with; never `slog.Default()` or the package-level `slog` functions.
 10. **The content guard enforces rule 2:**
     [`log_content_test.go`](../../internal/cli/log_content_test.go) runs a table of
     commands under `--debug`, failing ones included, against records whose titles, event

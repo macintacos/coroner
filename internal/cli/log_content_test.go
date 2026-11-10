@@ -32,6 +32,7 @@ var _ = Describe("log content guard", func() {
 		out, errOut  bytes.Buffer
 		placeholders *strings.Replacer
 	)
+	sentinels := []string{sentinelTitle, sentinelText, sentinelBody, sentinelContent, sentinelFilename}
 
 	run := func(ctx context.Context, args ...string) int {
 		out.Reset()
@@ -53,6 +54,8 @@ var _ = Describe("log content guard", func() {
 		attachmentPath := filepath.Join(dir, sentinelFilename+".txt")
 		Expect(os.WriteFile(attachmentPath, []byte(sentinelContent), 0o600)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(dir, "existing.bin"), nil, 0o600)).To(Succeed())
+		newAttachmentPath := filepath.Join(dir, sentinelFilename+"-new.txt")
+		Expect(os.WriteFile(newAttachmentPath, []byte("new "+sentinelContent), 0o600)).To(Succeed())
 
 		mustRun(ctx, "timeline", "create", "inc", "--title", sentinelTitle)
 		mustRun(ctx, "event", "add", sentinelText, "-t", "inc", "--attach", attachmentPath)
@@ -68,8 +71,16 @@ var _ = Describe("log content guard", func() {
 		Expect(listed.Attachments).To(HaveLen(1))
 
 		placeholders = strings.NewReplacer(
-			"{dir}", dir, "{attach}", attachmentPath, "{annotation}", annotationID, "{attachment}", listed.Attachments[0].ID,
+			"{dir}", dir, "{attach}", attachmentPath, "{attach2}", newAttachmentPath, "{annotation}", annotationID, "{attachment}", listed.Attachments[0].ID,
 		)
+	})
+
+	It("keeps record content out of the lines that create and migrate the database", func() {
+		logged := readFile(logPath)
+		Expect(logged).To(ContainSubstring(`"msg":"migration applied"`))
+		for _, sentinel := range sentinels {
+			Expect(logged).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
+		}
 	})
 
 	DescribeTable("keeps record content out of the diagnostic log",
@@ -90,7 +101,7 @@ var _ = Describe("log content guard", func() {
 			if wantExit != 0 {
 				Expect(written).To(ContainSubstring(`"msg":"command failed"`))
 			}
-			for _, sentinel := range []string{sentinelTitle, sentinelText, sentinelBody, sentinelContent, sentinelFilename} {
+			for _, sentinel := range sentinels {
 				Expect(written).NotTo(ContainSubstring(sentinel), "record content reached the diagnostic log")
 			}
 		},
@@ -103,6 +114,7 @@ var _ = Describe("log content guard", func() {
 		Entry("event list between typed times", 0, "event", "list", "-t", "inc", "--since", "2020-01-01", "--until", "now"),
 		Entry("event view", 0, "event", "view", "inc#1"),
 		Entry("event add with an attachment", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach}"),
+		Entry("event add with new attachment content", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--attach", "{attach2}"),
 		Entry("event add as a dry run", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--dry-run"),
 		Entry("event add at typed times", 0, "event", "add", "another "+sentinelText, "-t", "inc", "--at", "2026-01-02 03:04", "--ended", "2026-01-02 04:00"),
 		Entry("event edit", 0, "event", "edit", "inc#1", "--text", "edited "+sentinelText),
@@ -111,6 +123,7 @@ var _ = Describe("log content guard", func() {
 		Entry("annotation add", 0, "annotation", "add", "another "+sentinelBody, "-t", "inc", "-e", "1", "--kind", "evidence"),
 		Entry("annotation edit", 0, "annotation", "edit", "{annotation}", "--body", "edited "+sentinelBody),
 		Entry("attachment list", 0, "attachment", "list", "-t", "inc"),
+		Entry("attachment delete", 0, "attachment", "delete", "{attachment}"),
 		Entry("attachment export to a file", 0, "attachment", "export", "{attachment}", "-o", "{dir}/export.bin"),
 		Entry("timeline create on a taken name", 4, "timeline", "create", "inc", "--title", sentinelTitle),
 		Entry("timeline edit on a missing timeline", 3, "timeline", "edit", "missing", "--title", sentinelTitle),

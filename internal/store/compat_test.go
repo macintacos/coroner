@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -61,10 +62,13 @@ var _ = Describe("Opening a database an earlier release wrote", func() {
 
 // expectCompatFixture opens the compatfixture database at path, reads back every record
 // fixture writes, adds an event to check that the timeline's seq counter survived, and saves
-// an overlay and a link across the fixture's timelines.
+// an overlay and a link across the fixture's timelines. It also checks the migration lines
+// and backup lines Open logged.
 func expectCompatFixture(ctx context.Context, path string) {
 	GinkgoHelper()
-	s, err := store.Open(ctx, path)
+	from := querySQLite(ctx, path, "SELECT coalesce(max(version_id), 0) FROM goose_db_version")
+	var logs bytes.Buffer
+	s, err := store.Open(ctx, path, capture(&logs))
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(s.Close)
 
@@ -94,4 +98,22 @@ func expectCompatFixture(ctx context.Context, path string) {
 	link := timeline.Link{ID: uuid(102), FromEventID: events[len(events)-1].ID, ToEventID: added.ID, Kind: timeline.LinkLedTo, CreatedAt: at}
 	Expect(s.AddLink(ctx, link)).To(Succeed())
 	Expect(s.EventLinks(ctx, added.ID)).To(Equal([]timeline.Link{link}))
+
+	schema, err := s.Schema(ctx)
+	Expect(err).NotTo(HaveOccurred())
+	var applied []any
+	for version := from + 1; version <= schema.Latest; version++ {
+		applied = append(applied, SatisfyAll(HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("schema_version", BeNumerically("==", version))))
+	}
+	Expect(logged(&logs, "migration applied")).To(HaveExactElements(applied...))
+
+	var backedUp []any
+	if 0 < from && from < schema.Latest {
+		backup := fmt.Sprintf("%s.pre-v%d.bak", path, schema.Latest)
+		info, err := os.Stat(backup)
+		Expect(err).NotTo(HaveOccurred())
+		backedUp = append(backedUp, SatisfyAll(HaveKeyWithValue("level", "INFO"), HaveKeyWithValue("path", backup),
+			HaveKeyWithValue("size", BeNumerically("==", info.Size()))))
+	}
+	Expect(logged(&logs, "database backed up")).To(HaveExactElements(backedUp...))
 }

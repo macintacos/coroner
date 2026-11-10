@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,10 +18,12 @@ import (
 	"github.com/macintacos/coroner/internal/timeline"
 )
 
-// blobDir is the blob directory, and how a blob or the directory is made durable.
+// blobDir is the blob directory, how a blob or the directory is made durable, and where its
+// file I/O is logged.
 type blobDir struct {
-	path string
-	sync func(*os.File) error
+	path   string
+	sync   func(*os.File) error
+	logger *slog.Logger
 }
 
 // sniffLen is how many leading bytes http.DetectContentType considers.
@@ -142,7 +145,12 @@ func commitBlob(blobDir blobDir, staged stagedBlob) error {
 		if err != nil {
 			return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 		}
-		return syncDir(blobDir.path, blobDir.sync)
+		err = syncDir(blobDir.path, blobDir.sync)
+		if err != nil {
+			return err
+		}
+		blobDir.logger.Debug("blob stored", "sha256", staged.sha256, "size", staged.size)
+		return nil
 	default:
 		return fmt.Errorf("store blob %s: %w", staged.sha256, err)
 	}
@@ -157,13 +165,13 @@ func syncDir(dir string, sync func(*os.File) error) error {
 	return errors.Join(sync(d), d.Close())
 }
 
-// deleteUnreferenced deletes every blob in blobDir whose hash is not in referenced and
-// returns their hashes in name order. It leaves anything that is not a blob, such as a
-// staged file.
+// deleteUnreferenced deletes every blob in dir whose hash is not in referenced, logging
+// each one, and returns their hashes in name order. It leaves anything that is not a blob,
+// such as a staged file.
 // ponytail: staged .tmp-* files a crash left are never collected; sweep by age with an
 // injected clock if they accumulate.
-func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
-	entries, err := os.ReadDir(blobDir)
+func deleteUnreferenced(dir blobDir, referenced []string) ([]string, error) {
+	entries, err := os.ReadDir(dir.path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return []string{}, nil
 	}
@@ -183,14 +191,34 @@ func deleteUnreferenced(blobDir string, referenced []string) ([]string, error) {
 			continue
 		}
 
-		err := os.Remove(filepath.Join(blobDir, name))
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("delete blob %s: %w", name, err)
+		removed, err := removeBlob(dir, entry)
+		if err != nil {
+			return nil, err
 		}
-		deleted = append(deleted, name)
+		if removed {
+			deleted = append(deleted, name)
+		}
 	}
 
 	return deleted, nil
+}
+
+// removeBlob deletes entry's blob from dir and logs it. It reports false when the blob was
+// already gone.
+func removeBlob(dir blobDir, entry fs.DirEntry) (bool, error) {
+	info, err := entry.Info()
+	if err == nil {
+		err = os.Remove(filepath.Join(dir.path, entry.Name()))
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("delete blob %s: %w", entry.Name(), err)
+	}
+	dir.logger.Info("blob deleted", "sha256", entry.Name(), "size", info.Size())
+
+	return true, nil
 }
 
 // BlobPath returns the path of the blob whose SHA-256 is hash, in the blob directory of the

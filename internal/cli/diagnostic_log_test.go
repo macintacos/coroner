@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -76,13 +75,13 @@ var _ = Describe("diagnostic log", func() {
 	run := func(ctx context.Context, app cli.App) int {
 		openedTheDB = false
 		openStore, openReadOnly := app.OpenStore, app.OpenStoreReadOnly
-		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
+		app.OpenStore = func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error) {
 			openedTheDB = true
-			return openStore(ctx, path, logger...)
+			return openStore(ctx, path, opts...)
 		}
-		app.OpenStoreReadOnly = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
+		app.OpenStoreReadOnly = func(ctx context.Context, path string, opts ...store.Option) (*store.Store, error) {
 			openedTheDB = true
-			return openReadOnly(ctx, path, logger...)
+			return openReadOnly(ctx, path, opts...)
 		}
 		return cli.Run(ctx, app)
 	}
@@ -133,18 +132,27 @@ var _ = Describe("diagnostic log", func() {
 		Expect(readFile(logPath)).To(Equal(before))
 	})
 
-	It("hands the store the command's logger", func(ctx SpecContext) {
-		app := h.app("timeline", "create", "u")
-		openStore := app.OpenStore
-		app.OpenStore = func(ctx context.Context, path string, logger ...*slog.Logger) (*store.Store, error) {
-			logger[0].InfoContext(ctx, "probe")
-			return openStore(ctx, path, logger...)
+	It("hands the store the command's logger and clock", func(ctx SpecContext) {
+		app := h.app("timeline", "create", "u", "--debug")
+		now := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+		app.Now = func() time.Time {
+			now = now.Add(time.Millisecond)
+			return now
 		}
 
 		Expect(cli.Run(ctx, app)).To(Equal(0))
 
-		Expect(logLines(logPath)).To(ContainElement(And(
-			HaveKeyWithValue("msg", "probe"), HaveKeyWithValue("command", "coroner timeline create"))))
+		Expect(logLines(logPath)).To(ContainElement(And(HaveKeyWithValue("msg", "transaction committed"),
+			HaveKeyWithValue("command", "coroner timeline create"), HaveKeyWithValue("duration", BeNumerically(">", 0)))))
+	})
+
+	It("logs a dry run's transaction as rolled back under --debug", func(ctx SpecContext) {
+		Expect(cli.Run(ctx, h.app("timeline", "create", "inc"))).To(Equal(0))
+
+		Expect(cli.Run(ctx, h.app("event", "add", "x", "-t", "inc", "--dry-run", "--debug"))).To(Equal(0))
+
+		Expect(logLines(logPath)).To(ContainElement(And(HaveKeyWithValue("msg", "transaction rolled back"),
+			HaveKeyWithValue("command", "coroner event add"), HaveKeyWithValue("dry_run", true))))
 	})
 
 	DescribeTable("ends the log with the command's finish line",

@@ -255,17 +255,37 @@ func (s *Store) change(ctx context.Context, mode Mode, fn func(*Tx) error) error
 }
 
 func (s *Store) inTx(ctx context.Context, opts *sql.TxOptions, fn func(sqlcgen.DBTX) error) error {
+	start := s.now()
 	tx, err := s.db.BeginTx(ctx, opts)
 	if err != nil {
 		return err
 	}
 
-	err = fn(tx)
+	err = endTx(tx, fn(tx))
+	s.logTx(ctx, opts != nil && opts.ReadOnly, s.now().Sub(start), err)
+
+	return err
+}
+
+// endTx commits tx when err is nil, and otherwise rolls it back, returning err joined with
+// the rollback's.
+func endTx(tx *sql.Tx, err error) error {
 	if err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
 
 	return tx.Commit()
+}
+
+// logTx logs how a transaction ended after duration: it committed when err is nil.
+// dry_run is true only when a Rollback change's fn succeeded; one whose fn failed logs false.
+func (s *Store) logTx(ctx context.Context, readOnly bool, duration time.Duration, err error) {
+	if err == nil {
+		s.logger.DebugContext(ctx, "transaction committed", "read_only", readOnly, "duration", duration)
+		return
+	}
+	s.logger.DebugContext(ctx, "transaction rolled back",
+		"read_only", readOnly, "dry_run", errors.Is(err, errRollback), "duration", duration)
 }
 
 // retryBusy calls fn up to attempts times while it fails with SQLITE_BUSY, waiting a
