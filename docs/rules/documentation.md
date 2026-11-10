@@ -33,7 +33,7 @@ which-doc: Which doc does the change affect?
   a command, flag or help topic changed: regenerate, never hand-edit > regenerate-docs
   the export envelope, a canonical object's keys, the JSONL stream and its record order, the encoding rules or the evolution rules > export-format
   a config file key, its type or default, the config file or database precedence, what the file rejects, or the blob directory rule > configuration
-  the diagnostic log: where it lives, which commands write it, rotation, its levels, or a line added to or changed in it > diagnostic-log
+  the diagnostic log: where it lives, which commands write it, rotation, its levels, a line added to or changed in it, or reading it with `__internal log`: its flags and output, which docgen leaves out as a hidden command > diagnostic-log
   terminal help topics: time input, output formats, exit codes, environment variables, each also a published reference page, so its title and structure show on the site > edit-internal
   a command, flag, JSON key, exit code or experimental surface the agent skill or its references name changed > skill-2
   the design direction: a colour, face, radius or motion value moving to a new home, a design decision, a departure from the /taste defaults, or code catching up with an open item > edit-design
@@ -153,8 +153,9 @@ edit-design!: Edit design/
 - **[`docs/reference/diagnostic-log.md`](../reference/diagnostic-log.md)** (anyone looking
   into what coroner's commands did on their machine, by hand or from a script) — where the
   log lives and what it can collide with, which commands write it, rotation, its levels
-  and the lines each writes, and the line shape. A new or changed log line updates it in
-  the same change.
+  and the lines each writes, the line shape, and reading it with `__internal log`: its
+  flags and output, which docgen leaves out as a hidden command. A new or changed log line
+  updates it in the same change.
 - **[`internal/cli/topics/*.md`](../../internal/cli/topics/)** (humans and agents at the
   terminal) — the help topics `coroner help <topic>` prints as-is, and the source of their
   CLI reference pages, which are also the site's Exit codes, Environment variables, Time

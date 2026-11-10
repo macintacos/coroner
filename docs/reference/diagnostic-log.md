@@ -29,7 +29,8 @@ coroner did not create, writes no log. Two paths can still collide:
 ## Which commands write it
 
 Every command that opens a database that exists writes to the log, and ends with one
-`command finished` line. `version`, `agent skill` and shell completion never do.
+`command finished` line. `version`, `agent skill`, shell completion and every `__internal`
+command never do.
 
 A command against a database that does not exist when it ends, such as a read or a
 `--dry-run`, writes no log and creates no directory. A log coroner cannot open, rotate or
@@ -78,7 +79,32 @@ The line shape is not a contract: it may change in any release
 
 ## Reading it
 
-The failed commands in the default database's log, with `$XDG_DATA_HOME` at its default:
+`coroner __internal log` prints the log as text, oldest line first: `<log>.1`, then
+`<log>`. Each line prints as `--debug` prints it on stderr, as `key=value` pairs, with its
+time in the zone `--tz` selects, as `event list` prints times. Four flags filter it:
+
+- `--level` keeps lines at that level and above;
+- `--command` keeps lines from that command path and the commands under it, such as
+  `event add`;
+- `--since` keeps lines at or after a time, and `--until` lines before one, read as
+  `event list` reads them.
+
+A line that is not a JSON log line prints as it is, whatever the filters, so a damaged log
+still shows. Control characters print escaped. With no log yet, the command says so on
+stderr and exits 0.
+
+```sh
+coroner __internal log
+coroner __internal log --level warn
+coroner __internal log --command "event add" --since "2026-09-11T03:00Z" --until "2026-09-11T04:00Z"
+```
+
+The command is hidden from help, prints text only and has no follow mode. It may change or
+disappear in any release
+([STABILITY.md](https://github.com/macintacos/coroner/blob/main/STABILITY.md)).
+
+Scripts read the JSON file itself. The failed commands in the default database's log, with
+`$XDG_DATA_HOME` at its default:
 
 ```sh
 jq -c 'select(.msg == "command finished" and .kind != "ok")' ~/.local/share/coroner/coroner.log

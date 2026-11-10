@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -85,6 +86,27 @@ var _ = Describe("docgen", func() {
 		Expect(write(newReference(), dir)).To(Succeed())
 
 		Expect(check(newReference(), dir, &bytes.Buffer{})).To(Succeed())
+	})
+
+	It("leaves the __internal group out of the CLI reference and the man pages", func() {
+		refDir, manDir := GinkgoT().TempDir(), GinkgoT().TempDir()
+		Expect(write(reference{root: cli.NewRoot(context.Background(), cli.App{}), topics: cli.HelpTopics()}, refDir)).To(Succeed())
+		Expect(writeMan(cli.NewRoot(context.Background(), cli.App{}), manDir, time.Unix(0, 0))).To(Succeed())
+
+		refPages, err := readPages(os.DirFS(refDir))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(refPages).To(HaveKey("coroner_event_add.md"))
+
+		for _, dir := range []string{refDir, manDir} {
+			fsys := os.DirFS(dir)
+			entries, err := fs.ReadDir(fsys, ".")
+			Expect(err).NotTo(HaveOccurred())
+			for _, entry := range entries {
+				content, err := fs.ReadFile(fsys, entry.Name())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry.Name()+string(content)).NotTo(ContainSubstring("__internal"), entry.Name())
+			}
+		}
 	})
 
 	Describe("man pages", func() {

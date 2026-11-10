@@ -1,0 +1,85 @@
+# With no log, it says so on stderr, exits 0 and creates nothing.
+exec coroner __internal log
+! stdout .
+stderr 'No diagnostic log at .*coroner\.log yet'
+! exists $WORK/.local/share/coroner
+
+# With only coroner.log.1, it prints that.
+mkdir $WORK/.local/share/coroner
+cp coroner.log.1 $WORK/.local/share/coroner/coroner.log.1
+exec coroner __internal log
+cmp stdout rotated.txt
+
+# It prints coroner.log.1 first, then coroner.log, oldest line first, each on its own line.
+cp coroner.log $WORK/.local/share/coroner/coroner.log
+exec coroner __internal log
+cmp stdout all.txt
+! stderr .
+stdout '^not json$'
+stdout 'msg="made up \\x1b\[31mred"'
+! stdout '\x1b'
+
+# Reading the log adds nothing to it.
+cmp $WORK/.local/share/coroner/coroner.log coroner.log
+cmp $WORK/.local/share/coroner/coroner.log.1 coroner.log.1
+
+# Filters.
+exec coroner __internal log --level warn
+cmp stdout warn.txt
+exec coroner __internal log --command event
+cmp stdout event.txt
+exec coroner __internal log --since 2026-09-11T03:15Z --until 2026-09-11T03:20Z
+cmp stdout window.txt
+
+# Another database's log.
+mkdir $WORK/b
+cp coroner.log $WORK/b/other.db.log
+exec coroner --db $WORK/b/other.db __internal log --level error
+stdout 'level=ERROR'
+! exists $WORK/b/other.db
+
+# A log it cannot read exits 2.
+mkdir $WORK/b/x.db.log
+exits 2 coroner --db $WORK/b/x.db __internal log
+stderr 'cannot read .*x\.db\.log'
+
+# A bad filter value, --json or another --format exits 2.
+exits 2 coroner __internal log --level loud
+stderr '--level "loud" is not debug, info, warn or error'
+exits 2 coroner __internal log --command evnet
+stderr '--command "evnet" names no coroner command'
+exits 2 coroner __internal log --command 'event bogus'
+exits 2 coroner __internal log --since yesterdayish
+exits 2 coroner __internal log --json
+exits 2 coroner __internal log --format jsonl
+
+-- coroner.log.1 --
+{"time":"2026-09-11T03:10:00.5-04:00","level":"INFO","msg":"command finished","command":"coroner timeline create","kind":"ok","exit_code":0,"duration":8667667}
+{"time":"2026-09-11T03:12:00Z","level":"DEBUG","msg":"command failed","command":"coroner event add","kind":"usage","exit_code":2,"message":"--at is required","flags":["db","source"]}
+-- coroner.log --
+{"time":"2026-09-11T03:16:00Z","level":"INFO","msg":"command finished","command":"coroner event add","kind":"ok","exit_code":0,"duration":1200000}
+not json
+{"time":"2026-09-11T03:18:00Z","level":"ERROR","msg":"made up \u001b[31mred","command":"coroner events","kind":"internal"}
+{"time":"2026-09-11T03:25:00Z","level":"WARN","msg":"attachment image not shown","command":"coroner timeline view","name":"evil\u001b]0;title\u0007"}
+-- rotated.txt --
+time=2026-09-11T07:10:00.500Z level=INFO msg="command finished" command="coroner timeline create" kind=ok exit_code=0 duration=8.667667ms
+time=2026-09-11T03:12:00.000Z level=DEBUG msg="command failed" command="coroner event add" kind=usage exit_code=2 message="--at is required" flags="[db source]"
+-- all.txt --
+time=2026-09-11T07:10:00.500Z level=INFO msg="command finished" command="coroner timeline create" kind=ok exit_code=0 duration=8.667667ms
+time=2026-09-11T03:12:00.000Z level=DEBUG msg="command failed" command="coroner event add" kind=usage exit_code=2 message="--at is required" flags="[db source]"
+time=2026-09-11T03:16:00.000Z level=INFO msg="command finished" command="coroner event add" kind=ok exit_code=0 duration=1.2ms
+not json
+time=2026-09-11T03:18:00.000Z level=ERROR msg="made up \x1b[31mred" command="coroner events" kind=internal
+time=2026-09-11T03:25:00.000Z level=WARN msg="attachment image not shown" command="coroner timeline view" name="evil\x1b]0;title\a"
+-- warn.txt --
+not json
+time=2026-09-11T03:18:00.000Z level=ERROR msg="made up \x1b[31mred" command="coroner events" kind=internal
+time=2026-09-11T03:25:00.000Z level=WARN msg="attachment image not shown" command="coroner timeline view" name="evil\x1b]0;title\a"
+-- event.txt --
+time=2026-09-11T03:12:00.000Z level=DEBUG msg="command failed" command="coroner event add" kind=usage exit_code=2 message="--at is required" flags="[db source]"
+time=2026-09-11T03:16:00.000Z level=INFO msg="command finished" command="coroner event add" kind=ok exit_code=0 duration=1.2ms
+not json
+-- window.txt --
+time=2026-09-11T03:16:00.000Z level=INFO msg="command finished" command="coroner event add" kind=ok exit_code=0 duration=1.2ms
+not json
+time=2026-09-11T03:18:00.000Z level=ERROR msg="made up \x1b[31mred" command="coroner events" kind=internal

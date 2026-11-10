@@ -38,6 +38,8 @@ type App struct {
 	WriteFile func(name string, data []byte, perm fs.FileMode) error
 	// OpenFile opens name as os.OpenFile does.
 	OpenFile func(name string, flag int, perm fs.FileMode) (io.WriteCloser, error)
+	// Open opens name for reading, as os.Open does, reporting a missing file as fs.ErrNotExist.
+	Open func(name string) (io.ReadCloser, error)
 	// RemoveFile removes name as os.Remove does.
 	RemoveFile func(name string) error
 	// ReadDir lists the directory at name as os.ReadDir does, reporting a missing one as

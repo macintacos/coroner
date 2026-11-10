@@ -89,7 +89,7 @@ var _ = Describe("diagnostic log", func() {
 		Expect(run(ctx, h.app("timeline", "create", "t"))).To(Equal(0))
 		Expect(run(ctx, h.app("timeline", "use", "t"))).To(Equal(0))
 
-		optedOut := []string{"coroner version", "coroner agent skill", "coroner completion"}
+		optedOut := []string{"coroner version", "coroner agent skill", "coroner completion", "coroner __internal"}
 		isOptedOut := func(path string) bool {
 			return slices.ContainsFunc(optedOut, func(prefix string) bool {
 				return path == prefix || strings.HasPrefix(path, prefix+" ")
