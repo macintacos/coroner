@@ -27,7 +27,7 @@ cmp $WORK/.local/share/coroner/coroner.log before.log
 exec coroner --db $WORK/missing/c.db status
 ! exists $WORK/missing
 
-# A database in a directory coroner cannot write to behaves as before, and logs nothing.
+# A database in a directory coroner cannot write to is unaffected by the log, which writes nothing.
 exec coroner --db $WORK/ro/c.db timeline create ro --title RO
 rm $WORK/ro/c.db.log
 chmod 500 $WORK/ro
