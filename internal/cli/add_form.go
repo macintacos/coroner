@@ -336,7 +336,7 @@ func interactiveRefusal(cmd *cobra.Command, inputOff bool) error {
 	}
 }
 
-// inlineImages is how a form or the viewer shows images on app's terminal under inv, logged at
+// inlineImages is how a form shows images on app's terminal under inv, logged at
 // debug: none without color, since Kitty graphics name an image by the color of the cells it
 // shows through.
 func inlineImages(app App, inv invocation) graphics.Protocol {

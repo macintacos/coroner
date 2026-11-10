@@ -222,6 +222,19 @@ var _ = Describe("the viewer's attachments", func() {
 		Expect(logged.String()).To(SatisfyAll(ContainSubstring("attachment image not shown"), ContainSubstring(pngSHA)))
 	})
 
+	DescribeTable("logs how it shows images on a terminal",
+		func(term viewer.Terminal, want string) {
+			var logged bytes.Buffer
+			opts := optionsFor(withAttachments(), b)
+			opts.Log = slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			viewer.OnTerminal(term, viewer.New(opts))
+
+			Expect(logged.String()).To(SatisfyAll(ContainSubstring(`msg="inline images decided"`), ContainSubstring("protocol="+want)))
+		},
+		Entry("with Kitty graphics", viewer.Terminal{Graphics: graphics.Kitty}, "kitty"),
+		Entry("with Kitty graphics but no color", viewer.Terminal{Graphics: graphics.Kitty, NoColor: true}, "none"),
+	)
+
 	It("logs each load, with what it read and how long it took", func() {
 		var logged bytes.Buffer
 		opts := optionsFor(withAttachments(), b)

@@ -1097,7 +1097,7 @@ var _ = Describe("add forms", func() {
 })
 
 var _ = Describe("inlineImages", func() {
-	DescribeTable("decides how a form or the viewer shows images, and logs it under --debug",
+	DescribeTable("decides how a form shows images, and logs it under --debug",
 		func(outColor bool, env map[string]string, want graphics.Protocol, logged string) {
 			log := &diagnosticLog{debug: true, now: testNow}
 			app := App{log: log, Err: &bytes.Buffer{}, LookupEnv: func(key string) (string, bool) {

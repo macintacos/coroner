@@ -46,8 +46,7 @@ type Match struct {
 }
 
 // LogValue is what narrowed a load, as the diagnostic log's filter: the sources and tags matched,
-// and contains, true when text was matched, never the text. Keep its keys in step with
-// internal/cli's filterValue.
+// and contains, true when text was matched, never the text.
 func (m Match) LogValue() slog.Value {
 	var attrs []slog.Attr
 	if len(m.Sources) > 0 {
@@ -118,6 +117,9 @@ func (t Terminal) images() graphics.Protocol {
 // onTerminal is m showing images the way term can.
 func onTerminal(term Terminal, m Model) Model {
 	m.images.protocol = term.images()
+	if m.opts.Log != nil {
+		m.opts.Log.Debug("inline images decided", "protocol", m.images.protocol.String())
+	}
 	return m
 }
 

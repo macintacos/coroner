@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/macintacos/coroner/internal/graphics"
 	"github.com/macintacos/coroner/internal/store"
 	"github.com/macintacos/coroner/internal/timeline"
 	"github.com/macintacos/coroner/internal/viewer"
@@ -102,7 +103,7 @@ func viewTimelines(ctx context.Context, cmd *cobra.Command, app App) error {
 
 	logger, flush := viewerDiagnostics(app.log, app.Err)
 	term := viewer.Terminal{
-		In: app.In, Out: app.Out, NoColor: !inv.outColor, Graphics: inlineImages(app, inv), Env: terminalEnv(app.LookupEnv),
+		In: app.In, Out: app.Out, NoColor: !inv.outColor, Graphics: graphics.Detect(app.LookupEnv), Env: terminalEnv(app.LookupEnv),
 	}
 	err = viewer.Run(ctx, term, viewer.Options{
 		Snapshot: snapshot,

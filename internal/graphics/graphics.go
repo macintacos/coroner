@@ -19,7 +19,7 @@ const (
 	Kitty
 )
 
-// String is p's name in the diagnostic log: kitty, or none.
+// String is p's name: none or kitty.
 func (p Protocol) String() string {
 	if p == Kitty {
 		return "kitty"
