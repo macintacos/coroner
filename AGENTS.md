@@ -13,6 +13,10 @@ Tasks live in [`.mise/tasks/`](.mise/tasks/); `mise tasks` lists them.
 
 - `mise run setup` installs the pinned tools and Go modules and registers the git hooks.
 - `mise run build` builds the binary into `bin/`.
+- `mise run coroner <args>` builds the binary into `bin/` and runs it with `<args>` in the
+  directory mise was run from, passing through the terminal and the exit code. mise takes
+  `--help` and `-h` for itself, so `mise run coroner -- --help` reaches coroner, and it
+  adds `[coroner] ERROR task failed` to stderr after a non-zero exit.
 - `mise run format` runs every formatter in write mode, plus `go mod tidy`,
   `sqlc generate`, the CLI reference generator and the export schema generator.
 - `mise run lint` runs the linters without writing, then fails if the CLI reference or the

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Build coroner from source and run it with the given arguments"
+#MISE dir="{{cwd}}"
+#MISE raw=true
+#MISE quiet=true
+
+set -euo pipefail
+
+# Not `go run`: it reports every non-zero exit as 1, and coroner's exit codes are a contract.
+go build -C "$MISE_PROJECT_ROOT" -o bin/coroner .
+exec "$MISE_PROJECT_ROOT/bin/coroner" "$@"

@@ -37,6 +37,7 @@ coroner.
 
 ```sh
 mise run setup       # install pinned tools and Go modules, register git hooks
+mise run coroner     # build and run coroner from source; arguments pass through
 mise run docs:serve  # preview the docs site from docs/
 mise run preflight   # lint, test, and build the binary and docs: run before pushing
 ```
